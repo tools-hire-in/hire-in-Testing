@@ -93,7 +93,7 @@ const buildAllFaqs = (profile: CompanyProfile) => [
       },
       {
         q: "How does Hire'in Solutions verify healthcare credentials?",
-        a: "Using CredentialRx.ai (proKred.com): state nursing board license checks, DEA number validation for prescribers, BLS/ACLS/PALS/NRP certification verification, background checks, OIG/SAM exclusion screening, and reference checks — compiled into a compliant submission package before any candidate is presented.",
+        a: "Hire'in's compliance team runs background checks, reference checks, DEA number validation for prescribers, and BLS/ACLS/PALS/NRP certification verification. CredentialRx.ai (proKred.com) automates license verification and blacklist/exclusion checks against public government directories — state nursing board license lookups and OIG/SAM exclusion screening — and compiles everything into a compliant submission packet before any candidate is presented.",
       },
       {
         q: "Does Hire'in Solutions handle multi-state nurse licensure?",

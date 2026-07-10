@@ -197,7 +197,7 @@ function Slide1Cover() {
 function Slide2ByTheNumbers() {
   const metrics = [
     { value: "TJC", label: "Joint Commission Aligned", sub: "Workflows built around TJC standards" },
-    { value: "AI+", label: "proKred.com Credentialing", sub: "Automated license & compliance verification" },
+    { value: "AI+", label: "proKred.com Compliance Packets", sub: "Public-directory license & exclusion checks" },
     { value: "50", label: "US States Covered", sub: "True coast-to-coast clinical reach" },
     { value: "100+", label: "Healthcare Role Types", sub: "Nurses, physicians, therapists & allied health" },
     { value: "Fast", label: "Compliance Turnaround", sub: "From intake to compliant submission package" },
@@ -237,12 +237,12 @@ function Slide3About() {
         <div style={{ flex: 1.2, display: "flex", flexDirection: "column", gap: 14 }}>
           <div style={{ background: WHITE, borderRadius: 10, padding: "16px 20px", borderLeft: `4px solid ${ORANGE}`, boxShadow: "0 2px 12px rgba(31,58,110,0.08)" }}>
             <p style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 6, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Our Healthcare Mission</p>
-            <p style={{ color: NAVY, fontSize: 14, fontWeight: 600, lineHeight: 1.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Est. 2014 · 10+ years in healthcare staffing. We connect hospital systems, health networks, and clinical facilities with compliance-verified talent that fits. Headquartered in San Jose, CA, serving all 50 states.</p>
+            <p style={{ color: NAVY, fontSize: 14, fontWeight: 600, lineHeight: 1.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Est. 2014 · 10+ years in staffing. We connect hospital systems, health networks, and clinical facilities with compliance-verified talent that fits. Headquartered in San Jose, CA, serving all 50 states.</p>
           </div>
           <div style={{ background: NAVY, borderRadius: 10, padding: "16px 20px", boxShadow: "0 2px 12px rgba(31,58,110,0.12)" }}>
             <p style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", marginBottom: 8, fontFamily: "'Segoe UI', Arial, sans-serif" }}>The Rayomind Family</p>
             <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, lineHeight: 1.55, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-              Hire&apos;in Solutions is a US-based staffing firm and proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group, a technology-driven ecosystem building next-generation workforce solutions. Our healthcare division uses <strong style={{ color: ORANGE }}>proKred.com</strong> for credentialing automation and <strong style={{ color: ORANGE }}>KlerHire AI</strong> for clinical skills matching, so every placement is document-verified and submission-compliant.
+              Hire&apos;in Solutions is a US-based staffing firm and proud member of the <strong style={{ color: ORANGE }}>Rayomind</strong> group, a technology-driven ecosystem building next-generation workforce solutions. Our healthcare division uses <strong style={{ color: ORANGE }}>proKred.com</strong> for compliant submission packets and credential sharing and <strong style={{ color: ORANGE }}>KlerHire AI</strong> for clinical skills matching, so every placement is document-verified and submission-compliant.
               <span style={{ display: "block", marginTop: 6, fontSize: 9.5, color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>A subsidiary of Rayomind Inc.</span>
             </p>
           </div>
@@ -250,8 +250,8 @@ function Slide3About() {
         <div style={{ flex: 0.8, display: "flex", flexDirection: "column", gap: 10 }}>
           {[
             { icon: Heart, label: "Healthcare-Exclusive Division", desc: "Dedicated clinical staffing expertise" },
-            { icon: ShieldCheck, label: "proKred.com Platform", desc: "Advanced credentialing automation" },
-            { icon: Users, label: "60+ Clinical Recruiters", desc: "Specialty-trained healthcare teams" },
+            { icon: ShieldCheck, label: "proKred.com", desc: "Compliance packets, credential sharing & skill checklists" },
+            { icon: Users, label: "15+ Talent Acquisition Experts", desc: "Delivery Manager, Director of Sales, Sr. Account Manager" },
             { icon: Globe, label: "All 50 US States", desc: "Coast-to-coast clinical coverage" },
           ].map(({ icon: Icon, label, desc }, i) => (
             <div key={i} style={{ background: WHITE, borderRadius: 8, padding: "10px 14px", display: "flex", alignItems: "flex-start", gap: 10, boxShadow: "0 1px 6px rgba(31,58,110,0.07)" }}>
@@ -352,7 +352,7 @@ function Slide5Models() {
         <div style={{ background: NAVY, borderRadius: 8, padding: "11px 16px", display: "flex", alignItems: "center", gap: 8, marginTop: 4 }}>
           <ShieldCheck size={14} color={ORANGE} />
           <span style={{ color: "rgba(255,255,255,0.88)", fontSize: 11.5, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-            All models include <strong style={{ color: ORANGE }}>Joint Commission-aligned workflows</strong>, proKred.com verification, and healthcare-specific background checks.
+            All models include <strong style={{ color: ORANGE }}>Joint Commission-aligned workflows</strong>, proKred.com compliant submission packets with public-directory license checks, and healthcare-specific background checks run by our compliance team.
           </span>
         </div>
       </div>
@@ -362,9 +362,9 @@ function Slide5Models() {
 
 function Slide6AICredentialing() {
   const features = [
-    { icon: ClipboardCheck, title: "License Verification", desc: "Automated real-time verification of nursing licenses, medical licenses, and specialty certifications across all 50 states." },
-    { icon: Shield, title: "Privilege Delineation", desc: "Maps clinical privileges to facility requirements so each provider is authorized for the specific procedures and departments they serve." },
-    { icon: Target, title: "Compliance Automation", desc: "Continuous monitoring of expiration dates, CEU requirements, and regulatory changes. You get automated alerts before any credential lapses." },
+    { icon: ClipboardCheck, title: "License Verification", desc: "Automated license checks against state boards' public directories across all 50 states, plus OIG/SAM-style blacklist and exclusion screening." },
+    { icon: Shield, title: "Gold-Standard Skill Checklists", desc: "Skill checklists covering EMR systems and clinical competencies, weighted by recency and proficiency — not simple checkbox self-assessments." },
+    { icon: Target, title: "Credential Tracking & Alerts", desc: "Continuous tracking of expiration dates and CEU requirements. You get automated alerts before any credential lapses." },
     { icon: Brain, title: "Clinical Skills Matching", desc: "KlerHire AI scores candidates on EMR proficiency (Epic, Cerner, Meditech), specialty alignment, and clinical competency fit." },
     { icon: Star, title: "EMR Proficiency Scoring", desc: "Evaluates depth of experience with specific EHR systems, charting workflows, and clinical documentation standards." },
   ];
@@ -375,9 +375,9 @@ function Slide6AICredentialing() {
           <div>
             <div style={{ display: "inline-flex", alignItems: "center", gap: 6, background: "rgba(244,124,32,0.2)", border: "1px solid rgba(244,124,32,0.4)", borderRadius: 20, padding: "3px 12px", marginBottom: 8 }}>
               <ShieldCheck size={11} color={ORANGE} />
-              <span style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>AI + Credentialing</span>
+              <span style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase", fontFamily: "'Segoe UI', Arial, sans-serif" }}>AI + Compliance</span>
             </div>
-            <h2 style={{ color: ORANGE, fontSize: 22, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1 }}>AI &amp; Credentialing Tools</h2>
+            <h2 style={{ color: ORANGE, fontSize: 22, fontWeight: 900, fontFamily: "'Segoe UI', Arial, sans-serif", lineHeight: 1.1 }}>AI &amp; Compliance Tools</h2>
             <p style={{ color: ORANGE, fontSize: 15, fontWeight: 600, fontFamily: "'Segoe UI', Arial, sans-serif", marginTop: 2 }}>proKred.com + KlerHire AI — Verified Documents &amp; Compliant Submissions</p>
           </div>
           <HISLogo size={34} light />
@@ -407,9 +407,9 @@ function Slide6AICredentialing() {
 function Slide7Advantage() {
   const advantages = [
     { icon: ShieldCheck, title: "Joint Commission-Aligned", desc: "Our credentialing workflows are built around TJC standards, covering everything from primary source verification to ongoing monitoring, so your placements are audit-ready.", highlight: "TJC-Ready Process" },
-    { icon: ClipboardCheck, title: "proKred.com-Powered Verification", desc: "Our proKred.com platform automates license verification, privilege delineation, and compliance tracking — delivering verified documents and compliant submission packages.", highlight: "Verified & Compliant" },
+    { icon: ClipboardCheck, title: "proKred.com-Powered Packets", desc: "proKred.com automates license and exclusion checks against public government directories, tracks credentials, and compiles verified documents into compliant submission packets.", highlight: "Verified & Compliant" },
     { icon: Stethoscope, title: "Clinical Domain Experts", desc: "Our recruiters specialize in clinical staffing across RN, LPN, CNA, allied health, and physician placements. They understand unit-level needs, shift patterns, and patient acuity.", highlight: "RN / LPN / CNA Specialists" },
-    { icon: Zap, title: "Rapid Compliance Turnaround", desc: "With proKred.com running continuous verification, we deliver candidates with verified documents and compliant submission packages faster than traditional healthcare staffing firms.", highlight: "Compliant Packages" },
+    { icon: Zap, title: "Rapid Compliance Turnaround", desc: "With proKred.com automating public-directory checks and packet compilation, we deliver candidates with verified documents and compliant submission packets faster than traditional healthcare staffing firms.", highlight: "Compliant Packets" },
   ];
   return (
     <SlideWrapper bg={LIGHT_BG}>
@@ -444,7 +444,7 @@ function Slide7Advantage() {
 function Slide8CredentialingProcess() {
   const steps = [
     { icon: Building2, label: "Intake", sub: undefined as string | undefined, desc: "Understand facility needs, unit requirements & acuity level", color: NAVY },
-    { icon: ClipboardCheck, label: "Credential Verify", sub: "proKred.com", desc: "Automated license & certification verification", color: ORANGE },
+    { icon: ClipboardCheck, label: "Credential Collect", sub: "proKred.com", desc: "Public-directory license & exclusion checks", color: ORANGE },
     { icon: Shield, label: "License Check", sub: undefined as string | undefined, desc: "Multi-state nursing license & DEA verification", color: NAVY },
     { icon: Stethoscope, label: "Clinical Screen", sub: undefined as string | undefined, desc: "Skills assessment, EMR proficiency & clinical competency", color: ORANGE },
     { icon: ShieldCheck, label: "Compliance", sub: undefined as string | undefined, desc: "TJC-aligned review & background clearance", color: NAVY },
@@ -485,7 +485,7 @@ function Slide8CredentialingProcess() {
         <div style={{ background: NAVY, borderRadius: 8, padding: "10px 18px", display: "flex", alignItems: "center", gap: 8 }}>
           <ShieldCheck size={15} color={ORANGE} />
           <span style={{ color: "rgba(255,255,255,0.88)", fontSize: 11, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-            <strong style={{ color: ORANGE }}>proKred.com</strong> automates verification at every stage, aligning with Joint Commission standards and eliminating manual credential gaps.
+            <strong style={{ color: ORANGE }}>proKred.com</strong> automates public-directory checks and packet compilation at every stage, aligning with Joint Commission standards and eliminating manual credential gaps.
           </span>
         </div>
       </div>
@@ -497,7 +497,7 @@ function Slide9Fulfillment() {
   const stages = [
     { label: "Demand", icon: Building2, desc: "Facility raises clinical requisition" },
     { label: "Triage", icon: Activity, desc: "Urgency classification (ER/ICU/Floor)" },
-    { label: "Credential", icon: ClipboardCheck, desc: "proKred.com verification" },
+    { label: "Credential", icon: ClipboardCheck, desc: "proKred.com compliance packet" },
     { label: "Match", icon: Brain, desc: "KlerHire AI clinical matching" },
     { label: "Submit", icon: UserCheck, desc: "Compliant submission packages delivered" },
     { label: "Compliance", icon: ShieldCheck, desc: "TJC-aligned review & clearance" },

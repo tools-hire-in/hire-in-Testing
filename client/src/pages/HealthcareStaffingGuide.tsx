@@ -82,7 +82,7 @@ const FAQ_SCHEMA = {
       name: "What does Joint Commission alignment mean in healthcare staffing?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "The Joint Commission (TJC) sets standards for healthcare organization accreditation. Joint Commission-aligned staffing means the agency's credentialing and compliance processes match TJC requirements — including license verification, reference checks, competency assessments, and documentation standards. Hire'in Solutions uses CredentialRx.ai (proKred.com) to automate these workflows.",
+        text: "The Joint Commission (TJC) sets standards for healthcare organization accreditation. Joint Commission-aligned staffing means the agency's credentialing and compliance processes match TJC requirements — including license verification, reference checks, competency assessments, and documentation standards. Hire'in Solutions' compliance team runs these checks and uses CredentialRx.ai (proKred.com) to automate public-directory license and exclusion lookups and compile audit-ready submission packets.",
       },
     },
     {
@@ -90,7 +90,7 @@ const FAQ_SCHEMA = {
       name: "How does credential verification work for healthcare staffing?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Hire'in Solutions uses CredentialRx.ai (proKred.com) to automate credential verification. The platform checks nursing licenses via state boards, verifies DEA numbers for physicians, validates certifications (BLS, ACLS, PALS), and compiles a compliant submission package for each candidate before they are presented to a facility.",
+        text: "Hire'in Solutions' compliance team verifies credentials, runs background and reference checks, verifies DEA numbers for physicians, and validates certifications (BLS, ACLS, PALS). CredentialRx.ai (proKred.com) automates license checks against state boards' public directories and OIG/SAM-style exclusion screening, then compiles everything into a compliant submission packet for each candidate before they are presented to a facility.",
       },
     },
     {
@@ -226,7 +226,7 @@ export default function HealthcareStaffingGuide() {
               Unlike general staffing, healthcare placements require extensive compliance work: license verification through state nursing boards, DEA number validation for prescribers, background checks, certification verification (BLS, ACLS, PALS), reference checks, health screenings, and facility-specific competency assessments. A healthcare staffing agency must maintain these records and deliver compliant submission packages for every candidate — before the candidate ever steps foot in a facility.
             </p>
             <p>
-              Hire'in Solutions automates this compliance layer using CredentialRx.ai (proKred.com), a proprietary platform that tracks credentials, flags expiring licenses, and compiles Joint Commission-aligned submission packages. This means every Hire'in Solutions healthcare placement arrives audit-ready from day one.
+              Hire'in Solutions organizes this compliance layer using CredentialRx.ai (proKred.com), a proprietary compliance submission packet, credential sharing, and skill checklist tool that tracks credentials, flags expiring licenses, automates license and exclusion checks against public government directories, and compiles Joint Commission-aligned submission packets. This means every Hire'in Solutions healthcare placement arrives audit-ready from day one.
             </p>
           </div>
         </div>
@@ -269,7 +269,7 @@ export default function HealthcareStaffingGuide() {
             ))}
           </div>
 
-          <h3 className="text-lg font-semibold mb-4">Compliance Coverage via CredentialRx.ai</h3>
+          <h3 className="text-lg font-semibold mb-4">Compliance Coverage — Verified by Hire'in's Team, Packaged via CredentialRx.ai</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-10">
             {[
               "State nursing license verification (all 50 states)",
@@ -315,7 +315,7 @@ export default function HealthcareStaffingGuide() {
               A Joint Commission-aligned staffing agency organizes its credentialing processes to match TJC documentation requirements. This means that when a TJC survey occurs, facilities using Hire'in Solutions have the right documentation already in place for every placed candidate.
             </p>
             <p>
-              Hire'in Solutions's CredentialRx.ai platform structures candidate credential packages to TJC standards, flags expiring credentials, and maintains audit-ready documentation for the life of each placement.
+              Hire'in Solutions's CredentialRx.ai tool structures candidate submission packets to TJC standards, flags expiring credentials, and maintains audit-ready documentation for the life of each placement.
             </p>
           </div>
           <Card>
@@ -365,11 +365,11 @@ export default function HealthcareStaffingGuide() {
               },
               {
                 q: "What does Joint Commission alignment mean in healthcare staffing?",
-                a: "It means the agency's credentialing and compliance processes match TJC requirements — license verification, reference checks, competency assessments, and documentation standards. Hire'in Solutions uses CredentialRx.ai to automate this.",
+                a: "It means the agency's credentialing and compliance processes match TJC requirements — license verification, reference checks, competency assessments, and documentation standards. Hire'in's compliance team runs these checks; CredentialRx.ai automates public-directory license lookups and compiles the audit-ready submission packet.",
               },
               {
                 q: "How does credential verification work?",
-                a: "Hire'in Solutions uses CredentialRx.ai (proKred.com) to check nursing licenses via state boards, validate DEA numbers, verify certifications (BLS, ACLS, PALS), and compile a compliant submission package before presenting any candidate.",
+                a: "Hire'in's compliance team validates DEA numbers and verifies certifications (BLS, ACLS, PALS). CredentialRx.ai (proKred.com) checks nursing licenses via state boards' public directories, runs exclusion screening, and compiles a compliant submission packet before presenting any candidate.",
               },
               {
                 q: "What healthcare roles does Hire'in Solutions place?",

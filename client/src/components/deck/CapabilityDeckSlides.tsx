@@ -216,7 +216,7 @@ function Slide3About() {
           <div style={{ background: NAVY, borderRadius: 10, padding: "16px 20px", boxShadow: "0 2px 12px rgba(31,58,110,0.12)" }}>
             <p style={{ color: ORANGE, fontSize: 9.5, fontWeight: 700, letterSpacing: 1.5, textTransform: "uppercase" as const, marginBottom: 8, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Our Edge</p>
             <p style={{ color: "rgba(255,255,255,0.85)", fontSize: 12.5, lineHeight: 1.55, fontFamily: "'Segoe UI', Arial, sans-serif" }}>
-              We deploy proprietary AI tools — <strong style={{ color: ORANGE }}>KleriQ.ai</strong> for recruiter intelligence and job-fit analysis, and <strong style={{ color: ORANGE }}>proKred.com</strong> for healthcare credentialing and compliance. Tools built in-house by our founder. Not licensed. Shipped.
+              We deploy proprietary AI tools — <strong style={{ color: ORANGE }}>KleriQ.ai</strong> for recruiter intelligence and job-fit analysis, and <strong style={{ color: ORANGE }}>proKred.com</strong> for healthcare compliance submission packets and credential sharing. Tools built in-house by our founder. Not licensed. Shipped.
               <span style={{ display: "block", marginTop: 6, fontSize: 9.5, color: "rgba(255,255,255,0.5)", fontStyle: "italic" }}>San Jose, CA · US Headquarters</span>
             </p>
           </div>
@@ -300,7 +300,7 @@ function Slide5Services() {
       title: "Healthcare Recruitment",
       color: NAVY,
       items: ["Physicians & Surgeons", "Registered Nurses", "Allied Health", "Telehealth Specialists"],
-      highlight: "Credentialed via proKred.com · HIPAA-ready",
+      highlight: "Compliance packets via proKred.com · HIPAA-ready",
     },
     {
       icon: Code2,
@@ -374,10 +374,10 @@ function Slide6Technology() {
             },
             {
               name: "proKred.com",
-              tagline: "Healthcare Credentialing Platform",
+              tagline: "Compliance Packets & Skill Checklists",
               color: "#4CAF50",
-              desc: "Purpose-built credentialing platform that simplifies credential collection, compliance verification, audit readiness, and secure credential sharing for healthcare professionals, staffing agencies, MSPs, and facilities.",
-              features: ["Credential collection & verification", "Compliance audit readiness", "Secure credential sharing", "HIPAA-ready workflows", "MSP & facility portal"],
+              desc: "Purpose-built compliance submission packet, credential sharing, and skill checklist tool that simplifies credential collection, compiles audit-ready submission packets, and enables secure credential sharing for healthcare professionals, staffing agencies, MSPs, and facilities.",
+              features: ["Compliant submission packets", "Public-directory license & exclusion checks", "Secure credential sharing", "Gold-standard skill checklists", "HIPAA-ready workflows"],
             },
             {
               name: "Ceipal ATS",
@@ -418,7 +418,7 @@ function Slide7Process() {
     { step: "01", icon: Search, title: "Discovery", desc: "Deep-dive into requirements, culture, and goals. KleriQ.ai creates intelligent candidate profiles and sourcing logic from the JD." },
     { step: "02", icon: Brain, title: "AI Sourcing", desc: "KleriQ.ai matches candidates by skills, fit, and experience with 90%+ accuracy — reducing noise and surfacing only the strongest profiles." },
     { step: "03", icon: UserCheck, title: "Validation", desc: "Expert recruiters assess cultural fit, soft skills, communication, and career alignment — the human layer AI cannot replace." },
-    { step: "04", icon: FileCheck, title: "Credentials", desc: "proKred.com handles compliance verification, credentialing, and background checks with 100% accuracy for every placement." },
+    { step: "04", icon: FileCheck, title: "Credentials", desc: "Our compliance team runs background and credential checks; proKred.com compiles everything into a compliant, audit-ready submission packet for every placement." },
     { step: "05", icon: Handshake, title: "Placement", desc: "Pre-vetted candidates delivered with complete documentation, compliance packages, and onboarding readiness confirmed." },
   ];
   return (
@@ -536,7 +536,7 @@ function Slide9WhyUs() {
           </div>
           <div>
             <p style={{ color: WHITE, fontSize: 12, fontWeight: 800, fontFamily: "'Segoe UI', Arial, sans-serif", marginBottom: 2 }}>Compliance & Credentialing Guarantee</p>
-            <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Every healthcare placement includes complete proKred.com verification — HIPAA-ready, TJC-HCSS aligned, 100% compliant. Zero exceptions.</p>
+            <p style={{ color: "rgba(255,255,255,0.6)", fontSize: 10, fontFamily: "'Segoe UI', Arial, sans-serif" }}>Every healthcare placement includes a proKred.com compliant submission packet with public-directory license checks — HIPAA-ready, TJC-HCSS aligned. Zero exceptions.</p>
           </div>
           <div style={{ display: "flex", gap: 6, marginLeft: "auto", flexShrink: 0 }}>
             {["HIPAA", "TJC", "E-Verify"].map((b, i) => (

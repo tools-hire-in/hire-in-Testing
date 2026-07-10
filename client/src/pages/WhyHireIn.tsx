@@ -77,7 +77,7 @@ const buildFaqSchema = (profile: CompanyProfile) => ({
       name: "What makes Hire'in Solutions different from other staffing agencies?",
       acceptedAnswer: {
         "@type": "Answer",
-        text: "Hire'in Solutions uses proprietary AI tools including kleriq.AI for IT talent matching and CredentialRx.ai for healthcare credential verification. This enables 24-hour first candidate submissions, 92% AI match accuracy, and 95% client retention — faster and more accurate than traditional staffing methods.",
+        text: "Hire'in Solutions uses proprietary AI tools including kleriq.AI for IT talent matching and CredentialRx.ai (proKred.com), a compliance submission packet, credential sharing, and skill checklist tool that automates license and exclusion checks against public government directories. This enables 24-hour first candidate submissions, 92% AI match accuracy, and 95% client retention — faster and more accurate than traditional staffing methods.",
       },
     },
     {
@@ -107,8 +107,8 @@ const DIFFERENTIATORS = [
   },
   {
     icon: ShieldCheck,
-    title: "Healthcare Credential Verification via CredentialRx.ai",
-    body: "For clinical placements, CredentialRx.ai automates license checks, document verification, and Joint Commission-aligned compliance packages. Every healthcare placement arrives audit-ready.",
+    title: "Compliant Submission Packets via CredentialRx.ai",
+    body: "For clinical placements, CredentialRx.ai (proKred.com) collects and organizes credentials, automates license and blacklist/exclusion checks against public government directories, and compiles Joint Commission-aligned submission packets. Our compliance team handles background and reference checks — proKred packages the results so every healthcare placement arrives audit-ready.",
   },
   {
     icon: Zap,
@@ -253,7 +253,7 @@ export default function WhyHireIn() {
                     <span className="font-medium text-foreground">kleriq.AI</span> — Proprietary AI platform for IT and engineering talent matching. Parses resumes, scores candidates, predicts retention risk.
                   </li>
                   <li>
-                    <span className="font-medium text-foreground">CredentialRx.ai (proKred.com)</span> — Healthcare credential verification platform. Automates license checks, document validation, and Joint Commission-aligned compliance packages.
+                    <span className="font-medium text-foreground">CredentialRx.ai (proKred.com)</span> — Compliance submission packet, credential sharing &amp; skill checklist tool. Automates license and exclusion checks against public government directories, compiles Joint Commission-aligned submission packets, and provides gold-standard skill checklists covering EMR systems, weighted by recency and proficiency.
                   </li>
                   <li>
                     <span className="font-medium text-foreground">Ceipal ATS</span> — Applicant tracking and workflow management integrated with major job boards.

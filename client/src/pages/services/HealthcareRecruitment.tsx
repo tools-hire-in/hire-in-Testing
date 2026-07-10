@@ -28,7 +28,7 @@ const SERVICE_SCHEMA = {
   name: "Healthcare Recruitment Services",
   provider: { "@type": "Organization", name: "Hire'in Solutions", url: "https://hire-in.com" },
   serviceType: "Healthcare Recruitment",
-  description: "AI-powered healthcare recruitment for nurses, physicians, and allied health professionals. Joint Commission-aligned workflows, credential verification via CredentialRx.ai, across all 50 US states.",
+  description: "AI-powered healthcare recruitment for nurses, physicians, and allied health professionals. Joint Commission-aligned workflows, compliant submission packets via CredentialRx.ai, across all 50 US states.",
   areaServed: { "@type": "Country", name: "United States" },
 };
 
@@ -50,7 +50,7 @@ export default function HealthcareRecruitment() {
 
   const aiTools = [
     { title: "Resume Parsing & Analysis", description: "Advanced NLP extracts medical credentials, certifications, and specializations" },
-    { title: "Compliance Verification", description: "Automated licensing and credential checks across all 50 states" },
+    { title: "Compliance Checks", description: "Automated license and exclusion checks against public directories across all 50 states" },
     { title: "Skills Matching", description: "Matches clinical specializations, EMR experience, and procedure competencies" },
     { title: "Telehealth Screening", description: "Evaluates remote care capabilities and virtual patient interaction skills" },
   ];

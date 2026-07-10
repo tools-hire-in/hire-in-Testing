@@ -87,9 +87,9 @@ const TECH_TOOLS = [
   },
   {
     name: "proKred.com",
-    tagline: "Healthcare Credentialing Excellence",
-    description: "Purpose-built credentialing platform that streamlines and secures the entire healthcare credentialing process — transforming complex workflows into a seamless, future-ready system.",
-    features: ["Secure Credentialing", "Compliance Automation", "Real-Time Verification", "Future-Ready Architecture"],
+    tagline: "Compliance Packets & Skill Checklists",
+    description: "Purpose-built compliance submission packet, credential sharing, and skill checklist tool — with automated license and exclusion checks against public government directories and gold-standard skill checklists covering EMR systems, weighted by recency and proficiency.",
+    features: ["Compliant Submission Packets", "Secure Credential Sharing", "Public-Directory License & Exclusion Checks", "Gold-Standard Skill Checklists"],
     icon: Shield,
     accent: "border-green-500/20 bg-gradient-to-br from-green-500/5 to-transparent",
     badgeColor: "bg-green-500/10 text-green-700 dark:text-green-400",
@@ -109,7 +109,7 @@ const PROCESS_STEPS = [
   { step: "01", title: "Discovery", description: "Deep-dive into requirements, culture, and goals. AI Booster creates intelligent candidate profiles.", icon: Search },
   { step: "02", title: "AI Sourcing", description: "KlerHire AI matches candidates by fit, skills, and experience with 90%+ accuracy.", icon: Brain },
   { step: "03", title: "Validation", description: "Expert recruiters assess cultural fit, soft skills, and career alignment.", icon: UserCheck },
-  { step: "04", title: "Credentials", description: "proKred.com handles compliance verification and credentialing with 100% accuracy.", icon: FileCheck },
+  { step: "04", title: "Credentials", description: "Our compliance team verifies each candidate; proKred.com compiles the results into a compliant, audit-ready submission packet.", icon: FileCheck },
   { step: "05", title: "Placement", description: "Pre-vetted candidates delivered with complete documentation, ready for onboarding.", icon: Handshake },
 ];
 
@@ -644,7 +644,7 @@ export default function CapabilityDeck() {
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="font-bold text-sm">Compliance & Credentialing Guarantee</h3>
-                <p className="text-xs text-muted-foreground">Every healthcare placement comes with complete proKred.com verification. HIPAA-ready, TJC-HCSS aligned, 100% compliant.</p>
+                <p className="text-xs text-muted-foreground">Every healthcare placement ships with a proKred.com compliant submission packet, including public-directory license checks. HIPAA-ready, TJC-HCSS aligned.</p>
               </div>
               <div className="hidden sm:flex flex-wrap gap-1.5 shrink-0">
                 {["HIPAA", "TJC", "Verified"].map((b) => (
@@ -684,7 +684,7 @@ export default function CapabilityDeck() {
                 </p>
 
                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">
-                  Simranjeet saw that recruitment was not broken because people lacked effort. It was broken because teams were operating with fragmented tools, unclear requirements, inconsistent data, and too many manual quality gaps. So he built the infrastructure to solve it. Under Escanor Technologies, he architected and shipped <strong>KleriQ.ai</strong> — a recruiter intelligence platform that transforms complex job descriptions into plain-language insights, structured intake questions, sourcing logic, role-family intelligence, and recruiter-ready guidance. He also built <strong>proKred.com</strong> — a healthcare credentialing platform designed to simplify credential collection, compliance verification, audit readiness, and secure credential sharing for healthcare professionals, staffing agencies, MSPs, and facilities.
+                  Simranjeet saw that recruitment was not broken because people lacked effort. It was broken because teams were operating with fragmented tools, unclear requirements, inconsistent data, and too many manual quality gaps. So he built the infrastructure to solve it. Under Escanor Technologies, he architected and shipped <strong>KleriQ.ai</strong> — a recruiter intelligence platform that transforms complex job descriptions into plain-language insights, structured intake questions, sourcing logic, role-family intelligence, and recruiter-ready guidance. He also built <strong>proKred.com</strong> — a compliance submission packet, credential sharing, and skill checklist tool designed to simplify credential collection, compile compliant submission packets, support audit readiness, and enable secure credential sharing for healthcare professionals, staffing agencies, MSPs, and facilities.
                 </p>
 
                 <p className="text-sm text-muted-foreground leading-relaxed mb-4">

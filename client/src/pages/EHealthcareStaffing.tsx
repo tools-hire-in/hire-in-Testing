@@ -50,7 +50,7 @@ export default function EHealthcareStaffing() {
       }
       el.setAttribute("content", content);
     };
-    setMeta("description", "Hire'in Solutions Healthcare Staffing. Joint Commission-aligned workflows, verified documents & compliant submission packages via proKred.com. Clinical recruitment across all 50 US states.");
+    setMeta("description", "Hire'in Solutions Healthcare Staffing. Joint Commission-aligned workflows, compliant submission packets via proKred.com. Clinical recruitment across all 50 US states.");
     setMeta("og:title", "eHealthcare Staffing Services | Hire'in Solutions", true);
     setMeta("og:description", "AI-powered healthcare staffing with Joint Commission-aligned workflows, verified documents & compliant submission packages. Travel nursing, locum tenens, allied health. View our interactive deck.", true);
     setMeta("og:type", "website", true);
@@ -178,7 +178,7 @@ export default function EHealthcareStaffing() {
             We place compliance-verified clinical professionals in all 50 US states with Joint Commission-aligned workflows and compliant submission packages.
           </p>
           <p className="text-sm text-white/50 max-w-xl mx-auto mb-8">
-            {COMPANY.name} delivers compliance-verified clinical professionals across all 50 US states, leveraging proKred.com and KlerHire AI to verify documents and deliver compliant submission packages with speed.
+            {COMPANY.name} delivers compliance-verified clinical professionals across all 50 US states, leveraging proKred.com for compliant submission packets with public-directory license checks and KlerHire AI for clinical skills matching.
           </p>
           <div className="flex items-center justify-center gap-3 flex-wrap">
             <Button size="lg" onClick={() => document.getElementById("hc-deck-viewer")?.scrollIntoView({ behavior: "smooth" })} data-testid="button-hc-view-deck">
@@ -354,8 +354,8 @@ export default function EHealthcareStaffing() {
         <div className="container mx-auto max-w-5xl">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
-              { icon: ShieldCheck, title: "Joint Commission-Aligned", desc: "Our compliance workflows are built around TJC standards with automated document verification via proKred.com, so your placements are audit-ready from day one." },
-              { icon: Zap, title: "Compliant Submission Packages", desc: "proKred.com automates license verification and compliance tracking, delivering verified documents and compliant submission packages faster than traditional firms." },
+              { icon: ShieldCheck, title: "Joint Commission-Aligned", desc: "Our compliance workflows are built around TJC standards, with proKred.com organizing credentials into audit-ready submission packets from day one." },
+              { icon: Zap, title: "Compliant Submission Packets", desc: "proKred.com automates license and exclusion checks against public government directories and compiles compliant submission packets faster than traditional firms." },
               { icon: Heart, title: "Clinical Domain Experts", desc: "Specialty-trained recruiters for RN, LPN, CNA, allied health, physicians, and telehealth professionals." },
               { icon: Stethoscope, title: "Healthcare-Only Focus", desc: "Dedicated healthcare staffing division with deep clinical recruitment expertise across all care settings." },
             ].map(({ icon: Icon, title, desc }) => (

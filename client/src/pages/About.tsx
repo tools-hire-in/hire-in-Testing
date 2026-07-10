@@ -231,24 +231,24 @@ export default function About() {
                   </div>
                 </div>
                 <p className="text-muted-foreground leading-relaxed mb-4">
-                  Specialized healthcare credentialing platform that streamlines medical credential verification. This partnership ensures faster, more accurate compliance verification for all healthcare placements.
+                  Compliance submission packet, credential sharing, and skill checklist tool for healthcare staffing. It collects and organizes credentials, runs automated license verification and blacklist/exclusion checks against government bodies' public directories, and compiles compliant, audit-ready submission packets for every healthcare placement.
                 </p>
                 <ul className="space-y-2 text-sm text-muted-foreground">
                   <li className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                    Medical License Verification
+                    Public-Directory License &amp; Exclusion Checks
                   </li>
                   <li className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                    Credential Tracking
+                    Compliant Submission Packets
                   </li>
                   <li className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                    Compliance Monitoring
+                    Secure Credential Sharing
                   </li>
                   <li className="flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                    Healthcare-Specific Vetting
+                    Gold-Standard Skill Checklists
                   </li>
                 </ul>
               </CardContent>
