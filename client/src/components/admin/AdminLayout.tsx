@@ -32,6 +32,7 @@ import {
   Megaphone,
   ShieldCheck,
   CalendarDays,
+  Clapperboard,
   ClipboardCheck,
   BarChart3,
   BookOpen,
@@ -94,6 +95,9 @@ import { useNewLook } from "@/hooks/use-new-look";
 import { useToast } from "@/hooks/use-toast";
 import { useIdleTimeout } from "@/hooks/use-idle-timeout";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { useStudioV2 } from "@/hooks/use-studio-v2";
+import { StudioShell } from "@/components/studio/StudioShell";
+import { STUDIO_BASE } from "@/lib/studioBase";
 import { useSopAccess } from "@/hooks/use-sop-access";
 import { usePermissions } from "@/hooks/use-permissions";
 import { COMPANY } from "@/lib/constants";
@@ -916,10 +920,23 @@ function NavItemButton({
 
 export function AdminLayout({ children }: AdminLayoutProps) {
   const alreadyMounted = useContext(AdminLayoutMounted);
+  const [location] = useLocation();
+  const { enabled: studioV2 } = useStudioV2();
 
   // If already inside an AdminLayout (nested tab rendering), just render children
   if (alreadyMounted) {
     return <>{children}</>;
+  }
+
+  // Studio T1 (Task #906): under /studio with the flag ON, existing Studio
+  // pages (which wrap themselves in AdminLayout) render inside the standalone
+  // StudioShell instead of the HR-portal sidebar chrome.
+  if (studioV2 && (location === "/studio" || location.startsWith("/studio/"))) {
+    return (
+      <AdminLayoutMounted.Provider value={true}>
+        <StudioShell>{children}</StudioShell>
+      </AdminLayoutMounted.Provider>
+    );
   }
 
   return <AdminLayoutInner>{children}</AdminLayoutInner>;
@@ -936,6 +953,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const { enabled: newLook, available: newLookAvailable, setEnabled: setNewLook, isPending: newLookPending } = useNewLook();
   const { toast } = useToast();
   const notificationsEnabled = isEnabled("notifications_enabled");
+  const studioV2Enabled = isEnabled("studio_v2_enabled");
 
   const enableNewLook = useCallback(() => {
     setNewLook(true);
@@ -1690,19 +1708,41 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 </SidebarGroup>
               )}
 
-              {/* CONTENT STUDIO — collapsible section with sub-pages */}
-              <ContentStudioSection
-                hasStudioAccess={hasStudioAccess}
-                hasMarketingApproveAccess={hasMarketingApproveAccess}
-                hasStudioAnalyticsAccess={hasStudioAnalyticsAccess}
-                hasCmReviewAccess={hasCmReviewAccess}
-                hasManageAuthorsAccess={hasManageAuthorsAccess}
-                isSuperAdmin={isSuperAdmin}
-                isNavActive={isNavActive}
-                isComplianceLocked={isComplianceLocked}
-                location={location}
-                cmReviewCount={cmReviewCount}
-              />
+              {/* CONTENT STUDIO — collapsible section (classic) or a single
+                  "Open Studio" launcher when the standalone shell is enabled */}
+              {studioV2Enabled && hasStudioAccess ? (
+                <SidebarGroup>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          tooltip="Open Studio"
+                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                        >
+                          <Link href={STUDIO_BASE} data-testid="nav-open-studio">
+                            <Clapperboard className="h-4 w-4 shrink-0" />
+                            <span className="group-data-[collapsible=icon]:hidden">Open Studio ↗</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              ) : (
+                <ContentStudioSection
+                  hasStudioAccess={hasStudioAccess}
+                  hasMarketingApproveAccess={hasMarketingApproveAccess}
+                  hasStudioAnalyticsAccess={hasStudioAnalyticsAccess}
+                  hasCmReviewAccess={hasCmReviewAccess}
+                  hasManageAuthorsAccess={hasManageAuthorsAccess}
+                  isSuperAdmin={isSuperAdmin}
+                  isNavActive={isNavActive}
+                  isComplianceLocked={isComplianceLocked}
+                  location={location}
+                  cmReviewCount={cmReviewCount}
+                />
+              )}
 
               {/* SETTINGS — collapsible section with sub-category pages */}
               <SettingsSection

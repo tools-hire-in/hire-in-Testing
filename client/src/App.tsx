@@ -1,6 +1,8 @@
 import { lazy, Suspense, useEffect } from "react";
 import { Switch, Route, Redirect, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { useFeatureFlags } from "@/hooks/use-feature-flags";
+import { legacyToStudioPath } from "@/lib/studioBase";
 import { resolveSettingsRedirect } from "@/lib/settings-redirect";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -95,6 +97,7 @@ const StudioTemplateSettings = lazy(() => import("@/pages/admin/studio/TemplateS
 const StudioSubscribers = lazy(() => import("@/pages/admin/studio/Subscribers"));
 const StudioAnalytics = lazy(() => import("@/pages/admin/studio/Analytics"));
 const StudioAccess = lazy(() => import("@/pages/admin/studio/StudioAccess"));
+const StudioPipelineView = lazy(() => import("@/pages/studio/PipelineView"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
 const Communications = lazy(() => import("@/pages/admin/Communications"));
@@ -173,6 +176,28 @@ function LegacySettingsRedirect() {
     setLocation(resolveSettingsRedirect(window.location.search));
   }, []);
   return null;
+}
+
+/** Task #906: legacy /admin/studio/* → /studio/* when studio_v2_enabled is ON. */
+function LegacyStudio({ children }: { children: React.ReactNode }) {
+  const { isEnabled, isLoading } = useFeatureFlags();
+  const [location] = useLocation();
+  if (isLoading) return <AdminFallback />;
+  if (isEnabled("studio_v2_enabled")) {
+    return <Redirect to={legacyToStudioPath(location) + window.location.search} />;
+  }
+  return <Suspense fallback={<AdminFallback />}>{children}</Suspense>;
+}
+
+/** Task #906: /studio/* only exists with the flag ON; OFF falls back to classic. */
+function StudioV2({ children }: { children: React.ReactNode }) {
+  const { isEnabled, isLoading } = useFeatureFlags();
+  const [location] = useLocation();
+  if (isLoading) return <AdminFallback />;
+  if (!isEnabled("studio_v2_enabled")) {
+    return <Redirect to={location.replace(/^\/studio/, "/admin/studio") + window.location.search} />;
+  }
+  return <Suspense fallback={<AdminFallback />}>{children}</Suspense>;
 }
 
 function AdminFallback() {
@@ -322,25 +347,46 @@ function PublicRouter() {
       <Route path="/admin/help-desk/:id">{() => <Suspense fallback={<AdminFallback />}><HelpDeskTicket /></Suspense>}</Route>
       <Route path="/admin/help-desk">{() => <Suspense fallback={<AdminFallback />}><HelpDesk /></Suspense>}</Route>
 
-      {/* Content Studio */}
-      <Route path="/admin/studio/articles/:id/review">{() => <Suspense fallback={<AdminFallback />}><StudioReviewArticle /></Suspense>}</Route>
-      <Route path="/admin/studio/articles/:id/author-signoff">{() => <Suspense fallback={<AdminFallback />}><StudioAuthorSignOff /></Suspense>}</Route>
-      <Route path="/admin/studio/articles/:id/edit">{() => <Suspense fallback={<AdminFallback />}><StudioArticleEditor /></Suspense>}</Route>
-      <Route path="/admin/studio/articles">{() => <Suspense fallback={<AdminFallback />}><StudioArticles /></Suspense>}</Route>
-      <Route path="/admin/studio/live">{() => <Suspense fallback={<AdminFallback />}><StudioLiveContent /></Suspense>}</Route>
-      <Route path="/admin/studio/authors">{() => <Suspense fallback={<AdminFallback />}><StudioAuthors /></Suspense>}</Route>
-      <Route path="/admin/studio/inbox">{() => <Suspense fallback={<AdminFallback />}><StudioInbox /></Suspense>}</Route>
-      <Route path="/admin/studio/cm-review">{() => <Suspense fallback={<AdminFallback />}><StudioCMReview /></Suspense>}</Route>
-      <Route path="/admin/studio/approvals">{() => <Suspense fallback={<AdminFallback />}><StudioApprovals /></Suspense>}</Route>
-      <Route path="/admin/studio/final-approval">{() => <Suspense fallback={<AdminFallback />}><StudioFinalApproval /></Suspense>}</Route>
+      {/* Content Studio — classic /admin/studio routes (redirect to /studio when studio_v2_enabled) */}
+      <Route path="/admin/studio/articles/:id/review">{() => <LegacyStudio><StudioReviewArticle /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/articles/:id/author-signoff">{() => <LegacyStudio><StudioAuthorSignOff /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/articles/:id/edit">{() => <LegacyStudio><StudioArticleEditor /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/articles">{() => <LegacyStudio><StudioArticles /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/live">{() => <LegacyStudio><StudioLiveContent /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/authors">{() => <LegacyStudio><StudioAuthors /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/inbox">{() => <LegacyStudio><StudioInbox /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/cm-review">{() => <LegacyStudio><StudioCMReview /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/approvals">{() => <LegacyStudio><StudioApprovals /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/final-approval">{() => <LegacyStudio><StudioFinalApproval /></LegacyStudio>}</Route>
       <Route path="/admin/automated-changes">{() => <Redirect to="/admin/control-tower?tab=automated-changes" />}</Route>
       <Route path="/admin/control-tower">{() => <Suspense fallback={<AdminFallback />}><ControlTower /></Suspense>}</Route>
-      <Route path="/admin/studio/calendar">{() => <Suspense fallback={<AdminFallback />}><StudioCalendar /></Suspense>}</Route>
-      <Route path="/admin/studio/settings/templates">{() => <Suspense fallback={<AdminFallback />}><StudioTemplateSettings /></Suspense>}</Route>
-      <Route path="/admin/studio/subscribers">{() => <Suspense fallback={<AdminFallback />}><StudioSubscribers /></Suspense>}</Route>
-      <Route path="/admin/studio/analytics">{() => <Suspense fallback={<AdminFallback />}><StudioAnalytics /></Suspense>}</Route>
-      <Route path="/admin/studio/access">{() => <Suspense fallback={<AdminFallback />}><StudioAccess /></Suspense>}</Route>
-      <Route path="/admin/studio">{() => <Suspense fallback={<AdminFallback />}><Studio /></Suspense>}</Route>
+      <Route path="/admin/studio/calendar">{() => <LegacyStudio><StudioCalendar /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/settings/templates">{() => <LegacyStudio><StudioTemplateSettings /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/subscribers">{() => <LegacyStudio><StudioSubscribers /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/analytics">{() => <LegacyStudio><StudioAnalytics /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/access">{() => <LegacyStudio><StudioAccess /></LegacyStudio>}</Route>
+      <Route path="/admin/studio">{() => <LegacyStudio><Studio /></LegacyStudio>}</Route>
+
+      {/* Studio v2 — standalone /studio shell (Task #906, studio_v2_enabled) */}
+      <Route path="/studio/articles/:id/review">{() => <StudioV2><StudioReviewArticle /></StudioV2>}</Route>
+      <Route path="/studio/articles/:id/author-signoff">{() => <StudioV2><StudioAuthorSignOff /></StudioV2>}</Route>
+      <Route path="/studio/articles/:id/edit">{() => <StudioV2><StudioArticleEditor /></StudioV2>}</Route>
+      <Route path="/studio/articles">{() => <StudioV2><StudioArticles /></StudioV2>}</Route>
+      <Route path="/studio/live">{() => <StudioV2><StudioLiveContent /></StudioV2>}</Route>
+      <Route path="/studio/authors">{() => <StudioV2><StudioAuthors /></StudioV2>}</Route>
+      <Route path="/studio/inbox">{() => <StudioV2><StudioInbox /></StudioV2>}</Route>
+      <Route path="/studio/cm-review">{() => <StudioV2><StudioCMReview /></StudioV2>}</Route>
+      <Route path="/studio/approvals">{() => <StudioV2><StudioApprovals /></StudioV2>}</Route>
+      <Route path="/studio/final-approval">{() => <StudioV2><StudioFinalApproval /></StudioV2>}</Route>
+      <Route path="/studio/calendar">{() => <StudioV2><StudioPipelineView lens="calendar" /></StudioV2>}</Route>
+      <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
+      <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
+      <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
+      <Route path="/studio/settings/templates">{() => <StudioV2><StudioTemplateSettings /></StudioV2>}</Route>
+      <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
+      <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
+      <Route path="/studio/access">{() => <StudioV2><StudioAccess /></StudioV2>}</Route>
+      <Route path="/studio">{() => <StudioV2><Studio /></StudioV2>}</Route>
 
       {/* Public contract signing */}
       <Route path="/contracts/sign/:token" component={ContractSign} />
@@ -464,25 +510,46 @@ function EmployeeRouter() {
       <Route path="/admin/help-desk/:id">{() => <Suspense fallback={<AdminFallback />}><HelpDeskTicket /></Suspense>}</Route>
       <Route path="/admin/help-desk">{() => <Suspense fallback={<AdminFallback />}><HelpDesk /></Suspense>}</Route>
 
-      {/* Content Studio */}
-      <Route path="/admin/studio/articles/:id/review">{() => <Suspense fallback={<AdminFallback />}><StudioReviewArticle /></Suspense>}</Route>
-      <Route path="/admin/studio/articles/:id/author-signoff">{() => <Suspense fallback={<AdminFallback />}><StudioAuthorSignOff /></Suspense>}</Route>
-      <Route path="/admin/studio/articles/:id/edit">{() => <Suspense fallback={<AdminFallback />}><StudioArticleEditor /></Suspense>}</Route>
-      <Route path="/admin/studio/articles">{() => <Suspense fallback={<AdminFallback />}><StudioArticles /></Suspense>}</Route>
-      <Route path="/admin/studio/live">{() => <Suspense fallback={<AdminFallback />}><StudioLiveContent /></Suspense>}</Route>
-      <Route path="/admin/studio/authors">{() => <Suspense fallback={<AdminFallback />}><StudioAuthors /></Suspense>}</Route>
-      <Route path="/admin/studio/inbox">{() => <Suspense fallback={<AdminFallback />}><StudioInbox /></Suspense>}</Route>
-      <Route path="/admin/studio/cm-review">{() => <Suspense fallback={<AdminFallback />}><StudioCMReview /></Suspense>}</Route>
-      <Route path="/admin/studio/approvals">{() => <Suspense fallback={<AdminFallback />}><StudioApprovals /></Suspense>}</Route>
-      <Route path="/admin/studio/final-approval">{() => <Suspense fallback={<AdminFallback />}><StudioFinalApproval /></Suspense>}</Route>
+      {/* Content Studio — classic /admin/studio routes (redirect to /studio when studio_v2_enabled) */}
+      <Route path="/admin/studio/articles/:id/review">{() => <LegacyStudio><StudioReviewArticle /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/articles/:id/author-signoff">{() => <LegacyStudio><StudioAuthorSignOff /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/articles/:id/edit">{() => <LegacyStudio><StudioArticleEditor /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/articles">{() => <LegacyStudio><StudioArticles /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/live">{() => <LegacyStudio><StudioLiveContent /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/authors">{() => <LegacyStudio><StudioAuthors /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/inbox">{() => <LegacyStudio><StudioInbox /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/cm-review">{() => <LegacyStudio><StudioCMReview /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/approvals">{() => <LegacyStudio><StudioApprovals /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/final-approval">{() => <LegacyStudio><StudioFinalApproval /></LegacyStudio>}</Route>
       <Route path="/admin/automated-changes">{() => <Redirect to="/admin/control-tower?tab=automated-changes" />}</Route>
       <Route path="/admin/control-tower">{() => <Suspense fallback={<AdminFallback />}><ControlTower /></Suspense>}</Route>
-      <Route path="/admin/studio/calendar">{() => <Suspense fallback={<AdminFallback />}><StudioCalendar /></Suspense>}</Route>
-      <Route path="/admin/studio/settings/templates">{() => <Suspense fallback={<AdminFallback />}><StudioTemplateSettings /></Suspense>}</Route>
-      <Route path="/admin/studio/subscribers">{() => <Suspense fallback={<AdminFallback />}><StudioSubscribers /></Suspense>}</Route>
-      <Route path="/admin/studio/analytics">{() => <Suspense fallback={<AdminFallback />}><StudioAnalytics /></Suspense>}</Route>
-      <Route path="/admin/studio/access">{() => <Suspense fallback={<AdminFallback />}><StudioAccess /></Suspense>}</Route>
-      <Route path="/admin/studio">{() => <Suspense fallback={<AdminFallback />}><Studio /></Suspense>}</Route>
+      <Route path="/admin/studio/calendar">{() => <LegacyStudio><StudioCalendar /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/settings/templates">{() => <LegacyStudio><StudioTemplateSettings /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/subscribers">{() => <LegacyStudio><StudioSubscribers /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/analytics">{() => <LegacyStudio><StudioAnalytics /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/access">{() => <LegacyStudio><StudioAccess /></LegacyStudio>}</Route>
+      <Route path="/admin/studio">{() => <LegacyStudio><Studio /></LegacyStudio>}</Route>
+
+      {/* Studio v2 — standalone /studio shell (Task #906, studio_v2_enabled) */}
+      <Route path="/studio/articles/:id/review">{() => <StudioV2><StudioReviewArticle /></StudioV2>}</Route>
+      <Route path="/studio/articles/:id/author-signoff">{() => <StudioV2><StudioAuthorSignOff /></StudioV2>}</Route>
+      <Route path="/studio/articles/:id/edit">{() => <StudioV2><StudioArticleEditor /></StudioV2>}</Route>
+      <Route path="/studio/articles">{() => <StudioV2><StudioArticles /></StudioV2>}</Route>
+      <Route path="/studio/live">{() => <StudioV2><StudioLiveContent /></StudioV2>}</Route>
+      <Route path="/studio/authors">{() => <StudioV2><StudioAuthors /></StudioV2>}</Route>
+      <Route path="/studio/inbox">{() => <StudioV2><StudioInbox /></StudioV2>}</Route>
+      <Route path="/studio/cm-review">{() => <StudioV2><StudioCMReview /></StudioV2>}</Route>
+      <Route path="/studio/approvals">{() => <StudioV2><StudioApprovals /></StudioV2>}</Route>
+      <Route path="/studio/final-approval">{() => <StudioV2><StudioFinalApproval /></StudioV2>}</Route>
+      <Route path="/studio/calendar">{() => <StudioV2><StudioPipelineView lens="calendar" /></StudioV2>}</Route>
+      <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
+      <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
+      <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
+      <Route path="/studio/settings/templates">{() => <StudioV2><StudioTemplateSettings /></StudioV2>}</Route>
+      <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
+      <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
+      <Route path="/studio/access">{() => <StudioV2><StudioAccess /></StudioV2>}</Route>
+      <Route path="/studio">{() => <StudioV2><Studio /></StudioV2>}</Route>
 
       {/* Public contract signing */}
       <Route path="/contracts/sign/:token" component={ContractSign} />

@@ -5,6 +5,7 @@ import ReactMarkdown from "react-markdown";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
+import { AIErrorBanner } from "@/components/studio/AIErrorBanner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { Button } from "@/components/ui/button";
@@ -135,6 +136,9 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [genCompliance, setGenCompliance] = useState("normal");
   const [riskFlags, setRiskFlags] = useState<string[]>([]);
   const [requiredEdits, setRequiredEdits] = useState<string[]>([]);
+  // Task #906 defect fix: AI failures surface as a persistent banner with
+  // retry + continue-manually, never just a transient toast.
+  const [aiError, setAiError] = useState<{ source: "article" | "social"; message: string } | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<EditorState | null>(null);
   const dirtyRef = useRef(false);
@@ -378,6 +382,7 @@ function ArticleEditorInner({ id }: { id: string }) {
       setRiskFlags(data.riskFlags ?? data.qualityReview?.risk_flags ?? []);
       setRequiredEdits(data.qualityReview?.required_edits ?? []);
       setGenOpen(false);
+      setAiError(null);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
       const flagCount = (data.riskFlags ?? []).length;
       toast({
@@ -389,7 +394,8 @@ function ArticleEditorInner({ id }: { id: string }) {
       });
     },
     onError: (err: Error) => {
-      toast({ title: "Generation failed", description: err.message, variant: "destructive" });
+      setGenOpen(false);
+      setAiError({ source: "article", message: err.message });
     },
   });
 
@@ -415,6 +421,7 @@ function ArticleEditorInner({ id }: { id: string }) {
       return res.json();
     },
     onSuccess: (data: any) => {
+      setAiError(null);
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
       const warnCount = (data.warnings ?? []).length;
       toast({
@@ -423,7 +430,7 @@ function ArticleEditorInner({ id }: { id: string }) {
       });
     },
     onError: (err: Error) => {
-      toast({ title: "Social Kit failed", description: err.message, variant: "destructive" });
+      setAiError({ source: "social", message: err.message });
     },
   });
 
@@ -676,6 +683,22 @@ function ArticleEditorInner({ id }: { id: string }) {
           ))}
         </div>
       </div>
+
+      {aiError && (
+        <AIErrorBanner
+          message={aiError.message}
+          retrying={
+            aiError.source === "article"
+              ? generateArticleMutation.isPending
+              : generateSocialKitMutation.isPending
+          }
+          onRetry={() => {
+            if (aiError.source === "article") setGenOpen(true);
+            else generateSocialKitMutation.mutate();
+          }}
+          onDismiss={() => setAiError(null)}
+        />
+      )}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
         {/* Main editor */}

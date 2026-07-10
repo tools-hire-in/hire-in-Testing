@@ -130,10 +130,16 @@ import {
   type InsertStudioNewsletterSubscriber,
   studioOccasions,
   studioContentIdeas,
+  studioIdeaComments,
+  studioImportBatches,
   type StudioOccasion,
   type InsertStudioOccasion,
   type StudioContentIdea,
   type InsertStudioContentIdea,
+  type StudioIdeaComment,
+  type InsertStudioIdeaComment,
+  type StudioImportBatch,
+  type InsertStudioImportBatch,
   type StudioProject,
   type InsertStudioProject,
   type StudioArticle,
@@ -616,6 +622,36 @@ export interface IStorage {
     publishesToInsights: boolean;
   })[]>;
   getDueScheduledStudioArticles(now: Date): Promise<StudioArticle[]>;
+
+  // Studio T1 — content planning pipeline (ideas + comments + import batches)
+  getStudioContentIdeas(filters: {
+    projectId?: string;
+    status?: string;
+    contentType?: string;
+    channel?: string;
+    pillar?: string;
+    origin?: string;
+    assignedToUserId?: string;
+    campaignId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    unscheduled?: boolean;
+    includeArchived?: boolean;
+    search?: string;
+  }): Promise<StudioContentIdea[]>;
+  getStudioContentIdea(id: string): Promise<StudioContentIdea | undefined>;
+  getStudioContentIdeaByArticle(articleId: string): Promise<StudioContentIdea | undefined>;
+  createStudioContentIdea(data: InsertStudioContentIdea): Promise<StudioContentIdea>;
+  updateStudioContentIdea(id: string, updates: Partial<InsertStudioContentIdea>): Promise<StudioContentIdea | undefined>;
+  getStudioIdeaComments(ideaId: string): Promise<StudioIdeaComment[]>;
+  createStudioIdeaComment(data: InsertStudioIdeaComment): Promise<StudioIdeaComment>;
+  getStudioIdeaComment(id: string): Promise<StudioIdeaComment | undefined>;
+  resolveStudioIdeaComment(id: string): Promise<StudioIdeaComment | undefined>;
+  createStudioImportBatch(data: InsertStudioImportBatch): Promise<StudioImportBatch>;
+  getStudioImportBatch(id: string): Promise<StudioImportBatch | undefined>;
+  getStudioImportBatches(projectId?: string): Promise<StudioImportBatch[]>;
+  rollbackStudioImportBatch(id: string): Promise<number>;
+  getStudioIdeasDueOn(date: string): Promise<StudioContentIdea[]>;
 
   // Public Insights read path (published Hire'in articles only).
   getPublishedInsights(filters: {
@@ -3774,6 +3810,159 @@ export class DatabaseStorage implements IStorage {
       .where(inArray(studioArticles.id, articleIds))
       .returning({ id: studioArticles.id });
     return rows.map((r) => r.id);
+  }
+
+  // ---- Studio T1: content planning pipeline ----
+  async getStudioContentIdeas(filters: {
+    projectId?: string;
+    status?: string;
+    contentType?: string;
+    channel?: string;
+    pillar?: string;
+    origin?: string;
+    assignedToUserId?: string;
+    campaignId?: string;
+    dateFrom?: string;
+    dateTo?: string;
+    unscheduled?: boolean;
+    includeArchived?: boolean;
+    search?: string;
+  }): Promise<StudioContentIdea[]> {
+    const conditions: any[] = [];
+    if (!filters.includeArchived) conditions.push(isNull(studioContentIdeas.archivedAt));
+    if (filters.projectId) conditions.push(eq(studioContentIdeas.projectId, filters.projectId));
+    if (filters.status) conditions.push(eq(studioContentIdeas.status, filters.status));
+    if (filters.contentType) conditions.push(eq(studioContentIdeas.contentType, filters.contentType));
+    if (filters.pillar) conditions.push(eq(studioContentIdeas.pillar, filters.pillar));
+    if (filters.origin) conditions.push(eq(studioContentIdeas.origin, filters.origin));
+    if (filters.assignedToUserId) conditions.push(eq(studioContentIdeas.assignedToUserId, filters.assignedToUserId));
+    if (filters.campaignId) conditions.push(eq(studioContentIdeas.campaignId, filters.campaignId));
+    if (filters.channel) {
+      conditions.push(sql`${studioContentIdeas.channels} @> ${JSON.stringify([filters.channel])}::jsonb`);
+    }
+    if (filters.unscheduled) {
+      conditions.push(isNull(studioContentIdeas.scheduledDate));
+    } else {
+      if (filters.dateFrom) conditions.push(sql`${studioContentIdeas.scheduledDate} >= ${filters.dateFrom}`);
+      if (filters.dateTo) conditions.push(sql`${studioContentIdeas.scheduledDate} <= ${filters.dateTo}`);
+    }
+    if (filters.search) {
+      const term = `%${filters.search}%`;
+      conditions.push(
+        or(
+          ilike(studioContentIdeas.topic, term),
+          ilike(studioContentIdeas.brief, term),
+          ilike(studioContentIdeas.captionCopy, term),
+        ),
+      );
+    }
+    return await db
+      .select()
+      .from(studioContentIdeas)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(asc(studioContentIdeas.scheduledDate), desc(studioContentIdeas.createdAt));
+  }
+
+  async getStudioContentIdea(id: string): Promise<StudioContentIdea | undefined> {
+    const [row] = await db.select().from(studioContentIdeas).where(eq(studioContentIdeas.id, id));
+    return row;
+  }
+
+  async getStudioContentIdeaByArticle(articleId: string): Promise<StudioContentIdea | undefined> {
+    const [row] = await db
+      .select()
+      .from(studioContentIdeas)
+      .where(eq(studioContentIdeas.linkedArticleId, articleId));
+    return row;
+  }
+
+  async createStudioContentIdea(data: InsertStudioContentIdea): Promise<StudioContentIdea> {
+    const [created] = await db.insert(studioContentIdeas).values(data).returning();
+    return created;
+  }
+
+  async updateStudioContentIdea(
+    id: string,
+    updates: Partial<InsertStudioContentIdea>,
+  ): Promise<StudioContentIdea | undefined> {
+    const [updated] = await db
+      .update(studioContentIdeas)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(studioContentIdeas.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getStudioIdeaComments(ideaId: string): Promise<StudioIdeaComment[]> {
+    return await db
+      .select()
+      .from(studioIdeaComments)
+      .where(eq(studioIdeaComments.ideaId, ideaId))
+      .orderBy(asc(studioIdeaComments.createdAt));
+  }
+
+  async createStudioIdeaComment(data: InsertStudioIdeaComment): Promise<StudioIdeaComment> {
+    const [created] = await db.insert(studioIdeaComments).values(data).returning();
+    return created;
+  }
+
+  async getStudioIdeaComment(id: string): Promise<StudioIdeaComment | undefined> {
+    const [row] = await db.select().from(studioIdeaComments).where(eq(studioIdeaComments.id, id));
+    return row;
+  }
+
+  async resolveStudioIdeaComment(id: string): Promise<StudioIdeaComment | undefined> {
+    const [updated] = await db
+      .update(studioIdeaComments)
+      .set({ resolvedAt: new Date() })
+      .where(eq(studioIdeaComments.id, id))
+      .returning();
+    return updated;
+  }
+
+  async createStudioImportBatch(data: InsertStudioImportBatch): Promise<StudioImportBatch> {
+    const [created] = await db.insert(studioImportBatches).values(data).returning();
+    return created;
+  }
+
+  async getStudioImportBatch(id: string): Promise<StudioImportBatch | undefined> {
+    const [row] = await db.select().from(studioImportBatches).where(eq(studioImportBatches.id, id));
+    return row;
+  }
+
+  async getStudioImportBatches(projectId?: string): Promise<StudioImportBatch[]> {
+    return await db
+      .select()
+      .from(studioImportBatches)
+      .where(projectId ? eq(studioImportBatches.projectId, projectId) : undefined)
+      .orderBy(desc(studioImportBatches.createdAt));
+  }
+
+  async rollbackStudioImportBatch(id: string): Promise<number> {
+    const now = new Date();
+    const rows = await db
+      .update(studioContentIdeas)
+      .set({ archivedAt: now, updatedAt: now })
+      .where(and(eq(studioContentIdeas.importBatchId, id), isNull(studioContentIdeas.archivedAt)))
+      .returning({ id: studioContentIdeas.id });
+    await db
+      .update(studioImportBatches)
+      .set({ rolledBackAt: now })
+      .where(eq(studioImportBatches.id, id));
+    return rows.length;
+  }
+
+  async getStudioIdeasDueOn(date: string): Promise<StudioContentIdea[]> {
+    return await db
+      .select()
+      .from(studioContentIdeas)
+      .where(
+        and(
+          isNull(studioContentIdeas.archivedAt),
+          sql`${studioContentIdeas.dueDate} = ${date}`,
+          sql`${studioContentIdeas.status} NOT IN ('published','done','rejected')`,
+        ),
+      );
   }
 
   // ---- Audit ----

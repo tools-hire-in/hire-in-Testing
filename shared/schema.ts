@@ -2708,9 +2708,69 @@ export const studioArticles = pgTable("studio_articles", {
   requiresMarketingApproval: boolean("requires_marketing_approval").default(false).notNull(),
   suggestedAuthorRole: varchar("suggested_author_role"),
   audience: text("audience").array(),
+  // Structured AI context handed over when an idea is promoted to an article
+  // (topic, brief, refs, discussion summary). Never the article body itself.
+  generationBrief: text("generation_brief"),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+// ── Studio T1: content planning pipeline ────────────────────────────────────
+// One planning object rendered through three lenses (Calendar / Board / Table).
+export const studioContentIdeas = pgTable("studio_content_ideas", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => studioProjects.id),
+  campaignId: varchar("campaign_id"), // reserved for T2
+  groupId: varchar("group_id"), // links post + story split from one import row
+  parentIdeaId: varchar("parent_idea_id"),
+  importBatchId: varchar("import_batch_id"),
+  origin: varchar("origin").default("manual").notNull(), // manual | import | ai | repurposed
+  contentType: varchar("content_type").default("social_post").notNull(), // article | social_post | story
+  channels: jsonb("channels"), // ["linkedin","instagram","facebook","x","website"]
+  pillar: varchar("pillar"),
+  topic: varchar("topic").notNull(),
+  brief: text("brief"),
+  generationBrief: text("generation_brief"),
+  referenceLink: varchar("reference_link"),
+  captionCopy: text("caption_copy"),
+  requirement: text("requirement"),
+  creativeLink: varchar("creative_link"),
+  storyContent: text("story_content"),
+  storyReference: varchar("story_reference"),
+  storyCreativeLink: varchar("story_creative_link"),
+  scheduledDate: date("scheduled_date"), // NULL = backlog
+  dueDate: date("due_date"),
+  assignedToUserId: varchar("assigned_to_user_id"),
+  status: varchar("status").default("idea").notNull(), // pipeline state machine
+  linkedArticleId: varchar("linked_article_id"),
+  archivedAt: timestamp("archived_at"), // soft-archive (import rollback)
+  // T4: generated branded social cards for this idea — same contract shape as
+  // studio_articles.social_cards_jsonb ({family, layout, generatedAt, cards:[...]}).
+  socialCardsJsonb: jsonb("social_cards_jsonb"),
+  createdByUserId: varchar("created_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const studioIdeaComments = pgTable("studio_idea_comments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ideaId: varchar("idea_id").notNull().references(() => studioContentIdeas.id),
+  userId: varchar("user_id").notNull(),
+  message: text("message").notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const studioImportBatches = pgTable("studio_import_batches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull().references(() => studioProjects.id),
+  fileName: varchar("file_name"),
+  rowCountValid: integer("row_count_valid").default(0).notNull(),
+  rowCountInvalid: integer("row_count_invalid").default(0).notNull(),
+  createdByUserId: varchar("created_by_user_id"),
+  rolledBackAt: timestamp("rolled_back_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
 // Immutable snapshots of article body for version history.
@@ -2902,6 +2962,15 @@ export const insertStudioNewsletterSubscriberSchema = createInsertSchema(studioN
 export const insertStudioAuditEventSchema = createInsertSchema(studioAuditEvents).omit({ id: true, createdAt: true });
 export const insertStudioPromptTemplateSchema = createInsertSchema(studioPromptTemplates).omit({ id: true, createdAt: true });
 export const insertStudioGenerationSchema = createInsertSchema(studioGenerations).omit({ id: true, createdAt: true });
+export const insertStudioContentIdeaSchema = createInsertSchema(studioContentIdeas).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertStudioIdeaCommentSchema = createInsertSchema(studioIdeaComments).omit({ id: true, createdAt: true });
+export const insertStudioImportBatchSchema = createInsertSchema(studioImportBatches).omit({ id: true, createdAt: true });
+export type StudioContentIdea = typeof studioContentIdeas.$inferSelect;
+export type InsertStudioContentIdea = z.infer<typeof insertStudioContentIdeaSchema>;
+export type StudioIdeaComment = typeof studioIdeaComments.$inferSelect;
+export type InsertStudioIdeaComment = z.infer<typeof insertStudioIdeaCommentSchema>;
+export type StudioImportBatch = typeof studioImportBatches.$inferSelect;
+export type InsertStudioImportBatch = z.infer<typeof insertStudioImportBatchSchema>;
 
 export type StudioProject = typeof studioProjects.$inferSelect;
 export type InsertStudioProject = z.infer<typeof insertStudioProjectSchema>;
@@ -2974,52 +3043,9 @@ export interface StudioOccasionPreferences {
   categories: string[]; // subset of occasion categories
 }
 
-// Unified content-ideas pipeline (declared per the Studio T1 column spec so
-// parallel Studio tasks converge on one table; T4 adds social_cards_jsonb).
-export const studioContentIdeas = pgTable("studio_content_ideas", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  projectId: varchar("project_id").notNull().references(() => studioProjects.id),
-  campaignId: varchar("campaign_id"),
-  groupId: varchar("group_id"),
-  parentIdeaId: varchar("parent_idea_id"),
-  importBatchId: varchar("import_batch_id"),
-  // "manual" | "import" | "ai" | "repurposed"
-  origin: varchar("origin").default("manual").notNull(),
-  // "article" | "social_post" | "story"
-  contentType: varchar("content_type").default("social_post").notNull(),
-  // ["linkedin","instagram","facebook","x","website"]
-  channels: jsonb("channels"),
-  pillar: varchar("pillar"),
-  topic: varchar("topic").notNull(),
-  brief: text("brief"),
-  generationBrief: text("generation_brief"),
-  referenceLink: varchar("reference_link"),
-  captionCopy: text("caption_copy"),
-  requirement: text("requirement"),
-  creativeLink: varchar("creative_link"),
-  storyContent: text("story_content"),
-  storyReference: varchar("story_reference"),
-  storyCreativeLink: varchar("story_creative_link"),
-  scheduledDate: date("scheduled_date"),
-  dueDate: date("due_date"),
-  assignedToUserId: varchar("assigned_to_user_id"),
-  // suggested | idea | in_review | changes_requested | approved | in_production | scheduled | published | done | rejected
-  status: varchar("status").default("idea").notNull(),
-  linkedArticleId: varchar("linked_article_id"),
-  // T4: generated branded social cards for this idea — same contract shape as
-  // studio_articles.social_cards_jsonb ({family, layout, generatedAt, cards:[...]}).
-  socialCardsJsonb: jsonb("social_cards_jsonb"),
-  createdByUserId: varchar("created_by_user_id"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
-
 export const insertStudioOccasionSchema = createInsertSchema(studioOccasions).omit({ id: true, createdAt: true });
 export type StudioOccasion = typeof studioOccasions.$inferSelect;
 export type InsertStudioOccasion = z.infer<typeof insertStudioOccasionSchema>;
-export const insertStudioContentIdeaSchema = createInsertSchema(studioContentIdeas).omit({ id: true, createdAt: true, updatedAt: true });
-export type StudioContentIdea = typeof studioContentIdeas.$inferSelect;
-export type InsertStudioContentIdea = z.infer<typeof insertStudioContentIdeaSchema>;
 
 // ==========================================
 // INTERNAL HELP DESK (HIRD)

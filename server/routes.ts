@@ -34,6 +34,8 @@ import {
 } from "@shared/socialCards";
 import {
   insertStudioArticleSchema,
+  insertStudioContentIdeaSchema,
+  insertStudioIdeaCommentSchema,
   insertStudioAuthorProfileSchema,
   studioArticles,
   performanceGoals,
@@ -42,7 +44,22 @@ import {
   type StudioRoutingRules,
 } from "@shared/schema";
 import { COMMUNICATION_TYPES } from "@shared/communications";
-import { computeReadTime } from "@shared/studioContent";
+import {
+  computeReadTime,
+  isValidArticleContentType,
+  VALID_ARTICLE_CONTENT_TYPES,
+  articleBylineRequired,
+  getPipelineContentType,
+  isValidIdeaTransition,
+  isValidIdeaStatus,
+  STUDIO_CHANNELS,
+  STUDIO_IDEA_ORIGINS,
+} from "@shared/studioContent";
+import {
+  notifyUser as notifyStudioUser,
+  syncIdeaDoneForPublishedArticle,
+  STUDIO_BASE,
+} from "./studioNotifications";
 import { INSIGHT_REACTION_VALUES } from "@shared/insights";
 import {
   getComplianceMode,
@@ -535,6 +552,34 @@ export async function registerRoutes(
   // Enforce 2FA for all admin/HR API routes
   app.use("/api/admin", require2FA);
   app.use("/api/hr", require2FA);
+  // Studio v2 pipeline APIs carry the same 2FA policy as the classic
+  // /api/admin/studio/* surface they replace.
+  app.use("/api/studio", require2FA);
+
+  // ── Studio T1 (Task #906): noindex + legacy redirects ─────────────────────
+  // Every /studio response carries noindex (internal tool, never crawlable).
+  app.use((req: Request, res: Response, next: NextFunction) => {
+    if (req.path === "/studio" || req.path.startsWith("/studio/")) {
+      res.setHeader("X-Robots-Tag", "noindex, nofollow");
+    }
+    next();
+  });
+  // Old /admin/studio/* deep links (notifications/emails) redirect to the new
+  // standalone shell when the studio_v2_enabled flag is ON. Flag OFF falls
+  // through to the SPA and renders the classic experience unchanged.
+  app.get(/^\/admin\/studio(\/.*)?$/, async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const setting = await storage.getSystemSetting("feature_flags");
+      const flags = (setting?.value as Record<string, boolean>) || {};
+      if (!flags.studio_v2_enabled) return next();
+      const suffix = req.path.replace(/^\/admin\/studio/, "");
+      const qs = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
+      return res.redirect(302, `/studio${suffix}${qs}`);
+    } catch {
+      return next();
+    }
+  });
+
   
   // ==========================================
   // PUBLIC API ROUTES
@@ -13532,7 +13577,7 @@ export async function registerRoutes(
 
   app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
-      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance"];
+      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance", "studio_v2_enabled"];
       const updates = req.body as Record<string, unknown>;
       const validated: Record<string, boolean> = {};
       for (const [key, value] of Object.entries(updates)) {
@@ -16390,6 +16435,14 @@ export async function registerRoutes(
           return res.status(400).json({ error: "title is required" });
         }
         const contentType = parsed.contentType || "quick_take";
+        // Server-side content-type validation (Task #906): reject unknown types
+        // loudly instead of silently accepting values with no prompt template.
+        if (!isValidArticleContentType(contentType)) {
+          return res.status(400).json({
+            error: `Unknown content type '${contentType}'. Valid types: ${VALID_ARTICLE_CONTENT_TYPES.join(", ")}`,
+            code: "invalid_content_type",
+          });
+        }
         const readTimeMinutes = computeReadTime(parsed.bodyMarkdown, contentType);
         const created = await storage.createStudioArticle({
           ...parsed,
@@ -16432,6 +16485,12 @@ export async function registerRoutes(
         delete (updates as any).status;
         delete (updates as any).createdBy;
 
+        if (updates.contentType !== undefined && !isValidArticleContentType(updates.contentType)) {
+          return res.status(400).json({
+            error: `Unknown content type '${updates.contentType}'. Valid types: ${VALID_ARTICLE_CONTENT_TYPES.join(", ")}`,
+            code: "invalid_content_type",
+          });
+        }
         const contentType = updates.contentType ?? existing.contentType;
         const bodyMarkdown =
           updates.bodyMarkdown !== undefined ? updates.bodyMarkdown : existing.bodyMarkdown;
@@ -16570,7 +16629,12 @@ export async function registerRoutes(
 
         const template = await storage.getActiveStudioPromptTemplate(contentTypeKey, article.projectId);
         if (!template) {
-          return res.status(500).json({ error: `Prompt template '${contentTypeKey}' not found` });
+          // Loud, typed failure (Task #906) — surfaces a 422 with a clear
+          // message instead of a generic 500 the UI used to swallow.
+          return handleAiError(
+            new AiGenerationError("validation", `No prompt template for content type: ${contentTypeKey}`, false),
+            res,
+          );
         }
 
         const params = buildArticleParams(article, req.body);
@@ -16688,7 +16752,10 @@ export async function registerRoutes(
           template = await storage.getActiveStudioPromptTemplate("master_social_kit", article.projectId);
         }
         if (!template) {
-          return res.status(500).json({ error: `Prompt template '${contentTypeKey}' not found` });
+          return handleAiError(
+            new AiGenerationError("validation", `No prompt template for content type: ${contentTypeKey}`, false),
+            res,
+          );
         }
 
         const compliance = getComplianceMode(req.body?.complianceMode ?? article.complianceMode);
@@ -16899,6 +16966,7 @@ export async function registerRoutes(
         const updated = await storage.updateStudioArticle(req.params.id, updates);
         if (to === "published") {
           void notifyNewContentSubscribers(req.params.id);
+          void syncIdeaDoneForPublishedArticle(req.params.id);
         }
         await storage.createStudioAuditEvent({
           articleId: req.params.id,
@@ -16950,6 +17018,870 @@ export async function registerRoutes(
       } catch (error: any) {
         console.error("Studio transition error:", error);
         res.status(400).json({ error: error?.message || "Failed to transition article" });
+      }
+    },
+  );
+
+  // ==========================================================================
+  // STUDIO T1 — Content planning pipeline (Task #906)
+  // One data model (studio_content_ideas), three lenses (Calendar/Board/Table)
+  // over one query. All routes deny-by-default via the existing registry keys.
+  // ==========================================================================
+
+  /** Validate a channels payload against the content type's compatibility. */
+  const validateIdeaTypeAndChannels = (
+    contentType: unknown,
+    channels: unknown,
+  ): { error?: string; code?: string; channels?: string[] } => {
+    const typeCfg = getPipelineContentType(typeof contentType === "string" ? contentType : null);
+    if (!typeCfg) {
+      return {
+        error: `Unknown content type '${contentType}'. Valid types: article, social_post, story`,
+        code: "invalid_content_type",
+      };
+    }
+    let list: string[] = [];
+    if (channels !== undefined && channels !== null) {
+      if (!Array.isArray(channels) || channels.some((c) => typeof c !== "string")) {
+        return { error: "channels must be an array of strings", code: "invalid_channels" };
+      }
+      list = channels as string[];
+      const bad = list.filter(
+        (c) => !(STUDIO_CHANNELS as readonly string[]).includes(c) || !typeCfg.channels.includes(c as any),
+      );
+      if (bad.length) {
+        return {
+          error: `Channel(s) ${bad.join(", ")} not valid for ${typeCfg.label}. Allowed: ${typeCfg.channels.join(", ")}`,
+          code: "invalid_channels",
+        };
+      }
+    }
+    return { channels: list };
+  };
+
+  /**
+   * Record-level guard: the referenced studio project must exist (and be
+   * active for writes). Prevents creating/mutating pipeline records against
+   * arbitrary or archived project ids passed by the client.
+   */
+  const assertPipelineProject = async (
+    projectId: string | null | undefined,
+    opts: { forWrite?: boolean } = {},
+  ): Promise<{ status: number; error: string; code: string } | null> => {
+    if (!projectId) return { status: 400, error: "projectId is required", code: "project_required" };
+    const project = await storage.getStudioProject(projectId);
+    if (!project) return { status: 404, error: "Project not found", code: "project_not_found" };
+    if (opts.forWrite && project.isActive === false) {
+      return { status: 403, error: "Project is archived", code: "project_archived" };
+    }
+    return null;
+  };
+
+  /**
+   * Record-level access for pipeline ideas. Users whose Studio access comes
+   * only from a limited add-on (e.g. influencer: view + create) are scoped to
+   * records they created or are assigned to; everyone with edit/review
+   * permission (base role or add-on) has full pipeline record access.
+   */
+  const getPipelineRecordAccess = async (req: Request): Promise<{ full: boolean; userId: string }> => {
+    const userId = req.session.userId!;
+    if (await hasStudioPermission(req, "studio.edit_article")) return { full: true, userId };
+    if (await hasStudioPermission(req, "studio.review_article")) return { full: true, userId };
+    return { full: false, userId };
+  };
+
+  const canAccessIdeaRecord = (
+    access: { full: boolean; userId: string },
+    idea: { createdByUserId?: string | null; assignedToUserId?: string | null },
+  ): boolean =>
+    access.full ||
+    idea.createdByUserId === access.userId ||
+    idea.assignedToUserId === access.userId;
+
+  // Unified query powering Calendar, Board, and Table lenses.
+  app.get(
+    "/api/studio/content-ideas",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const q = req.query as Record<string, string | undefined>;
+        if (q.projectId) {
+          const projErr = await assertPipelineProject(q.projectId);
+          if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
+        }
+        const access = await getPipelineRecordAccess(req);
+        const ideas = await storage.getStudioContentIdeas({
+          projectId: q.projectId,
+          status: q.status,
+          contentType: q.contentType,
+          channel: q.channel,
+          pillar: q.pillar,
+          origin: q.origin,
+          assignedToUserId: q.assignedTo,
+          campaignId: q.campaignId,
+          dateFrom: q.dateFrom,
+          dateTo: q.dateTo,
+          unscheduled: q.unscheduled === "true",
+          includeArchived: q.includeArchived === "true",
+          search: q.search,
+        });
+        // Limited add-on users (view+create only) see only their own records.
+        res.json(access.full ? ideas : ideas.filter((i) => canAccessIdeaRecord(access, i)));
+      } catch (error) {
+        console.error("List content ideas error:", error);
+        res.status(500).json({ error: "Failed to fetch content ideas" });
+      }
+    },
+  );
+
+  // Studio-eligible users for the assignee filter/picker: anyone whose base
+  // role grants studio.view or who holds a studio add-on. Names only — no
+  // sensitive profile fields.
+  app.get(
+    "/api/studio/assignees",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (_req: Request, res: Response) => {
+      try {
+        const viewRoles = resolveRoles("studio.view", [
+          "super_admin", "marketing_manager", "content_editor", "reviewer",
+        ]);
+        const users = await storage.getAdminUsers();
+        const eligible = users.filter(
+          (u: any) => u.isActive !== false && !u.deletedAt &&
+            (viewRoles.includes(u.role) || !!u.studioAddOn),
+        );
+        res.json(eligible.map((u: any) => ({
+          id: u.id,
+          name: [u.firstName, u.lastName].filter(Boolean).join(" ") || u.email,
+        })));
+      } catch (error) {
+        console.error("List studio assignees error:", error);
+        res.status(500).json({ error: "Failed to fetch assignees" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/studio/content-ideas/:id",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const idea = await storage.getStudioContentIdea(req.params.id);
+        if (!idea) return res.status(404).json({ error: "Idea not found" });
+        const access = await getPipelineRecordAccess(req);
+        if (!canAccessIdeaRecord(access, idea)) {
+          return res.status(404).json({ error: "Idea not found" });
+        }
+        const comments = await storage.getStudioIdeaComments(idea.id);
+        res.json({ ...idea, comments });
+      } catch (error) {
+        console.error("Get content idea error:", error);
+        res.status(500).json({ error: "Failed to fetch content idea" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/studio/content-ideas",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const body = req.body ?? {};
+        const check = validateIdeaTypeAndChannels(body.contentType, body.channels);
+        if (check.error) return res.status(400).json({ error: check.error, code: check.code });
+        if (body.origin !== undefined && !(STUDIO_IDEA_ORIGINS as readonly string[]).includes(body.origin)) {
+          return res.status(400).json({ error: `Invalid origin '${body.origin}'`, code: "invalid_origin" });
+        }
+        if (body.status !== undefined && !isValidIdeaStatus(body.status)) {
+          return res.status(400).json({ error: `Invalid status '${body.status}'`, code: "invalid_status" });
+        }
+        const parsed = insertStudioContentIdeaSchema.partial().parse(body);
+        if (!parsed.projectId) return res.status(400).json({ error: "projectId is required" });
+        const projErr = await assertPipelineProject(parsed.projectId, { forWrite: true });
+        if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
+        if (!parsed.topic || !parsed.topic.trim()) {
+          return res.status(400).json({ error: "topic is required" });
+        }
+        const created = await storage.createStudioContentIdea({
+          ...parsed,
+          projectId: parsed.projectId,
+          topic: parsed.topic.trim(),
+          contentType: parsed.contentType!,
+          channels: (check.channels ?? []) as any,
+          origin: parsed.origin ?? "manual",
+          status: parsed.status ?? "idea",
+          createdByUserId: req.session.userId,
+        } as any);
+        if (created.assignedToUserId && created.assignedToUserId !== req.session.userId) {
+          void notifyStudioUser({
+            userId: created.assignedToUserId,
+            event: "idea_assigned",
+            message: `"${created.topic}" was assigned to you.`,
+            linkPath: `/calendar?idea=${created.id}`,
+            metadata: { ideaId: created.id },
+          });
+        }
+        res.status(201).json(created);
+      } catch (error: any) {
+        console.error("Create content idea error:", error);
+        res.status(400).json({ error: error?.message || "Failed to create content idea" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/studio/content-ideas/:id",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const existing = await storage.getStudioContentIdea(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Idea not found" });
+        const access = await getPipelineRecordAccess(req);
+        if (!canAccessIdeaRecord(access, existing)) {
+          return res.status(404).json({ error: "Idea not found" });
+        }
+        const writeErr = await assertPipelineProject(existing.projectId, { forWrite: true });
+        if (writeErr) return res.status(writeErr.status).json({ error: writeErr.error, code: writeErr.code });
+        const body = { ...(req.body ?? {}) };
+        // Status changes must go through the transition endpoint.
+        delete body.status;
+        delete body.createdByUserId;
+        delete body.importBatchId;
+        delete body.archivedAt;
+        // The project a record belongs to is immutable through this endpoint.
+        delete body.projectId;
+        const nextType = body.contentType ?? existing.contentType;
+        const nextChannels = body.channels ?? existing.channels ?? [];
+        const check = validateIdeaTypeAndChannels(nextType, nextChannels);
+        if (check.error) return res.status(400).json({ error: check.error, code: check.code });
+        const parsed = insertStudioContentIdeaSchema.partial().parse(body);
+        const updated = await storage.updateStudioContentIdea(req.params.id, parsed);
+        if (
+          parsed.assignedToUserId &&
+          parsed.assignedToUserId !== existing.assignedToUserId &&
+          parsed.assignedToUserId !== req.session.userId
+        ) {
+          void notifyStudioUser({
+            userId: parsed.assignedToUserId,
+            event: "idea_assigned",
+            message: `"${existing.topic}" was assigned to you.`,
+            linkPath: `/calendar?idea=${existing.id}`,
+            metadata: { ideaId: existing.id },
+          });
+        }
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Update content idea error:", error);
+        res.status(400).json({ error: error?.message || "Failed to update content idea" });
+      }
+    },
+  );
+
+  // Status transitions — validated server-side against the state machine.
+  // Middleware admits both editors and reviewers; the handler enforces which
+  // transitions each may perform (decisions need review, the rest need edit).
+  app.post(
+    "/api/studio/content-ideas/:id/transition",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const { to } = req.body ?? {};
+        const idea = await storage.getStudioContentIdea(req.params.id);
+        if (!idea) return res.status(404).json({ error: "Idea not found" });
+        const access = await getPipelineRecordAccess(req);
+        if (!canAccessIdeaRecord(access, idea)) {
+          return res.status(404).json({ error: "Idea not found" });
+        }
+        const writeErr = await assertPipelineProject(idea.projectId, { forWrite: true });
+        if (writeErr) return res.status(writeErr.status).json({ error: writeErr.error, code: writeErr.code });
+        if (!isValidIdeaStatus(to)) {
+          return res.status(400).json({ error: `Invalid status '${to}'`, code: "invalid_status" });
+        }
+        if (!isValidIdeaTransition(idea.status, to)) {
+          return res.status(400).json({
+            error: `Cannot move from ${idea.status} to ${to}`,
+            code: "invalid_transition",
+          });
+        }
+        // Review decisions require review permission; all other transitions
+        // require edit permission (deny-by-default either way).
+        const isDecision = ["approved", "rejected", "changes_requested"].includes(to);
+        if (isDecision) {
+          if (!(await hasStudioPermission(req, "studio.review_article"))) {
+            return res.status(403).json({ error: "Insufficient permissions for this decision" });
+          }
+        } else if (!(await hasStudioPermission(req, "studio.edit_article"))) {
+          return res.status(403).json({ error: "Insufficient permissions for this transition" });
+        }
+        const updated = await storage.updateStudioContentIdea(req.params.id, { status: to });
+        // Notify the relevant party (stub gateway; T3 adds preferences).
+        const notifyTargets = new Set<string>();
+        if (idea.createdByUserId) notifyTargets.add(idea.createdByUserId);
+        if (idea.assignedToUserId) notifyTargets.add(idea.assignedToUserId);
+        notifyTargets.delete(req.session.userId!);
+        const eventMap: Record<string, "idea_review_requested" | "idea_approved" | "idea_rejected" | "idea_changes_requested"> = {
+          in_review: "idea_review_requested",
+          approved: "idea_approved",
+          rejected: "idea_rejected",
+          changes_requested: "idea_changes_requested",
+        };
+        const event = eventMap[to];
+        if (event) {
+          for (const uid of notifyTargets) {
+            void notifyStudioUser({
+              userId: uid,
+              event,
+              message: `"${idea.topic}" moved to ${to.replace(/_/g, " ")}.`,
+              linkPath: `/calendar?idea=${idea.id}`,
+              metadata: { ideaId: idea.id, from: idea.status, to },
+            });
+          }
+        }
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Idea transition error:", error);
+        res.status(400).json({ error: error?.message || "Failed to transition idea" });
+      }
+    },
+  );
+
+  // Comments
+  app.post(
+    "/api/studio/content-ideas/:id/comments",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const idea = await storage.getStudioContentIdea(req.params.id);
+        if (!idea) return res.status(404).json({ error: "Idea not found" });
+        const access = await getPipelineRecordAccess(req);
+        if (!canAccessIdeaRecord(access, idea)) {
+          return res.status(404).json({ error: "Idea not found" });
+        }
+        const message = typeof req.body?.message === "string" ? req.body.message.trim() : "";
+        if (!message) return res.status(400).json({ error: "message is required" });
+        const comment = await storage.createStudioIdeaComment({
+          ideaId: idea.id,
+          userId: req.session.userId!,
+          message,
+        });
+        const notifyTargets = new Set<string>();
+        if (idea.createdByUserId) notifyTargets.add(idea.createdByUserId);
+        if (idea.assignedToUserId) notifyTargets.add(idea.assignedToUserId);
+        notifyTargets.delete(req.session.userId!);
+        for (const uid of notifyTargets) {
+          void notifyStudioUser({
+            userId: uid,
+            event: "idea_comment",
+            message: `New comment on "${idea.topic}".`,
+            linkPath: `/calendar?idea=${idea.id}`,
+            metadata: { ideaId: idea.id, commentId: comment.id },
+          });
+        }
+        res.status(201).json(comment);
+      } catch (error: any) {
+        console.error("Create idea comment error:", error);
+        res.status(400).json({ error: error?.message || "Failed to add comment" });
+      }
+    },
+  );
+
+  app.patch(
+    "/api/studio/idea-comments/:id/resolve",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const comment = await storage.getStudioIdeaComment(req.params.id);
+        if (!comment) return res.status(404).json({ error: "Comment not found" });
+        // Record-level: resolve requires access to the parent idea, and only
+        // the comment author or a full-access user may resolve it.
+        const idea = await storage.getStudioContentIdea(comment.ideaId);
+        if (!idea) return res.status(404).json({ error: "Comment not found" });
+        const access = await getPipelineRecordAccess(req);
+        if (!canAccessIdeaRecord(access, idea)) {
+          return res.status(404).json({ error: "Comment not found" });
+        }
+        if (!access.full && comment.userId !== access.userId) {
+          return res.status(403).json({ error: "Only the comment author can resolve this comment" });
+        }
+        const resolved = await storage.resolveStudioIdeaComment(req.params.id);
+        res.json(resolved);
+      } catch (error: any) {
+        console.error("Resolve idea comment error:", error);
+        res.status(400).json({ error: error?.message || "Failed to resolve comment" });
+      }
+    },
+  );
+
+  /** Structured AI context for a promoted idea — never article body. */
+  const buildBrief = async (idea: any): Promise<string> => {
+    const lines: string[] = [
+      `Topic: ${idea.topic}`,
+    ];
+    if (idea.pillar) lines.push(`Pillar: ${idea.pillar}`);
+    if (Array.isArray(idea.channels) && idea.channels.length) {
+      lines.push(`Channels: ${idea.channels.join(", ")}`);
+    }
+    if (idea.brief?.trim()) lines.push(`Brief: ${idea.brief.trim()}`);
+    if (idea.referenceLink?.trim()) lines.push(`Reference: ${idea.referenceLink.trim()}`);
+    if (idea.requirement?.trim()) lines.push(`Requirement: ${idea.requirement.trim()}`);
+    try {
+      const comments = await storage.getStudioIdeaComments(idea.id);
+      if (comments.length) {
+        lines.push(
+          "Discussion summary:",
+          ...comments.slice(-10).map((c) => `- ${c.message}`),
+        );
+      }
+    } catch {
+      // discussion is optional context — never block the promote
+    }
+    return lines.join("\n");
+  };
+
+  // Promote bridge: approved Article-type idea → draft article.
+  app.post(
+    "/api/studio/content-ideas/:id/promote",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const idea = await storage.getStudioContentIdea(req.params.id);
+        if (!idea) return res.status(404).json({ error: "Idea not found" });
+        const access = await getPipelineRecordAccess(req);
+        if (!canAccessIdeaRecord(access, idea)) {
+          return res.status(404).json({ error: "Idea not found" });
+        }
+        const projWriteErr = await assertPipelineProject(idea.projectId, { forWrite: true });
+        if (projWriteErr) return res.status(projWriteErr.status).json({ error: projWriteErr.error, code: projWriteErr.code });
+        const typeCfg = getPipelineContentType(idea.contentType);
+        if (!typeCfg) {
+          return res.status(422).json({
+            error: `Unknown content type '${idea.contentType}'.`,
+            code: "not_promotable",
+          });
+        }
+        if (idea.status !== "approved") {
+          return res.status(422).json({
+            error: `Idea must be approved before promotion (currently ${idea.status}).`,
+            code: "not_approved",
+          });
+        }
+        if (idea.linkedArticleId) {
+          return res.status(409).json({
+            error: "Idea is already linked to an article.",
+            code: "already_promoted",
+            articleId: idea.linkedArticleId,
+          });
+        }
+        const generationBrief = await buildBrief(idea);
+        // Editorial ideas become article drafts; Social/Story ideas route into
+        // the existing Social Kit flow by creating a draft record of the same
+        // content type (the editor exposes Generate Social Kit for those).
+        const isSocial = typeCfg.family === "social";
+        const article = await storage.createStudioArticle({
+          projectId: idea.projectId,
+          title: idea.topic,
+          contentType: isSocial ? idea.contentType : "article",
+          status: "draft",
+          generationBrief,
+          ...(isSocial && idea.captionCopy ? { bodyMarkdown: idea.captionCopy } : {}),
+          readTimeMinutes: 1,
+          createdBy: req.session.userId,
+        } as any);
+        await storage.updateStudioContentIdea(idea.id, {
+          linkedArticleId: article.id,
+          status: "in_production",
+        });
+        await storage.createStudioAuditEvent({
+          articleId: article.id,
+          actorUserId: req.session.userId,
+          eventType: "article_created",
+          metadata: { via: isSocial ? "idea_social_kit" : "idea_promote", ideaId: idea.id },
+        });
+        if (idea.assignedToUserId && idea.assignedToUserId !== req.session.userId) {
+          void notifyStudioUser({
+            userId: idea.assignedToUserId,
+            event: "idea_promoted",
+            message: isSocial
+              ? `"${idea.topic}" moved to the Social Kit flow.`
+              : `"${idea.topic}" was promoted to an article draft.`,
+            linkPath: `/articles/${article.id}/edit`,
+            metadata: { ideaId: idea.id, articleId: article.id },
+          });
+        }
+        res.status(201).json({ article, ideaId: idea.id });
+      } catch (error: any) {
+        console.error("Promote idea error:", error);
+        res.status(400).json({ error: error?.message || "Failed to promote idea" });
+      }
+    },
+  );
+
+  // ---- Import wizard (CSV) ----
+
+  const IMPORT_TEMPLATE_HEADERS = [
+    "Date", "Post Type", "Channels", "Pillar", "Topic", "Details",
+    "Reference Link", "Caption/Copy", "Requirement", "Final Creative",
+    "Status", "Story Content", "Story Reference", "Story Creative",
+    "Assignee Email", "Due Date",
+  ];
+
+  /** Minimal RFC-4180-ish CSV parser (quotes, escaped quotes, CRLF). */
+  const parseCsv = (text: string): string[][] => {
+    const rows: string[][] = [];
+    let row: string[] = [];
+    let field = "";
+    let inQuotes = false;
+    for (let i = 0; i < text.length; i++) {
+      const ch = text[i];
+      if (inQuotes) {
+        if (ch === '"') {
+          if (text[i + 1] === '"') { field += '"'; i++; }
+          else inQuotes = false;
+        } else field += ch;
+      } else if (ch === '"') {
+        inQuotes = true;
+      } else if (ch === ",") {
+        row.push(field); field = "";
+      } else if (ch === "\n" || ch === "\r") {
+        if (ch === "\r" && text[i + 1] === "\n") i++;
+        row.push(field); field = "";
+        if (row.some((c) => c.trim() !== "")) rows.push(row);
+        row = [];
+      } else field += ch;
+    }
+    row.push(field);
+    if (row.some((c) => c.trim() !== "")) rows.push(row);
+    return rows;
+  };
+
+  const normalizeHeader = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, "");
+
+  const HEADER_ALIASES: Record<string, string> = {
+    date: "date", postdate: "date", scheduleddate: "date",
+    posttype: "contentType", type: "contentType", contenttype: "contentType",
+    channels: "channels", channel: "channels", platform: "channels", platforms: "channels",
+    pillar: "pillar", category: "pillar",
+    topic: "topic", title: "topic", idea: "topic",
+    details: "brief", brief: "brief", description: "brief", notes: "brief",
+    referencelink: "referenceLink", reference: "referenceLink", ref: "referenceLink",
+    captioncopy: "captionCopy", caption: "captionCopy", copy: "captionCopy",
+    requirement: "requirement", requirements: "requirement",
+    finalcreative: "creativeLink", creative: "creativeLink", creativelink: "creativeLink",
+    status: "status",
+    storycontent: "storyContent", story: "storyContent",
+    storyreference: "storyReference", storyref: "storyReference",
+    storycreative: "storyCreativeLink", storycreativelink: "storyCreativeLink",
+    assigneeemail: "assigneeEmail", assignee: "assigneeEmail", owner: "assigneeEmail",
+    duedate: "dueDate", deadline: "dueDate",
+  };
+
+  const IMPORT_TYPE_ALIASES: Record<string, string> = {
+    article: "article", blog: "article", blogpost: "article", editorial: "article",
+    post: "social_post", socialpost: "social_post", social: "social_post", feedpost: "social_post",
+    story: "story", stories: "story",
+  };
+
+  const IMPORT_STATUS_ALIASES: Record<string, string> = {
+    suggested: "suggested", idea: "idea", planned: "idea", todo: "idea",
+    inreview: "in_review", review: "in_review",
+    changesrequested: "changes_requested",
+    approved: "approved",
+    inproduction: "in_production", inprogress: "in_production", wip: "in_production", designing: "in_production",
+    scheduled: "scheduled",
+    published: "published", posted: "published", live: "published",
+    done: "done", completed: "done",
+    rejected: "rejected", dropped: "rejected",
+  };
+
+  const parseImportDate = (raw: string): string | null | undefined => {
+    const t = raw.trim();
+    if (!t) return null;
+    // ISO or yyyy-mm-dd
+    if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
+    // dd/mm/yyyy or dd-mm-yyyy (team template) — day-first
+    const m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
+    if (m) {
+      let [, d, mo, y] = m;
+      if (y.length === 2) y = `20${y}`;
+      const day = parseInt(d, 10), mon = parseInt(mo, 10);
+      if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31) {
+        return `${y}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+    }
+    const parsed = new Date(t);
+    if (!isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+    return undefined; // unparseable → row error
+  };
+
+  type ImportRowResult = {
+    rowNumber: number;
+    errors: string[];
+    ideas: Record<string, any>[];
+    raw: Record<string, string>;
+  };
+
+  /** Parse + validate a CSV export of the team's planning template. */
+  const parseImportRows = async (csv: string): Promise<{
+    headerError?: string;
+    results: ImportRowResult[];
+  }> => {
+    const grid = parseCsv(csv);
+    if (!grid.length) return { headerError: "The file is empty.", results: [] };
+    const headerMap: (string | null)[] = grid[0].map((h) => HEADER_ALIASES[normalizeHeader(h)] ?? null);
+    if (!headerMap.includes("topic")) {
+      return { headerError: "Could not find a Topic/Title column in the file header.", results: [] };
+    }
+    const usersByEmail = new Map<string, string>();
+    try {
+      const admins = await storage.getAdminUsers();
+      for (const u of admins) {
+        if (u.email) usersByEmail.set(u.email.toLowerCase(), u.id);
+      }
+    } catch { /* assignee mapping optional */ }
+
+    const results: ImportRowResult[] = [];
+    for (let r = 1; r < grid.length; r++) {
+      const cells = grid[r];
+      const rec: Record<string, string> = {};
+      headerMap.forEach((key, idx) => {
+        if (key) {
+          const val = (cells[idx] ?? "").trim();
+          // First column wins for duplicate-mapped headers
+          if (val && rec[key] === undefined) rec[key] = val;
+          else if (rec[key] === undefined) rec[key] = val;
+        }
+      });
+      const errors: string[] = [];
+      const topic = rec.topic ?? "";
+      if (!topic) errors.push("Topic is required");
+
+      const scheduledDate = parseImportDate(rec.date ?? "");
+      if (scheduledDate === undefined) errors.push(`Unrecognized date '${rec.date}'`);
+      const dueDate = parseImportDate(rec.dueDate ?? "");
+      if (dueDate === undefined) errors.push(`Unrecognized due date '${rec.dueDate}'`);
+
+      const rawType = normalizeHeader(rec.contentType ?? "");
+      const mappedType = rawType ? IMPORT_TYPE_ALIASES[rawType] : "social_post";
+      if (!mappedType) errors.push(`Unknown post type '${rec.contentType}'`);
+
+      const rawStatus = normalizeHeader(rec.status ?? "");
+      const mappedStatus = rawStatus ? (IMPORT_STATUS_ALIASES[rawStatus] ?? "suggested") : "suggested";
+
+      let channels: string[] = [];
+      if (rec.channels) {
+        channels = rec.channels.split(/[;,|/]+/).map((c) => normalizeHeader(c)).filter(Boolean)
+          .map((c) => (c === "twitter" ? "x" : c === "insta" ? "instagram" : c))
+          .filter((c) => (STUDIO_CHANNELS as readonly string[]).includes(c));
+      }
+
+      let assignedToUserId: string | undefined;
+      if (rec.assigneeEmail) {
+        assignedToUserId = usersByEmail.get(rec.assigneeEmail.toLowerCase());
+        if (!assignedToUserId) errors.push(`No user found for assignee '${rec.assigneeEmail}'`);
+      }
+
+      const hasStory = !!(rec.storyContent || rec.storyReference || rec.storyCreativeLink);
+      const hasPost = !!(topic && (mappedType !== "story" || !hasStory));
+
+      const base = {
+        origin: "import",
+        topic: topic || "(untitled)",
+        pillar: rec.pillar || null,
+        brief: rec.brief || null,
+        referenceLink: rec.referenceLink || null,
+        requirement: rec.requirement || null,
+        scheduledDate: scheduledDate ?? null,
+        dueDate: dueDate ?? null,
+        assignedToUserId: assignedToUserId ?? null,
+        status: mappedStatus,
+      };
+
+      const ideas: Record<string, any>[] = [];
+      if (mappedType && hasPost) {
+        const typeCfg = getPipelineContentType(mappedType === "story" && hasStory ? "story" : mappedType);
+        ideas.push({
+          ...base,
+          contentType: typeCfg!.value,
+          channels: channels.filter((c) => typeCfg!.channels.includes(c as any)),
+          captionCopy: rec.captionCopy || null,
+          creativeLink: rec.creativeLink || null,
+        });
+      }
+      // Row containing BOTH post and story columns splits into two linked ideas.
+      if (hasStory && mappedType !== "story") {
+        const storyCfg = getPipelineContentType("story")!;
+        ideas.push({
+          ...base,
+          contentType: "story",
+          channels: channels.filter((c) => storyCfg.channels.includes(c as any)),
+          storyContent: rec.storyContent || null,
+          storyReference: rec.storyReference || null,
+          storyCreativeLink: rec.storyCreativeLink || null,
+        });
+      } else if (hasStory && mappedType === "story") {
+        // Single story row: attach story fields to the one idea.
+        if (ideas.length) {
+          Object.assign(ideas[0], {
+            storyContent: rec.storyContent || null,
+            storyReference: rec.storyReference || null,
+            storyCreativeLink: rec.storyCreativeLink || null,
+          });
+        }
+      }
+      if (!ideas.length && !errors.length) errors.push("Row has no importable content");
+      results.push({ rowNumber: r + 1, errors, ideas, raw: rec });
+    }
+    return { results };
+  };
+
+  app.get(
+    "/api/studio/import/template",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    (_req: Request, res: Response) => {
+      const example = [
+        "12/08/2026", "Post", "linkedin; instagram", "it_staffing",
+        "5 interview red flags", "Carousel-style tips post", "https://example.com/source",
+        "Hiring? Watch for these red flags…", "1080x1080 creative", "",
+        "Idea", "", "", "", "", "",
+      ];
+      const csv = [
+        IMPORT_TEMPLATE_HEADERS.join(","),
+        example.map((c) => (c.includes(",") ? `"${c}"` : c)).join(","),
+      ].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", 'attachment; filename="content-plan-template.csv"');
+      res.send(csv);
+    },
+  );
+
+  app.post(
+    "/api/studio/import/content-calendar/preview",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const csv = typeof req.body?.csv === "string" ? req.body.csv : "";
+        if (!csv.trim()) return res.status(400).json({ error: "csv content is required" });
+        const { headerError, results } = await parseImportRows(csv);
+        if (headerError) return res.status(400).json({ error: headerError });
+        const valid = results.filter((r) => !r.errors.length);
+        const invalid = results.filter((r) => r.errors.length);
+        res.json({
+          totalRows: results.length,
+          validCount: valid.length,
+          invalidCount: invalid.length,
+          ideaCount: valid.reduce((n, r) => n + r.ideas.length, 0),
+          rows: results.map((r) => ({
+            rowNumber: r.rowNumber,
+            errors: r.errors,
+            ideas: r.ideas,
+          })),
+        });
+      } catch (error: any) {
+        console.error("Import preview error:", error);
+        res.status(400).json({ error: error?.message || "Failed to preview import" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/studio/import/content-calendar/commit",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const csv = typeof req.body?.csv === "string" ? req.body.csv : "";
+        const projectId = typeof req.body?.projectId === "string" ? req.body.projectId : "";
+        const fileName = typeof req.body?.fileName === "string" ? req.body.fileName : "import.csv";
+        if (!csv.trim()) return res.status(400).json({ error: "csv content is required" });
+        const projErr = await assertPipelineProject(projectId, { forWrite: true });
+        if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
+        const { headerError, results } = await parseImportRows(csv);
+        if (headerError) return res.status(400).json({ error: headerError });
+        const valid = results.filter((r) => !r.errors.length);
+        const invalid = results.filter((r) => r.errors.length);
+        if (!valid.length) {
+          return res.status(400).json({ error: "No valid rows to import", invalidCount: invalid.length });
+        }
+        const batch = await storage.createStudioImportBatch({
+          projectId,
+          fileName,
+          rowCountValid: valid.length,
+          rowCountInvalid: invalid.length,
+          createdByUserId: req.session.userId,
+        } as any);
+        let created = 0;
+        for (const row of valid) {
+          const groupId = row.ideas.length > 1 ? crypto.randomUUID() : null;
+          for (const ideaData of row.ideas) {
+            await storage.createStudioContentIdea({
+              ...ideaData,
+              projectId,
+              groupId,
+              importBatchId: batch.id,
+              createdByUserId: req.session.userId,
+            } as any);
+            created++;
+          }
+        }
+        res.status(201).json({
+          batchId: batch.id,
+          createdIdeas: created,
+          validRows: valid.length,
+          invalidRows: invalid.length,
+        });
+      } catch (error: any) {
+        console.error("Import commit error:", error);
+        res.status(400).json({ error: error?.message || "Failed to commit import" });
+      }
+    },
+  );
+
+  app.get(
+    "/api/studio/import/batches",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const batches = await storage.getStudioImportBatches(
+          typeof req.query.projectId === "string" ? req.query.projectId : undefined,
+        );
+        res.json(batches);
+      } catch (error) {
+        console.error("List import batches error:", error);
+        res.status(500).json({ error: "Failed to fetch import batches" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/studio/import/:batchId/rollback",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const batch = await storage.getStudioImportBatch(req.params.batchId);
+        if (!batch) return res.status(404).json({ error: "Import batch not found" });
+        const projErr = await assertPipelineProject(batch.projectId, { forWrite: true });
+        if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
+        if (batch.rolledBackAt) {
+          return res.status(409).json({ error: "Batch already rolled back", code: "already_rolled_back" });
+        }
+        const archived = await storage.rollbackStudioImportBatch(batch.id);
+        res.json({ batchId: batch.id, archivedIdeas: archived });
+      } catch (error: any) {
+        console.error("Import rollback error:", error);
+        res.status(400).json({ error: error?.message || "Failed to roll back import" });
       }
     },
   );
@@ -17520,6 +18452,29 @@ export async function registerRoutes(
       err.riskFlags = flags;
       throw err;
     }
+    // Byline gate (Task #906): fires ONLY at publish/schedule time and ONLY
+    // when the content type's config requires a byline. Reviews are never
+    // author-gated anymore.
+    if (articleBylineRequired(article.contentType)) {
+      const authorProfileId = (article as any).authorProfileId;
+      const authorProfile = authorProfileId
+        ? await storage.getStudioAuthorProfile(authorProfileId)
+        : undefined;
+      const isComplete = !!(
+        authorProfile &&
+        (authorProfile as any).displayName?.trim() &&
+        (authorProfile as any).publicTitle?.trim() &&
+        (authorProfile as any).bio?.trim() &&
+        (authorProfile as any).photoUrl?.trim()
+      );
+      if (!isComplete) {
+        const err: any = new Error(
+          "This content type requires a complete author byline before publishing. Assign an author with byline name, public title, bio, and photo.",
+        );
+        err.code = "author_profile_incomplete";
+        throw err;
+      }
+    }
     const isFuture = !!opts.scheduledAt && opts.scheduledAt.getTime() > Date.now();
     const updates: any = isFuture
       ? { status: "scheduled", scheduledAt: opts.scheduledAt }
@@ -17530,6 +18485,8 @@ export async function registerRoutes(
     // public production base URL so links work for real subscribers.
     if (!isFuture) {
       void notifyNewContentSubscribers(article.id);
+      // Pipeline sync-back: parent idea (if any) → done.
+      void syncIdeaDoneForPublishedArticle(article.id);
     }
     return { updated, scheduled: isFuture };
   };
@@ -18619,24 +19576,10 @@ export async function registerRoutes(
           }
         }
 
-        // Gate: author profile must be complete before requesting sign-off.
-        // Compute freshly from actual fields rather than relying on stale column.
-        if (resolvedAuthorId) {
-          const authorProfile = await storage.getStudioAuthorProfile(resolvedAuthorId);
-          const isComplete = !!(
-            authorProfile &&
-            (authorProfile as any).displayName?.trim() &&
-            (authorProfile as any).publicTitle?.trim() &&
-            (authorProfile as any).bio?.trim() &&
-            (authorProfile as any).photoUrl?.trim()
-          );
-          if (!isComplete) {
-            return res.status(422).json({
-              error: "Author profile is incomplete. Ensure byline name, public title, bio, and photo are filled in before sending for sign-off.",
-              code: "author_profile_incomplete",
-            });
-          }
-        }
+        // Author-completeness gate REMOVED here (Task #906): reviews are never
+        // author-gated. The byline gate now fires only at publish time and only
+        // when the content type's `bylineRequired` config is true — see
+        // performPublish().
 
         const updates: any = { status: "pending_author" };
         if (resolvedAuthorId) updates.authorProfileId = resolvedAuthorId;

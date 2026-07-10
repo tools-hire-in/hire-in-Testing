@@ -20,6 +20,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Textarea } from "@/components/ui/textarea";
 import { Loader2, ChevronLeft, ChevronRight, Download, Sparkles, Plus, Calendar as CalIcon, Star, ImageIcon } from "lucide-react";
@@ -31,6 +38,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { StudioArticle, StudioOccasion, StudioContentIdea } from "@shared/schema";
+import { STUDIO_PIPELINE_CONTENT_TYPES } from "@shared/studioContent";
 import type { CanonicalSocialKit } from "@shared/studioAi";
 
 const OCCASION_CATEGORY_LABELS: Record<string, string> = {
@@ -189,11 +197,14 @@ function AIPlanDialog({
   );
 }
 
-// ---- In-context article creation from a calendar date ----
+// ---- In-context idea creation from a calendar date ----
+// Task #906 defect fix: this used to POST an article with the invalid
+// contentType "blog_post" (always a 400). Date-click now quick-creates a
+// content idea in the planning pipeline instead.
 function CreateOnDateButton({
   date,
   projectId,
-  onNavigate,
+  onNavigate: _onNavigate,
   onClose,
 }: {
   date: string | null;
@@ -202,41 +213,58 @@ function CreateOnDateButton({
   onClose: () => void;
 }) {
   const { toast } = useToast();
+  const [topic, setTopic] = useState("");
+  const [contentType, setContentType] = useState("article");
+
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/admin/studio/articles", {
+      const res = await apiRequest("POST", "/api/studio/content-ideas", {
         projectId: projectId ?? undefined,
-        title: `New article — ${date ?? ""}`,
-        contentType: "blog_post",
-        status: "draft",
+        topic: topic.trim(),
+        contentType,
+        channels: contentType === "article" ? ["website"] : ["linkedin"],
+        scheduledDate: date ?? undefined,
       });
-      if (!res.ok) {
-        const b = await res.json().catch(() => ({}));
-        throw new Error(b.error || "Failed to create article");
-      }
       return res.json();
     },
-    onSuccess: (data: any) => {
-      toast({ title: "Article created", description: "Opening editor…" });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      toast({ title: "Idea added to plan", description: `Scheduled for ${date ?? "later"}. Find it in the content pipeline.` });
       onClose();
-      onNavigate(`/admin/studio/articles/${data.id}/edit`);
     },
-    onError: (err: Error) => toast({ title: "Could not create article", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Could not create idea", description: err.message, variant: "destructive" }),
   });
 
   return (
-    <Button
-      variant="outline"
-      className="w-full"
-      onClick={() => createMutation.mutate()}
-      disabled={createMutation.isPending}
-      data-testid="button-create-new-on-date"
-    >
-      {createMutation.isPending
-        ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-        : <Plus className="mr-2 h-4 w-4" />}
-      Create new article for this date
-    </Button>
+    <div className="space-y-2 rounded-md border p-3">
+      <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Plan something for this date</p>
+      <Input
+        value={topic}
+        onChange={(e) => setTopic(e.target.value)}
+        placeholder="Topic, e.g. 5 interview red flags"
+        data-testid="input-create-on-date-topic"
+      />
+      <Select value={contentType} onValueChange={setContentType}>
+        <SelectTrigger data-testid="select-create-on-date-type"><SelectValue /></SelectTrigger>
+        <SelectContent>
+          {STUDIO_PIPELINE_CONTENT_TYPES.map((t) => (
+            <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => createMutation.mutate()}
+        disabled={createMutation.isPending || !topic.trim() || !projectId}
+        data-testid="button-create-new-on-date"
+      >
+        {createMutation.isPending
+          ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          : <Plus className="mr-2 h-4 w-4" />}
+        Add idea for this date
+      </Button>
+    </div>
   );
 }
 

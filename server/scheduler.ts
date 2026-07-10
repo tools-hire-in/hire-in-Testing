@@ -10,6 +10,7 @@ import { generateAttendanceReportRun, ensureRunForMonthAndNotify } from "./atten
 import { attendanceApprovalUrl, getPortalBaseUrl } from "./portalUrl";
 import { refreshRecentZips } from "./gsaRateService";
 import { runDailySweep } from "./complianceSweep";
+import { notifyUser as notifyStudioUser } from "./studioNotifications";
 
 function isLastDayOfMonth(): boolean {
   const today = new Date();
@@ -718,6 +719,35 @@ export function startScheduler() {
 
   // Belt-and-suspenders: also check on the 1st at 08:00 IST (kept for timezone correctness)
   cron.schedule("0 8 1 * *", processExpiredDeadlines, { timezone: "Asia/Kolkata" });
+
+  // ─── Studio T1: content-idea deadline reminders (Task #906) ────────────────
+  // Daily 09:00 IST: ideas due TOMORROW → in-app notification to the assignee
+  // via the studio notification stub (T3 promotes to the preference gateway).
+  cron.schedule("0 9 * * *", async () => {
+    try {
+      const { year, month, day } = getIstDateTime();
+      const today = new Date(Date.UTC(year, month - 1, day));
+      const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+      const dateStr = tomorrow.toISOString().slice(0, 10);
+      const dueIdeas = await storage.getStudioIdeasDueOn(dateStr);
+      const notifiable = dueIdeas.filter((i) => i.assignedToUserId);
+      if (!notifiable.length) return;
+      console.log(`[scheduler] Studio: ${notifiable.length} content idea(s) due ${dateStr} — notifying assignees...`);
+      for (const idea of notifiable) {
+        await notifyStudioUser({
+          userId: idea.assignedToUserId!,
+          event: "idea_due_soon",
+          message: `"${idea.topic}" is due tomorrow (${dateStr}).`,
+          linkPath: `/calendar?idea=${idea.id}`,
+          metadata: { ideaId: idea.id, dueDate: dateStr },
+        });
+      }
+    } catch (err) {
+      console.error("[scheduler] Studio idea deadline reminder error:", err);
+    }
+  }, {
+    timezone: "Asia/Kolkata",
+  });
 
   // ─── 25th-of-month: Manager Regularization Digest ───────────────────────────
   // Sends each manager a list of their pending regularization requests so they
