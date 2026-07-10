@@ -276,6 +276,13 @@ function DeckCard({
             </Button>
           )}
 
+          {/* Master: edit (super admin only) */}
+          {isMaster && isSuperAdmin && onEdit && (
+            <Button size="sm" variant="outline" className="h-7 flex-1 text-xs" onClick={onEdit} data-testid={`button-edit-master-${deck.id}`}>
+              <Edit3 className="mr-1 h-3 w-3" />Edit
+            </Button>
+          )}
+
           {/* Client draft: edit */}
           {isClient && isDraft && onEdit && (
             <Button size="sm" variant="outline" className="h-7 flex-1 text-xs" onClick={onEdit} data-testid={`button-edit-deck-${deck.id}`}>
@@ -849,6 +856,95 @@ function SubmitApprovalModal({
   );
 }
 
+// ── New Master Modal ──────────────────────────────────────────────────────────
+
+function NewMasterModal({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated: (deck: BdDeck) => void;
+}) {
+  const [title, setTitle] = useState("");
+  const [domain, setDomain] = useState("healthcare");
+  const [version, setVersion] = useState("v1");
+  const [description, setDescription] = useState("");
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  const createMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("POST", "/api/bd/decks", {
+        title: title.trim(),
+        domain,
+        version: version.trim() || "v1",
+        description: description.trim() || null,
+        slides: [],
+      }).then((r: any) => r.json()),
+    onSuccess: (deck: BdDeck) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bd/decks"] });
+      toast({ title: "Master template created!", description: "Add slides in the editor." });
+      setTitle(""); setDomain("healthcare"); setVersion("v1"); setDescription("");
+      onCreated(deck);
+    },
+    onError: () => toast({ title: "Failed to create master", variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) { setTitle(""); setDomain("healthcare"); setVersion("v1"); setDescription(""); onClose(); } }}>
+      <DialogContent className="max-w-md" data-testid="modal-new-master">
+        <DialogHeader>
+          <DialogTitle>New Master Template</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="master-title">Title <span className="text-destructive">*</span></Label>
+            <Input id="master-title" value={title} onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Healthcare Staffing — Hire'in Solutions" data-testid="input-master-title" autoFocus />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Domain <span className="text-destructive">*</span></Label>
+              <Select value={domain} onValueChange={setDomain}>
+                <SelectTrigger data-testid="select-master-domain"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="healthcare">Healthcare</SelectItem>
+                  <SelectItem value="it">IT</SelectItem>
+                  <SelectItem value="engineering">Engineering</SelectItem>
+                  <SelectItem value="professional_services">Prof. Services</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="master-version">Version</Label>
+              <Input id="master-version" value={version} onChange={(e) => setVersion(e.target.value)}
+                placeholder="v1" data-testid="input-master-version" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="master-description">Description <span className="text-muted-foreground text-xs">(optional)</span></Label>
+            <Textarea id="master-description" value={description} onChange={(e) => setDescription(e.target.value)}
+              placeholder="What is this master deck for? Who is it pitched to?" className="min-h-[70px] resize-none text-sm"
+              data-testid="input-master-description" />
+          </div>
+          <div className="rounded-md bg-blue-50 border border-blue-100 px-3 py-2 text-xs text-blue-700">
+            The deck will be created with no slides. You'll be taken to the editor to add content.
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => { setTitle(""); setDomain("healthcare"); setVersion("v1"); setDescription(""); onClose(); }}>Cancel</Button>
+          <Button disabled={!title.trim() || createMutation.isPending} onClick={() => createMutation.mutate()} data-testid="button-create-master-confirm">
+            {createMutation.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Plus className="mr-1 h-4 w-4" />}
+            Create & Edit
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Domain Tab Content ────────────────────────────────────────────────────────
 
 function DomainTabContent({
@@ -862,6 +958,7 @@ function DomainTabContent({
   onSubmitApproval,
   onApprove,
   onRevoke,
+  onNewMaster,
 }: {
   domain: string | null; // null = all
   allDecks: BdDeck[];
@@ -873,6 +970,7 @@ function DomainTabContent({
   onSubmitApproval: (d: BdDeck) => void;
   onApprove: (d: BdDeck) => void;
   onRevoke: (d: BdDeck) => void;
+  onNewMaster?: () => void;
 }) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
@@ -936,6 +1034,11 @@ function DomainTabContent({
           <LayoutTemplate className="h-4 w-4 text-primary" />
           <h2 className="text-sm font-semibold">Master Templates</h2>
           <span className="text-xs text-muted-foreground">— read-only reference decks{isSuperAdmin ? "" : " (super admin edits only)"}</span>
+          {isSuperAdmin && onNewMaster && (
+            <Button size="sm" variant="outline" className="ml-auto h-7 text-xs" onClick={onNewMaster} data-testid="button-new-master">
+              <Plus className="mr-1 h-3 w-3" />New Master Template
+            </Button>
+          )}
         </div>
 
         {masters.length === 0 && (
@@ -1009,6 +1112,7 @@ export default function BdDecksView() {
   const [editingDeck, setEditingDeck] = useState<BdDeck | null>(null);
   const [cloneTarget, setCloneTarget] = useState<BdDeck | null>(null);
   const [submitTarget, setSubmitTarget] = useState<BdDeck | null>(null);
+  const [newMasterOpen, setNewMasterOpen] = useState(false);
 
   const { data: decks = [], isLoading } = useQuery<BdDeck[]>({
     queryKey: ["/api/bd/decks"],
@@ -1070,6 +1174,7 @@ export default function BdDecksView() {
     onSubmitApproval: (d: BdDeck) => setSubmitTarget(d),
     onApprove: (d: BdDeck) => approveMutation.mutate(d.id),
     onRevoke: (d: BdDeck) => revokeMutation.mutate(d.id),
+    onNewMaster: isSuperAdmin ? () => setNewMasterOpen(true) : undefined,
   };
 
   return (
@@ -1130,6 +1235,11 @@ export default function BdDecksView() {
         open={!!submitTarget}
         onClose={() => setSubmitTarget(null)}
         onSubmitted={() => setSubmitTarget(null)}
+      />
+      <NewMasterModal
+        open={newMasterOpen}
+        onClose={() => setNewMasterOpen(false)}
+        onCreated={(newDeck) => { setNewMasterOpen(false); setEditingDeck(newDeck); }}
       />
     </div>
   );
