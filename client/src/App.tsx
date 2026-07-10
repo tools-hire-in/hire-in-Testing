@@ -79,6 +79,7 @@ const PolicyGate = lazy(() => import("@/pages/admin/PolicyGate"));
 const NewHire = lazy(() => import("@/pages/admin/NewHire"));
 const ContractsHub = lazy(() => import("@/pages/admin/finance/ContractsHub"));
 const Studio = lazy(() => import("@/pages/admin/studio/Studio"));
+const StudioGuide = lazy(() => import("@/pages/admin/studio/Guide"));
 const StudioArticles = lazy(() => import("@/pages/admin/studio/Articles"));
 const StudioLiveContent = lazy(() => import("@/pages/admin/studio/LiveContent"));
 const StudioAuthors = lazy(() => import("@/pages/admin/studio/Authors"));
@@ -370,6 +371,7 @@ function PublicRouter() {
       <Route path="/admin/studio/analytics">{() => <LegacyStudio><StudioAnalytics /></LegacyStudio>}</Route>
       <Route path="/admin/studio/access">{() => <LegacyStudio><StudioAccess /></LegacyStudio>}</Route>
       <Route path="/admin/studio/brand-kit">{() => <LegacyStudio><StudioBrandKit /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/guide">{() => <LegacyStudio><StudioGuide /></LegacyStudio>}</Route>
       <Route path="/admin/studio">{() => <LegacyStudio><Studio /></LegacyStudio>}</Route>
 
       {/* Studio v2 — standalone /studio shell (Task #906, studio_v2_enabled) */}
@@ -395,6 +397,7 @@ function PublicRouter() {
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
       <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
       <Route path="/studio/access">{() => <StudioV2><StudioAccess /></StudioV2>}</Route>
+      <Route path="/studio/guide">{() => <StudioV2><StudioGuide /></StudioV2>}</Route>
       <Route path="/studio">{() => <StudioV2><Studio /></StudioV2>}</Route>
 
       {/* Public contract signing */}
@@ -538,6 +541,7 @@ function EmployeeRouter() {
       <Route path="/admin/studio/analytics">{() => <LegacyStudio><StudioAnalytics /></LegacyStudio>}</Route>
       <Route path="/admin/studio/access">{() => <LegacyStudio><StudioAccess /></LegacyStudio>}</Route>
       <Route path="/admin/studio/brand-kit">{() => <LegacyStudio><StudioBrandKit /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/guide">{() => <LegacyStudio><StudioGuide /></LegacyStudio>}</Route>
       <Route path="/admin/studio">{() => <LegacyStudio><Studio /></LegacyStudio>}</Route>
 
       {/* Studio v2 — standalone /studio shell (Task #906, studio_v2_enabled) */}
@@ -563,6 +567,7 @@ function EmployeeRouter() {
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
       <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
       <Route path="/studio/access">{() => <StudioV2><StudioAccess /></StudioV2>}</Route>
+      <Route path="/studio/guide">{() => <StudioV2><StudioGuide /></StudioV2>}</Route>
       <Route path="/studio">{() => <StudioV2><Studio /></StudioV2>}</Route>
 
       {/* Public contract signing */}

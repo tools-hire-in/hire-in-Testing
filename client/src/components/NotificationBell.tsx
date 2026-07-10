@@ -12,6 +12,7 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import { StudioTip } from "@/components/studio/StudioTip";
 
 interface Notification {
   id: string;
@@ -108,6 +109,16 @@ export function NotificationBell() {
           )}
         </div>
         <DropdownMenuSeparator />
+        {unreadCount > 5 && (
+          <div className="px-2 py-1.5">
+            <StudioTip
+              id="notifications-overload"
+              title="Drowning in notifications?"
+              body="You can choose which events notify you — trim the noise in your notification preferences."
+              action={{ label: "Notification settings", href: "/admin/hr/profile?tab=notifications" }}
+            />
+          </div>
+        )}
         {notifications.length === 0 ? (
           <div className="px-3 py-6 text-center text-sm text-muted-foreground" data-testid="text-no-notifications">
             No notifications

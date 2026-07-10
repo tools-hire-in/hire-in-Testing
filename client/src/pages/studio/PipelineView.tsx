@@ -8,6 +8,8 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useStudioProject } from "@/pages/admin/studio/useStudioProject";
 import { ProjectSwitcher } from "@/pages/admin/studio/ProjectSwitcher";
 import { studioPath } from "@/lib/studioBase";
+import { StudioTip } from "@/components/studio/StudioTip";
+import { Link } from "wouter";
 import {
   STUDIO_PIPELINE_CONTENT_TYPES,
   STUDIO_IDEA_STATUSES,
@@ -1201,6 +1203,39 @@ export default function PipelineView({ lens }: { lens: Lens }) {
           <>
             {lens === "calendar" && (
               <div className="space-y-3">
+                {(() => {
+                  const monthPrefix = `${month.getFullYear()}-${String(month.getMonth() + 1).padStart(2, "0")}`;
+                  const monthIdeas = scheduled.filter((i) => (i.scheduledDate ?? "").startsWith(monthPrefix));
+                  return (
+                    <>
+                      {monthIdeas.length === 0 && (
+                        <StudioTip
+                          id="calendar-empty-month"
+                          title="Your calendar is empty"
+                          body="Click any date to plan a content idea — or create a Campaign and let AI draft the whole month's schedule for you."
+                          action={{ label: "Create a Campaign", href: studioPath("/campaigns") }}
+                        />
+                      )}
+                      {(ideas?.length ?? 0) === 1 && (
+                        <StudioTip
+                          id="calendar-first-idea"
+                          title="Great start"
+                          body="Ideas stay as ideas until someone Approves them. Assign yourself or a reviewer and move it to review."
+                        />
+                      )}
+                      {(ideas?.length ?? 0) === 0 && (
+                        <p className="text-center text-sm text-muted-foreground">
+                          New to the Studio?{" "}
+                          <Link href={studioPath("/guide")}>
+                            <span className="cursor-pointer font-medium text-primary hover:underline" data-testid="link-calendar-playbook">
+                              Read the Studio Playbook →
+                            </span>
+                          </Link>
+                        </p>
+                      )}
+                    </>
+                  );
+                })()}
                 <div className="flex items-center gap-2">
                   <Button size="icon" variant="outline" className="h-8 w-8" onClick={() => setMonth(new Date(month.getFullYear(), month.getMonth() - 1, 1))} data-testid="button-prev-month">
                     <ChevronLeft className="h-4 w-4" />

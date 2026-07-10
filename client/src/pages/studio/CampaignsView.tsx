@@ -6,6 +6,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useStudioProject } from "@/pages/admin/studio/useStudioProject";
 import { studioPath } from "@/lib/studioBase";
+import { StudioTip } from "@/components/studio/StudioTip";
 import {
   STUDIO_CAMPAIGN_STATUSES,
   STUDIO_FUNNEL_STAGES,
@@ -433,9 +434,28 @@ function CampaignDetail({ id }: { id: string }) {
 
   const counts = campaign.ideaCounts ?? { total: 0, done: 0 };
   const pct = counts.total ? Math.round((counts.done / counts.total) * 100) : 0;
+  const todayIso = new Date().toISOString().slice(0, 10);
+  const overdueCount = (campaign.ideas ?? []).filter(
+    (i: any) => i.dueDate && i.dueDate < todayIso && i.status !== "done",
+  ).length;
 
   return (
     <div className="space-y-4">
+      {(campaign.ideas?.length ?? 0) === 0 && (
+        <StudioTip
+          id="campaign-no-ideas"
+          title="This campaign has no content yet"
+          body='Hit "AI-propose plan" — the AI drafts a full content plan from your brief, and nothing is added until you approve it.'
+        />
+      )}
+      {overdueCount >= 3 && (
+        <StudioTip
+          id="campaign-overdue"
+          variant="warning"
+          title={`${overdueCount} items are overdue`}
+          body="Overdue items pile up fast. Reschedule what slipped, or drop what no longer matters — a realistic calendar beats an ambitious one."
+        />
+      )}
       <div className="flex items-center gap-2">
         <Link href={studioPath("/campaigns")}>
           <Button variant="ghost" size="sm" data-testid="button-back-campaigns">
@@ -654,7 +674,12 @@ export default function CampaignsView() {
       ) : !campaigns?.length ? (
         <Card>
           <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            No campaigns yet. Create one to start planning coordinated content.
+            <p>No campaigns yet. Create one to start planning coordinated content.</p>
+            <Link href={studioPath("/guide")}>
+              <span className="mt-2 inline-block cursor-pointer font-medium text-primary hover:underline" data-testid="link-campaigns-playbook">
+                Read the Studio Playbook →
+              </span>
+            </Link>
           </CardContent>
         </Card>
       ) : (

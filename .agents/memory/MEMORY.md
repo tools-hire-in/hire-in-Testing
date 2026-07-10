@@ -51,3 +51,4 @@
 - [Salary structure engine](salary-structure-engine.md) — pure engine in server/salaryEngine.ts; shared types in shared/salaryEngineTypes.ts; slip components stored as JSONB; grossSalary in run rows may be post-LOP — audit before passing to engine.
 - [Studio occasions & idea cards](studio-occasions-idea-cards.md) — occasionPreferences opt-in (NULL=no curated, custom always show); seed ends 2027; ideas live only as calendar chips + IdeaCardGallery.
 - [Studio AI propose→confirm](studio-ai-propose-confirm.md) — bulk AI generation must be preview (no writes) then confirm (re-validate all rows, then insert as suggested).
+- [App.tsx duplicate route blocks](app-tsx-duplicate-route-blocks.md) — studio/legacy route lists exist twice; new routes need replace_all into both blocks or the page 404s in one context.

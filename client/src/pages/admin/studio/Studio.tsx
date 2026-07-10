@@ -43,6 +43,9 @@ import { useToast } from "@/hooks/use-toast";
 import type { StudioProject, StudioBrandSettings } from "@shared/schema";
 import { ArticlesPanel } from "./ArticlesPanel";
 import { AuthorsPanel } from "./AuthorsPanel";
+import { StudioOnboardingChecklist } from "@/components/studio/StudioOnboardingChecklist";
+import { StudioTip } from "@/components/studio/StudioTip";
+import { studioPath } from "@/lib/studioBase";
 import { RoutingSettings } from "./RoutingSettings";
 import { NewsletterSettings } from "./NewsletterSettings";
 import { LaunchControlPanel } from "./LaunchControlPanel";
@@ -360,6 +363,11 @@ export default function Studio() {
     queryKey: ["/api/admin/studio/brand"],
   });
 
+  const { data: brandVoice } = useQuery<{ config: Record<string, unknown> | null }>({
+    queryKey: ["/api/studio/projects", selectedProjectId, "brand-voice"],
+    enabled: !!selectedProjectId,
+  });
+
   const selectedProject = useMemo(
     () => projects?.find((p) => p.id === selectedProjectId),
     [projects, selectedProjectId],
@@ -440,6 +448,20 @@ export default function Studio() {
               </div>
             ) : (
               <>
+                {selectedProjectId && (
+                  <StudioOnboardingChecklist
+                    projectId={selectedProjectId}
+                    publishedCount={stats.published}
+                  />
+                )}
+                {brandVoice && !brandVoice.config && (
+                  <StudioTip
+                    id="dashboard-brand-voice"
+                    title="AI is running on default voice"
+                    body="Configure your Brand Voice in Settings to make every generated piece sound like your brand — not like everyone else's AI."
+                    action={{ label: "Configure Brand Voice", href: studioPath("/settings/brand-voice") }}
+                  />
+                )}
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                   <StatCard
                     label="Total Articles"
@@ -494,10 +516,14 @@ export default function Studio() {
                       ))}
                     </div>
                     {stats.totalArticles === 0 && (
-                      <p className="mt-4 text-center text-sm text-muted-foreground">
-                        No articles yet for {selectedProject?.name ?? "this project"}. Content
-                        creation tools arrive in upcoming releases.
-                      </p>
+                      <div className="mt-4 text-center text-sm text-muted-foreground">
+                        <p>No articles yet for {selectedProject?.name ?? "this project"}.</p>
+                        <Link href={studioPath("/guide")}>
+                          <span className="mt-1 inline-block cursor-pointer font-medium text-primary hover:underline" data-testid="link-empty-playbook">
+                            Read the Studio Playbook →
+                          </span>
+                        </Link>
+                      </div>
                     )}
                   </CardContent>
                 </Card>

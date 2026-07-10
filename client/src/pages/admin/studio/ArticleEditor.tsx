@@ -6,6 +6,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { AIErrorBanner } from "@/components/studio/AIErrorBanner";
+import { StudioTip } from "@/components/studio/StudioTip";
+import { studioPath } from "@/lib/studioBase";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { Button } from "@/components/ui/button";
@@ -162,6 +164,11 @@ function ArticleEditorInner({ id }: { id: string }) {
       "/api/admin/studio/authors",
       { projectId: article?.projectId ?? "" },
     ],
+    enabled: !!article?.projectId,
+  });
+
+  const { data: editorBrandVoice } = useQuery<{ config: Record<string, unknown> | null }>({
+    queryKey: ["/api/studio/projects", article?.projectId, "brand-voice"],
     enabled: !!article?.projectId,
   });
 
@@ -1401,6 +1408,19 @@ function ArticleEditorInner({ id }: { id: string }) {
           </DialogHeader>
 
           <div className="space-y-4">
+            <StudioTip
+              id="editor-generation-brief"
+              title="Better briefs, better drafts"
+              body="The more specific your topic and key points, the better the draft. Include the audience, the angle, and any facts the AI must keep."
+            />
+            {editorBrandVoice && !editorBrandVoice.config && (
+              <StudioTip
+                id="editor-default-voice"
+                title="No Brand Voice configured"
+                body="This draft will use a generic default voice. Set up your Brand Voice so drafts sound like your brand from the first word."
+                action={{ label: "Configure Brand Voice", href: studioPath("/settings/brand-voice") }}
+              />
+            )}
             <div className="grid grid-cols-2 gap-2">
               <button
                 type="button"

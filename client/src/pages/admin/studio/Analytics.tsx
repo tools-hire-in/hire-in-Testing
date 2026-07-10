@@ -34,6 +34,7 @@ import {
 import type { StudioProject } from "@shared/schema";
 import { INSIGHT_REACTIONS, insightCategoryLabel } from "@shared/insights";
 import { useStudioProject } from "./useStudioProject";
+import { StudioTip } from "@/components/studio/StudioTip";
 
 interface StudioAnalytics {
   range: { dateFrom: string | null; dateTo: string | null };
@@ -148,6 +149,11 @@ export default function StudioAnalytics() {
   return (
     <AdminLayout>
       <div className="space-y-6">
+        <StudioTip
+          id="analytics-first-visit"
+          title="How to read this page"
+          body="Throughput shows how fast content moves through your pipeline; engagement shows how readers respond once it's live. Check weekly — trends matter more than single numbers."
+        />
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">

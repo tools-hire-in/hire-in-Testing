@@ -26,6 +26,7 @@ import {
 import { Star } from "lucide-react";
 import {
   ArrowLeft,
+  BookOpen,
   CalendarDays,
   ChevronDown,
   Clapperboard,
@@ -101,6 +102,12 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
       label: "Outreach",
       icon: Send,
       active: location.startsWith(studioPath("/outreach")),
+    },
+    {
+      href: studioPath("/guide"),
+      label: "Guide",
+      icon: BookOpen,
+      active: location.startsWith(studioPath("/guide")),
     },
     ...(canManageAuthors
       ? [{
