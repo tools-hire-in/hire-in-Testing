@@ -123,6 +123,7 @@ import { registerContractRoutes } from "./contractRoutes";
 import { registerPraiseRoutes, seedPraiseBadgeTypes } from "./praiseRoutes";
 import { registerPolicySigningRoutes } from "./policySigningRoutes";
 import { registerAttendanceReportRoutes } from "./attendanceReportRoutes";
+import { registerBdDecksRoutes } from "./bdDecksRoutes";
 import { registerReleaseNotesRoutes } from "./releaseNotesRoutes";
 import { registerHelpDeskRoutes } from "./helpDeskRoutes";
 import { registerSalaryAdvanceRoutes, applyAdvanceRecoveriesForRun, applyCreditsForRun } from "./salaryAdvanceRoutes";
@@ -24609,6 +24610,9 @@ export async function registerRoutes(
       res.status(500).json({ error: err?.message || "Failed to generate BD template" });
     }
   });
+
+  // BD Pitch Deck Library routes
+  registerBdDecksRoutes(app);
 
   // POST /api/studio/bd/save-as-idea — save BD output as a Studio content idea
   app.post("/api/studio/bd/save-as-idea", requireAuth, requireBdAgent, async (req: Request, res: Response) => {

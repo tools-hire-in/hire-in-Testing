@@ -4404,3 +4404,52 @@ export type BdConversation = typeof bdConversations.$inferSelect;
 export type InsertBdConversation = z.infer<typeof insertBdConversationSchema>;
 export type BdMessage = typeof bdMessages.$inferSelect;
 export type InsertBdMessage = z.infer<typeof insertBdMessageSchema>;
+
+// ---------------------------------------------------------------------------
+// BD Pitch Deck Library
+// Versioned pitch decks (master templates + client-specific clones).
+// Applied via direct SQL script: scripts/apply-bd-decks-tables.ts
+// ---------------------------------------------------------------------------
+
+export const bdDecks = pgTable("bd_decks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: varchar("title", { length: 300 }).notNull(),
+  domain: varchar("domain", { length: 50 }).notNull().default("healthcare"),
+  deckType: varchar("deck_type", { length: 20 }).notNull().default("master"),
+  parentId: varchar("parent_id"),
+  version: varchar("version", { length: 20 }).notNull().default("v1"),
+  clientName: varchar("client_name", { length: 200 }),
+  status: varchar("status", { length: 30 }).notNull().default("draft"),
+  description: text("description"),
+  changesSummary: text("changes_summary"),
+  slides: jsonb("slides").notNull().default([]),
+  createdBy: varchar("created_by"),
+  approvedBy: varchar("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("bd_decks_domain_idx").on(t.domain),
+  index("bd_decks_deck_type_idx").on(t.deckType),
+  index("bd_decks_status_idx").on(t.status),
+  index("bd_decks_parent_id_idx").on(t.parentId),
+]);
+
+export const insertBdDeckSchema = createInsertSchema(bdDecks).omit({ id: true, createdAt: true, updatedAt: true });
+export type BdDeck = typeof bdDecks.$inferSelect;
+export type InsertBdDeck = z.infer<typeof insertBdDeckSchema>;
+
+// BD Deck Audit Log — every significant action on a deck is recorded here
+export const bdDeckAuditLog = pgTable("bd_deck_audit_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  deckId: varchar("deck_id").notNull(),
+  action: varchar("action", { length: 50 }).notNull(),
+  actorId: varchar("actor_id"),
+  actorEmail: varchar("actor_email", { length: 200 }),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("bd_deck_audit_deck_idx").on(t.deckId, t.createdAt),
+]);
+
+export type BdDeckAuditLog = typeof bdDeckAuditLog.$inferSelect;
