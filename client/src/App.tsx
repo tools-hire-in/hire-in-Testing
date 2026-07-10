@@ -103,6 +103,9 @@ const StudioPipelineView = lazy(() => import("@/pages/studio/PipelineView"));
 const StudioCampaignsView = lazy(() => import("@/pages/studio/CampaignsView"));
 const StudioBrandVoiceView = lazy(() => import("@/pages/studio/BrandVoiceView"));
 const StudioOutreachView = lazy(() => import("@/pages/studio/OutreachView"));
+const StudioBdAgentView = lazy(() => import("@/pages/studio/BdAgentView"));
+const StudioBdTemplatesView = lazy(() => import("@/pages/studio/BdTemplatesView"));
+const StudioBdGuideView = lazy(() => import("@/pages/studio/BdGuideView"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
 const Communications = lazy(() => import("@/pages/admin/Communications"));
@@ -393,6 +396,9 @@ function PublicRouter() {
       <Route path="/studio/campaigns/:id">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
       <Route path="/studio/campaigns">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
       <Route path="/studio/outreach">{() => <StudioV2><StudioOutreachView /></StudioV2>}</Route>
+      <Route path="/studio/bd-agent">{() => <StudioV2><StudioBdAgentView /></StudioV2>}</Route>
+      <Route path="/studio/bd-templates">{() => <StudioV2><StudioBdTemplatesView /></StudioV2>}</Route>
+      <Route path="/studio/bd-guide">{() => <StudioV2><StudioBdGuideView /></StudioV2>}</Route>
       <Route path="/studio/settings/brand-voice">{() => <StudioV2><StudioBrandVoiceView /></StudioV2>}</Route>
       <Route path="/studio/settings/templates">{() => <StudioV2><StudioTemplateSettings /></StudioV2>}</Route>
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
@@ -564,6 +570,9 @@ function EmployeeRouter() {
       <Route path="/studio/campaigns/:id">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
       <Route path="/studio/campaigns">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
       <Route path="/studio/outreach">{() => <StudioV2><StudioOutreachView /></StudioV2>}</Route>
+      <Route path="/studio/bd-agent">{() => <StudioV2><StudioBdAgentView /></StudioV2>}</Route>
+      <Route path="/studio/bd-templates">{() => <StudioV2><StudioBdTemplatesView /></StudioV2>}</Route>
+      <Route path="/studio/bd-guide">{() => <StudioV2><StudioBdGuideView /></StudioV2>}</Route>
       <Route path="/studio/settings/brand-voice">{() => <StudioV2><StudioBrandVoiceView /></StudioV2>}</Route>
       <Route path="/studio/settings/templates">{() => <StudioV2><StudioTemplateSettings /></StudioV2>}</Route>
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>

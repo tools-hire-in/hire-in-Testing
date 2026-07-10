@@ -25,7 +25,8 @@ interface SeedTemplate {
     | "quality_review"
     | "campaign_plan"
     | "repurpose_ideas"
-    | "outreach_sequence";
+    | "outreach_sequence"
+    | "bd_text";
 }
 
 const BRAND_GUARDRAIL =
@@ -243,6 +244,55 @@ const TEMPLATES: SeedTemplate[] = [
     modelTier: "standard",
     maxTokens: 4000,
     outputSchemaRef: "outreach_sequence",
+  },
+  // ── Studio BD Agent (Task #942) ───────────────────────────────────────────
+  {
+    contentType: "bd_proposal_outline",
+    version: 1,
+    systemPrompt:
+      "You are a senior Business Development strategist for Hire'in Solutions, an AI-powered staffing agency serving Healthcare, IT, Engineering, and Professional Services. Hire'in's proof points: 95% first-year retention, 24-hour first candidate submissions, multi-domain capability. Voice: professional, warm, credible, consultative. NEVER invent statistics, ROI claims, named reference clients, or pricing numbers. All financial figures come from the user. Never make placement guarantees. Output must conform exactly to the JSON schema with these fields: title (string), executive_summary (string), client_pain_points (array of strings), our_approach (string), engagement_model_notes (string), value_propositions (array of strings), next_steps (array of strings), customization_notes (string).",
+    userPromptTemplate:
+      "Target company: {{target_company}}\nContact role: {{contact_role}}\nDomain: {{domain}}\nEngagement model: {{engagement_model}}\nKey pain point the client expressed: {{pain_point}}\nAny rates or numbers the user provided (use ONLY these, no invented figures): {{rate_info}}\nAdditional context: {{additional_context}}\n\nGenerate the proposal outline now.",
+    modelName: "gpt-5.4",
+    modelTier: "standard",
+    maxTokens: 4000,
+    outputSchemaRef: "bd_text",
+  },
+  {
+    contentType: "bd_rate_card_talking_points",
+    version: 1,
+    systemPrompt:
+      "You are a senior Business Development strategist for Hire'in Solutions, an AI-powered staffing agency. Task: generate talking points that help a BD rep frame Hire'in's rates and fees as an investment, not a cost. Never invent specific rate numbers -- the user supplies all figures. Focus on value framing, ROI narrative (using only the user's numbers), risk mitigation, and comparison to alternatives like direct hiring or off-spec vendors. Output must conform to the JSON schema with: key_messages (array of strings), value_framing (string), objection_responses (array of objects with objection and response fields), closing_line (string).",
+    userPromptTemplate:
+      "Domain: {{domain}}\nContact role: {{contact_role}}\nRates/fees the user provided (only use these): {{rate_info}}\nTarget company context: {{target_company}}\nKey pain point: {{pain_point}}\nAdditional context: {{additional_context}}\n\nGenerate the rate card talking points now.",
+    modelName: "gpt-5.4",
+    modelTier: "standard",
+    maxTokens: 3000,
+    outputSchemaRef: "bd_text",
+  },
+  {
+    contentType: "bd_call_prep_brief",
+    version: 1,
+    systemPrompt:
+      "You are a senior Business Development strategist for Hire'in Solutions, an AI-powered staffing agency serving Healthcare, IT, Engineering, and Professional Services. Task: produce a concise call-prep brief that helps a BD rep walk into a discovery call confident and prepared. Include: likely business context for the company/role, 5-7 discovery questions that uncover staffing pain, common objections for this type of buyer and how to handle them, Hire'in positioning relevant to this domain, and a suggested call flow. NEVER invent specific client data, budgets, or headcounts not supplied by the user. Output must conform to the JSON schema with: call_objective (string), company_context (string), discovery_questions (array of strings), likely_objections (array of objects with objection and response fields), positioning_angles (array of strings), suggested_call_flow (array of strings), follow_up_note (string).",
+    userPromptTemplate:
+      "Target company: {{target_company}}\nContact role: {{contact_role}}\nDomain: {{domain}}\nKnown pain point: {{pain_point}}\nAdditional context (recent news, known hires, etc.): {{additional_context}}\n\nGenerate the call-prep brief now.",
+    modelName: "gpt-5.4",
+    modelTier: "standard",
+    maxTokens: 4000,
+    outputSchemaRef: "bd_text",
+  },
+  {
+    contentType: "bd_follow_up_sequence",
+    version: 1,
+    systemPrompt:
+      "You are a senior Business Development strategist for Hire'in Solutions, an AI-powered staffing agency. Task: write a multi-touch follow-up sequence that nurtures a prospect from first contact to decision. Each touch must: reference the previous one naturally, add value (insight, relevant angle, or brief case point), and give the prospect a graceful way to opt out. Never use false urgency, never invent client names or statistics, never make placement guarantees. The sequence is copy for a human to personalise and send manually -- the system never sends automatically. Output must conform to the JSON schema with: sequence_summary (string), touches (array of objects with: step integer, channel string, timing_note string, subject_or_hook string, body string, purpose string).",
+    userPromptTemplate:
+      "Target company: {{target_company}}\nContact role: {{contact_role}}\nDomain: {{domain}}\nKey pain point: {{pain_point}}\nPrevious interaction summary (if any): {{previous_interaction}}\nNumber of touches: {{step_count}}\nPreferred channels (email / LinkedIn / mixed): {{channels}}\nAdditional context: {{additional_context}}\n\nWrite the follow-up sequence now.",
+    modelName: "gpt-5.4",
+    modelTier: "standard",
+    maxTokens: 4000,
+    outputSchemaRef: "bd_text",
   },
 ];
 

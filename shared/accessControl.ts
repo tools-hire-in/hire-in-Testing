@@ -309,6 +309,9 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "payroll.bulkRun.generate": ["super_admin", "admin", "hr", "executive"],
   "payroll.executiveDashboard": ["super_admin", "admin", "hr", "executive", "finance"],
   "payroll.statutoryExport": ["super_admin", "admin", "hr", "executive", "finance"],
+  // Studio BD Agent (Task #942) — gated to super_admin / admin / hr only.
+  "studio.bd_agent": ["super_admin", "admin", "hr"],
+  "studio.bd_agent.templates": ["super_admin", "admin", "hr"],
 };
 
 // ============================================================================

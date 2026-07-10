@@ -27,9 +27,11 @@ import { Star } from "lucide-react";
 import {
   ArrowLeft,
   BookOpen,
+  Briefcase,
   CalendarDays,
   ChevronDown,
   Clapperboard,
+  FileText,
   LayoutDashboard,
   LogOut,
   Megaphone,
@@ -103,11 +105,33 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
       icon: Send,
       active: location.startsWith(studioPath("/outreach")),
     },
+    ...(can("studio.bd_agent")
+      ? [
+          {
+            href: studioPath("/bd-agent"),
+            label: "BD Agent",
+            icon: Briefcase,
+            active: location.startsWith(studioPath("/bd-agent")),
+          },
+          {
+            href: studioPath("/bd-templates"),
+            label: "BD Templates",
+            icon: FileText,
+            active: location.startsWith(studioPath("/bd-templates")),
+          },
+          {
+            href: studioPath("/bd-guide"),
+            label: "BD Guide",
+            icon: BookOpen,
+            active: location.startsWith(studioPath("/bd-guide")) && !location.startsWith(studioPath("/guide")),
+          },
+        ]
+      : []),
     {
       href: studioPath("/guide"),
       label: "Guide",
       icon: BookOpen,
-      active: location.startsWith(studioPath("/guide")),
+      active: location === studioPath("/guide") || (location.startsWith(studioPath("/guide")) && !location.startsWith(studioPath("/bd-guide"))),
     },
     ...(canManageAuthors
       ? [{

@@ -85,7 +85,10 @@ import {
   generateCampaignPlan,
   generateRepurposeIdeas,
   generateOutreachSequence,
+  generateBdTemplate,
+  runBdAgentChat,
 } from "./services/aiDraftService";
+import { bdConversations, bdMessages } from "@shared/schema";
 import { z } from "zod";
 // express-rate-limit kept for other potential uses; verify endpoint uses a
 // custom sliding-window implementation (see slidingWindowVerifyLimiter below).
@@ -23826,6 +23829,259 @@ export async function registerRoutes(
     } catch (error) {
       console.error("PATCH /api/payroll/employees/:id/payroll-flags:", error);
       res.status(500).json({ error: "Failed to update payroll flags" });
+    }
+  });
+
+  // ============================================================================
+  // Studio BD Agent (Task #942)
+  // Chat + template generation restricted to super_admin / admin / hr.
+  // Tables: bd_conversations, bd_messages (applied via scripts/apply-bd-agent-tables.ts)
+  // ============================================================================
+
+  const requireBdAgent = requirePermission("studio.bd_agent", "super_admin", "admin", "hr");
+
+  /** Resolve brand voice context string from a projectId (returns empty string if no project or config). */
+  const resolveBdBrandVoice = async (projectId?: string): Promise<string> => {
+    if (!projectId) return "";
+    try {
+      const bvParams = await resolveBrandVoiceParams(projectId);
+      const lines = Object.entries(bvParams)
+        .filter(([, v]) => v && String(v).trim())
+        .map(([k, v]) => `${k}: ${v}`);
+      return lines.join("\n");
+    } catch {
+      return "";
+    }
+  };
+
+  // GET /api/studio/bd/projects — list Studio projects accessible to BD roles
+  app.get("/api/studio/bd/projects", requireAuth, requireBdAgent, async (_req: Request, res: Response) => {
+    try {
+      const projects = await storage.getStudioProjects();
+      res.json(projects.map((p: any) => ({ id: p.id, name: p.name })));
+    } catch (err) {
+      console.error("[BD] list projects:", err);
+      res.status(500).json({ error: "Failed to list projects" });
+    }
+  });
+
+  // GET /api/studio/bd/conversations — list caller's conversations (newest first)
+  app.get("/api/studio/bd/conversations", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const rows = await db
+        .select()
+        .from(bdConversations)
+        .where(eq(bdConversations.userId, userId))
+        .orderBy(desc(bdConversations.updatedAt))
+        .limit(50);
+      res.json(rows);
+    } catch (err) {
+      console.error("[BD] list conversations:", err);
+      res.status(500).json({ error: "Failed to list conversations" });
+    }
+  });
+
+  // POST /api/studio/bd/conversations — create a new conversation
+  app.post("/api/studio/bd/conversations", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const title = typeof req.body?.title === "string" && req.body.title.trim()
+        ? req.body.title.trim().slice(0, 200)
+        : "New conversation";
+      const [conv] = await db
+        .insert(bdConversations)
+        .values({ userId, title })
+        .returning();
+      res.json(conv);
+    } catch (err) {
+      console.error("[BD] create conversation:", err);
+      res.status(500).json({ error: "Failed to create conversation" });
+    }
+  });
+
+  // DELETE /api/studio/bd/conversations/:id — delete a conversation + cascade messages
+  app.delete("/api/studio/bd/conversations/:id", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const [conv] = await db
+        .select({ id: bdConversations.id, userId: bdConversations.userId })
+        .from(bdConversations)
+        .where(eq(bdConversations.id, req.params.id))
+        .limit(1);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+      if (conv.userId !== userId) return res.status(403).json({ error: "Not your conversation" });
+      await db.delete(bdConversations).where(eq(bdConversations.id, req.params.id));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[BD] delete conversation:", err);
+      res.status(500).json({ error: "Failed to delete conversation" });
+    }
+  });
+
+  // GET /api/studio/bd/conversations/:id/messages — get messages for a conversation
+  app.get("/api/studio/bd/conversations/:id/messages", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const [conv] = await db
+        .select({ id: bdConversations.id, userId: bdConversations.userId })
+        .from(bdConversations)
+        .where(eq(bdConversations.id, req.params.id))
+        .limit(1);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+      if (conv.userId !== userId) return res.status(403).json({ error: "Not your conversation" });
+      const msgs = await db
+        .select()
+        .from(bdMessages)
+        .where(eq(bdMessages.conversationId, req.params.id))
+        .orderBy(asc(bdMessages.createdAt));
+      res.json(msgs);
+    } catch (err) {
+      console.error("[BD] get messages:", err);
+      res.status(500).json({ error: "Failed to get messages" });
+    }
+  });
+
+  // POST /api/studio/bd/conversations/:id/messages — send a message + get AI reply
+  app.post("/api/studio/bd/conversations/:id/messages", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      if (!isAiConfigured()) {
+        return res.status(503).json({ error: "AI is not configured on this environment." });
+      }
+      const userId = (req.session as any)?.userId;
+      const [conv] = await db
+        .select()
+        .from(bdConversations)
+        .where(eq(bdConversations.id, req.params.id))
+        .limit(1);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+      if (conv.userId !== userId) return res.status(403).json({ error: "Not your conversation" });
+
+      const userContent = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+      if (!userContent) return res.status(400).json({ error: "content is required" });
+      if (userContent.length > 4000) return res.status(400).json({ error: "Message too long (max 4000 chars)" });
+      const bvContext = await resolveBdBrandVoice(req.body?.projectId);
+
+      // Persist user message
+      await db.insert(bdMessages).values({
+        conversationId: conv.id,
+        role: "user",
+        content: userContent,
+      });
+
+      // Auto-title the conversation from first user message
+      if (conv.title === "New conversation") {
+        const autoTitle = userContent.slice(0, 80) + (userContent.length > 80 ? "…" : "");
+        await db.execute(sql`UPDATE bd_conversations SET title=${autoTitle}, updated_at=NOW() WHERE id=${conv.id}`);
+      } else {
+        await db.execute(sql`UPDATE bd_conversations SET updated_at=NOW() WHERE id=${conv.id}`);
+      }
+
+      // Load last 20 messages for context window (keep token use bounded)
+      const history = await db
+        .select({ role: bdMessages.role, content: bdMessages.content })
+        .from(bdMessages)
+        .where(eq(bdMessages.conversationId, conv.id))
+        .orderBy(desc(bdMessages.createdAt))
+        .limit(20);
+      const contextMessages = history.reverse() as { role: "user" | "assistant"; content: string }[];
+
+      const result = await runBdAgentChat(contextMessages, bvContext || undefined);
+
+      // Persist assistant reply
+      const [assistantMsg] = await db
+        .insert(bdMessages)
+        .values({ conversationId: conv.id, role: "assistant", content: result.reply })
+        .returning();
+
+      // Audit log (non-blocking)
+      storage.createStudioGeneration({
+        kind: "bd_chat",
+        contentType: "bd_chat",
+        generatedByUserId: userId,
+        modelName: result.model,
+        inputJson: { conversationId: conv.id, messageLength: userContent.length },
+        outputJson: { replyLength: result.reply.length },
+        tokenEstimate: result.tokenEstimate,
+        status: "draft",
+      } as any).catch(() => {});
+
+      res.json({ message: assistantMsg, model: result.model });
+    } catch (err: any) {
+      if (err instanceof AiGenerationError) {
+        return res.status(502).json({ error: err.message, code: err.code, retryable: err.retryable });
+      }
+      console.error("[BD] send message:", err);
+      res.status(500).json({ error: err?.message || "Failed to send message" });
+    }
+  });
+
+  // POST /api/studio/bd/generate/:contentType — generate a BD template with optional brand voice
+  app.post("/api/studio/bd/generate/:contentType", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      if (!isAiConfigured()) {
+        return res.status(503).json({ error: "AI is not configured on this environment." });
+      }
+      const userId = (req.session as any)?.userId;
+      const { contentType } = req.params;
+      const validTypes = ["bd_proposal_outline", "bd_rate_card_talking_points", "bd_call_prep_brief", "bd_follow_up_sequence"];
+      if (!validTypes.includes(contentType)) {
+        return res.status(400).json({ error: "Invalid BD content type" });
+      }
+      // Load template from DB (seeded via studioPromptSeed)
+      const template = await storage.getActiveStudioPromptTemplate(contentType, null as any);
+      if (!template) {
+        return res.status(500).json({ error: `Prompt template for ${contentType} not found — run server to seed templates` });
+      }
+      // Resolve brand voice if caller provided a projectId
+      const bvContext = await resolveBdBrandVoice(req.body?.projectId);
+      const { projectId: _pid, ...templateParams } = req.body || {};
+      const result = await generateBdTemplate(template, templateParams, bvContext || undefined);
+      // Audit log (non-blocking)
+      storage.createStudioGeneration({
+        kind: "bd_template",
+        contentType,
+        promptTemplateId: template.id,
+        promptVersion: template.version,
+        generatedByUserId: userId,
+        modelName: result.model,
+        inputJson: templateParams,
+        outputJson: result.output,
+        tokenEstimate: result.tokenEstimate,
+        status: "draft",
+      } as any).catch(() => {});
+      res.json({ output: result.output, contentType: result.contentType, model: result.model });
+    } catch (err: any) {
+      if (err instanceof AiGenerationError) {
+        return res.status(502).json({ error: err.message, code: err.code, retryable: err.retryable });
+      }
+      console.error("[BD] generate template:", err);
+      res.status(500).json({ error: err?.message || "Failed to generate BD template" });
+    }
+  });
+
+  // POST /api/studio/bd/save-as-idea — save BD output as a Studio content idea
+  app.post("/api/studio/bd/save-as-idea", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const { title, content, contentType, projectId } = req.body || {};
+      if (!title?.trim()) return res.status(400).json({ error: "title is required" });
+      if (!content?.trim()) return res.status(400).json({ error: "content is required" });
+      if (!projectId?.trim()) return res.status(400).json({ error: "projectId is required" });
+      const created = await storage.createStudioContentIdea({
+        projectId,
+        topic: String(title).trim().slice(0, 200),
+        contentType: contentType || "other",
+        channels: [] as any,
+        origin: "bd_agent",
+        status: "idea",
+        brief: String(content).slice(0, 5000),
+        createdByUserId: userId,
+      } as any);
+      res.status(201).json(created);
+    } catch (err: any) {
+      console.error("[BD] save-as-idea:", err);
+      res.status(500).json({ error: err?.message || "Failed to save as content idea" });
     }
   });
 

@@ -584,3 +584,200 @@ export async function generateOutreachSequence(
 export function isAiConfigured(): boolean {
   return Boolean(process.env.AI_INTEGRATIONS_OPENAI_API_KEY && process.env.AI_INTEGRATIONS_OPENAI_BASE_URL);
 }
+
+// ---------------------------------------------------------------------------
+// Studio BD Agent (Task #942) — chat completion + template generation.
+// bd_text templates use generic JSON-object structured output since each
+// template has a bespoke shape; the schema is declared per contentType below.
+// ---------------------------------------------------------------------------
+
+// Per-template JSON schemas for bd_text output.
+const BD_JSON_SCHEMAS: Record<string, any> = {
+  bd_proposal_outline: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      title: { type: "string" },
+      executive_summary: { type: "string" },
+      client_pain_points: { type: "array", items: { type: "string" } },
+      our_approach: { type: "string" },
+      engagement_model_notes: { type: "string" },
+      value_propositions: { type: "array", items: { type: "string" } },
+      next_steps: { type: "array", items: { type: "string" } },
+      customization_notes: { type: "string" },
+    },
+    required: ["title", "executive_summary", "client_pain_points", "our_approach", "engagement_model_notes", "value_propositions", "next_steps", "customization_notes"],
+  },
+  bd_rate_card_talking_points: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      key_messages: { type: "array", items: { type: "string" } },
+      value_framing: { type: "string" },
+      objection_responses: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            objection: { type: "string" },
+            response: { type: "string" },
+          },
+          required: ["objection", "response"],
+        },
+      },
+      closing_line: { type: "string" },
+    },
+    required: ["key_messages", "value_framing", "objection_responses", "closing_line"],
+  },
+  bd_call_prep_brief: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      call_objective: { type: "string" },
+      company_context: { type: "string" },
+      discovery_questions: { type: "array", items: { type: "string" } },
+      likely_objections: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            objection: { type: "string" },
+            response: { type: "string" },
+          },
+          required: ["objection", "response"],
+        },
+      },
+      positioning_angles: { type: "array", items: { type: "string" } },
+      suggested_call_flow: { type: "array", items: { type: "string" } },
+      follow_up_note: { type: "string" },
+    },
+    required: ["call_objective", "company_context", "discovery_questions", "likely_objections", "positioning_angles", "suggested_call_flow", "follow_up_note"],
+  },
+  bd_follow_up_sequence: {
+    type: "object",
+    additionalProperties: false,
+    properties: {
+      sequence_summary: { type: "string" },
+      touches: {
+        type: "array",
+        items: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            step: { type: "integer" },
+            channel: { type: "string" },
+            timing_note: { type: "string" },
+            subject_or_hook: { type: "string" },
+            body: { type: "string" },
+            purpose: { type: "string" },
+          },
+          required: ["step", "channel", "timing_note", "subject_or_hook", "body", "purpose"],
+        },
+      },
+    },
+    required: ["sequence_summary", "touches"],
+  },
+};
+
+export interface BdTemplateResult {
+  output: Record<string, any>;
+  contentType: string;
+  model: string;
+  tokenEstimate: number;
+}
+
+export async function generateBdTemplate(
+  template: StudioPromptTemplate,
+  params: Record<string, any>,
+  brandVoiceContext?: string,
+): Promise<BdTemplateResult> {
+  const schema = BD_JSON_SCHEMAS[template.contentType];
+  if (!schema) {
+    throw new AiGenerationError("upstream", `No BD schema found for contentType: ${template.contentType}`, false);
+  }
+  const effectiveTemplate = brandVoiceContext
+    ? { ...template, systemPrompt: template.systemPrompt + "\n\nBRAND VOICE CONTEXT:\n" + brandVoiceContext }
+    : template;
+  const { raw, model, tokenEstimate } = await callStructured(
+    effectiveTemplate,
+    params as AiGenerationParams,
+    schema,
+    template.contentType,
+  );
+  if (!raw || typeof raw !== "object") {
+    throw new AiGenerationError("validation", "BD template output was not a valid object.", false);
+  }
+  return { output: raw, contentType: template.contentType, model, tokenEstimate };
+}
+
+// BD Agent chat — conversational multi-turn completion (not structured output).
+const BD_AGENT_SYSTEM_PROMPT = `You are a Business Development expert and strategic advisor for Hire'in Solutions, an AI-powered staffing agency.
+
+ABOUT HIRE'IN SOLUTIONS:
+- Serves Healthcare, IT, Engineering, and Professional Services
+- Proof points: 95% first-year retention rate, 24-hour first candidate submissions
+- Multi-domain staffing capability with AI-enhanced matching
+- Engagement models: Contract, Contract-to-Hire, Permanent placement
+
+YOUR ROLE:
+You help BD reps and HR professionals with:
+- Research angles for prospecting into new accounts
+- Discovery call preparation and objection handling
+- Proposal framing and value communication
+- Follow-up strategies and nurture sequences
+- Domain-specific BD tactics (Healthcare, IT, Engineering, Professional Services)
+- Outreach copy and messaging refinement
+
+GUARDRAILS:
+- NEVER invent specific client names, named case studies, or statistics not provided
+- NEVER make placement guarantees or compliance guarantees
+- NEVER suggest sending automated messages; all copy is for human manual use
+- When asked to draft copy, produce it ready-to-edit, not ready-to-send
+- Acknowledge when advice requires verification (legal, compliance, or local market)
+- Keep advice practical and actionable, not generic platitudes
+
+VOICE: Professional, warm, and direct — like a senior colleague who has seen hundreds of BD cycles and gives honest, useful counsel.`;
+
+export interface BdChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface BdChatResult {
+  reply: string;
+  model: string;
+  tokenEstimate: number;
+}
+
+export async function runBdAgentChat(
+  messages: BdChatMessage[],
+  brandVoiceContext?: string,
+): Promise<BdChatResult> {
+  const model = TIER_MODELS.standard;
+  const systemPrompt = brandVoiceContext
+    ? BD_AGENT_SYSTEM_PROMPT + "\n\nBRAND VOICE CONTEXT:\n" + brandVoiceContext
+    : BD_AGENT_SYSTEM_PROMPT;
+  try {
+    const completion = await openai.chat.completions.create({
+      model,
+      max_completion_tokens: 2000,
+      messages: [
+        { role: "system", content: systemPrompt },
+        ...messages.map((m) => ({ role: m.role, content: m.content })),
+      ],
+    });
+    const reply = completion.choices?.[0]?.message?.content ?? "";
+    if (!reply) throw new AiGenerationError("malformed", "BD agent returned no content.");
+    return {
+      reply,
+      model,
+      tokenEstimate: completion.usage?.total_tokens ?? 0,
+    };
+  } catch (err: any) {
+    if (err instanceof AiGenerationError) throw err;
+    console.error("[BD agent chat] AI error:", err?.message);
+    throw new AiGenerationError("upstream", "BD agent AI error — check server logs.");
+  }
+}

@@ -4294,3 +4294,38 @@ export const salaryStructureHistory = pgTable("salary_structure_history", {
 export const insertSalaryStructureHistorySchema = createInsertSchema(salaryStructureHistory).omit({ id: true, assignedAt: true });
 export type SalaryStructureHistory = typeof salaryStructureHistory.$inferSelect;
 export type InsertSalaryStructureHistory = z.infer<typeof insertSalaryStructureHistorySchema>;
+
+// ---------------------------------------------------------------------------
+// Studio BD Agent — persisted conversation + message store (Task #942)
+// Gated to super_admin / admin / hr. Tables applied via direct SQL script.
+// ---------------------------------------------------------------------------
+
+export const bdConversations = pgTable("bd_conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  title: varchar("title", { length: 200 }).notNull().default("New conversation"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("bd_conversations_user_idx").on(t.userId),
+  index("bd_conversations_created_at_idx").on(t.createdAt),
+]);
+
+export const bdMessages = pgTable("bd_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  conversationId: varchar("conversation_id").notNull().references(() => bdConversations.id, { onDelete: "cascade" }),
+  role: varchar("role", { length: 20 }).notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("bd_messages_conversation_idx").on(t.conversationId),
+  index("bd_messages_created_at_idx").on(t.createdAt),
+]);
+
+export const insertBdConversationSchema = createInsertSchema(bdConversations).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertBdMessageSchema = createInsertSchema(bdMessages).omit({ id: true, createdAt: true });
+
+export type BdConversation = typeof bdConversations.$inferSelect;
+export type InsertBdConversation = z.infer<typeof insertBdConversationSchema>;
+export type BdMessage = typeof bdMessages.$inferSelect;
+export type InsertBdMessage = z.infer<typeof insertBdMessageSchema>;
