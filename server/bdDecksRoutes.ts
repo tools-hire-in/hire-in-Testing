@@ -20,6 +20,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   it: "IT",
   engineering: "Engineering",
   professional_services: "Professional Services",
+  general: "General",
 };
 
 export interface BdSlide {
@@ -170,6 +171,28 @@ export function registerBdDecksRoutes(app: Express) {
     }
   });
 
+  // GET /api/bd/decks/master/:domain — public endpoint; returns active master for a domain
+  app.get("/api/bd/decks/master/:domain", async (_req: Request, res: Response) => {
+    const { domain } = _req.params;
+    const validDomains = ["healthcare", "it", "engineering", "professional_services", "general"];
+    if (!validDomains.includes(domain)) return res.status(400).json({ error: "Invalid domain" });
+    try {
+      const result = await db.execute(sql`
+        SELECT * FROM bd_decks
+        WHERE domain = ${domain}
+          AND deck_type = 'master'
+          AND status IN ('active', 'approved')
+        ORDER BY updated_at DESC
+        LIMIT 1
+      `);
+      if (result.rows.length === 0) return res.status(404).json({ error: "No active master for this domain" });
+      res.json(result.rows[0]);
+    } catch (err: any) {
+      console.error("[bd-decks] master fetch error:", err);
+      res.status(500).json({ error: err?.message || "Failed to fetch master deck" });
+    }
+  });
+
   // GET /api/bd/decks/:id — single deck
   app.get("/api/bd/decks/:id", async (req: Request, res: Response) => {
     if (!(req.session as any)?.userId) return res.status(401).json({ error: "Unauthorized" });
@@ -214,7 +237,7 @@ export function registerBdDecksRoutes(app: Express) {
       const { title, domain, version, description, slides } = req.body;
 
       if (!title?.trim()) return res.status(400).json({ error: "title is required" });
-      const validDomains = ["healthcare", "it", "engineering", "professional_services"];
+      const validDomains = ["healthcare", "it", "engineering", "professional_services", "general"];
       if (!validDomains.includes(domain)) return res.status(400).json({ error: "Invalid domain" });
 
       const slidesJson = JSON.stringify(Array.isArray(slides) ? slides : []);

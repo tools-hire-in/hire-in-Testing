@@ -14,11 +14,15 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { SchemaHead } from "@/components/SchemaHead";
 import { Button } from "@/components/ui/button";
-import { SLIDES, SlideNumberContext, TOTAL_SLIDES } from "@/components/deck/HiringDeckSlides";
+import { BrandedSlideShell } from "@/components/deck/BrandedSlideShell";
 import { COMPANY, CONTACT } from "@/lib/constants";
+
+interface MasterDeckSlide { title: string; bullets: string[]; speaker_notes: string; }
+interface MasterDeck { id: string; title: string; slides: MasterDeckSlide[]; }
 
 const SERVICE_SCHEMA = {
   "@context": "https://schema.org",
@@ -38,6 +42,14 @@ export default function ITStaffing() {
   const viewerRef = useRef<HTMLDivElement>(null);
   const slideContainerRef = useRef<HTMLDivElement>(null);
   const slideRefs = useRef<(HTMLDivElement | null)[]>([]);
+
+  const { data: masterDeck } = useQuery<MasterDeck>({
+    queryKey: ["/api/bd/decks/master/it"],
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const dbSlides = masterDeck?.slides ?? [];
+  const totalSlides = dbSlides.length || 11;
 
   useEffect(() => {
     document.title = "IT Staffing Services | Hire'in Solutions - AI-Powered IT Recruitment";
@@ -70,8 +82,8 @@ export default function ITStaffing() {
   }, []);
 
   const goTo = useCallback((idx: number) => {
-    setCurrentSlide(Math.max(0, Math.min(TOTAL_SLIDES - 1, idx)));
-  }, []);
+    setCurrentSlide(Math.max(0, Math.min(totalSlides - 1, idx)));
+  }, [totalSlides]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -108,8 +120,8 @@ export default function ITStaffing() {
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [1920, 1080] });
 
-      for (let i = 0; i < TOTAL_SLIDES; i++) {
-        setPdfProgress(Math.round(((i) / TOTAL_SLIDES) * 100));
+      for (let i = 0; i < totalSlides; i++) {
+        setPdfProgress(Math.round(((i) / totalSlides) * 100));
         setCurrentSlide(i);
         await new Promise((r) => setTimeout(r, 300));
         const el = slideContainerRef.current;
@@ -119,7 +131,7 @@ export default function ITStaffing() {
         if (i > 0) pdf.addPage();
         pdf.addImage(imgData, "PNG", 0, 0, 1920, 1080);
       }
-      pdf.save("HireIn_Solutions_IT_Staffing_Deck.pdf");
+      pdf.save(`HireIn_Solutions_IT_Staffing_Deck.pdf`);
     } catch (err) {
       console.error("PDF generation failed:", err);
     } finally {
@@ -135,8 +147,8 @@ export default function ITStaffing() {
       const pptx = new pptxgen();
       pptx.layout = "LAYOUT_WIDE";
 
-      for (let i = 0; i < TOTAL_SLIDES; i++) {
-        setPptProgress(Math.round(((i) / TOTAL_SLIDES) * 100));
+      for (let i = 0; i < totalSlides; i++) {
+        setPptProgress(Math.round(((i) / totalSlides) * 100));
         setCurrentSlide(i);
         await new Promise((r) => setTimeout(r, 300));
         const el = slideContainerRef.current;
@@ -155,7 +167,7 @@ export default function ITStaffing() {
   };
 
   const isDownloading = pdfProgress !== null || pptProgress !== null;
-  const slide = SLIDES[currentSlide];
+  const slide = dbSlides[currentSlide];
 
   return (
     <Layout>
@@ -226,9 +238,19 @@ export default function ITStaffing() {
             {/* Slide display */}
             <div className={`relative w-full ${isFullscreen ? "max-w-[90vw] max-h-[85vh]" : ""}`}>
               <div ref={slideContainerRef} className="w-full">
-                <SlideNumberContext.Provider value={{ slideNumber: slide.id, totalSlides: TOTAL_SLIDES }}>
-                  {slide.component}
-                </SlideNumberContext.Provider>
+                {slide ? (
+                  <BrandedSlideShell
+                    slideTitle={slide.title}
+                    bullets={slide.bullets ?? []}
+                    slideNumber={currentSlide + 1}
+                    totalSlides={totalSlides}
+                    domain="it"
+                  />
+                ) : (
+                  <div className="w-full aspect-video bg-muted/40 flex items-center justify-center rounded-md">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -245,13 +267,13 @@ export default function ITStaffing() {
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <span className={`text-sm font-medium tabular-nums min-w-[60px] text-center ${isFullscreen ? "text-white" : ""}`} data-testid="text-slide-counter">
-                  {currentSlide + 1} / {TOTAL_SLIDES}
+                  {currentSlide + 1} / {totalSlides}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => goTo(currentSlide + 1)}
-                  disabled={currentSlide === TOTAL_SLIDES - 1 || isDownloading}
+                  disabled={currentSlide === totalSlides - 1 || isDownloading}
                   data-testid="button-slide-next"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -260,7 +282,7 @@ export default function ITStaffing() {
 
               <div className="flex items-center gap-2">
                 <span className={`text-xs hidden sm:inline ${isFullscreen ? "text-white/60" : "text-muted-foreground"}`}>
-                  {slide.title}
+                  {slide?.title ?? ""}
                 </span>
                 <Button
                   variant="ghost"
@@ -277,9 +299,9 @@ export default function ITStaffing() {
 
           {/* Slide thumbnail strip */}
           <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-thin" data-testid="slide-thumbnails">
-            {SLIDES.map((s, i) => (
+            {dbSlides.map((s, i) => (
               <button
-                key={s.id}
+                key={i}
                 onClick={() => goTo(i)}
                 disabled={isDownloading}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
@@ -287,9 +309,9 @@ export default function ITStaffing() {
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
                 }`}
-                data-testid={`button-slide-thumb-${s.id}`}
+                data-testid={`button-slide-thumb-${i + 1}`}
               >
-                {s.id}. {s.title}
+                {i + 1}. {s.title}
               </button>
             ))}
           </div>

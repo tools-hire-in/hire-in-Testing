@@ -44,11 +44,11 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { COMPANY, CONTACT, METRICS } from "@/lib/constants";
-import {
-  CAPABILITY_SLIDES,
-  CAPABILITY_TOTAL_SLIDES,
-  CapabilitySlideNumberContext,
-} from "@/components/deck/CapabilityDeckSlides";
+import { useQuery } from "@tanstack/react-query";
+import { BrandedSlideShell } from "@/components/deck/BrandedSlideShell";
+
+interface MasterDeckSlide { title: string; bullets: string[]; speaker_notes: string; }
+interface MasterDeck { id: string; title: string; slides: MasterDeckSlide[]; }
 
 const CLIENT_LOGOS = [
   { name: "22nd Century", industry: "Technology" },
@@ -131,6 +131,14 @@ export default function CapabilityDeck() {
   const [pdfProgress, setPdfProgress] = useState<number | null>(null);
   const [pptProgress, setPptProgress] = useState<number | null>(null);
 
+  const { data: masterDeck } = useQuery<MasterDeck>({
+    queryKey: ["/api/bd/decks/master/general"],
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const dbSlides = masterDeck?.slides ?? [];
+  const totalSlides = dbSlides.length || 11;
+
   useSEO({
     title: "Capability Deck | Hire'in Solutions - AI-Powered Recruitment",
     description:
@@ -139,8 +147,8 @@ export default function CapabilityDeck() {
   });
 
   const goTo = useCallback((idx: number) => {
-    setCurrentSlide(Math.max(0, Math.min(CAPABILITY_TOTAL_SLIDES - 1, idx)));
-  }, []);
+    setCurrentSlide(Math.max(0, Math.min(totalSlides - 1, idx)));
+  }, [totalSlides]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -169,8 +177,8 @@ export default function CapabilityDeck() {
       const html2canvas = (await import("html2canvas")).default;
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [1920, 1080] });
-      for (let i = 0; i < CAPABILITY_TOTAL_SLIDES; i++) {
-        setPdfProgress(Math.round((i / CAPABILITY_TOTAL_SLIDES) * 100));
+      for (let i = 0; i < totalSlides; i++) {
+        setPdfProgress(Math.round((i / totalSlides) * 100));
         setCurrentSlide(i);
         await new Promise((r) => setTimeout(r, 300));
         const el = slideContainerRef.current;
@@ -192,8 +200,8 @@ export default function CapabilityDeck() {
       const pptxgen = (await import("pptxgenjs")).default;
       const pptx = new pptxgen();
       pptx.layout = "LAYOUT_WIDE";
-      for (let i = 0; i < CAPABILITY_TOTAL_SLIDES; i++) {
-        setPptProgress(Math.round((i / CAPABILITY_TOTAL_SLIDES) * 100));
+      for (let i = 0; i < totalSlides; i++) {
+        setPptProgress(Math.round((i / totalSlides) * 100));
         setCurrentSlide(i);
         await new Promise((r) => setTimeout(r, 300));
         const el = slideContainerRef.current;
@@ -209,7 +217,7 @@ export default function CapabilityDeck() {
   };
 
   const isDownloading = pdfProgress !== null || pptProgress !== null;
-  const slide = CAPABILITY_SLIDES[currentSlide];
+  const slide = dbSlides[currentSlide];
 
   return (
     <Layout hideFooter>
@@ -282,9 +290,19 @@ export default function CapabilityDeck() {
             <div ref={viewerRef} className={`relative bg-muted/30 rounded-xl border overflow-hidden ${isFullscreen ? "fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center rounded-none border-none" : ""}`} data-testid="deck-viewer-container">
               <div className={`relative w-full ${isFullscreen ? "max-w-[90vw] max-h-[85vh]" : ""}`}>
                 <div ref={slideContainerRef} className="w-full">
-                  <CapabilitySlideNumberContext.Provider value={{ slideNumber: slide.id, totalSlides: CAPABILITY_TOTAL_SLIDES }}>
-                    {slide.component}
-                  </CapabilitySlideNumberContext.Provider>
+                  {slide ? (
+                    <BrandedSlideShell
+                      slideTitle={slide.title}
+                      bullets={slide.bullets ?? []}
+                      slideNumber={currentSlide + 1}
+                      totalSlides={totalSlides}
+                      domain="general"
+                    />
+                  ) : (
+                    <div className="w-full aspect-video bg-muted/40 flex items-center justify-center rounded-md">
+                      <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -294,15 +312,15 @@ export default function CapabilityDeck() {
                     <ChevronLeft className="h-4 w-4" />
                   </Button>
                   <span className={`text-sm font-medium tabular-nums min-w-[60px] text-center ${isFullscreen ? "text-white" : ""}`} data-testid="text-slide-counter">
-                    {currentSlide + 1} / {CAPABILITY_TOTAL_SLIDES}
+                    {currentSlide + 1} / {totalSlides}
                   </span>
-                  <Button variant="outline" size="sm" onClick={() => goTo(currentSlide + 1)} disabled={currentSlide === CAPABILITY_TOTAL_SLIDES - 1 || isDownloading} data-testid="button-slide-next">
+                  <Button variant="outline" size="sm" onClick={() => goTo(currentSlide + 1)} disabled={currentSlide === totalSlides - 1 || isDownloading} data-testid="button-slide-next">
                     <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className={`text-xs hidden sm:inline ${isFullscreen ? "text-white/60" : "text-muted-foreground"}`}>
-                    {slide.title}
+                    {slide?.title ?? ""}
                   </span>
                   <Button variant="ghost" size="sm" onClick={toggleFullscreen} className={isFullscreen ? "text-white hover:text-white/80" : ""} data-testid="button-fullscreen">
                     {isFullscreen ? <Minimize2 className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
@@ -312,17 +330,17 @@ export default function CapabilityDeck() {
             </div>
 
             <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-thin" data-testid="slide-thumbnails">
-              {CAPABILITY_SLIDES.map((s, i) => (
+              {dbSlides.map((s, i) => (
                 <button
-                  key={s.id}
+                  key={i}
                   onClick={() => goTo(i)}
                   disabled={isDownloading}
                   className={`flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                     i === currentSlide ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground hover:bg-muted/80"
                   }`}
-                  data-testid={`button-slide-thumb-${s.id}`}
+                  data-testid={`button-slide-thumb-${i + 1}`}
                 >
-                  {s.id}. {s.title}
+                  {i + 1}. {s.title}
                 </button>
               ))}
             </div>

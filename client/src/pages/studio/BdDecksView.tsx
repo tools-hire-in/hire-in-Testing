@@ -17,6 +17,7 @@ import {
   CloudOff, Cloud, ShieldCheck, Clock, AlertCircle, History, ChevronDown,
   ChevronUp, Send, RotateCcw, Lock, Pencil,
 } from "lucide-react";
+import { BrandedSlideShell } from "@/components/deck/BrandedSlideShell";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -62,6 +63,7 @@ const DOMAIN_LABELS: Record<string, string> = {
   it: "IT",
   engineering: "Engineering",
   professional_services: "Professional Services",
+  general: "General Staffing",
 };
 
 const DOMAIN_COLORS: Record<string, string> = {
@@ -69,6 +71,7 @@ const DOMAIN_COLORS: Record<string, string> = {
   it: "bg-blue-50 text-blue-700 border-blue-200",
   engineering: "bg-amber-50 text-amber-700 border-amber-200",
   professional_services: "bg-purple-50 text-purple-700 border-purple-200",
+  general: "bg-slate-50 text-slate-700 border-slate-200",
 };
 
 const STATUS_META: Record<string, { label: string; cls: string; icon: React.ReactNode }> = {
@@ -364,12 +367,67 @@ function SlideViewer({
 }) {
   const [slideIdx, setSlideIdx] = useState(0);
   const [showNotes, setShowNotes] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState<number | null>(null);
+  const [pptProgress, setPptProgress] = useState<number | null>(null);
+  const slideContainerRef = useRef<HTMLDivElement>(null);
   const slides = Array.isArray(deck.slides) ? deck.slides : [];
   const slide = slides[slideIdx];
   const isMaster = deck.deck_type === "master";
   const isClient = deck.deck_type === "client";
   const isApproved = deck.status === "approved";
   const isDraft = deck.status === "draft";
+  const isExporting = pdfProgress !== null || pptProgress !== null;
+
+  const handleDownloadPDF = async () => {
+    setPdfProgress(0);
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const { jsPDF } = await import("jspdf");
+      const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [1920, 1080] });
+      for (let i = 0; i < slides.length; i++) {
+        setPdfProgress(Math.round((i / slides.length) * 100));
+        setSlideIdx(i);
+        await new Promise((r) => setTimeout(r, 300));
+        const el = slideContainerRef.current;
+        if (!el) continue;
+        const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: null, logging: false });
+        const imgData = canvas.toDataURL("image/png");
+        if (i > 0) pdf.addPage();
+        pdf.addImage(imgData, "PNG", 0, 0, 1920, 1080);
+      }
+      pdf.save(`HireIn_Solutions_${deck.title.replace(/\s+/g, "_")}.pdf`);
+    } catch (err) {
+      console.error("PDF generation failed:", err);
+    } finally {
+      setPdfProgress(null);
+    }
+  };
+
+  const handleDownloadPPT = async () => {
+    setPptProgress(0);
+    try {
+      const html2canvas = (await import("html2canvas")).default;
+      const pptxgen = (await import("pptxgenjs")).default;
+      const pptx = new pptxgen();
+      pptx.layout = "LAYOUT_WIDE";
+      for (let i = 0; i < slides.length; i++) {
+        setPptProgress(Math.round((i / slides.length) * 100));
+        setSlideIdx(i);
+        await new Promise((r) => setTimeout(r, 300));
+        const el = slideContainerRef.current;
+        if (!el) continue;
+        const canvas = await html2canvas(el, { scale: 2, useCORS: true, backgroundColor: null, logging: false });
+        const imgData = canvas.toDataURL("image/png");
+        const pptSlide = pptx.addSlide();
+        pptSlide.addImage({ data: imgData, x: 0, y: 0, w: "100%", h: "100%" });
+      }
+      await pptx.writeFile({ fileName: `HireIn_Solutions_${deck.title.replace(/\s+/g, "_")}.pptx` });
+    } catch (err) {
+      console.error("PPT generation failed:", err);
+    } finally {
+      setPptProgress(null);
+    }
+  };
 
   return (
     <div className="flex h-full flex-col" data-testid="slide-viewer">
@@ -383,29 +441,49 @@ function SlideViewer({
           <p className="truncate text-sm font-semibold text-white">{deck.title}</p>
           <p className="text-xs text-white/60">{DOMAIN_LABELS[deck.domain] || deck.domain} · {deck.version.toUpperCase()}</p>
         </div>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <StatusBadge status={deck.status} />
           {isMaster && (
             <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-white hover:bg-white/10 hover:text-white" onClick={onClone} data-testid="button-viewer-clone">
               <Copy className="mr-1 h-3 w-3" />Clone for Client
             </Button>
           )}
-          {/* Edit: master=super_admin only; client=any if draft OR super_admin always */}
           {(isMaster && isSuperAdmin) || (isClient && (isDraft || isSuperAdmin)) ? (
             <Button size="sm" variant="ghost" className="h-7 px-2 text-xs text-white hover:bg-white/10 hover:text-white" onClick={onEdit} data-testid="button-viewer-edit">
               <Edit3 className="mr-1 h-3 w-3" />Edit
             </Button>
           ) : null}
-          {(isMaster || isApproved || isSuperAdmin) && (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-7 px-2 text-xs text-white hover:bg-white/10 hover:text-white"
-              onClick={() => window.open(`/api/bd/decks/${deck.id}/pdf${showNotes ? "?notes=1" : ""}`, "_blank")}
-              data-testid="button-viewer-download"
-            >
-              <Download className="mr-1 h-3 w-3" />PDF
-            </Button>
+          {(isMaster || isApproved || isSuperAdmin) && slides.length > 0 && (
+            <>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-white hover:bg-white/10 hover:text-white"
+                onClick={handleDownloadPDF}
+                disabled={isExporting}
+                data-testid="button-viewer-download-pdf"
+              >
+                {pdfProgress !== null ? (
+                  <><Loader2 className="mr-1 h-3 w-3 animate-spin" />{pdfProgress}%</>
+                ) : (
+                  <><Download className="mr-1 h-3 w-3" />PDF</>
+                )}
+              </Button>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 px-2 text-xs text-white hover:bg-white/10 hover:text-white"
+                onClick={handleDownloadPPT}
+                disabled={isExporting}
+                data-testid="button-viewer-download-ppt"
+              >
+                {pptProgress !== null ? (
+                  <><Loader2 className="mr-1 h-3 w-3 animate-spin" />{pptProgress}%</>
+                ) : (
+                  <><Download className="mr-1 h-3 w-3" />PPTX</>
+                )}
+              </Button>
+            </>
           )}
           <Button
             size="sm"
@@ -421,41 +499,43 @@ function SlideViewer({
 
       {/* Navigation strip */}
       <div className="flex items-center gap-2 border-b bg-muted/30 px-4 py-2">
-        <Button size="icon" variant="ghost" className="h-7 w-7" disabled={slideIdx === 0} onClick={() => setSlideIdx((i) => i - 1)} data-testid="button-viewer-prev">
+        <Button size="icon" variant="ghost" className="h-7 w-7" disabled={slideIdx === 0 || isExporting} onClick={() => setSlideIdx((i) => i - 1)} data-testid="button-viewer-prev">
           <ChevronLeft className="h-4 w-4" />
         </Button>
         <span className="text-xs text-muted-foreground">
           Slide <span className="font-semibold text-foreground">{slideIdx + 1}</span> of {slides.length}
         </span>
-        <Button size="icon" variant="ghost" className="h-7 w-7" disabled={slideIdx === slides.length - 1} onClick={() => setSlideIdx((i) => i + 1)} data-testid="button-viewer-next">
+        <Button size="icon" variant="ghost" className="h-7 w-7" disabled={slideIdx === slides.length - 1 || isExporting} onClick={() => setSlideIdx((i) => i + 1)} data-testid="button-viewer-next">
           <ChevronRight className="h-4 w-4" />
         </Button>
         <div className="ml-2 flex items-center gap-1 overflow-x-auto">
           {slides.map((_, i) => (
-            <button key={i} onClick={() => setSlideIdx(i)}
+            <button key={i} onClick={() => !isExporting && setSlideIdx(i)}
               className={`h-2 w-2 shrink-0 rounded-full transition-colors ${i === slideIdx ? "bg-[#F47C20]" : "bg-muted-foreground/25 hover:bg-muted-foreground/50"}`}
               data-testid={`button-viewer-dot-${i}`}
             />
           ))}
         </div>
+        {isExporting && (
+          <span className="ml-auto text-xs text-muted-foreground flex items-center gap-1">
+            <Loader2 className="h-3 w-3 animate-spin" />Rendering slides…
+          </span>
+        )}
       </div>
 
       {/* Slide content */}
       {slide ? (
-        <div className="flex flex-1 flex-col overflow-y-auto p-6">
-          <div className="mx-auto w-full max-w-3xl flex flex-col gap-5">
-            <div>
-              <p className="text-xs font-semibold tracking-widest text-[#F47C20]">SLIDE {slideIdx + 1}</p>
-              <h2 className="mt-1 text-2xl font-bold leading-snug text-foreground">{slide.title}</h2>
+        <div className="flex flex-1 flex-col overflow-y-auto p-4">
+          <div className="mx-auto w-full max-w-4xl flex flex-col gap-4">
+            <div ref={slideContainerRef}>
+              <BrandedSlideShell
+                slideTitle={slide.title}
+                bullets={slide.bullets || []}
+                slideNumber={slideIdx + 1}
+                totalSlides={slides.length}
+                domain={deck.domain}
+              />
             </div>
-            <ul className="space-y-3">
-              {(slide.bullets || []).map((bullet, bi) => (
-                <li key={bi} className="flex items-start gap-3 text-sm leading-relaxed">
-                  <span className="mt-1.5 h-2.5 w-2.5 shrink-0 rounded-full bg-[#F47C20]" />
-                  <span>{bullet}</span>
-                </li>
-              ))}
-            </ul>
             {showNotes && slide.speaker_notes && (
               <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
                 <p className="mb-1.5 flex items-center gap-1.5 text-xs font-semibold text-amber-700">
@@ -1199,6 +1279,7 @@ export default function BdDecksView() {
         <Tabs value={activeTab} onValueChange={setActiveTab} data-testid="tabs-deck-domain">
           <TabsList className="flex w-full overflow-x-auto mb-2">
             <TabsTrigger value="all" className="flex-1" data-testid="tab-all">All</TabsTrigger>
+            <TabsTrigger value="general" className="flex-1" data-testid="tab-general">General</TabsTrigger>
             <TabsTrigger value="healthcare" className="flex-1" data-testid="tab-healthcare">Healthcare</TabsTrigger>
             <TabsTrigger value="it" className="flex-1" data-testid="tab-it">IT</TabsTrigger>
             <TabsTrigger value="engineering" className="flex-1" data-testid="tab-engineering">Engineering</TabsTrigger>
@@ -1207,6 +1288,9 @@ export default function BdDecksView() {
 
           <TabsContent value="all">
             <DomainTabContent domain={null} {...tabProps} />
+          </TabsContent>
+          <TabsContent value="general">
+            <DomainTabContent domain="general" {...tabProps} />
           </TabsContent>
           <TabsContent value="healthcare">
             <DomainTabContent domain="healthcare" {...tabProps} />

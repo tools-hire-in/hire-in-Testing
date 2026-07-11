@@ -14,11 +14,15 @@ import {
   Users,
   Zap,
 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
 import { Layout } from "@/components/layout/Layout";
 import { SchemaHead } from "@/components/SchemaHead";
 import { Button } from "@/components/ui/button";
-import { HEALTHCARE_SLIDES, HEALTHCARE_TOTAL_SLIDES, HealthcareSlideNumberContext } from "@/components/deck/HealthcareDeckSlides";
+import { BrandedSlideShell } from "@/components/deck/BrandedSlideShell";
 import { COMPANY, CONTACT } from "@/lib/constants";
+
+interface MasterDeckSlide { title: string; bullets: string[]; speaker_notes: string; }
+interface MasterDeck { id: string; title: string; slides: MasterDeckSlide[]; }
 
 const SERVICE_SCHEMA = {
   "@context": "https://schema.org",
@@ -37,6 +41,14 @@ export default function EHealthcareStaffing() {
   const [pptProgress, setPptProgress] = useState<number | null>(null);
   const viewerRef = useRef<HTMLDivElement>(null);
   const slideContainerRef = useRef<HTMLDivElement>(null);
+
+  const { data: masterDeck } = useQuery<MasterDeck>({
+    queryKey: ["/api/bd/decks/master/healthcare"],
+    retry: false,
+    staleTime: 5 * 60 * 1000,
+  });
+  const dbSlides = masterDeck?.slides ?? [];
+  const totalSlides = dbSlides.length || 11;
 
   useEffect(() => {
     document.title = "Healthcare Staffing Services | Hire'in Solutions - AI + Compliance Healthcare Recruitment";
@@ -70,8 +82,8 @@ export default function EHealthcareStaffing() {
   }, []);
 
   const goTo = useCallback((idx: number) => {
-    setCurrentSlide(Math.max(0, Math.min(HEALTHCARE_TOTAL_SLIDES - 1, idx)));
-  }, []);
+    setCurrentSlide(Math.max(0, Math.min(totalSlides - 1, idx)));
+  }, [totalSlides]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -108,8 +120,8 @@ export default function EHealthcareStaffing() {
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ orientation: "landscape", unit: "px", format: [1920, 1080] });
 
-      for (let i = 0; i < HEALTHCARE_TOTAL_SLIDES; i++) {
-        setPdfProgress(Math.round(((i) / HEALTHCARE_TOTAL_SLIDES) * 100));
+      for (let i = 0; i < totalSlides; i++) {
+        setPdfProgress(Math.round(((i) / totalSlides) * 100));
         setCurrentSlide(i);
         await new Promise((r) => setTimeout(r, 300));
         const el = slideContainerRef.current;
@@ -135,8 +147,8 @@ export default function EHealthcareStaffing() {
       const pptx = new pptxgen();
       pptx.layout = "LAYOUT_WIDE";
 
-      for (let i = 0; i < HEALTHCARE_TOTAL_SLIDES; i++) {
-        setPptProgress(Math.round(((i) / HEALTHCARE_TOTAL_SLIDES) * 100));
+      for (let i = 0; i < totalSlides; i++) {
+        setPptProgress(Math.round(((i) / totalSlides) * 100));
         setCurrentSlide(i);
         await new Promise((r) => setTimeout(r, 300));
         const el = slideContainerRef.current;
@@ -155,7 +167,7 @@ export default function EHealthcareStaffing() {
   };
 
   const isDownloading = pdfProgress !== null || pptProgress !== null;
-  const slide = HEALTHCARE_SLIDES[currentSlide];
+  const slide = dbSlides[currentSlide];
 
   return (
     <Layout>
@@ -222,9 +234,19 @@ export default function EHealthcareStaffing() {
           <div ref={viewerRef} className={`relative bg-muted/30 rounded-xl border overflow-hidden ${isFullscreen ? "fixed inset-0 z-[9999] bg-black flex flex-col items-center justify-center rounded-none border-none" : ""}`} data-testid="hc-deck-viewer-container">
             <div className={`relative w-full ${isFullscreen ? "max-w-[90vw] max-h-[85vh]" : ""}`}>
               <div ref={slideContainerRef} className="w-full">
-                <HealthcareSlideNumberContext.Provider value={{ slideNumber: slide.id, totalSlides: HEALTHCARE_TOTAL_SLIDES }}>
-                  {slide.component}
-                </HealthcareSlideNumberContext.Provider>
+                {slide ? (
+                  <BrandedSlideShell
+                    slideTitle={slide.title}
+                    bullets={slide.bullets ?? []}
+                    slideNumber={currentSlide + 1}
+                    totalSlides={totalSlides}
+                    domain="healthcare"
+                  />
+                ) : (
+                  <div className="w-full aspect-video bg-muted/40 flex items-center justify-center rounded-md">
+                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                  </div>
+                )}
               </div>
             </div>
 
@@ -240,13 +262,13 @@ export default function EHealthcareStaffing() {
                   <ChevronLeft className="h-4 w-4" />
                 </Button>
                 <span className={`text-sm font-medium tabular-nums min-w-[60px] text-center ${isFullscreen ? "text-white" : ""}`} data-testid="text-hc-slide-counter">
-                  {currentSlide + 1} / {HEALTHCARE_TOTAL_SLIDES}
+                  {currentSlide + 1} / {totalSlides}
                 </span>
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={() => goTo(currentSlide + 1)}
-                  disabled={currentSlide === HEALTHCARE_TOTAL_SLIDES - 1 || isDownloading}
+                  disabled={currentSlide === totalSlides - 1 || isDownloading}
                   data-testid="button-hc-slide-next"
                 >
                   <ChevronRight className="h-4 w-4" />
@@ -255,7 +277,7 @@ export default function EHealthcareStaffing() {
 
               <div className="flex items-center gap-2">
                 <span className={`text-xs hidden sm:inline ${isFullscreen ? "text-white/60" : "text-muted-foreground"}`}>
-                  {slide.title}
+                  {slide?.title ?? ""}
                 </span>
                 <Button
                   variant="ghost"
@@ -271,9 +293,9 @@ export default function EHealthcareStaffing() {
           </div>
 
           <div className="mt-4 flex gap-2 overflow-x-auto pb-2 scrollbar-thin" data-testid="hc-slide-thumbnails">
-            {HEALTHCARE_SLIDES.map((s, i) => (
+            {dbSlides.map((s, i) => (
               <button
-                key={s.id}
+                key={i}
                 onClick={() => goTo(i)}
                 disabled={isDownloading}
                 className={`flex-shrink-0 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
@@ -281,9 +303,9 @@ export default function EHealthcareStaffing() {
                     ? "bg-primary text-primary-foreground"
                     : "bg-muted text-muted-foreground hover:bg-muted/80"
                 }`}
-                data-testid={`button-hc-slide-thumb-${s.id}`}
+                data-testid={`button-hc-slide-thumb-${i + 1}`}
               >
-                {s.id}. {s.title}
+                {i + 1}. {s.title}
               </button>
             ))}
           </div>
