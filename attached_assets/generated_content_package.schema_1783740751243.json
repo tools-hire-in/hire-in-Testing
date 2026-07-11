@@ -1,0 +1,115 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HireinGeneratedContentPackage",
+  "type": "object",
+  "required": [
+    "strategy",
+    "coreInsight",
+    "variants",
+    "validationPrecheck"
+  ],
+  "properties": {
+    "strategy": {
+      "type": "object",
+      "required": [
+        "primaryAudienceCode",
+        "audienceQuestion",
+        "decisionStage",
+        "businessObjective",
+        "primaryPillarCode",
+        "singleTakeaway",
+        "riskLevel",
+        "requiredReviewers"
+      ],
+      "properties": {
+        "primaryAudienceCode": {
+          "type": "string"
+        },
+        "audienceQuestion": {
+          "type": "string"
+        },
+        "decisionStage": {
+          "type": "string"
+        },
+        "businessObjective": {
+          "type": "string"
+        },
+        "primaryPillarCode": {
+          "type": "string"
+        },
+        "singleTakeaway": {
+          "type": "string"
+        },
+        "riskLevel": {
+          "type": "string",
+          "enum": [
+            "low",
+            "medium",
+            "high"
+          ]
+        },
+        "requiredReviewers": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": true
+    },
+    "coreInsight": {
+      "type": "object",
+      "required": [
+        "format",
+        "title",
+        "summary",
+        "bodyMarkdown",
+        "cta",
+        "sourceIds",
+        "proofIds",
+        "claimIds",
+        "riskFlags"
+      ],
+      "properties": {
+        "format": {
+          "type": "string"
+        },
+        "title": {
+          "type": "string"
+        },
+        "summary": {
+          "type": "string"
+        },
+        "bodyMarkdown": {
+          "type": "string"
+        },
+        "cta": {
+          "type": "object"
+        },
+        "sourceIds": {
+          "type": "array"
+        },
+        "proofIds": {
+          "type": "array"
+        },
+        "claimIds": {
+          "type": "array"
+        },
+        "riskFlags": {
+          "type": "array"
+        }
+      },
+      "additionalProperties": true
+    },
+    "variants": {
+      "type": "array",
+      "items": {
+        "type": "object"
+      }
+    },
+    "validationPrecheck": {
+      "type": "object"
+    }
+  },
+  "additionalProperties": false
+}

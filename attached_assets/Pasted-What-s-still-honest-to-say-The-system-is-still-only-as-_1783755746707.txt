@@ -1,0 +1,27 @@
+What's still honest to say
+The system is still only as good as the Proof Library — which is still blank
+Everything in Part 4 is empty. That is the point — they fill it in. But this is still the highest-risk part of deployment. If the extraction interview doesn't happen before the system goes live, the AI will flag NEEDS_PROOF on the majority of Hire'in capability content and the team will conclude the system doesn't work. It works — the content library just doesn't have the inputs it needs yet.
+
+The extraction interview needs to be treated as a project with a named owner, a date on the calendar, and a 10-card minimum before anyone types the first content prompt.
+
+The system has no memory across sessions
+Claude Projects don't carry learning between sessions beyond the uploaded files. Every conversation starts fresh. When the AI produces something that genuinely lands — a hook that drives real engagement, an insight that generates recruiter contacts — that learning lives nowhere except a spreadsheet that may or may not get updated. The monthly "paste top/bottom performers" recommendation is right, but it puts the memory burden entirely on a human who has other things to do.
+
+This is not a reason to build the app yet. It is a reason to start that spreadsheet on day one and be disciplined about it.
+
+Facebook community specificity is missing
+The Domain Expertise covers healthcare and IT staffing channels correctly for H1 and I1. But for H2 — travel nurses specifically — Facebook groups are arguably the most active professional community that exists. Travel Nurse Network, The Gypsy Nurse, specialty nursing communities — these are where actual job-relevant conversations happen between healthcare professionals. The platform rules treat Facebook as "selective" which is correct strategically. But the Domain Expertise could acknowledge that for H2, Facebook community engagement is a real channel, not a fallback.
+
+There's no success definition
+The system tells the team what to create. It does not tell them what good looks like in 30, 60, or 90 days. Without a baseline, the monthly performance review is just a feelings check. Before the first piece publishes, define three numbers you'll track: application conversions, employer inquiry volume, and one engagement signal that matters to your audience (saves on Instagram for H2, meaningful LinkedIn comments for H1). Everything else is context.
+
+Honest overall rating
+Previous version: 7/10. Correct philosophy, thin content, empty knowledge drawers.
+
+This version: 8.5/10. The Domain Expertise file alone makes this system meaningfully better than what most staffing firms will ever deploy. The Proof Library framework is the right operational design. The system is genuinely ready to deploy as soon as the extraction interview is done.
+
+The remaining gap is not a design problem — it is an execution discipline problem. Ten real proof cards, a tracking spreadsheet on day one, and the Facebook community note for H2. That takes it to a 9.5.
+
+The 0.5 you can never fully close without the app is the persistent memory and multi-user workflow layer. But you already said that clearly in the START_HERE file, and you said it honestly. That is not a gap — that is a conscious, well-reasoned trade-off.
+
+Deploy this. Do the extraction interview first. Ship content by end of next week.

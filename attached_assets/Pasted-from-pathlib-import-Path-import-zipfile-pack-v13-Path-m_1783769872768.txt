@@ -1,0 +1,54 @@
+from pathlib import Path
+import zipfile
+
+pack_v13 = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.3.md")
+addendum_v11 = Path("/mnt/data/HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.1.md")
+
+pack = pack_v13.read_text(encoding="utf-8")
+addendum = addendum_v11.read_text(encoding="utf-8")
+
+# Version bumps
+pack = pack.replace(
+    "# Hire’in AI Content Agent — Intelligence Pack v1.3",
+    "# Hire’in AI Content Agent — Intelligence Pack v1.4"
+)
+pack = pack.replace(
+    "HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.1.md",
+    "HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.2.md"
+)
+
+addendum = addendum.replace(
+    "# Hire’in Content Craft — Exemplar Addendum v1.1",
+    "# Hire’in Content Craft — Exemplar Addendum v1.2"
+)
+addendum = addendum.replace(
+    "**Version:** 1.1",
+    "**Version:** 1.2"
+)
+
+# Fix hardcoded "recent" wording in healthcare exemplar
+addendum = addendum.replace(
+    """This opportunity is best suited to a candidate with recent [SPECIALTY_OR_ROLE] experience in a [CARE_SETTING] environment who is comfortable with [SHIFT / SCHEDULE / PATIENT_POPULATION / CORE_RESPONSIBILITY].""",
+    """This opportunity is best suited to a candidate with [EXPERIENCE_RECENCY_OR_DURATION: recent / minimum X years / omit] [SPECIALTY_OR_ROLE] experience in a [CARE_SETTING] environment who is comfortable with [SHIFT / SCHEDULE / PATIENT_POPULATION / CORE_RESPONSIBILITY]."""
+)
+
+addendum = addendum.replace(
+    """- Use “recent experience” only when the approved job requirement supports it""",
+    """- Use “recent experience” only when the approved job requirement supports it
+- Otherwise use the approved minimum duration, or omit recency/duration language entirely
+- Never infer recency from specialty, setting, urgency, or recruiter preference"""
+)
+
+# Add proof library dependency and launch gate in pack
+dependency_anchor = """The original Content Craft file remains the single creative source of truth.
+"""
+dependency_add = dependency_anchor + """
+
+## Proof Library launch dependency
+
+The creative system can function without proof cards, but Hire’in-specific capability, client, performance, compliance, and product claims will correctly produce `[NEEDS_PROOF]`.
+
+Before launch, complete:
+
+```text
+HIREIN_PROOF_LIBRARY_EXTRACTION_INTERVIEW_v1.0.md

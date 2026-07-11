@@ -1,0 +1,170 @@
+[
+  {
+    "code": "H1",
+    "name": "Healthcare hiring and talent leaders",
+    "domain": "healthcare",
+    "businessPriority": "tier_1",
+    "decisionQuestions": [
+      "Can this staffing partner understand the role and care environment?",
+      "Can it submit relevant, ready professionals instead of creating submission noise?",
+      "Can it support a reliable interview-to-start process?"
+    ],
+    "painPoints": [
+      "hard-to-fill roles",
+      "unclear intake requirements",
+      "credentialing friction",
+      "submission quality",
+      "onboarding delays"
+    ],
+    "proofNeeds": [
+      "role-calibration process",
+      "screening workflow",
+      "submission-readiness controls",
+      "approved delivery examples"
+    ],
+    "preferredPlatforms": [
+      "linkedin",
+      "insights"
+    ],
+    "approvedCtas": [
+      "share_hiring_need",
+      "request_staffing_conversation",
+      "request_checklist"
+    ],
+    "toneAdjustments": [
+      "operational",
+      "credible",
+      "specific",
+      "business-focused"
+    ],
+    "status": "active",
+    "version": 1
+  },
+  {
+    "code": "H2",
+    "name": "Healthcare professionals and candidates",
+    "domain": "healthcare",
+    "businessPriority": "tier_1",
+    "decisionQuestions": [
+      "Is this opportunity relevant and trustworthy?",
+      "What should I prepare before applying, interviewing, or onboarding?",
+      "Does the role fit my specialty, schedule, location, and goals?"
+    ],
+    "painPoints": [
+      "unclear job details",
+      "credential confusion",
+      "poor recruiter communication",
+      "resume positioning",
+      "interview uncertainty"
+    ],
+    "proofNeeds": [
+      "current job details",
+      "approved process guidance",
+      "role-specific SME input"
+    ],
+    "preferredPlatforms": [
+      "instagram",
+      "linkedin",
+      "facebook",
+      "insights"
+    ],
+    "approvedCtas": [
+      "view_job",
+      "contact_recruiter",
+      "join_job_alerts",
+      "save_checklist"
+    ],
+    "toneAdjustments": [
+      "warm",
+      "respectful",
+      "clear",
+      "candidate-first"
+    ],
+    "status": "active",
+    "version": 1
+  },
+  {
+    "code": "I1",
+    "name": "IT and engineering hiring and talent leaders",
+    "domain": "it_engineering",
+    "businessPriority": "tier_1",
+    "decisionQuestions": [
+      "Can this partner identify evidence of fit rather than keyword matches?",
+      "Can it reduce unqualified technical submissions?",
+      "Does it understand the project's environment, ownership, and delivery context?"
+    ],
+    "painPoints": [
+      "keyword-only matching",
+      "unclear project context",
+      "specialized talent scarcity",
+      "poor submission signal",
+      "contract vs permanent decisions"
+    ],
+    "proofNeeds": [
+      "technical screening method",
+      "evidence-of-fit framework",
+      "approved role examples",
+      "regulated-industry context"
+    ],
+    "preferredPlatforms": [
+      "linkedin",
+      "insights",
+      "x"
+    ],
+    "approvedCtas": [
+      "share_hiring_need",
+      "request_scoring_rubric",
+      "talk_to_hiring_specialist"
+    ],
+    "toneAdjustments": [
+      "technical-but-accessible",
+      "precise",
+      "outcome-oriented"
+    ],
+    "status": "active",
+    "version": 1
+  },
+  {
+    "code": "I2",
+    "name": "IT and engineering professionals and candidates",
+    "domain": "it_engineering",
+    "businessPriority": "tier_1",
+    "decisionQuestions": [
+      "Does this role fit my skills and career direction?",
+      "How can I show evidence of impact and ownership?",
+      "How should I position adjacent versus proven skills?"
+    ],
+    "painPoints": [
+      "tool-list resumes",
+      "unclear impact",
+      "career transitions",
+      "interview storytelling",
+      "contract vs full-time choices"
+    ],
+    "proofNeeds": [
+      "current role details",
+      "approved technical examples",
+      "SME-reviewed career guidance"
+    ],
+    "preferredPlatforms": [
+      "linkedin",
+      "instagram",
+      "x",
+      "insights"
+    ],
+    "approvedCtas": [
+      "view_job",
+      "join_talent_network",
+      "save_guide",
+      "contact_recruiter"
+    ],
+    "toneAdjustments": [
+      "practical",
+      "encouraging",
+      "specific",
+      "professional"
+    ],
+    "status": "active",
+    "version": 1
+  }
+]

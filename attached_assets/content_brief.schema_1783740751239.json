@@ -1,0 +1,169 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "HireinContentBrief",
+  "type": "object",
+  "required": [
+    "workingTitle",
+    "primaryAudienceCode",
+    "domain",
+    "audienceQuestion",
+    "decisionStage",
+    "businessObjective",
+    "primaryPillarCode",
+    "singleTakeaway",
+    "coreFormat",
+    "requestedVariants"
+  ],
+  "properties": {
+    "workingTitle": {
+      "type": "string",
+      "minLength": 3
+    },
+    "primaryAudienceCode": {
+      "type": "string",
+      "enum": [
+        "H1",
+        "H2",
+        "I1",
+        "I2",
+        "A5",
+        "A6",
+        "B1"
+      ]
+    },
+    "secondaryAudienceCodes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "domain": {
+      "type": "string",
+      "enum": [
+        "healthcare",
+        "it_engineering",
+        "cross_industry"
+      ]
+    },
+    "roleOrSpecialtyContext": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "audienceQuestion": {
+      "type": "string",
+      "minLength": 8
+    },
+    "decisionStage": {
+      "type": "string",
+      "enum": [
+        "awareness",
+        "consideration",
+        "conversion"
+      ]
+    },
+    "businessObjective": {
+      "type": "string",
+      "enum": [
+        "awareness",
+        "credibility",
+        "candidate_interest",
+        "employer_inquiry",
+        "application",
+        "engagement",
+        "partnership"
+      ]
+    },
+    "primaryPillarCode": {
+      "type": "string"
+    },
+    "secondaryPillarCodes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "singleTakeaway": {
+      "type": "string",
+      "minLength": 8
+    },
+    "sourceIds": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "integer"
+        ]
+      }
+    },
+    "proofIds": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "integer"
+        ]
+      }
+    },
+    "smeReviewerIds": {
+      "type": "array",
+      "items": {
+        "type": [
+          "string",
+          "integer"
+        ]
+      }
+    },
+    "primaryCtaId": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "coreFormat": {
+      "type": "string",
+      "enum": [
+        "insight_article",
+        "substantial_source_post",
+        "job_post"
+      ]
+    },
+    "requestedVariants": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "required": [
+          "platform",
+          "format"
+        ],
+        "properties": {
+          "platform": {
+            "type": "string"
+          },
+          "format": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "toneModifiers": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "dueDate": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "format": "date-time"
+    },
+    "notes": {
+      "type": "string"
+    }
+  },
+  "additionalProperties": false
+}

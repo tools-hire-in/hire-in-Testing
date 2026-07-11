@@ -1,0 +1,414 @@
+Launch gate:
+
+Minimum 10 approved PC-## proof cards
+Every card has an owner
+Every card has evidence
+Every card has permitted wording
+Every card has restrictions
+Named-client usage is explicitly allowed or prohibited
+Unsupported claims remain blocked
+
+Do not weaken proof rules merely to increase publishing volume.
+"""
+pack = pack.replace(dependency_anchor, dependency_add)
+
+Add proof interview to implementation requirements
+
+pack = pack.replace(
+"""- Complete the Content Craft dependency preflight before activating new prompt versions""",
+"""- Complete the Content Craft dependency preflight before activating new prompt versions
+
+Complete the Proof Library extraction interview and approve at least 10 PC-## cards before production launch"""
+)
+Add acceptance criteria
+
+pack = pack.replace(
+"""25. Adapt Job Marketing fit filters by domain so IT ownership language is not reused for healthcare roles
+""",
+"""25. Adapt Job Marketing fit filters by domain so IT ownership language is not reused for healthcare roles
+26. Healthcare Job Marketing uses recency/duration language only when explicitly present in the approved job facts
+27. Production launch is blocked until at least 10 PC-## proof cards are approved
+"""
+)
+
+Update kickoff prompt dependency
+
+pack = pack.replace(
+"""2. Merge the approved Job Marketing and Capability / Business Development exemplars from HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.1.md into Content Craft §6, including the healthcare-specific Job Marketing adaptation.""",
+"""2. Merge the approved Job Marketing and Capability / Business Development exemplars from HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.2.md into Content Craft §6, including the healthcare-specific Job Marketing adaptation."""
+)
+
+pack = pack.replace(
+"""Preserve all previous prompt versions for rollback. Do not activate the new versions until the Content Craft dependency preflight and all acceptance criteria pass.""",
+"""Preserve all previous prompt versions for rollback. Do not activate the new versions until the Content Craft dependency preflight and all acceptance criteria pass.
+
+Before production launch, complete HIREIN_PROOF_LIBRARY_EXTRACTION_INTERVIEW_v1.0.md and approve at least 10 PC-## proof cards. Do not weaken proof requirements to avoid [NEEDS_PROOF] flags."""
+)
+
+Closure notes
+
+if "# v1.3 Closure Notes" in pack:
+pack = pack[:pack.index("# v1.3 Closure Notes")] + """# v1.4 Closure Notes
+
+This revision closes the final launch-readiness items:
+
+Healthcare Job Marketing no longer defaults to “recent” experience.
+Recency or minimum-duration wording is now source-controlled and optional.
+A structured Proof Library extraction interview is added.
+Production launch requires at least 10 approved PC-## proof cards.
+Proof controls remain strict; missing proof is not treated as a prompt defect.
+"""
+Addendum change note
+
+if "# v1.1 Change Note" in addendum:
+addendum = addendum[:addendum.index("# v1.1 Change Note")] + """# v1.2 Change Note
+
+This revision removes the hardcoded healthcare “recent experience” assumption.
+
+The exemplar now requires one of three source-controlled options:
+
+Recent experience, only when explicitly required
+Approved minimum duration
+Omit recency/duration language
+"""
+Proof extraction interview worksheet
+
+proof_interview = """# Hire’in Proof Library Extraction Interview
+
+Launch Gate for the AI Content Agent
+
+Version: 1.0
+Purpose: Convert real Hire’in operating evidence into approved PC-## proof cards that the content agent can use safely.
+
+1. Launch Rule
+
+Do not launch the upgraded content agent into routine production use until at least:
+
+10 approved proof cards
+
+exist in HIREIN_PROOF_LIBRARY.md.
+
+A card counts toward the minimum only when it includes:
+
+Exact claim
+Supporting evidence
+Evidence owner
+Permitted wording
+Restrictions
+Named-client permission where applicable
+Approval status
+Review or expiration date
+
+A goal, projection, capability aspiration, draft deck statement, or undocumented memory is not proof.
+
+2. Required Interview Participants
+
+Include the people who can validate the facts:
+
+Founder/CEO
+IT delivery or sales leader
+Healthcare delivery leader
+Operations or compliance owner
+KlerHire/product owner
+Person with access to contracts, reports, client emails, placement records, or performance data
+
+One person may cover multiple roles, but every approved claim must have a named accountable owner.
+
+3. Evidence to Gather Before the Interview
+
+Bring available:
+
+Contracts, MSAs, SOWs, purchase orders, and vendor approvals
+Invoices or placement records
+ATS/VMS reports
+Submission, interview, offer, and start records
+Client or partner emails
+Approved testimonials
+Capability statements
+Corporate formation and operating-history records
+KlerHire product documentation
+Security, compliance, certification, or registration evidence
+Public-sector contract or program documentation
+Screenshots or exports that can be retained internally
+Named-client usage permissions
+
+Do not upload sensitive candidate PII into the marketing proof library.
+
+4. Minimum Ten-Card Coverage
+
+Create at least one approved card in each applicable category.
+
+PC-01 — Company operating history
+
+Questions:
+
+What year did Hire’in begin operating?
+What legal or business records confirm it?
+Does the evidence support general staffing history, IT history, healthcare history, or all three?
+What exact public wording is safe?
+PC-02 — IT staffing capability
+
+Questions:
+
+Which IT role families have actually been supported?
+What delivery models were used?
+What evidence exists?
+Can niche or critical-role language be supported?
+PC-03 — Healthcare staffing capability
+
+Questions:
+
+Which healthcare role families have actually been supported?
+What client or program models were used?
+What evidence exists?
+Which credential-aware process claims are supportable?
+PC-04 — Requirement calibration and screening process
+
+Questions:
+
+What intake steps are consistently used?
+What screening or quality-control artifacts exist?
+Who owns the process?
+Is this a documented process or an aspiration?
+PC-05 — Communication and transparency
+
+Questions:
+
+What status cadence, tracker, ATS, VMS, or escalation process is actually used?
+What evidence demonstrates the practice?
+Which wording is accurate without claiming an outcome?
+PC-06 — MSP/VMS and partner delivery
+
+Questions:
+
+Which MSP, VMS, subcontract, or partner workflows have been used?
+What can be named publicly?
+What submission, ownership, SLA, or reporting claims are supportable?
+PC-07 — KlerHire approved capabilities
+
+Questions:
+
+What functions work today?
+What is production, beta, internal, or planned?
+What screenshots or product documentation support the claim?
+What wording avoids implying autonomous hiring decisions?
+PC-08 — Public-sector readiness or experience
+
+Questions:
+
+Which state or federal programs, registrations, contracts, or vendor approvals are real and current?
+Which can be named?
+What must never be implied?
+Are any certifications or contract vehicles expired or restricted?
+PC-09 — Named-client or representative-experience claim
+
+Questions:
+
+What was Hire’in’s exact relationship: direct vendor, subcontractor, sourcing partner, or downstream supplier?
+Was there a placement, submission, project, or only an introduction?
+Is public naming permitted?
+Is logo use permitted?
+What restrictions apply?
+PC-10 — Measurable result or case study
+
+Questions:
+
+What real outcome can be supported?
+What is the measurement period?
+What is the source report?
+Is the result attributable to Hire’in?
+Can it be anonymized?
+What caveats are required?
+5. Additional Recommended Cards
+
+After the minimum ten, consider:
+
+Candidate-experience practice
+Job-content accuracy process
+Interview coordination
+Onboarding follow-through
+Hard-to-fill role example
+Healthcare credential-readiness example
+IT skill-adjacency example
+Public-sector submission-discipline example
+Approved testimonial
+Geographic coverage
+Delivery capacity
+Security or data-handling practice
+6. Proof Card Template
+
+Use the exact schema already defined in HIREIN_PROOF_LIBRARY.md.
+
+At minimum:
+
+PC-##
+Title:
+
+Claim:
+[Exact fact the evidence supports]
+
+Evidence:
+[Document, report, email, system record, contract, screenshot, or other source]
+
+Evidence owner:
+[Named person accountable for validation]
+
+Evidence date:
+[YYYY-MM-DD or applicable period]
+
+Permitted wording:
+[Exact public language the agent may use]
+
+Restrictions:
+[Anonymize / no logo / no client name / internal only / specific context only]
+
+Named-client permission:
+[Allowed / prohibited / not applicable]
+
+Valid through:
+[Date or review cadence]
+
+Approval status:
+[Draft / verified / approved / retired]
+
+Approved by:
+[Name and date]
+7. Interview Discipline
+
+For every proposed claim, ask:
+
+What exactly happened?
+What evidence proves it?
+Who can verify it?
+Is it current?
+Can it be named publicly?
+What is the narrowest accurate wording?
+What would make this wording misleading?
+When should the claim be reviewed again?
+
+Reject vague answers such as:
+
+“We have done a lot of these.”
+“Everyone knows we support that.”
+“We could do it.”
+“The tool should be able to.”
+“The client will probably be fine with being named.”
+8. Approval Outcomes
+
+Each claim ends in one status:
+
+Approved
+
+The agent may use the exact permitted wording.
+
+Approved with restrictions
+
+The agent may use it only under the documented limits.
+
+Needs evidence
+
+Keep it as [NEEDS_PROOF].
+
+Not approved
+
+Do not use it publicly.
+
+Retired
+
+Previously valid, but no longer current or permitted.
+
+9. Final Launch Checklist
+[ ] At least 10 PC-## cards approved
+[ ] IT capability represented
+[ ] Healthcare capability represented
+[ ] Communication/transparency represented
+[ ] MSP/VMS or partner delivery represented
+[ ] KlerHire wording approved
+[ ] Public-sector claims reviewed
+[ ] Named-client permissions documented
+[ ] At least one measurable result or approved anonymized case example
+[ ] Every card has an owner and review date
+[ ] Sensitive candidate data excluded
+[ ] Agent tested with proof and no-proof scenarios
+
+Once complete, the Proof Library becomes the governed factual source for Hire’in-specific content.
+"""
+
+pack_v14 = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.4.md")
+addendum_v12 = Path("/mnt/data/HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.2.md")
+proof_path = Path("/mnt/data/HIREIN_PROOF_LIBRARY_EXTRACTION_INTERVIEW_v1.0.md")
+
+pack_v14.write_text(pack, encoding="utf-8")
+addendum_v12.write_text(addendum, encoding="utf-8")
+proof_path.write_text(proof_interview, encoding="utf-8")
+
+zip_path = Path("/mnt/data/HIREIN_CONTENT_AGENT_HANDOFF_v1.4.zip")
+with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+for p in [pack_v14, addendum_v12, proof_path]:
+z.write(p, arcname=p.name)
+
+print(f"Created {pack_v14} ({pack_v14.stat().st_size:,} bytes)")
+print(f"Created {addendum_v12} ({addendum_v12.stat().st_size:,} bytes)")
+print(f"Created {proof_path} ({proof_path.stat().st_size:,} bytes)")
+print(f"Created {zip_path} ({zip_path.stat().st_size:,} bytes)")
+
+STDOUT/STDERR
+Created /mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.4.md (26,106 bytes)
+Created /mnt/data/HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.2.md (8,467 bytes)
+Created /mnt/data/HIREIN_PROOF_LIBRARY_EXTRACTION_INTERVIEW_v1.0.md (7,274 bytes)
+Created /mnt/data/HIREIN_CONTENT_AGENT_HANDOFF_v1.4.zip (16,591 bytes)
+
+
+Both points are now closed.
+
+Download the complete v1.4 Replit handoff
+
+It includes:
+
+HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.4.md
+HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.2.md
+HIREIN_PROOF_LIBRARY_EXTRACTION_INTERVIEW_v1.0.md
+Healthcare exemplar correction
+
+The hardcoded wording:
+
+“recent specialty experience”
+
+is now replaced with:
+
+[EXPERIENCE_RECENCY_OR_DURATION: recent / minimum X years / omit]
+
+The rules now require the Agent to:
+
+Use “recent” only when explicitly stated in the approved job requirement
+Use the approved minimum duration when provided
+Otherwise omit recency or duration language
+Never infer recency from urgency, specialty, care setting, or recruiter preference
+Proof Library launch gate
+
+The package now includes a structured extraction interview covering:
+
+Company operating history
+IT staffing capability
+Healthcare staffing capability
+Requirement calibration and screening
+Communication and transparency
+MSP/VMS delivery
+KlerHire capabilities
+Public-sector experience
+Named-client permissions
+Measurable results or case studies
+
+Production launch now requires:
+
+Minimum 10 approved PC-## proof cards
+
+Each approved card must have:
+
+Supporting evidence
+Evidence owner
+Permitted wording
+Restrictions
+Named-client permission status
+Approval status
+Review or expiration date

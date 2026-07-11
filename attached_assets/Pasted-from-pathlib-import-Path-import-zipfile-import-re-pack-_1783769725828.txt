@@ -1,0 +1,251 @@
+from pathlib import Path
+import zipfile
+import re
+
+pack_v12 = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.2.md")
+addendum_v10 = Path("/mnt/data/HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.0.md")
+
+pack = pack_v12.read_text(encoding="utf-8")
+addendum = addendum_v10.read_text(encoding="utf-8")
+
+# Update pack version
+pack = pack.replace(
+    "# Hire’in AI Content Agent — Intelligence Pack v1.2",
+    "# Hire’in AI Content Agent — Intelligence Pack v1.3"
+)
+
+# Update dependency filename reference
+pack = pack.replace(
+    "HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.0.md",
+    "HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.1.md"
+)
+
+# Add healthcare-specific job marketing adaptation guidance
+needle = """The system must be able to select an approved exemplar for:
+
+1. Thought Leadership
+2. Educational / Explainer
+3. Job Marketing
+4. Capability / Business Development
+"""
+
+replacement = needle + """
+
+For Job Marketing, the Agent must adapt the fit-filter mechanism by domain:
+
+- **IT:** ownership, production environment, scale, stack, recency, and depth
+- **Healthcare:** specialty experience, care setting, shift/schedule fit, license/certification readiness, and location/availability
+
+Do not reuse IT-specific “production ownership” language for healthcare candidate content.
+"""
+pack = pack.replace(needle, replacement)
+
+# Update preflight expected coverage to mention healthcare adaptation
+pack = pack.replace(
+    """Capability / Business Development: FOUND
+```""",
+    """Capability / Business Development: FOUND
+Healthcare Job Marketing adaptation: FOUND
+```"""
+)
+
+# Update acceptance criteria
+pack = pack.replace(
+    """24. Warn and suggest alternatives when a user manually repeats the previous archetype
+""",
+    """24. Warn and suggest alternatives when a user manually repeats the previous archetype
+25. Adapt Job Marketing fit filters by domain so IT ownership language is not reused for healthcare roles
+"""
+)
+
+# Update kickoff prompt filename and healthcare rule
+pack = pack.replace(
+    "Upgrade the existing Hire’in content agent using HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.2.md.",
+    "Upgrade the existing Hire’in content agent using HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.3.md."
+)
+
+pack = pack.replace(
+    """2. Merge the approved Job Marketing and Capability / Business Development exemplars from HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.0.md into Content Craft §6.""",
+    """2. Merge the approved Job Marketing and Capability / Business Development exemplars from HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.1.md into Content Craft §6, including the healthcare-specific Job Marketing adaptation."""
+)
+
+pack = pack.replace(
+    """Automatic selection must not repeat the last comparable content archetype on the same platform. If a user manually repeats it, show a recent-use advisory and two alternatives, then allow an intentional override.""",
+    """Automatic selection must not repeat the last comparable content archetype on the same platform. If a user manually repeats it, show a recent-use advisory and two alternatives, then allow an intentional override.
+
+For Job Marketing, adapt the fit-filter mechanism by domain. IT content may use ownership/production-depth framing; healthcare content must shift to specialty, care setting, credential readiness, schedule, location, and availability."""
+)
+
+# Replace closure notes
+if "# v1.2 Closure Notes" in pack:
+    pack = pack[:pack.index("# v1.2 Closure Notes")] + """# v1.3 Closure Notes
+
+This revision closes the final domain-calibration note:
+
+1. Job Marketing now has an explicit healthcare adaptation using specialty, care setting, credential readiness, schedule, location, and availability.
+2. IT-specific “production ownership” language is prohibited for healthcare candidate content.
+3. The Capability / BD exemplar documentation now identifies the operational-truth opening as the load-bearing creative decision.
+4. No new architecture or workflow was added.
+"""
+
+# Update addendum version
+addendum = addendum.replace(
+    "# Hire’in Content Craft — Exemplar Addendum\n## Job Marketing and Capability / Business Development",
+    "# Hire’in Content Craft — Exemplar Addendum v1.1\n## Job Marketing and Capability / Business Development"
+)
+addendum = addendum.replace(
+    "**Version:** 1.0",
+    "**Version:** 1.1"
+)
+
+# Insert healthcare adaptation after Exemplar F placeholder control
+insert_after = """Never output the bracketed placeholder itself in published content.
+
+---
+"""
+
+healthcare_variant = """Never output the bracketed placeholder itself in published content.
+
+## Healthcare adaptation for Exemplar F
+
+The Job Marketing mechanism remains the same—help the right candidate self-qualify—but the fit language must change for healthcare roles.
+
+Do not use “owned in a production environment” framing for nurses, allied-health professionals, or clinical-support candidates.
+
+Use a healthcare-specific fit filter such as:
+
+```text
+[ROLE_TITLE] | [LOCATION] | [WORK_ARRANGEMENT]
+
+This opportunity is best suited to a candidate with recent [SPECIALTY_OR_ROLE] experience in a [CARE_SETTING] environment who is comfortable with [SHIFT / SCHEDULE / PATIENT_POPULATION / CORE_RESPONSIBILITY].
+
+You may be a strong fit when you have:
+
+• [REQUIRED_LICENSE_OR_CERTIFICATION]
+• [SPECIALTY_EXPERIENCE]
+• [CARE_SETTING_OR_PROCEDURE_EXPERIENCE]
+• Availability for [SHIFT / SCHEDULE / START_EXPECTATION]
+
+Before applying, please confirm that the location, schedule, and required credentials align with your current situation.
+
+Interested candidates can send a resume to [APPROVED_CONTACT] with “[ROLE_TITLE]” in the subject line.
+Healthcare-specific rules
+Lead with specialty and care-setting fit
+Confirm license/certification only from the approved job record
+Never imply credentialing is complete unless verified
+Never invent shift, schedule, patient population, facility, start date, compensation, or travel terms
+Use “recent experience” only when the approved job requirement supports it
+Keep the tone respectful and candidate-centered
+Apply existing healthcare-safe controls
+
+"""
+addendum = addendum.replace(insert_after, healthcare_variant, 1)
+
+Reorder Capability/BD "Why this works" bullets to lead with operational-truth opening
+
+old_why = """## Why this works
+
+Begins with an operational truth, not a company introduction
+Speaks to the MSP/partner decision
+Explains the mechanism behind quality
+Positions AI as support for human judgment
+Makes communication and transparency concrete
+Uses proof placeholders where Hire’in-specific claims would appear
+Ends with a credible, specific CTA
+Avoids unsupported superlatives and generic partnership language
+"""
+
+new_why = """## Why this works
+
+Leads with the load-bearing creative decision: an operational truth instead of a company introduction
+Challenges the volume-equals-quality assumption without overexplaining
+Speaks to the MSP/partner decision
+Explains the mechanism behind quality
+Positions AI as support for human judgment
+Makes communication and transparency concrete
+Uses proof placeholders where Hire’in-specific claims would appear
+Ends with a credible, specific CTA
+Avoids unsupported superlatives and generic partnership language
+"""
+addendum = addendum.replace(old_why, new_why)
+Update integration instructions and coverage
+
+addendum = addendum.replace(
+"""- Exemplar F — Job Marketing
+
+Exemplar G — Capability / Business Development""",
+"""- Exemplar F — Job Marketing, including its healthcare adaptation
+Exemplar G — Capability / Business Development"""
+)
+
+addendum = addendum.replace(
+"""Capability / Business Dev: FOUND
+
+    """Capability / Business Dev:   FOUND
+Healthcare Job Marketing:       FOUND
+```"""
+)
+
+addendum += """
+
+---
+
+# v1.1 Change Note
+
+This revision adds the healthcare-specific adaptation for Job Marketing and clarifies that the Capability / BD exemplar’s operational-truth opening is the primary creative decision.
+"""
+
+pack_v13 = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.3.md")
+addendum_v11 = Path("/mnt/data/HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.1.md")
+pack_v13.write_text(pack, encoding="utf-8")
+addendum_v11.write_text(addendum, encoding="utf-8")
+
+zip_path = Path("/mnt/data/HIREIN_CONTENT_AGENT_HANDOFF_v1.3.zip")
+with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+    z.write(pack_v13, arcname=pack_v13.name)
+    z.write(addendum_v11, arcname=addendum_v11.name)
+
+print(f"Created {pack_v13} ({pack_v13.stat().st_size:,} bytes)")
+print(f"Created {addendum_v11} ({addendum_v11.stat().st_size:,} bytes)")
+print(f"Created {zip_path} ({zip_path.stat().st_size:,} bytes)")
+
+STDOUT/STDERR
+Created /mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.3.md (25,666 bytes)
+Created /mnt/data/HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.1.md (8,159 bytes)
+Created /mnt/data/HIREIN_CONTENT_AGENT_HANDOFF_v1.3.zip (13,113 bytes)
+
+
+Agreed. The system was ready, and I closed the final healthcare calibration note without adding new architecture.
+
+Final developer handoff
+
+Download the complete v1.3 handoff ZIP
+
+Individual files:
+
+HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.3.md
+HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.1.md
+Final changes
+
+Healthcare Job Marketing adaptation
+
+The Job Marketing exemplar now changes its fit filter by domain:
+
+IT: production ownership, stack, scale, recency, and technical depth
+Healthcare: specialty experience, care setting, license/certification readiness, shift, location, and availability
+
+It explicitly prohibits reusing “owned in a production environment” language for healthcare candidates.
+
+Capability/BD exemplar prioritization
+
+The “Why this works” section now identifies the operational-truth opening as the load-bearing creative decision:
+
+More submissions do not fix a poorly calibrated requisition. They multiply the noise.
+
+Preflight now confirms:
+
+Thought Leadership: FOUND
+Educational / Explainer: FOUND
+Job Marketing: FOUND
+Capability / Business Development: FOUND
+Healthcare Job Marketing adaptation: FOUND

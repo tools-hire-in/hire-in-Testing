@@ -1,0 +1,404 @@
+Call it the “Single Authoritative Playbook”
+
+“Monolithic” is accurate from a documentation perspective, but engineers may interpret it as a monolithic application architecture.
+
+Use:
+
+Hire’in BD Agent Single Authoritative Playbook
+
+The application remains modular. Only the operating guide is consolidated.
+
+2. Do not create four new database roles in Phase 1
+
+BD Rep, BD Manager, Knowledge Owner, and Super Admin should initially be treated as operating personas and permission bundles, not necessarily new role-enum values.
+
+Map them through the existing access-control system:
+
+Operating persona	Initial implementation
+BD Rep	Existing standard-user role plus BD workspace permissions
+BD Manager	Existing admin/manager-compatible role plus pipeline and coaching permissions
+Knowledge Owner	Existing admin role plus knowledge approval permissions
+Super Admin	Existing super_admin role
+
+This preserves the earlier rule:
+
+Do not modify the existing role enum until the repository audit proves new roles are necessary.
+
+The playbook can describe four user-facing responsibilities even when the backend temporarily uses three existing technical roles.
+
+3. Resolve the repository-editing contradiction
+
+A file stored at docs/bd-agent-playbook.md cannot also be freely edited by a nontechnical Knowledge Owner unless a controlled publishing mechanism is built.
+
+For the MVP:
+
+The repository Markdown file is the canonical published version.
+The Knowledge Owner owns and approves the content.
+Updates are committed through the normal repository change process.
+The product renders the file as read-only help.
+A browser-based playbook editor is not required for the MVP.
+
+A future phase can add an admin editor that creates a reviewable version or pull request. Do not make that part of Tasks 2 or 3 unless it is explicitly scoped and designed.
+
+4. Keep operational guidance separate from factual evidence
+
+The playbook may guide:
+
+questions to ask
+workflow steps
+qualification logic
+objection handling
+recommended next actions
+approved communication structure
+
+But the playbook itself must not become the evidence source for customer-facing claims.
+
+For example, the playbook may say:
+
+Use the approved healthcare credentialing proof point.
+
+The actual statistic, client result, certification, coverage claim, or case-study result must still come from an approved Knowledge Library source with its own citation and claim status.
+
+This prevents internally written sales instructions from accidentally becoming “proof.”
+
+5. Make playbook maintenance part of Definition of Done
+
+Every workflow, domain, permission, or user-interface change affecting the playbook must update the relevant section in the same task or pull request.
+
+A feature is not complete when:
+
+the UI has changed but instructions have not;
+the agent behavior has changed but examples have not;
+a domain claim has been retired but remains in the playbook;
+screenshots no longer match the product;
+contextual-help links lead to outdated sections.
+Copy-ready architecture amendment
+Hire’in BD Agent Single Authoritative Playbook
+Product Documentation Decision
+
+The Hire’in BD Agent will ship with one authoritative, version-controlled operating playbook located at:
+
+docs/bd-agent-playbook.md
+
+The playbook is a required product component, not optional supporting documentation.
+
+It serves three purposes simultaneously:
+
+Onboarding guide — enables a new BD representative to understand and use the system from the first day.
+Operational reference — tells active users what to do next during a live opportunity.
+Governance manual — defines how managers, Knowledge Owners, and Super Admins maintain quality, permissions, evidence, and approved content.
+
+The playbook is rendered inside the BD Agent interface and is not distributed only as an email attachment or external PDF.
+
+Canonical Source and Governance
+
+The published Markdown file in the repository is the canonical source of truth.
+
+The Knowledge Owner is accountable for the accuracy, completeness, and approval of its business content. Repository publication follows the platform's established change and review process.
+
+For the MVP:
+
+the playbook is rendered read-only inside the product;
+direct browser-based editing is not required;
+the Knowledge Owner reviews and approves proposed updates;
+approved changes are committed to the repository;
+each material update changes the playbook version and revision date.
+
+The file must begin with the following governance metadata:
+
+Playbook version
+Product version supported
+Content owner
+Last approved date
+Next scheduled review date
+Approved domains
+Change summary
+Stable Deep-Link Structure
+
+Every major heading must use a stable anchor so the application can link directly to the appropriate section.
+
+Recommended top-level anchors:
+
+#system-overview
+#roles-and-access
+#core-workflows
+#healthcare-playbook
+#it-playbook
+#general-professional-playbook
+#knowledge-management
+#team-rhythms-and-kpis
+#quick-reference-cards
+
+Headings and anchors must not be renamed casually because the application will depend on them for contextual help.
+
+Roles and Permissions
+
+The playbook defines four operating personas:
+
+BD Rep
+BD Manager
+Knowledge Owner
+Super Admin
+
+These are user-facing responsibility models. They must not automatically result in new database role-enum values.
+
+During Phase 1, the implementation must map these personas to the platform's existing role and permission framework. New technical roles may be introduced only after the repository audit establishes that existing roles and permission mappings cannot safely support the required access.
+
+Playbook Structure
+
+The final playbook contains seven sections.
+
+Section 1 — The System
+
+Explains:
+
+what the BD Agent is;
+what it is not;
+how it supports—not replaces—BD judgment;
+the five operating layers;
+how governed knowledge is used;
+how recommendations, confidence, and evidence work;
+when a user must independently verify an answer.
+Section 2 — Roles and Access
+
+Defines the responsibilities, permissions, limitations, and handoffs for:
+
+BD Rep;
+BD Manager;
+Knowledge Owner;
+Super Admin.
+
+The section must explain operating responsibilities separately from technical role implementation.
+
+Section 3 — Five Core Workflows
+
+Provides numbered operating instructions for:
+
+Pre-Call Brief
+Discovery and Profile Building
+Qualification Verdict
+Deck Collaborator
+Follow-Up Drafter
+
+Each workflow must contain:
+
+when to use it;
+required inputs;
+numbered instructions;
+named screen or screenshot references;
+what strong output looks like;
+what weak output looks like;
+common user errors;
+required human review;
+the business cost of skipping the workflow;
+the correct next action.
+Section 4 — Domain Playbooks
+
+Contains complete playbooks for:
+
+Healthcare Staffing
+IT Staffing
+General and Professional Staffing
+
+Each domain playbook must include:
+
+five principal buyer types;
+buyer priorities and likely decision criteria;
+five essential qualification questions;
+five common objections;
+approved response frameworks;
+proof-point hierarchy;
+recommended pilot ask;
+escalation triggers;
+claims that must never be made;
+domain-specific compliance or evidence considerations.
+Section 5 — Knowledge Management
+
+Provides the Knowledge Owner's operating manual, including:
+
+creating and uploading knowledge sources;
+assigning domain and confidentiality tags;
+reviewing extracted content;
+approving, rejecting, or restricting a source;
+creating agent-usable case studies;
+maintaining objection responses;
+approving claims and proof points;
+superseding earlier document or deck versions;
+retiring outdated sources;
+handling conflicting information;
+quarterly content reviews;
+consequences of low-quality or ungoverned source material.
+Section 6 — Team Rhythms and KPIs
+
+Defines:
+
+daily BD habits;
+weekly manager and team routines;
+monthly knowledge and performance reviews;
+nine adoption and effectiveness KPIs;
+leading indicators of healthy pipeline contribution;
+warning indicators of shallow or performative adoption;
+coaching actions for low-quality usage.
+
+KPIs must distinguish between:
+
+product adoption;
+workflow quality;
+pipeline influence;
+revenue attribution.
+Section 7 — Quick Reference Cards
+
+Provides concise role-specific reference cards.
+
+At minimum:
+
+BD Rep pre-call card;
+BD Rep post-call card;
+BD Manager pipeline-review card;
+Knowledge Owner weekly governance card;
+Super Admin configuration and access card.
+Contextual Product Integration
+
+The BD Agent workspace header must contain a visible Playbook entry point.
+
+The interface must also support workflow-specific deep links.
+
+Examples:
+
+Pre-Call Brief links to the Pre-Call Brief instructions.
+Qualification Verdict links to qualification standards.
+Deck Collaborator links to the active domain playbook and deck workflow.
+Knowledge Library administration links to Section 5.
+Manager review screens link to the KPI and coaching sections.
+
+Contextual help must display the relevant portion of the playbook rather than loading the entire document into every screen.
+
+The system should render or retrieve the relevant section using stable heading anchors. It must not send the entire playbook to the AI model on every request.
+
+Evidence Boundary
+
+The playbook is an operational and behavioral source.
+
+It may guide workflow behavior, conversation strategy, messaging structure, qualification questions, objection handling, and recommended actions.
+
+It must not independently authorize external factual claims.
+
+Customer-facing claims concerning performance, clients, credentials, certifications, geographic coverage, compliance, delivery speed, results, savings, placements, or case studies must resolve to separately approved Knowledge Library evidence.
+
+Screenshot and Asset Management
+
+Screenshots and interface illustrations must be stored under a predictable path such as:
+
+docs/assets/bd-agent-playbook/
+
+Each image must have:
+
+a stable file name;
+descriptive alternative text;
+the product version it represents;
+a reference from the relevant workflow section.
+
+Temporary screenshot placeholders may be used during early development, but all placeholders must be replaced before Task 5 production approval.
+
+Task Amendments
+TASK 2 — Knowledge Library (#984)
+
+Add the following required deliverables:
+
+Create docs/bd-agent-playbook.md with the complete heading and anchor structure for all seven sections.
+Complete and approve Section 5, Knowledge Management, before the Knowledge Library is considered production-ready.
+Document the complete source lifecycle:
+draft;
+processing;
+review required;
+approved;
+restricted;
+superseded;
+retired.
+Document the claims review and approval process.
+Add a Playbook link from the Knowledge Library administration interface directly to Section 5.
+Confirm that the playbook is operational guidance and not an independent evidence source.
+Record the Knowledge Owner's approval in the task acceptance evidence.
+Task 2 Definition of Done
+
+Task 2 is not complete until:
+
+Section 5 is approved;
+all knowledge statuses documented in the guide exist in the product or are clearly marked as future-state;
+the admin-interface deep link works;
+the published source has version and review metadata;
+no unapproved source can be represented as externally usable evidence.
+TASK 3 — Workspace and Grounded Conversation (#985)
+
+Add the following required deliverables:
+
+Complete Sections 1 through 4 for the MVP workflows and supported domains.
+Add a visible Playbook entry point to the BD Agent workspace header.
+Add workflow-specific contextual links for:
+Pre-Call Brief;
+Discovery and Profile Building;
+Qualification Verdict;
+Deck Collaborator;
+Follow-Up Drafter.
+Add domain-specific links for Healthcare, IT, and General/Professional Staffing.
+Include strong-output and weak-output examples for every workflow.
+Include human-review requirements and the consequences of skipping each workflow.
+Ensure contextual help retrieves only the relevant playbook section.
+Do not add new technical role-enum values solely because the guide defines four operating personas.
+Task 3 Definition of Done
+
+Task 3 is not complete until:
+
+a new BD Rep can follow the documented workflows without developer assistance;
+every active workflow has a working playbook deep link;
+examples match the actual product output;
+the application does not duplicate independently maintained copies of the guide;
+factual recommendations remain grounded in separately approved sources.
+TASK 5 — Evaluation, Learning, and Production Hardening (#987)
+
+Add the following required deliverables:
+
+Complete all seven playbook sections.
+Finalize the three domain playbooks using pilot findings.
+Complete Section 6 with final team rhythms and nine approved KPIs.
+Complete all role-specific Quick Reference Cards.
+Replace temporary screenshot placeholders with current product images.
+Verify every heading anchor and contextual-help link.
+Add the final playbook version, approval date, owner, review date, and change summary.
+Conduct formal playbook reviews with:
+at least one active BD Rep;
+at least one Knowledge Owner;
+the product owner or designated manager.
+Record issues found during the reviews and their resolution.
+Confirm that unsupported, restricted, expired, or superseded claims are not presented as approved proof.
+Task 5 Definition of Done
+
+Production rollout is blocked until:
+
+all seven sections are complete;
+role reviews are documented;
+contextual links pass testing;
+screenshots reflect the released interface;
+domain guidance matches the implemented agent behavior;
+KPIs can be measured using available system data;
+the playbook has an assigned owner and future review date;
+no known workflow or governance behavior is undocumented.
+Ongoing Maintenance Rule
+
+Any task that materially changes one of the following must update the relevant playbook section in the same change:
+
+workflow steps;
+screen names;
+navigation;
+agent behavior;
+qualification rules;
+supported domains;
+knowledge governance;
+claim approval;
+access permissions;
+reporting or KPIs;
+deck-generation behavior.
+
+A product change affecting user behavior is not complete until its playbook impact has been reviewed.
+
+This makes your plan implementation-safe while preserving the single-document philosophy. The most important protections are the existing-role mapping, the repository ownership model, and the separation between sales guidance and approved factual evidence.

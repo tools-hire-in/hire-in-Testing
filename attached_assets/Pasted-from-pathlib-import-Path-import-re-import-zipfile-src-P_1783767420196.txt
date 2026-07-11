@@ -1,0 +1,727 @@
+from pathlib import Path
+import re
+import zipfile
+
+src = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK.md")
+text = src.read_text(encoding="utf-8")
+
+# Version/header upgrade
+text = text.replace(
+    "# Hire’in AI Content Agent — Intelligence Pack\n## Drop-In “Secret Sauce” for the Existing Agent",
+    "# Hire’in AI Content Agent — Intelligence Pack v1.1\n## Drop-In “Secret Sauce” for the Existing Agent"
+)
+
+# Add mandatory dependency section after purpose intro.
+anchor = """This is not a new agent architecture. It is a compact intelligence layer that improves how the existing agent decides:
+
+- Who the content is for
+- Which staffing domain applies
+- Whether the context is commercial, state government, or federal government
+- What kind of content is being created
+- How the content should change by platform
+- What claims require proof
+- How to avoid generic AI writing
+"""
+
+dependency = anchor + """
+
+---
+
+# 0. Mandatory Creative Dependency
+
+This intelligence pack is the decision layer. It does not duplicate the complete creative library.
+
+The implementation must also load:
+
+```text
+HIREIN_CONTENT_CRAFT.md
+
+The following sections are mandatory:
+
+§1 — All 8 hook archetypes
+§2 — All 12 content archetypes
+§3 — Content craft rules
+§4 — Full banned AI-slop and staffing-cliché list
+§5 — Platform craft rules
+§6 — Gold-standard exemplars
+§7 — Mandatory self-edit pass
+Deployment gate
+
+Do not ship the prompt upgrade when any required Content Craft section is missing, empty, summarized, or paraphrased.
+
+Before implementation, Replit must produce a preflight result:
+
+Content Craft §1: FOUND / MISSING
+Content Craft §2: FOUND / MISSING
+Content Craft §3: FOUND / MISSING
+Content Craft §4: FOUND / MISSING
+Content Craft §5: FOUND / MISSING
+Content Craft §6: FOUND / MISSING
+Content Craft §7: FOUND / MISSING
+
+Any MISSING result blocks activation of the new prompt versions.
+
+Source-of-truth rule
+
+Copy the authored archetypes, banned list, platform craft, exemplars, and self-edit instructions verbatim from HIREIN_CONTENT_CRAFT.md.
+
+Do not:
+
+Reconstruct them from memory
+Replace them with a shorter generic list
+Ask the model to invent archetypes
+Paraphrase the banned list
+Create substitute exemplars
+Activate the new prompt versions with only partial creative guidance
+
+The original Content Craft file remains the single creative source of truth.
+"""
+text = text.replace(anchor, dependency)
+
+Strengthen anti-slop section.
+
+old_anti = """# 10. Anti-Slop Rules
+
+Use the full banned list from the existing Content Craft file.
+
+At minimum, the agent should avoid:"""
+
+new_anti = """# 10. Anti-Slop Rules
+
+Use the complete banned list from HIREIN_CONTENT_CRAFT.md §4 as a hard prompt block and as the source for deterministic exact-phrase validation.
+
+The short examples below are explanatory only. They are not a replacement for §4.
+
+Do not activate the upgraded agent unless the full §4 list has been loaded verbatim.
+
+At minimum, the agent should avoid:"""
+text = text.replace(old_anti, new_anti)
+
+Replace hook section with explicit dependency and exemplar logic.
+
+hook_start = text.index("# 11. Hook and Structure Intelligence")
+hook_end = text.index("# 12. Prompt Loading Rule")
+
+new_hook = """# 11. Hook, Archetype, and Exemplar Intelligence
+
+Use the complete creative library from HIREIN_CONTENT_CRAFT.md.
+
+Required archetype libraries
+Hook archetypes: §1, all 8
+Content archetypes: §2, all 12
+
+Do not use “if available.” These are required dependencies.
+
+For social content, generate:
+
+Three distinct hook options
+The hook archetype used for each option
+One recommended hook
+A short recommendation rationale
+One selected content archetype
+
+Avoid using the same content archetype twice in a row on the same platform when the agent selects automatically.
+
+The user does not need to choose an archetype unless Advanced Options are opened.
+
+Required exemplars
+
+Gold-standard exemplars from Content Craft §6 are mandatory quality anchors.
+
+At minimum, the system must be able to select a relevant exemplar for:
+
+Thought Leadership
+Educational / Explainer
+Job Marketing
+Capability / Business Development
+
+Use the closest authored exemplar for the selected content goal and platform.
+
+Exemplar loading rule
+Load one relevant exemplar by default.
+Load a second only when it demonstrates a materially different pattern needed for the request.
+Do not load every exemplar.
+Do not copy exemplar sentences.
+Do not output bracketed placeholder claims.
+Do not convert exemplar placeholders into facts.
+Exemplars teach structure, specificity, rhythm, and quality—not reusable claims.
+Exemplar preflight
+
+Before activating new prompt versions, verify that §6 contains an approved exemplar for each of the four required content goals.
+
+If one category is missing, either:
+
+Add an approved authored exemplar to Content Craft, or
+Keep that content goal on the prior prompt version
+
+Do not invent a replacement exemplar during implementation.
+
+"""
+text = text[:hook_start] + new_hook + text[hook_end:]
+
+Strengthen prompt loading section with exact creative routing.
+
+old_loading = """Load only:
+
+Shared Hire’in core
++ selected audience
++ selected staffing domain
++ selected market context
++ selected content goal
++ selected platform rules
++ relevant proof
++ user request
++ banned-language and self-edit rules
+```"""
+
+new_loading = """Load only:
+
+```text
+Shared Hire’in core
++ selected audience
++ selected staffing domain
++ selected market context
++ selected content goal
++ selected platform craft block from Content Craft §5
++ selected hook/content archetype guidance from §§1–2
++ one relevant gold-standard exemplar from §6
++ relevant proof
++ user request
++ full banned-language block from §4
++ mandatory self-edit pass from §7
+```"""
+text = text.replace(old_loading, new_loading)
+
+# Add prompt ordering detail.
+old_priority = """Keep high-priority constraints near the final generation instruction:
+
+- No invented facts
+- Proof rules
+- Banned-language rules
+- Self-edit
+- Output requirements
+"""
+
+new_priority = """Keep high-priority constraints near the final generation instruction:
+
+- No invented facts
+- Proof rules
+- Full banned-language rules
+- Exemplar non-copy and placeholder non-leakage rule
+- Mandatory self-edit
+- Output requirements
+
+Keep long reference context earlier in the prompt. Do not bury the banned list or self-edit pass beneath domain vocabulary or exemplars.
+"""
+text = text.replace(old_priority, new_priority)
+
+# Add Replit preflight and conditional exemplars.
+old_impl = """## Required behavior
+
+- Infer fields automatically
+- Allow user override
+- Persist resolved values in existing metadata
+- Load only relevant prompt blocks
+- Preserve existing prompt versions for rollback
+- Run existing quality review for normal and compliance modes
+- Add simple deterministic checks for exact banned phrases, unsupported-claim markers, and duplicated cross-platform sentences
+"""
+
+new_impl = """## Required behavior
+
+- Complete the Content Craft dependency preflight before activating prompts
+- Infer fields automatically
+- Allow user override
+- Persist resolved values in existing metadata
+- Load only relevant prompt blocks
+- Load one goal/platform-relevant exemplar from Content Craft §6
+- Preserve existing prompt versions for rollback
+- Run existing quality review for normal and compliance modes
+- Add deterministic checks for:
+  - Exact banned phrases from the full §4 list
+  - Exemplar placeholders
+  - Unsupported-claim markers
+  - Duplicated cross-platform sentences
+  - Missing hook/content archetype metadata
+"""
+text = text.replace(old_impl, new_impl)
+
+# Expand acceptance criteria.
+old_acceptance_end = """15. Preserve the existing review and publish workflow
+16. Restore previous prompt versions
+"""
+
+new_acceptance_end = """15. Preserve the existing review and publish workflow
+16. Restore previous prompt versions
+17. Verify all required Content Craft sections before prompt activation
+18. Use all 8 authored hook archetypes and all 12 authored content archetypes
+19. Load a relevant authored exemplar for each content goal
+20. Never copy exemplar language or leak exemplar placeholders
+21. Fail activation when the full banned list or required exemplar category is unavailable
+"""
+text = text.replace(old_acceptance_end, new_acceptance_end)
+
+# Replace kickoff prompt with dependency-specific version.
+kickoff_start = text.index("# 16. Copy/Paste Replit Prompt")
+final_principle = text.index("# Final Principle")
+
+new_kickoff = """# 16. Copy/Paste Replit Prompt
+
+```text
+Do not build a new content agent.
+
+Upgrade the existing Hire’in content agent using HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.1.md.
+
+MANDATORY DEPENDENCY:
+Before implementing or activating new prompt versions, inspect HIREIN_CONTENT_CRAFT.md and confirm that §§1–7 are present. Specifically verify all 8 hook archetypes, all 12 content archetypes, the full banned list, platform craft rules, gold-standard exemplars, and the self-edit pass. Do not ship with missing, summarized, paraphrased, or invented creative content.
+
+Add a lightweight decision layer that automatically resolves:
+- Audience
+- Staffing domain
+- Commercial/state/federal market context
+- Content goal
+- Platform
+
+Load only the relevant intelligence blocks. Keep the user interface simple and place overrides in Advanced Options.
+
+For each request, conditionally load:
+- The relevant audience
+- The relevant staffing domain
+- The relevant market context
+- The relevant content goal
+- Only the requested platform’s craft guidance
+- The authored archetype guidance
+- One relevant gold-standard exemplar from Content Craft §6
+- Relevant proof
+- The full banned list and self-edit pass close to the final generation instruction
+
+Reuse the existing prompt builder, prompt versions, structured output, retries, quality review, metadata, peer review, and publish gate.
+
+Add audience-aware writing, IT and healthcare staffing expertise, commercial and government awareness, platform-native social writing, proof governance, anti-slop controls, three hook options, authored exemplars, and lightweight content-structure rotation.
+
+Add deterministic validation for exact banned phrases, exemplar placeholder leakage, unsupported-claim markers, duplicate cross-platform sentences, and missing archetype metadata.
+
+Do not add multiple agents, new roles, a new evidence database, seasonal planning, vector search, or a new approval workflow.
+
+Preserve all previous prompt versions for rollback. Do not activate the new versions until the Content Craft dependency preflight and all acceptance criteria pass.
+
+"""
+text = text[:kickoff_start] + new_kickoff + text[final_principle:]
+
+Add version notes at end.
+
+text += """
+
+v1.1 Closure Notes
+
+This revision closes the two remaining deployment gaps:
+
+HIREIN_CONTENT_CRAFT.md §§1–7 are now a mandatory, blocking dependency rather than an optional cross-reference.
+Gold-standard exemplars are now required and conditionally loaded by content goal and platform.
+
+The intelligence pack remains lean because it does not duplicate the full creative library. It explicitly governs how that library must be verified, selected, and injected.
+"""
+
+out = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.1.md")
+out.write_text(text, encoding="utf-8")
+
+zip_path = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.1.zip")
+with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+z.write(out, arcname=out.name)
+
+print(f"Created {out} ({out.stat().st_size:,} bytes)")
+print(f"Created {zip_path} ({zip_path.stat().st_size:,} bytes)")
+
+Analyzed
+from pathlib import Path
+import zipfile
+
+src = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK.md")
+text = src.read_text(encoding="utf-8")
+
+text = text.replace(
+    "# Hire’in AI Content Agent — Intelligence Pack\n## Drop-In “Secret Sauce” for the Existing Agent",
+    "# Hire’in AI Content Agent — Intelligence Pack v1.1\n## Drop-In “Secret Sauce” for the Existing Agent"
+)
+
+anchor = """This is not a new agent architecture. It is a compact intelligence layer that improves how the existing agent decides:
+
+- Who the content is for
+- Which staffing domain applies
+- Whether the context is commercial, state government, or federal government
+- What kind of content is being created
+- How the content should change by platform
+- What claims require proof
+- How to avoid generic AI writing
+"""
+
+dependency = anchor + """
+
+---
+
+# 0. Mandatory Creative Dependency
+
+This intelligence pack is the decision layer. It does not duplicate the complete creative library.
+
+The implementation must also load:
+
+```text
+HIREIN_CONTENT_CRAFT.md
+
+The following sections are mandatory:
+
+§1 — All 8 hook archetypes
+§2 — All 12 content archetypes
+§3 — Content craft rules
+§4 — Full banned AI-slop and staffing-cliché list
+§5 — Platform craft rules
+§6 — Gold-standard exemplars
+§7 — Mandatory self-edit pass
+Deployment gate
+
+Do not ship the prompt upgrade when any required Content Craft section is missing, empty, summarized, or paraphrased.
+
+Before implementation, Replit must produce this preflight result:
+
+Content Craft §1: FOUND / MISSING
+Content Craft §2: FOUND / MISSING
+Content Craft §3: FOUND / MISSING
+Content Craft §4: FOUND / MISSING
+Content Craft §5: FOUND / MISSING
+Content Craft §6: FOUND / MISSING
+Content Craft §7: FOUND / MISSING
+
+Any MISSING result blocks activation of the new prompt versions.
+
+Source-of-truth rule
+
+Copy the authored archetypes, banned list, platform craft, exemplars, and self-edit instructions verbatim from HIREIN_CONTENT_CRAFT.md.
+
+Do not reconstruct them from memory, shorten them into generic substitutes, paraphrase the banned list, invent archetypes, or create replacement exemplars.
+"""
+
+text = text.replace(anchor, dependency)
+
+text = text.replace(
+"""# 10. Anti-Slop Rules
+
+Use the full banned list from the existing Content Craft file.
+
+At minimum, the agent should avoid:""",
+"""# 10. Anti-Slop Rules
+
+Use the complete banned list from HIREIN_CONTENT_CRAFT.md §4 as both:
+
+A hard prompt block
+The source for deterministic exact-phrase validation
+
+The short examples below are explanatory only. They do not replace §4.
+
+Do not activate the upgraded prompt versions unless the full §4 list has been loaded verbatim.
+
+At minimum, the agent should avoid:"""
+)
+
+start = text.index("# 11. Hook and Structure Intelligence")
+end = text.index("# 12. Prompt Loading Rule")
+
+new_section_11 = """# 11. Hook, Archetype, and Exemplar Intelligence
+
+Use the complete creative library from HIREIN_CONTENT_CRAFT.md.
+
+Required archetype libraries
+Hook archetypes: §1, all 8
+Content archetypes: §2, all 12
+
+These are required dependencies, not optional enhancements.
+
+For social content, generate:
+
+Three distinct hook options
+The hook archetype used for each option
+One recommended hook
+A short recommendation rationale
+One selected content archetype
+
+Avoid using the same content archetype twice in a row on the same platform when the agent selects automatically.
+
+The user does not need to choose an archetype unless Advanced Options are opened.
+
+Required exemplars
+
+Gold-standard exemplars from Content Craft §6 are mandatory quality anchors.
+
+The system must be able to select an approved exemplar for:
+
+Thought Leadership
+Educational / Explainer
+Job Marketing
+Capability / Business Development
+Exemplar loading rule
+Load one relevant exemplar by default.
+Load a second only when it teaches a materially different pattern needed for the request.
+Do not load every exemplar.
+Do not copy exemplar sentences.
+Do not output bracketed placeholder claims.
+Do not convert exemplar placeholders into facts.
+Exemplars teach structure, specificity, rhythm, and quality—not reusable claims.
+Exemplar preflight
+
+Before activating new prompt versions, verify that §6 contains an approved exemplar for each required content goal.
+
+When a category is missing:
+
+Add an approved authored exemplar to Content Craft, or
+Keep that content goal on the prior prompt version
+
+Do not invent a replacement exemplar during implementation.
+
+"""
+
+text = text[:start] + new_section_11 + text[end:]
+
+text = text.replace(
+"""Load only:
+
+Shared Hire’in core
++ selected audience
++ selected staffing domain
++ selected market context
++ selected content goal
++ selected platform rules
++ relevant proof
++ user request
++ banned-language and self-edit rules
+```""",
+    """Load only:
+
+```text
+Shared Hire’in core
++ selected audience
++ selected staffing domain
++ selected market context
++ selected content goal
++ selected platform craft block from Content Craft §5
++ selected hook/content archetype guidance from §§1–2
++ one relevant gold-standard exemplar from §6
++ relevant proof
++ user request
++ full banned-language block from §4
++ mandatory self-edit pass from §7
+```"""
+)
+
+text = text.replace(
+    """Keep high-priority constraints near the final generation instruction:
+
+- No invented facts
+- Proof rules
+- Banned-language rules
+- Self-edit
+- Output requirements
+""",
+    """Keep high-priority constraints near the final generation instruction:
+
+- No invented facts
+- Proof rules
+- Full banned-language rules
+- Exemplar non-copy and placeholder non-leakage rule
+- Mandatory self-edit
+- Output requirements
+
+Keep long reference context earlier in the prompt. Do not bury the banned list or self-edit pass beneath domain vocabulary or exemplars.
+"""
+)
+
+text = text.replace(
+    """## Required behavior
+
+- Infer fields automatically
+- Allow user override
+- Persist resolved values in existing metadata
+- Load only relevant prompt blocks
+- Preserve existing prompt versions for rollback
+- Run existing quality review for normal and compliance modes
+- Add simple deterministic checks for exact banned phrases, unsupported-claim markers, and duplicated cross-platform sentences
+""",
+    """## Required behavior
+
+- Complete the Content Craft dependency preflight before activating new prompt versions
+- Infer fields automatically
+- Allow user override
+- Persist resolved values in existing metadata
+- Load only relevant prompt blocks
+- Load one goal/platform-relevant exemplar from Content Craft §6
+- Preserve existing prompt versions for rollback
+- Run existing quality review for normal and compliance modes
+- Add deterministic checks for:
+  - Exact banned phrases from the full §4 list
+  - Exemplar placeholders
+  - Unsupported-claim markers
+  - Duplicated cross-platform sentences
+  - Missing hook/content archetype metadata
+"""
+)
+
+text = text.replace(
+    """15. Preserve the existing review and publish workflow
+16. Restore previous prompt versions
+""",
+    """15. Preserve the existing review and publish workflow
+16. Restore previous prompt versions
+17. Verify all required Content Craft sections before prompt activation
+18. Use all 8 authored hook archetypes and all 12 authored content archetypes
+19. Load a relevant authored exemplar for each content goal
+20. Never copy exemplar language or leak exemplar placeholders
+21. Fail activation when the full banned list or a required exemplar category is unavailable
+"""
+)
+
+kickoff_start = text.index("# 16. Copy/Paste Replit Prompt")
+principle_start = text.index("# Final Principle")
+
+new_kickoff = """# 16. Copy/Paste Replit Prompt
+
+```text
+Do not build a new content agent.
+
+Upgrade the existing Hire’in content agent using HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.1.md.
+
+MANDATORY CREATIVE DEPENDENCY:
+Before implementing or activating new prompt versions, inspect HIREIN_CONTENT_CRAFT.md and confirm that §§1–7 are present. Verify all 8 hook archetypes, all 12 content archetypes, the full banned list, platform craft rules, gold-standard exemplars, and the self-edit pass. Do not ship with missing, summarized, paraphrased, or invented creative content.
+
+Add a lightweight decision layer that automatically resolves:
+- Audience
+- Staffing domain
+- Commercial/state/federal market context
+- Content goal
+- Platform
+
+Load only the relevant intelligence blocks. Keep the user interface simple and place overrides in Advanced Options.
+
+For each request, conditionally load:
+- The relevant audience
+- The relevant staffing domain
+- The relevant market context
+- The relevant content goal
+- Only the requested platform’s craft guidance
+- The authored archetype guidance
+- One relevant gold-standard exemplar from Content Craft §6
+- Relevant proof
+- The full banned list and self-edit pass close to the final generation instruction
+
+Reuse the existing prompt builder, prompt versions, structured output, retries, quality review, metadata, peer review, and publish gate.
+
+Add audience-aware writing, IT and healthcare staffing expertise, commercial and government awareness, platform-native social writing, proof governance, anti-slop controls, three hook options, authored exemplars, and lightweight content-structure rotation.
+
+Add deterministic validation for exact banned phrases, exemplar placeholder leakage, unsupported-claim markers, duplicate cross-platform sentences, and missing archetype metadata.
+
+Do not add multiple agents, new roles, a new evidence database, seasonal planning, vector search, or a new approval workflow.
+
+Preserve all previous prompt versions for rollback. Do not activate the new versions until the Content Craft dependency preflight and all acceptance criteria pass.
+
+"""
+
+text = text[:kickoff_start] + new_kickoff + text[principle_start:]
+
+text += """
+
+v1.1 Closure Notes
+
+This revision closes the two remaining deployment gaps:
+
+HIREIN_CONTENT_CRAFT.md §§1–7 are now a mandatory blocking dependency rather than an optional cross-reference.
+Gold-standard exemplars are now required and conditionally loaded by content goal and platform.
+
+The intelligence pack remains lean because it does not duplicate the full creative library. It explicitly governs how that library must be verified, selected, and injected.
+"""
+
+out = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.1.md")
+out.write_text(text, encoding="utf-8")
+
+zip_path = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.1.zip")
+with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+z.write(out, arcname=out.name)
+
+print(f"Created {out} ({out.stat().st_size:,} bytes)")
+print(f"Created {zip_path} ({zip_path.stat().st_size:,} bytes)")
+
+STDOUT/STDERR
+Created /mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.1.md (23,182 bytes)
+Created /mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.1.zip (8,800 bytes)
+
+
+The assessment is correct. The remaining gaps were not about the decision engine—they were about making the creative library a non-optional deployment dependency.
+
+I updated the intelligence pack to v1.1:
+
+HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.1.md
+
+Download ZIP
+
+What I fixed
+1. Removed the fragile “if available” language
+
+The new version now requires:
+
+All 8 hook archetypes
+All 12 content archetypes
+Full craft rules
+Full banned-language list
+Platform craft rules
+Gold-standard exemplars
+Mandatory self-edit pass
+
+Replit must confirm that Content Craft §§1–7 are present before activating the new prompt versions.
+
+Any missing section blocks deployment.
+
+2. Made exemplars mandatory
+
+The Agent must have an approved exemplar for:
+
+Thought Leadership
+Educational / Explainer
+Job Marketing
+Capability / Business Development
+
+It loads one relevant exemplar by default, not every exemplar. A second is allowed only when it demonstrates a materially different pattern.
+
+3. Added exemplar safety controls
+
+The implementation now explicitly requires:
+
+Do not copy exemplar sentences
+Do not leak bracketed placeholders
+Do not turn exemplar placeholders into factual claims
+Do not use exemplars as proof
+Deterministically test for placeholder leakage
+4. Updated the Replit kickoff prompt
+
+The copy/paste prompt now tells Replit:
+
+Do not ship or activate the upgraded prompts until Content Craft §§1–7 pass preflight.
+
+It also explicitly requires conditional loading of:
+
+Relevant audience
++ relevant staffing domain
++ relevant market context
++ relevant content goal
++ requested platform craft
++ authored archetype guidance
++ one relevant exemplar
++ proof
++ full banned list
++ self-edit pass
+Why I did not duplicate the full creative library
+
+The original work order already defines HIREIN_CONTENT_CRAFT.md as the authoritative source for the eight hook archetypes, twelve content archetypes, banned list, platform craft, exemplars, and self-edit pass.
+
+Embedding a second copy inside the intelligence pack would create two versions that could drift apart. The cleaner architecture is:
+
+Intelligence Pack: decides what knowledge to load and when
+Content Craft: supplies the exact creative rules and exemplars
+Proof Library: controls factual claims
+
+That keeps the Agent smart without making the prompt pack bloated.

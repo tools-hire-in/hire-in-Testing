@@ -1,0 +1,37 @@
+[
+  {
+    "code": "P1",
+    "name": "Hiring intelligence",
+    "purpose": "Help employers make better staffing and hiring decisions.",
+    "status": "active",
+    "version": 1
+  },
+  {
+    "code": "P2",
+    "name": "Career enablement",
+    "purpose": "Help professionals prepare for and evaluate opportunities.",
+    "status": "active",
+    "version": 1
+  },
+  {
+    "code": "P3",
+    "name": "Jobs and opportunities",
+    "purpose": "Convert active demand into clear, respectful candidate communication.",
+    "status": "active",
+    "version": 1
+  },
+  {
+    "code": "P4",
+    "name": "Process and proof",
+    "purpose": "Show how Hire'in works using approved, supportable evidence.",
+    "status": "active",
+    "version": 1
+  },
+  {
+    "code": "P5",
+    "name": "People and perspective",
+    "purpose": "Humanize Hire'in through useful professional viewpoints.",
+    "status": "active",
+    "version": 1
+  }
+]

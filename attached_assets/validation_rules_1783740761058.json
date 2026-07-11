@@ -1,0 +1,32 @@
+{
+  "weights": {
+    "audienceClarity": 20,
+    "usefulnessSpecificity": 20,
+    "accuracyProof": 20,
+    "platformFit": 10,
+    "brandVoiceRespect": 10,
+    "ctaFit": 10,
+    "accessibility": 5,
+    "privacyRisk": 5
+  },
+  "thresholds": {
+    "strong": 90,
+    "approvable": 85,
+    "revision": 70
+  },
+  "blockers": [
+    "material_claim_without_approved_proof",
+    "expired_or_closed_job",
+    "unapproved_named_client",
+    "pii_or_phi_detected",
+    "clinical_legal_financial_or_immigration_advice",
+    "unverified_state_specific_credential_claim",
+    "invented_metric_testimonial_result_or_capability",
+    "required_reviewer_missing",
+    "missing_alt_text",
+    "missing_video_caption_direction",
+    "broken_or_inconsistent_cta_destination"
+  ],
+  "status": "active",
+  "version": 1
+}

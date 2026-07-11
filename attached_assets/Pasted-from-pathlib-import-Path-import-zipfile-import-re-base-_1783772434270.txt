@@ -1,0 +1,306 @@
+from pathlib import Path
+import zipfile
+import re
+
+base_path = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.4.md")
+if base_path.exists():
+    text = base_path.read_text(encoding="utf-8")
+else:
+    text = """# Hire’in AI Content Agent — Intelligence Pack v1.5\n"""
+
+# Version bump
+text = re.sub(
+    r"# Hire’in AI Content Agent — Intelligence Pack v\d+\.\d+",
+    "# Hire’in AI Content Agent — Intelligence Pack v1.5",
+    text,
+    count=1
+)
+
+# Remove proof-library launch dependency section if present
+start_marker = "## Proof Library launch dependency"
+end_marker = "---\n\n# 1. Core Instruction"
+if start_marker in text and end_marker in text:
+    s = text.index(start_marker)
+    e = text.index(end_marker)
+    text = text[:s] + text[e:]
+
+# Replace proof/claim section
+claim_start = text.find("# 9. Proof and Claim Rules")
+claim_end = text.find("# 10. Anti-Slop Rules")
+new_claim_section = """# 9. Claim-Free-by-Default Rule
+
+The Agent must not create Hire’in-specific factual or performance claims on its own.
+
+Default mode:
+
+```text
+CLAIM_FREE
+9.1 What the Agent must not invent
+
+Without explicit user-provided facts, do not create claims about:
+
+Clients or partners
+Placement counts
+Submission, interview, offer, or start results
+Speed, quality, conversion, ROI, or savings
+Years of experience
+Geographic reach
+Certifications or compliance
+State or federal contract access
+MSP/VMS approvals
+KlerHire features or performance
+Candidate-database size
+Testimonials
+Awards
+Market leadership
+Guaranteed outcomes
+
+Do not insert [NEEDS_PROOF] markers into normal content.
+
+When a company-specific claim is not supplied by the user:
+
+Omit it
+Write the content around the process, principle, or audience problem
+Keep the output useful without promotional assertions
+9.2 User-provided claims
+
+When the user explicitly supplies a claim or fact, the Agent may use it.
+
+Rules:
+
+Treat it as user_provided
+Preserve the user’s qualifiers
+Do not strengthen it
+Do not add numbers, clients, outcomes, locations, certifications, or scope
+Do not convert “may,” “can,” or “supports” into “does,” “guarantees,” or “delivers”
+Do not repeat it excessively
+Light grammar and clarity edits are allowed
+Store in metadata that the claim came from the user
+
+Recommended metadata:
+
+claimSource: 'none' | 'user_provided'
+9.3 Generic educational statements
+
+General staffing education and thought leadership are allowed without user-supplied company proof.
+
+Examples:
+
+Allowed:
+
+Clearer requirements can reduce avoidable sourcing rework.
+Keyword presence does not always demonstrate technical depth.
+Healthcare job posts should state shift and credential requirements clearly.
+
+Not allowed unless user supplied:
+
+Hire’in reduces sourcing rework by 40%.
+Hire’in has placed more than 500 nurses.
+KlerHire improves matching accuracy.
+Hire’in is an approved federal staffing vendor.
+9.4 Job content
+
+For job marketing, use only facts explicitly supplied by the user or present in the current approved job record.
+
+Never invent:
+
+Compensation
+Benefits
+Location
+Shift or schedule
+Work arrangement
+Sponsorship
+Client or facility
+Number of openings
+Start date
+Urgency
+Required experience
+License or certification
+
+Missing facts should be omitted rather than guessed.
+
+9.5 UI behavior
+
+Keep one optional field:
+
+Facts or claims to include
+
+Helper text:
+
+Only include facts you are authorized to publish. The Agent will not add company claims on its own.
+
+No proof-card workflow is required for this release.
+
+"""
+if claim_start != -1 and claim_end != -1:
+text = text[:claim_start] + new_claim_section + text[claim_end:]
+else:
+text += "\n\n" + new_claim_section
+
+Update prompt loading rule references
+
+text = text.replace(
+"+ relevant proof\n",
+"+ user-provided facts or claims, when present\n"
+)
+text = text.replace(
+"- Proof rules\n",
+"- User-provided-claim non-amplification rule\n"
+)
+text = text.replace(
+"- Unsupported-claim markers\n",
+"- Invented company claims\n"
+)
+
+Remove implementation proof interview requirements
+
+text = text.replace(
+"- Complete the Proof Library extraction interview and approve at least 10 PC-## cards before production launch\n",
+""
+)
+text = text.replace(
+"- Load one goal/platform-relevant exemplar from Content Craft §6\n",
+"- Load one goal/platform-relevant exemplar from Content Craft §6\n"
+)
+text = text.replace(
+" - Unsupported-claim markers\n",
+" - Invented company-specific claims\n"
+)
+
+Remove acceptance criteria about proof cards and replace with claim-free tests
+
+text = re.sub(
+r"\n26. Healthcare Job Marketing uses recency/duration language only when explicitly present in the approved job facts\n27. Production launch is blocked until at least 10 PC-## proof cards are approved\n",
+"\n26. Healthcare Job Marketing uses recency/duration language only when explicitly present in the approved job facts\n"
+"27. The Agent omits Hire’in-specific claims when the user supplies none\n"
+"28. User-provided claims are used without amplification\n"
+"29. Normal output contains no [NEEDS_PROOF] markers\n",
+text
+)
+
+Remove launch gate from kickoff prompt
+
+text = text.replace(
+"\nBefore production launch, complete HIREIN_PROOF_LIBRARY_EXTRACTION_INTERVIEW_v1.0.md and approve at least 10 PC-## proof cards. Do not weaken proof requirements to avoid [NEEDS_PROOF] flags.",
+""
+)
+
+Update kickoff instructions
+
+kickoff_phrase = "Add audience-aware writing, IT and healthcare staffing expertise, commercial and government awareness, platform-native social writing, proof governance, anti-slop controls, three hook options, authored exemplars, and lightweight content-structure rotation."
+text = text.replace(
+kickoff_phrase,
+"Add audience-aware writing, IT and healthcare staffing expertise, commercial and government awareness, platform-native social writing, claim-free-by-default behavior, anti-slop controls, three hook options, authored exemplars, and lightweight content-structure rotation."
+)
+
+Add explicit kickoff rule
+
+needle = "Load only the relevant intelligence blocks. Keep the user interface simple and place overrides in Advanced Options."
+replacement = needle + """
+
+Use claim-free-by-default behavior:
+
+Do not invent Hire’in claims
+Do not show [NEEDS_PROOF] markers
+Omit unsupported company claims
+Use claims only when the user explicitly supplies them
+Never strengthen or expand a user-provided claim
+"""
+text = text.replace(needle, replacement)
+Replace closure notes
+
+closure_idx = text.find("# v1.4 Closure Notes")
+if closure_idx != -1:
+text = text[:closure_idx] + """# v1.5 Closure Notes
+
+This revision deliberately removes the Proof Library from the launch path.
+
+The Agent now operates in claim-free-by-default mode:
+
+It does not create Hire’in-specific claims.
+It omits unsupported company assertions instead of showing [NEEDS_PROOF].
+It may use claims explicitly supplied by the user.
+It never amplifies or expands user-provided claims.
+General staffing education and thought leadership remain fully available.
+No proof-card sessions or proof-library approval gate are required for launch.
+"""
+
+out_path = Path("/mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.5_CLAIM_FREE.md")
+out_path.write_text(text, encoding="utf-8")
+
+Create a tiny implementation override for clarity
+
+override = """# Hire’in Content Agent — Claim-Free Launch Override
+
+This instruction supersedes any earlier proof-card launch requirement.
+
+Final rule
+
+The Agent must not create Hire’in-specific claims unless the user explicitly supplies them.
+
+When no claim is supplied:
+
+Omit company claims
+Do not invent proof
+Do not show [NEEDS_PROOF]
+Create useful educational, thought-leadership, job, or audience-specific content without promotional assertions
+
+When the user supplies a claim:
+
+Use it as user-provided content
+Preserve qualifiers
+Do not strengthen, quantify, broaden, or repeat it unnecessarily
+Record claimSource: user_provided
+
+No Proof Library, proof-card interview, or approval gate is required for this release.
+"""
+override_path = Path("/mnt/data/HIREIN_CLAIM_FREE_LAUNCH_OVERRIDE.md")
+override_path.write_text(override, encoding="utf-8")
+
+zip_path = Path("/mnt/data/HIREIN_CONTENT_AGENT_CLAIM_FREE_HANDOFF_v1.5.zip")
+with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as z:
+z.write(out_path, arcname=out_path.name)
+z.write(override_path, arcname=override_path.name)
+addendum = Path("/mnt/data/HIREIN_CONTENT_CRAFT_EXEMPLAR_ADDENDUM_v1.2.md")
+if addendum.exists():
+z.write(addendum, arcname=addendum.name)
+
+print(f"Created {out_path} ({out_path.stat().st_size:,} bytes)")
+print(f"Created {override_path} ({override_path.stat().st_size:,} bytes)")
+print(f"Created {zip_path} ({zip_path.stat().st_size:,} bytes)")
+
+STDOUT/STDERR
+Created /mnt/data/HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.5_CLAIM_FREE.md (28,325 bytes)
+Created /mnt/data/HIREIN_CLAIM_FREE_LAUNCH_OVERRIDE.md (739 bytes)
+Created /mnt/data/HIREIN_CONTENT_AGENT_CLAIM_FREE_HANDOFF_v1.5.zip (14,741 bytes)
+
+
+Yes—this is the cleaner launch approach.
+
+The Agent will now be claim-free by default:
+
+It will not invent Hire’in capabilities, results, clients, certifications, product features, or performance claims.
+It will not insert distracting [NEEDS_PROOF] markers.
+When no company claim is supplied, it will omit the claim and still create useful staffing content.
+When you explicitly enter a claim, it may use it without making it broader, stronger, or more specific.
+Job posts will use only the facts you provide.
+General educational and thought-leadership content remains fully available.
+Updated handoff
+
+Download the Claim-Free Content Agent handoff v1.5
+
+Individual files:
+
+HIREIN_CONTENT_AGENT_INTELLIGENCE_PACK_v1.5_CLAIM_FREE.md
+HIREIN_CLAIM_FREE_LAUNCH_OVERRIDE.md
+
+The earlier Proof Library, 21 proof cards, and approval sessions are no longer launch requirements. They can be archived for possible future enterprise governance.
+
+The final rule for Replit is:
+
+Do not create Hire’in-specific claims.
+
+Use company claims only when the user explicitly provides them.
+Preserve the user’s qualifiers.
+Do not strengthen, quantify, broaden, or invent supporting facts.
+When no claim is provided, omit company claims and create useful content without them.

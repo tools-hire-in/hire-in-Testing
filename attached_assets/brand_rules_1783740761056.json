@@ -1,0 +1,44 @@
+{
+  "voice": {
+    "desired": [
+      "knowledgeable",
+      "warm",
+      "respectful",
+      "practical",
+      "specific",
+      "clear",
+      "confident without exaggeration",
+      "domain-aware"
+    ],
+    "avoid": [
+      "arrogant",
+      "overly salesy",
+      "buzzword-heavy",
+      "generic",
+      "exploitative",
+      "fear-based",
+      "robotic"
+    ]
+  },
+  "restrictedClaims": [
+    "best",
+    "fastest",
+    "guaranteed",
+    "perfect candidates",
+    "top 1%",
+    "nationwide",
+    "fully compliant",
+    "AI-powered"
+  ],
+  "restrictedClaimRule": "May be used only when an active approved claim and supporting proof permit the exact context.",
+  "privacyRules": [
+    "No PII or PHI",
+    "No raw resume details",
+    "No private candidate contact data",
+    "No confidential client requirements",
+    "No named client without approval",
+    "No candidate story without documented permission"
+  ],
+  "status": "active",
+  "version": 1
+}

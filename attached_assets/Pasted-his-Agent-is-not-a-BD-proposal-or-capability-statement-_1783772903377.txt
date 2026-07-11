@@ -1,0 +1,88 @@
+his Agent is not a BD proposal or capability-statement agent. It is a Marketing and Content Intelligence Agent for:
+
+Hire’in Insights articles
+Thought leadership
+Educational staffing content
+LinkedIn, Facebook, Instagram, and X
+Job-marketing content
+Founder and leadership perspectives
+Company culture and “how we think” content
+Audience-specific content for clients, partners, recruiters, and candidates
+
+The separate BD Agent should handle:
+
+Capability statements
+Client proposals
+RFP/RFI responses
+Formal partner pitches
+Case studies with quantified results
+Government contracting responses
+Evidence-backed corporate claims
+One final correction I recommend
+
+Remove “Capability/BD” as a content goal from this Marketing Agent. It creates unnecessary confusion with the separate BD Agent.
+
+Replace it with:
+
+BRAND_PERSPECTIVE
+
+or:
+
+COMPANY_POV
+
+Its purpose would be:
+
+Explain how Hire’in thinks about recruiting, candidate experience, responsible AI, communication, submission quality, and staffing operations—without turning the content into a sales proposal.
+
+So the final marketing content goals should be:
+
+THOUGHT_LEADERSHIP
+EDUCATIONAL
+JOB_MARKETING
+BRAND_PERSPECTIVE
+Claim-free by default is right
+
+For this Agent, the strongest content will usually be based on:
+
+A clear point of view
+Real staffing mechanisms
+Audience insight
+Practical education
+Market observations
+Human recruiting experience
+Platform-native storytelling
+
+It does not need to say:
+
+Hire’in achieved X result.
+
+It can say:
+
+More submissions do not fix an unclear requisition. They multiply the noise.
+
+That is stronger marketing because it demonstrates expertise instead of advertising expertise.
+
+When the user intentionally provides a company fact, job detail, quote, achievement, or announcement, the Agent can use it without expanding or strengthening it.
+
+Final product definition
+One Hire’in Marketing and Content Intelligence Agent
+
+It understands:
+- Staffing domain
+- Audience
+- Commercial, state, or federal context
+- Content objective
+- Social platform
+- Content structure and hooks
+
+It creates:
+- Insightful
+- Useful
+- Human-sounding
+- Audience-aware
+- Platform-native
+- Claim-free-by-default content
+
+The previous proof-library work should not be part of this Agent’s launch. It can remain archived for the BD Agent or future formal corporate-content governance.
+
+The only change needed before developer handoff is to rename Capability/BD to Brand Perspective / Company POV throughout the intelligence pack and exemplar labels.

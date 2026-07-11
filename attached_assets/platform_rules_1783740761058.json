@@ -1,0 +1,167 @@
+[
+  {
+    "platform": "insights",
+    "format": "insight_article",
+    "primaryJob": "Canonical home for deeper, reusable, searchable ideas.",
+    "requiredStructure": [
+      "audience-led headline",
+      "question/problem",
+      "why it matters",
+      "practical insight",
+      "example/checklist/framework",
+      "approved evidence",
+      "clear next step"
+    ],
+    "prohibitedPatterns": [
+      "keyword stuffing",
+      "generic long introduction",
+      "unsupported trend",
+      "overpromotion"
+    ],
+    "accessibility": [
+      "clear heading hierarchy",
+      "descriptive links",
+      "readable paragraphs"
+    ],
+    "status": "active",
+    "version": 1
+  },
+  {
+    "platform": "linkedin",
+    "format": "text_post",
+    "primaryJob": "B2B credibility, professional education, talent visibility, and leadership perspective.",
+    "requiredStructure": [
+      "professional tension/hook",
+      "audience context",
+      "useful points",
+      "practical conclusion",
+      "one CTA"
+    ],
+    "prohibitedPatterns": [
+      "empty inspiration",
+      "unsupported superlatives",
+      "identical cross-platform copy",
+      "excessive hashtags"
+    ],
+    "accessibility": [
+      "alt text when image is used",
+      "plain-language formatting"
+    ],
+    "status": "active",
+    "version": 1
+  },
+  {
+    "platform": "instagram",
+    "format": "carousel",
+    "primaryJob": "Candidate attraction, career education, jobs, people, and visual explanations.",
+    "requiredStructure": [
+      "clear cover hook",
+      "one idea per slide",
+      "logical sequence",
+      "summary/action slide",
+      "caption",
+      "alt text"
+    ],
+    "prohibitedPatterns": [
+      "dense job poster",
+      "tiny text",
+      "long paragraphs per slide",
+      "exploitative urgency"
+    ],
+    "accessibility": [
+      "alt text",
+      "high readability",
+      "captions/on-screen text for video"
+    ],
+    "status": "active",
+    "version": 1
+  },
+  {
+    "platform": "instagram",
+    "format": "reel_script",
+    "primaryJob": "Human, concise candidate and brand education.",
+    "requiredStructure": [
+      "first-3-second hook",
+      "spoken script",
+      "on-screen text",
+      "visual direction",
+      "CTA",
+      "caption"
+    ],
+    "prohibitedPatterns": [
+      "unsupported promise",
+      "clinical advice",
+      "no-caption direction"
+    ],
+    "accessibility": [
+      "captions",
+      "on-screen text",
+      "descriptive visual direction"
+    ],
+    "status": "active",
+    "version": 1
+  },
+  {
+    "platform": "x",
+    "format": "single_post",
+    "primaryJob": "Concise insight, observation, conversation testing, and job alerts.",
+    "requiredStructure": [
+      "high-signal hook",
+      "single useful idea",
+      "optional conversation prompt"
+    ],
+    "prohibitedPatterns": [
+      "generic announcement",
+      "hashtag stuffing",
+      "forced link",
+      "copied LinkedIn post"
+    ],
+    "accessibility": [
+      "alt text when image is used"
+    ],
+    "status": "active",
+    "version": 1
+  },
+  {
+    "platform": "x",
+    "format": "thread",
+    "primaryJob": "Compact step-by-step education or viewpoint.",
+    "requiredStructure": [
+      "strong first post",
+      "one idea per post",
+      "specific example",
+      "clear close"
+    ],
+    "prohibitedPatterns": [
+      "repetition",
+      "unnecessarily long thread",
+      "generic filler"
+    ],
+    "accessibility": [
+      "alt text when image is used"
+    ],
+    "status": "active",
+    "version": 1
+  },
+  {
+    "platform": "facebook",
+    "format": "text_or_image_post",
+    "primaryJob": "Selective healthcare/community reach and practical candidate information.",
+    "requiredStructure": [
+      "clear context",
+      "practical details",
+      "direct CTA"
+    ],
+    "prohibitedPatterns": [
+      "unchanged Instagram copy",
+      "unclear job details",
+      "overloaded poster"
+    ],
+    "accessibility": [
+      "alt text",
+      "readable visual text"
+    ],
+    "status": "active",
+    "version": 1
+  }
+]
