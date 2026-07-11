@@ -140,6 +140,10 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [genSourceNotes, setGenSourceNotes] = useState("");
   const [genIndustry, setGenIndustry] = useState("");
   const [genCompliance, setGenCompliance] = useState("normal");
+  const [genContentGoal, setGenContentGoal] = useState("");
+  const [genAudience, setGenAudience] = useState("");
+  const [genMarketContext, setGenMarketContext] = useState("COMMERCIAL");
+  const [genUserFacts, setGenUserFacts] = useState("");
   const [riskFlags, setRiskFlags] = useState<string[]>([]);
   const [requiredEdits, setRequiredEdits] = useState<string[]>([]);
   // Task #906 defect fix: AI failures surface as a persistent banner with
@@ -375,6 +379,10 @@ function ArticleEditorInner({ id }: { id: string }) {
         complianceMode: genCompliance,
         contentType: formRef.current?.contentType,
         sourceNotes: genSourceNotes || undefined,
+        contentGoal: genContentGoal || undefined,
+        audience: genAudience || undefined,
+        marketContext: genMarketContext || undefined,
+        userSuppliedFacts: genUserFacts || undefined,
       };
       if (genMode === "topic") {
         payload.topic = genTopic;
@@ -445,7 +453,14 @@ function ArticleEditorInner({ id }: { id: string }) {
       const res = await apiRequest(
         "POST",
         `/api/admin/studio/articles/${id}/generate-social-kit`,
-        { complianceMode: genCompliance, industry: genIndustry || undefined },
+        {
+          complianceMode: genCompliance,
+          industry: genIndustry || undefined,
+          contentGoal: genContentGoal || undefined,
+          audience: genAudience || undefined,
+          marketContext: genMarketContext || undefined,
+          userSuppliedFacts: genUserFacts || undefined,
+        },
       );
       return res.json();
     },
@@ -1493,28 +1508,31 @@ function ArticleEditorInner({ id }: { id: string }) {
             )}
 
             <div className="space-y-2">
-              <Label htmlFor="gen-source-notes">Source notes (verified facts only, optional)</Label>
+              <Label htmlFor="gen-source-notes">Company facts or claims to include (optional)</Label>
               <Textarea
                 id="gen-source-notes"
                 rows={2}
-                value={genSourceNotes}
-                onChange={(e) => setGenSourceNotes(e.target.value)}
-                placeholder="Any stats or facts the AI may cite. Unsupported claims get flagged."
+                value={genUserFacts || genSourceNotes}
+                onChange={(e) => {
+                  setGenUserFacts(e.target.value);
+                  setGenSourceNotes(e.target.value);
+                }}
+                placeholder="Only include facts you are authorized to publish. The agent will not add company-specific claims on its own."
                 data-testid="input-gen-source-notes"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-2">
-                <Label>Industry</Label>
+                <Label>Domain</Label>
                 <Select value={genIndustry || "none"} onValueChange={(v) => setGenIndustry(v === "none" ? "" : v)}>
                   <SelectTrigger data-testid="select-gen-industry">
-                    <SelectValue placeholder="General" />
+                    <SelectValue placeholder="General Staffing" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">General</SelectItem>
-                    <SelectItem value="healthcare">Healthcare</SelectItem>
-                    <SelectItem value="it">IT</SelectItem>
+                    <SelectItem value="none">General Staffing</SelectItem>
+                    <SelectItem value="it">IT Staffing</SelectItem>
+                    <SelectItem value="healthcare">Healthcare Staffing</SelectItem>
                     <SelectItem value="government">Government</SelectItem>
                     <SelectItem value="non_it">Non-IT</SelectItem>
                     <SelectItem value="hr_tech">HR tech</SelectItem>
@@ -1541,6 +1559,68 @@ function ArticleEditorInner({ id }: { id: string }) {
             <p className="text-xs text-muted-foreground">
               {getComplianceBlurb(genCompliance)}
             </p>
+
+            {/* Intelligence Settings collapsible */}
+            <details className="group rounded-md border">
+              <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm font-medium select-none hover:bg-muted/40" data-testid="summary-intelligence-settings">
+                <span>Intelligence Settings</span>
+                <span className="text-xs text-muted-foreground group-open:hidden">
+                  {genContentGoal ? "Active" : "Optional"}
+                </span>
+              </summary>
+              <div className="space-y-3 border-t px-3 py-3">
+                <p className="text-xs text-muted-foreground">
+                  Set these to activate audience-aware, staffing-domain-specific generation with platform-native craft rules and anti-slop controls.
+                </p>
+                <div className="space-y-2">
+                  <Label>Content Goal</Label>
+                  <Select value={genContentGoal || "none"} onValueChange={(v) => setGenContentGoal(v === "none" ? "" : v)}>
+                    <SelectTrigger data-testid="select-gen-content-goal">
+                      <SelectValue placeholder="General (no intelligence path)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">General (no intelligence path)</SelectItem>
+                      <SelectItem value="THOUGHT_LEADERSHIP">Thought Leadership</SelectItem>
+                      <SelectItem value="EDUCATIONAL">Educational</SelectItem>
+                      <SelectItem value="JOB_MARKETING">Job Marketing</SelectItem>
+                      <SelectItem value="BRAND_PERSPECTIVE">Brand Perspective</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                {genContentGoal && (
+                  <>
+                    <div className="space-y-2">
+                      <Label>Audience</Label>
+                      <Select value={genAudience || "AUTO"} onValueChange={(v) => setGenAudience(v === "AUTO" ? "" : v)}>
+                        <SelectTrigger data-testid="select-gen-audience">
+                          <SelectValue placeholder="Auto-detect" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="AUTO">Auto-detect</SelectItem>
+                          <SelectItem value="EMPLOYER_CLIENT">Employer / Client</SelectItem>
+                          <SelectItem value="MSP_VMS_PARTNER">MSP / Staffing Partner</SelectItem>
+                          <SelectItem value="CANDIDATE">Candidate / Professional</SelectItem>
+                          <SelectItem value="RECRUITER_OPERATOR">Recruiter / Operator</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label>Market Context</Label>
+                      <Select value={genMarketContext} onValueChange={setGenMarketContext}>
+                        <SelectTrigger data-testid="select-gen-market-context">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="COMMERCIAL">Commercial</SelectItem>
+                          <SelectItem value="STATE_GOVERNMENT">State Government</SelectItem>
+                          <SelectItem value="FEDERAL_GOVERNMENT">Federal Government</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
+                )}
+              </div>
+            </details>
           </div>
 
           <DialogFooter>
@@ -1560,7 +1640,7 @@ function ArticleEditorInner({ id }: { id: string }) {
               ) : (
                 <Sparkles className="mr-2 h-4 w-4" />
               )}
-              Generate
+              {genContentGoal ? "Generate with Intelligence" : "Generate"}
             </Button>
           </DialogFooter>
         </DialogContent>

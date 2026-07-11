@@ -167,6 +167,15 @@ export function visualTemplateToLayout(template?: string | null): string {
 // ---------------------------------------------------------------------------
 // Master parameter set — every template renders against this.
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Marketing Intelligence Layer v1.5 types
+// ---------------------------------------------------------------------------
+export type MarketingAudience = 'EMPLOYER_CLIENT' | 'MSP_VMS_PARTNER' | 'CANDIDATE' | 'RECRUITER_OPERATOR' | 'AUTO';
+export type StaffingDomain = 'GENERAL_STAFFING' | 'IT_STAFFING' | 'HEALTHCARE_STAFFING';
+export type MarketContext = 'COMMERCIAL' | 'STATE_GOVERNMENT' | 'FEDERAL_GOVERNMENT';
+export type ContentGoal = 'THOUGHT_LEADERSHIP' | 'EDUCATIONAL' | 'JOB_MARKETING' | 'BRAND_PERSPECTIVE';
+export type PublishPlatform = 'ARTICLE' | 'LINKEDIN' | 'FACEBOOK' | 'INSTAGRAM' | 'X';
+
 export interface AiGenerationParams {
   brand_name?: string;
   brand_tagline?: string;
@@ -191,6 +200,11 @@ export interface AiGenerationParams {
   compliance_mode?: string;
   // Free-text raw idea/notes/draft for "Shape my idea / draft" mode.
   raw_input?: string;
+  // Marketing Intelligence Layer v1.5 fields
+  contentGoal?: ContentGoal;
+  audience?: MarketingAudience;
+  marketContext?: MarketContext;
+  userSuppliedFacts?: string;
 }
 
 // ---------------------------------------------------------------------------

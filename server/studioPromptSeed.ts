@@ -245,6 +245,35 @@ const TEMPLATES: SeedTemplate[] = [
     maxTokens: 4000,
     outputSchemaRef: "outreach_sequence",
   },
+  // ── Marketing Intelligence Layer v1.5 ────────────────────────────────────
+  {
+    contentType: "marketing_intelligence_article",
+    version: 1,
+    systemPrompt:
+      BRAND_GUARDRAIL +
+      " This is the Hire'in Marketing Content Intelligence Agent. You produce Insights articles, thought leadership, educational content, job marketing posts, and brand-perspective content for staffing audiences. Apply the intelligence blocks injected above. Write human-sounding, audience-aware, platform-native content. Never invent Hire'in company claims.",
+    userPromptTemplate:
+      ARTICLE_PARAMS_BLOCK +
+      "\n\nTopic: {{topic}}\nKey points to cover (do not add facts beyond these unless they are general industry knowledge): {{key_points}}\nCompany facts or claims to include (optional, use as provided): {{user_supplied_facts}}\n\nWrite the full article draft now.",
+    modelName: "gpt-5.4",
+    modelTier: "standard",
+    maxTokens: 6000,
+    outputSchemaRef: "article_draft",
+  },
+  {
+    contentType: "marketing_intelligence_social",
+    version: 1,
+    systemPrompt:
+      BRAND_GUARDRAIL +
+      " This is the Hire'in Marketing Content Intelligence Agent for social content. You produce platform-native social posts, carousels, and kits for staffing audiences across LinkedIn, Facebook, Instagram, and X. Apply the intelligence blocks injected above. Write human-sounding, audience-aware, platform-native content. Never invent Hire'in company claims.",
+    userPromptTemplate:
+      SOCIAL_PARAMS_BLOCK +
+      "\n\nCompany facts or claims to include (optional, use as provided): {{user_supplied_facts}}\n\nProduce the full Social Kit now. One best caption per platform.",
+    modelName: "gpt-5.4",
+    modelTier: "standard",
+    maxTokens: 6000,
+    outputSchemaRef: "social_kit",
+  },
   // ── Studio BD Agent (Task #942) ───────────────────────────────────────────
   {
     contentType: "bd_proposal_outline",

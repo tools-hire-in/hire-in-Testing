@@ -26,6 +26,20 @@ import {
   type CanonicalSocialKit,
   type QualityReview,
 } from "@shared/studioAi";
+import {
+  CLAIM_FREE_BLOCK,
+  AUDIENCE_BLOCKS,
+  DOMAIN_BLOCKS,
+  MARKET_CONTEXT_BLOCKS,
+  CONTENT_GOAL_BLOCKS,
+  HOOK_ARCHETYPES_BLOCK,
+  CONTENT_ARCHETYPES_BLOCK,
+  BANNED_SLOP_BLOCK,
+  PLATFORM_CRAFT_BLOCKS,
+  EXEMPLAR_BLOCKS,
+  SELF_EDIT_BLOCK,
+  preflightCheck,
+} from "../intelligence/marketingIntelligence";
 import { resolveCardLayout } from "@shared/socialCards";
 import type { StudioPromptTemplate } from "@shared/schema";
 
@@ -92,8 +106,88 @@ function platformLimitsBlock(): string {
   ].join("; ");
 }
 
+function resolveStaffingDomain(industry?: string): string {
+  if (!industry) return "GENERAL_STAFFING";
+  const lower = industry.toLowerCase();
+  if (lower === "it" || lower === "it_staffing") return "IT_STAFFING";
+  if (lower === "healthcare" || lower === "healthcare_staffing") return "HEALTHCARE_STAFFING";
+  return "GENERAL_STAFFING";
+}
+
+function resolvePlatformKey(platform?: string): string {
+  if (!platform) return "ARTICLE";
+  const upper = platform.toUpperCase();
+  if (["ARTICLE", "LINKEDIN", "FACEBOOK", "INSTAGRAM", "X"].includes(upper)) return upper;
+  if (upper === "TWITTER") return "X";
+  return "ARTICLE";
+}
+
 function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationParams): string {
   const compliance = getComplianceMode(params.compliance_mode);
+
+  // Intelligence path: activated when contentGoal is provided
+  if (params.contentGoal) {
+    const pfResult = preflightCheck();
+    console.log("[Intelligence v1.5] Preflight check:\n" + pfResult);
+
+    const domainKey = resolveStaffingDomain(params.industry);
+    const platformKey = resolvePlatformKey(params.platform);
+    const contentGoalKey = params.contentGoal;
+    const audienceKey = (!params.audience || params.audience === "AUTO") ? null : params.audience;
+    const marketContextKey = params.marketContext ?? "COMMERCIAL";
+
+    const blocks: string[] = [
+      // 1. Template base
+      template.systemPrompt,
+      // 2. Claim-free-by-default (always first in intelligence path)
+      CLAIM_FREE_BLOCK,
+      // 3. Domain block
+      DOMAIN_BLOCKS[domainKey] ?? DOMAIN_BLOCKS.GENERAL_STAFFING,
+      // 4. Audience block (infer or use short default)
+      audienceKey
+        ? (AUDIENCE_BLOCKS[audienceKey] ?? "")
+        : "AUDIENCE: Auto-detect from content. Write for the most relevant audience given the topic and domain.",
+      // 5. Market context
+      MARKET_CONTEXT_BLOCKS[marketContextKey] ?? MARKET_CONTEXT_BLOCKS.COMMERCIAL,
+      // 6. Content goal
+      CONTENT_GOAL_BLOCKS[contentGoalKey],
+      // 7. Hook + content archetypes
+      HOOK_ARCHETYPES_BLOCK,
+      CONTENT_ARCHETYPES_BLOCK,
+      // 8. Banned slop
+      BANNED_SLOP_BLOCK,
+      // 9. Platform craft
+      PLATFORM_CRAFT_BLOCKS[platformKey] ?? PLATFORM_CRAFT_BLOCKS.ARTICLE,
+      // 10. Exemplar (quality anchor — reproduce the PATTERN not the wording)
+      EXEMPLAR_BLOCKS[contentGoalKey]
+        ? `Quality anchor exemplar for this content goal — reproduce the PATTERN not the wording:\n\n${EXEMPLAR_BLOCKS[contentGoalKey]}`
+        : "",
+      // Compliance block + length/platform limits (before self-edit)
+      COMPLIANCE_BLOCKS[compliance.value] ?? COMPLIANCE_BLOCKS.normal,
+    ];
+
+    if (template.outputSchemaRef === "social_kit") {
+      blocks.push(`Platform limits: ${platformLimitsBlock()}.`);
+    }
+    if (template.outputSchemaRef === "article_draft") {
+      const range = getWordRange(params.content_type);
+      blocks.push(`Target body length: ${range.min}-${range.max} words. Use Markdown with ## section headings.`);
+    }
+
+    // 11. Self-edit pass — immediately before user-supplied facts
+    blocks.push(SELF_EDIT_BLOCK);
+
+    // 12. User-supplied facts (always last)
+    if (params.userSuppliedFacts?.trim()) {
+      blocks.push(
+        `User-supplied facts and claims (use as provided, preserve qualifiers, do not strengthen or expand): ${params.userSuppliedFacts.trim()}`
+      );
+    }
+
+    return blocks.filter(Boolean).join("\n\n");
+  }
+
+  // Standard path (no contentGoal) — unchanged for backward compat
   const blocks: string[] = [template.systemPrompt];
   const industry = getIndustryModifier(params.industry);
   if (industry) blocks.push(industry);

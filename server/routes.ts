@@ -17120,6 +17120,11 @@ export async function registerRoutes(
       cta_text: body?.ctaText,
       cta_url: body?.ctaUrl,
       compliance_mode: compliance.value,
+      // Marketing Intelligence Layer v1.5 fields
+      contentGoal: body?.contentGoal || undefined,
+      audience: body?.audience || undefined,
+      marketContext: body?.marketContext || undefined,
+      userSuppliedFacts: body?.userSuppliedFacts || undefined,
     };
   }
 
@@ -17166,7 +17171,11 @@ export async function registerRoutes(
         if (!article) return res.status(404).json({ error: "Article not found" });
 
         const mode = req.body?.mode === "shape" ? "shape" : "topic";
-        const contentTypeKey = mode === "shape" ? "shape_my_draft" : "article_generator";
+        const hasContentGoal = !!req.body?.contentGoal;
+        // When contentGoal is set, prefer the intelligence-tier template; fall back to standard.
+        const preferredKey = hasContentGoal ? "marketing_intelligence_article"
+          : mode === "shape" ? "shape_my_draft" : "article_generator";
+        const fallbackKey = mode === "shape" ? "shape_my_draft" : "article_generator";
 
         if (mode === "topic" && !req.body?.topic?.trim()) {
           return res.status(400).json({ error: "topic is required for topic mode" });
@@ -17177,7 +17186,12 @@ export async function registerRoutes(
 
         if (!(await checkAiRateLimit(req.session.userId!, res))) return;
 
-        const template = await storage.getActiveStudioPromptTemplate(contentTypeKey, article.projectId);
+        let template = await storage.getActiveStudioPromptTemplate(preferredKey, article.projectId);
+        if (!template && preferredKey !== fallbackKey) {
+          console.warn(`[generate-article] template '${preferredKey}' not found, falling back to '${fallbackKey}'`);
+          template = await storage.getActiveStudioPromptTemplate(fallbackKey, article.projectId);
+        }
+        const contentTypeKey = template?.contentType ?? fallbackKey;
         if (!template) {
           // Loud, typed failure (Task #906) — surfaces a 422 with a clear
           // message instead of a generic 500 the UI used to swallow.
@@ -17297,15 +17311,25 @@ export async function registerRoutes(
 
         if (!(await checkAiRateLimit(req.session.userId!, res))) return;
 
-        const contentTypeKey =
+        const hasIntelligenceGoal = !!req.body?.contentGoal;
+        const requestedContentType =
           typeof req.body?.contentType === "string" && req.body.contentType
             ? req.body.contentType
-            : "master_social_kit";
-        // Two-level fallback: project/seed template for contentType → master_social_kit
-        let template = await storage.getActiveStudioPromptTemplate(contentTypeKey, article.projectId);
-        if (!template && contentTypeKey !== "master_social_kit") {
+            : null;
+        // When contentGoal is set prefer the intelligence-tier social template.
+        const socialPreferred = hasIntelligenceGoal ? "marketing_intelligence_social"
+          : requestedContentType ?? "master_social_kit";
+        const socialFallback = requestedContentType ?? "master_social_kit";
+        // Two-level fallback: preferred → fallback → master_social_kit
+        let template = await storage.getActiveStudioPromptTemplate(socialPreferred, article.projectId);
+        if (!template && socialPreferred !== socialFallback) {
+          console.warn(`[generate-social-kit] template '${socialPreferred}' not found, falling back to '${socialFallback}'`);
+          template = await storage.getActiveStudioPromptTemplate(socialFallback, article.projectId);
+        }
+        if (!template && socialFallback !== "master_social_kit") {
           template = await storage.getActiveStudioPromptTemplate("master_social_kit", article.projectId);
         }
+        const contentTypeKey = template?.contentType ?? "master_social_kit";
         if (!template) {
           return handleAiError(
             new AiGenerationError("validation", `No prompt template for content type: ${contentTypeKey}`, false),
@@ -17327,6 +17351,11 @@ export async function registerRoutes(
           cta_url: req.body?.ctaUrl,
           visual_template: req.body?.visualTemplate,
           compliance_mode: compliance.value,
+          // Marketing Intelligence Layer v1.5 fields
+          contentGoal: req.body?.contentGoal || undefined,
+          audience: req.body?.audience || undefined,
+          marketContext: req.body?.marketContext || undefined,
+          userSuppliedFacts: req.body?.userSuppliedFacts || undefined,
           // Brand Voice Hub (T2): platform override (linkedin/instagram/story)
           // → project default → system default.
           ...(await resolveBrandVoiceParams(
