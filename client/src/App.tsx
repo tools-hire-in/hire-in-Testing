@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { Switch, Route, Redirect, useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
@@ -222,18 +222,28 @@ function AdminFallback() {
 }
 
 function isEmployeeSubdomain(): boolean {
+  // Allow runtime override (e.g. for testing)
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
     return (window as any).__IS_EMPLOYEE_SUBDOMAIN__;
   }
   const hostname = window.location.hostname;
+  // Dedicated subdomain always wins
   if (hostname.startsWith("employee.") || hostname.startsWith("www.employee.")) {
     return true;
   }
-  if (hostname.endsWith(".replit.dev") || hostname === "localhost") {
+  // On dev/replit domains: ?employee=true in the URL activates employee mode
+  // and we persist it in sessionStorage so navigation away from that URL
+  // doesn't flip back to PublicRouter on the next re-render.
+  const SESSION_KEY = "hirein_employee_mode";
+  if (hostname.endsWith(".replit.dev") || hostname === "localhost" || hostname.endsWith(".replit.app")) {
     const params = new URLSearchParams(window.location.search);
     if (params.get("employee") === "true") {
+      try { sessionStorage.setItem(SESSION_KEY, "1"); } catch (_) {}
       return true;
     }
+    try {
+      if (sessionStorage.getItem(SESSION_KEY) === "1") return true;
+    } catch (_) {}
   }
   return false;
 }
@@ -617,7 +627,9 @@ function EmployeeRouter() {
 }
 
 function App() {
-  const isEmployee = isEmployeeSubdomain();
+  // Computed once at mount via lazy useState — never flips on subsequent re-renders
+  // even after wouter navigates away from the /?employee=true entry URL.
+  const [isEmployee] = useState<boolean>(() => isEmployeeSubdomain());
 
   return (
     <QueryClientProvider client={queryClient}>
