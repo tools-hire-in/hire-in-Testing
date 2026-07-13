@@ -1,0 +1,123 @@
+Fix now
+1. Persist the strategy summary
+
+This is necessary.
+
+If the article is reopened, the reviewer should still see:
+
+Audience
+Domain
+Content goal
+Platform
+Hook archetype
+Safety result
+
+Right now the strategy strip disappears because it exists only in React state. That makes it decorative rather than part of the article record.
+
+Use the schema fields already created. No new architecture is needed.
+
+2. Fix the incorrect domain label
+
+This is a real bug, not an enhancement.
+
+If healthcare content displays “General Staffing,” the reviewer cannot trust the strategy strip.
+
+The frontend should display the normalized domain returned by the backend, not genIndustry from the form.
+
+The same principle applies to audience and goal:
+
+The backend-resolved strategy must be the source of truth.
+
+3. Show the exact safety issue
+
+Also necessary.
+
+A badge saying “Review recommended” is not actionable.
+
+Show something simple such as:
+
+Review required: The draft contains compensation that was not provided.
+
+Or:
+
+Review required: “Recent acute-care experience” was added but was not included in the job details.
+
+The reviewer needs:
+
+Exact sentence or phrase
+Why it was flagged
+A simple recommendation: remove, edit, or add the missing fact
+
+You do not need issue-management screens, approval overrides, or a clearance workflow.
+
+Do not build now
+Mandatory brief and hook review
+
+Not needed. You intentionally chose a simple generation flow.
+
+The AI can resolve the strategy and choose the hook quietly. The owner will review the draft.
+
+Three visible hook cards
+
+Good future feature, but not needed to start using the tool.
+
+Automated safe correction
+
+Do not auto-edit content yet.
+
+The system may suggest:
+
+Remove this sentence or regenerate without unsupported compensation.
+
+The human should make the final decision.
+
+Semantic second-model review
+
+Defer until 30–50 real generations reveal what the deterministic gate consistently misses.
+
+Hook-archetype verification
+
+Not a launch blocker.
+
+For now, treat the displayed hook archetype as an informational generation label—not a compliance fact.
+
+A better future implementation is for the server to select the hook archetype before generation and instruct the model to follow it. Do not build another AI verification call just to confirm the label.
+
+Resolve-brief endpoint
+
+It does not need to be connected to the UI now.
+
+You have two reasonable choices:
+
+Leave it dormant for future guided mode.
+Use it later only when the user selects “Advanced strategy.”
+
+Do not add another AI round trip to every normal generation merely because the endpoint exists.
+
+What the MVP should do
+Four-field input
+→ backend resolves strategy
+→ backend chooses creative direction
+→ content generated
+→ deterministic safety check
+→ strategy and findings saved
+→ compact strategy strip and actionable warnings
+→ human edits and approves
+
+That is workable and appropriately sophisticated for your current stage.
+
+Exact instruction to Replit
+
+Close the three existing integration gaps without expanding the MVP:
+
+Persist the resolved audience, normalized domain, content goal, platform, hook archetype and safety result to the article record after generation.
+Return those saved values when the article is opened or refreshed, and render the strategy strip from backend article data rather than temporary React form state.
+Display actionable safety findings beneath the strategy strip, including the exact flagged phrase or sentence, the reason it was flagged and a simple recommended action.
+
+The normalized backend values must be the source of truth. Fix the current issue where the simplified form causes the strategy strip to display General Staffing even when the backend resolved Healthcare or IT.
+
+Do not add mandatory brief confirmation, visible hook-selection steps, semantic review, source-ledger workflows, automated correction, editing-effort tracking or publishing gates in this task.
+
+Preserve the current simple four-field generation flow and existing manual review and approval process.
+
+My recommendation: close these three gaps now, start using the tool, and stop building until the team produces real feedback.

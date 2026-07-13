@@ -170,7 +170,17 @@ export function visualTemplateToLayout(template?: string | null): string {
 // ---------------------------------------------------------------------------
 // Marketing Intelligence Layer v1.5 types
 // ---------------------------------------------------------------------------
-export type MarketingAudience = 'EMPLOYER_CLIENT' | 'MSP_VMS_PARTNER' | 'CANDIDATE' | 'RECRUITER_OPERATOR' | 'AUTO';
+// Canonical v2.1 slugs. Legacy aliases (CANDIDATE, MSP_VMS_PARTNER) kept for
+// read compat with existing DB rows; normalization happens at buildArticleParams.
+export type MarketingAudience =
+  | 'EMPLOYER_CLIENT'
+  | 'CANDIDATE_PROFESSIONAL'
+  | 'MSP_STAFFING_PARTNER'
+  | 'RECRUITER_OPERATOR'
+  // Legacy — normalize on read, never write
+  | 'CANDIDATE'
+  | 'MSP_VMS_PARTNER'
+  | 'AUTO';
 export type StaffingDomain = 'GENERAL_STAFFING' | 'IT_STAFFING' | 'HEALTHCARE_STAFFING';
 export type MarketContext = 'COMMERCIAL' | 'STATE_GOVERNMENT' | 'FEDERAL_GOVERNMENT';
 export type ContentGoal = 'THOUGHT_LEADERSHIP' | 'EDUCATIONAL' | 'JOB_MARKETING' | 'BRAND_PERSPECTIVE';
@@ -205,6 +215,10 @@ export interface AiGenerationParams {
   audience?: MarketingAudience;
   marketContext?: MarketContext;
   userSuppliedFacts?: string;
+  // CMO Copilot v2.1 — selected hook from brief resolution
+  selectedHookText?: string;
+  selectedHookArchetype?: string;
+  selectedContentStructure?: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -308,6 +322,8 @@ export const canonicalArticleDraftSchema = z.object({
   cta_url: z.string(),
   // Only populated in "Shape my idea / draft" mode.
   what_changed: z.string().optional().default(""),
+  // CMO Copilot v2.1 — AI reports which hook archetype it used.
+  hook_archetype_used: z.string().optional().default(""),
 });
 
 export type CanonicalArticleDraft = z.infer<typeof canonicalArticleDraftSchema>;
@@ -585,9 +601,81 @@ export function mapToCanonicalArticleDraft(raw: any): CanonicalArticleDraft {
     cta_text: String(r.cta_text ?? r.cta?.text ?? ""),
     cta_url: String(r.cta_url ?? r.cta?.url ?? ""),
     what_changed: String(r.what_changed ?? ""),
+    hook_archetype_used: String(r.hook_archetype_used ?? ""),
   };
   return canonicalArticleDraftSchema.parse(candidate);
 }
+
+// ---------------------------------------------------------------------------
+// CMO Copilot v2.1 — Resolved Brief + Hook types
+// ---------------------------------------------------------------------------
+
+export interface HookOption {
+  text: string;
+  archetype: string;
+  rationale: string;
+  contentStructure: string;
+}
+
+export interface ResolvedBrief {
+  audienceResolved: string;      // canonical v2.1 slug
+  audienceQuestion: string;      // real decision/tension the audience faces
+  domain: string;                // GENERAL_STAFFING | IT_STAFFING | HEALTHCARE_STAFFING
+  marketContext: string;         // COMMERCIAL | STATE_GOVERNMENT | FEDERAL_GOVERNMENT
+  contentGoal: string;           // THOUGHT_LEADERSHIP | EDUCATIONAL | JOB_MARKETING | BRAND_PERSPECTIVE
+  businessObjective: string;
+  singleTakeaway: string;
+  sourceType: string;            // USER_PROVIDED | JOB_RECORD | RECRUITER_DELIVERY_NOTE | CANDIDATE_QUESTION | LEADERSHIP_POV | APPROVED_INTERNAL_MATERIAL | GENERAL_EDUCATIONAL_CONTEXT | NONE
+  sourceSummary: string;
+  readerAction: string;          // what should become easier after reading
+  platform: string;              // ARTICLE | LINKEDIN | INSTAGRAM | FACEBOOK | X | SOCIAL_KIT
+  hookOptions: HookOption[];     // exactly 3
+  recommendedHookIndex: number;  // 0-2
+  recommendedHookRationale: string;
+}
+
+/** JSON Schema for structured AI brief resolution (enforced by response_format). */
+export const RESOLVED_BRIEF_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "audienceResolved", "audienceQuestion", "domain", "marketContext",
+    "contentGoal", "businessObjective", "singleTakeaway",
+    "sourceType", "sourceSummary", "readerAction", "platform",
+    "hookOptions", "recommendedHookIndex", "recommendedHookRationale",
+  ],
+  properties: {
+    audienceResolved: { type: "string", enum: ["EMPLOYER_CLIENT", "CANDIDATE_PROFESSIONAL", "MSP_STAFFING_PARTNER", "RECRUITER_OPERATOR"] },
+    audienceQuestion: { type: "string" },
+    domain: { type: "string", enum: ["GENERAL_STAFFING", "IT_STAFFING", "HEALTHCARE_STAFFING"] },
+    marketContext: { type: "string", enum: ["COMMERCIAL", "STATE_GOVERNMENT", "FEDERAL_GOVERNMENT"] },
+    contentGoal: { type: "string", enum: ["THOUGHT_LEADERSHIP", "EDUCATIONAL", "JOB_MARKETING", "BRAND_PERSPECTIVE"] },
+    businessObjective: { type: "string" },
+    singleTakeaway: { type: "string" },
+    sourceType: { type: "string", enum: ["USER_PROVIDED", "JOB_RECORD", "RECRUITER_DELIVERY_NOTE", "CANDIDATE_QUESTION", "LEADERSHIP_POV", "APPROVED_INTERNAL_MATERIAL", "GENERAL_EDUCATIONAL_CONTEXT", "NONE"] },
+    sourceSummary: { type: "string" },
+    readerAction: { type: "string" },
+    platform: { type: "string", enum: ["ARTICLE", "LINKEDIN", "INSTAGRAM", "FACEBOOK", "X", "SOCIAL_KIT"] },
+    hookOptions: {
+      type: "array",
+      minItems: 3,
+      maxItems: 3,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["text", "archetype", "rationale", "contentStructure"],
+        properties: {
+          text: { type: "string" },
+          archetype: { type: "string" },
+          rationale: { type: "string" },
+          contentStructure: { type: "string" },
+        },
+      },
+    },
+    recommendedHookIndex: { type: "integer", minimum: 0, maximum: 2 },
+    recommendedHookRationale: { type: "string" },
+  },
+};
 
 /** Validate caption lengths against platform limits; returns warnings. */
 export function validateCaptionLengths(kit: CanonicalSocialKit): string[] {

@@ -7,6 +7,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -45,20 +46,26 @@ interface ArticleListResponse {
 
 const PAGE_SIZE = 20;
 
-export function ArticlesPanel({ projectId }: { projectId: string }) {
+export function ArticlesPanel({ projectId, initialStatus }: { projectId: string; initialStatus?: string }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { can } = usePermissions();
   const canCreate = can("studio.create_article");
 
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState(initialStatus ?? "all");
   const [typeFilter, setTypeFilter] = useState("all");
   const [page, setPage] = useState(1);
 
-  const [createOpen, setCreateOpen] = useState(false);
+  // Handle ?new=1 URL param to auto-open the create dialog.
+  const [createOpen, setCreateOpen] = useState(
+    () => new URLSearchParams(window.location.search).get("new") === "1" && canCreate
+  );
   const [newTitle, setNewTitle] = useState("");
   const [newType, setNewType] = useState("quick_take");
+  const [newAudience, setNewAudience] = useState("");
+  const [newContentGoal, setNewContentGoal] = useState("");
+  const [newBrief, setNewBrief] = useState("");
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const canBulkApprove = can("studio.marketing_approve");
@@ -159,6 +166,9 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
         projectId,
         title: newTitle.trim(),
         contentType: newType,
+        ...(newAudience ? { audience: [newAudience] } : {}),
+        ...(newContentGoal ? { contentGoal: newContentGoal } : {}),
+        ...(newBrief.trim() ? { generationBrief: newBrief.trim() } : {}),
       });
       return res.json();
     },
@@ -168,6 +178,9 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
       setCreateOpen(false);
       setNewTitle("");
       setNewType("quick_take");
+      setNewAudience("");
+      setNewContentGoal("");
+      setNewBrief("");
       toast({ title: "Article created", description: "Opening the editor…" });
       setLocation(`/admin/studio/articles/${created.id}/edit`);
     },
@@ -452,20 +465,65 @@ export function ArticlesPanel({ projectId }: { projectId: string }) {
                 data-testid="input-new-article-title"
               />
             </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="new-article-type">Content type</Label>
+                <Select value={newType} onValueChange={setNewType}>
+                  <SelectTrigger id="new-article-type" data-testid="select-new-article-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {STUDIO_CONTENT_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-article-audience">Audience</Label>
+                <Select value={newAudience || "none"} onValueChange={(v) => setNewAudience(v === "none" ? "" : v)}>
+                  <SelectTrigger id="new-article-audience" data-testid="select-new-article-audience">
+                    <SelectValue placeholder="Not set" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Not set</SelectItem>
+                    <SelectItem value="AUTO_DETECT">Auto-detect from context</SelectItem>
+                    <SelectItem value="EMPLOYER_CLIENT">Employer / Client</SelectItem>
+                    <SelectItem value="MSP_STAFFING_PARTNER">MSP / Staffing Partner</SelectItem>
+                    <SelectItem value="CANDIDATE_PROFESSIONAL">Candidate / Professional</SelectItem>
+                    <SelectItem value="RECRUITER_OPERATOR">Recruiter / Operator</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
             <div className="space-y-2">
-              <Label htmlFor="new-article-type">Content type</Label>
-              <Select value={newType} onValueChange={setNewType}>
-                <SelectTrigger id="new-article-type" data-testid="select-new-article-type">
-                  <SelectValue />
+              <Label htmlFor="new-article-goal">Content goal <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+              <Select value={newContentGoal || "none"} onValueChange={(v) => setNewContentGoal(v === "none" ? "" : v)}>
+                <SelectTrigger id="new-article-goal" data-testid="select-new-article-goal">
+                  <SelectValue placeholder="Auto-derive from type" />
                 </SelectTrigger>
                 <SelectContent>
-                  {STUDIO_CONTENT_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>
-                      {t.label} · {t.blurb}
-                    </SelectItem>
-                  ))}
+                  <SelectItem value="none">Auto-derive from type</SelectItem>
+                  <SelectItem value="THOUGHT_LEADERSHIP">Thought Leadership</SelectItem>
+                  <SelectItem value="EDUCATIONAL">Educational</SelectItem>
+                  <SelectItem value="JOB_MARKETING">Job Marketing</SelectItem>
+                  <SelectItem value="BRAND_PERSPECTIVE">Brand Perspective</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="new-article-brief">Brief / angle <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+              <Textarea
+                id="new-article-brief"
+                rows={2}
+                value={newBrief}
+                onChange={(e) => setNewBrief(e.target.value)}
+                placeholder="Key points, angle, or facts the AI must include when generating…"
+                className="text-sm"
+                data-testid="input-new-article-brief"
+              />
             </div>
           </div>
           <DialogFooter>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -65,6 +65,80 @@ interface PulseItem {
   ctaClicks: number;
   score: number;
   campaign: { id: string; name: string } | null;
+}
+
+interface TriageArticle {
+  id: string;
+  title: string;
+  status: string;
+  updatedAt: string | null;
+}
+
+function TriageCard({ projectId }: { projectId: string }) {
+  const { data, isLoading } = useQuery<{ items: TriageArticle[] }>({
+    queryKey: ["/api/admin/studio/articles", { projectId, status: "in_review", page: 1, limit: 5 }],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/admin/studio/articles?projectId=${encodeURIComponent(projectId)}&status=in_review&page=1&limit=5`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return { items: [] };
+      return res.json();
+    },
+    enabled: !!projectId,
+    select: (data: any) => ({ items: data?.items ?? [] }),
+  });
+
+  if (isLoading) return null;
+  if (!data?.items.length) {
+    return (
+      <Card data-testid="card-triage-empty">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <Clock3 className="h-4 w-4 text-muted-foreground" />
+            Review queue
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">No articles awaiting review.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card data-testid="card-triage">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Clock3 className="h-4 w-4 text-amber-500" />
+          Needs your attention
+          <span className="text-xs font-normal text-muted-foreground">awaiting review</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <div className="space-y-1">
+          {data.items.map((a) => (
+            <Link key={a.id} href={`/admin/studio/articles/${a.id}`}>
+              <div
+                className="flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted/60"
+                data-testid={`row-triage-${a.id}`}
+              >
+                <span className="min-w-0 flex-1 truncate font-medium">{a.title || "Untitled"}</span>
+                <Badge variant="outline" className="ml-2 shrink-0 text-[10px]">In review</Badge>
+              </div>
+            </Link>
+          ))}
+        </div>
+        <div className="mt-2 text-right">
+          <Link href="?tab=articles&status=in_review">
+            <span className="text-xs font-medium text-primary hover:underline" data-testid="link-triage-all">
+              See all →
+            </span>
+          </Link>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function ContentPulseCard({ projectId }: { projectId: string }) {
@@ -149,15 +223,17 @@ function StatCard({
   icon: Icon,
   color,
   testId,
+  href,
 }: {
   label: string;
   value: number;
   icon: React.ComponentType<{ className?: string }>;
   color: string;
   testId: string;
+  href?: string;
 }) {
-  return (
-    <Card data-testid={testId}>
+  const inner = (
+    <Card data-testid={testId} className={href ? "cursor-pointer transition-shadow hover:shadow-md" : ""}>
       <CardContent className="flex items-center gap-3 p-4">
         <div className={`shrink-0 ${color}`}>
           <Icon className="h-6 w-6" />
@@ -171,6 +247,10 @@ function StatCard({
       </CardContent>
     </Card>
   );
+  if (href) {
+    return <Link href={href}>{inner}</Link>;
+  }
+  return inner;
 }
 
 function NewProjectDialog({ onCreated }: { onCreated?: () => void }) {
@@ -387,10 +467,23 @@ function BrandReference({ brand }: { brand?: StudioBrandSettings }) {
 }
 
 export default function Studio() {
-  const [activeTab, setActiveTab] = useState("dashboard");
+  const [location] = useLocation();
+  // wouter useLocation returns the path only; search params live on window.location.search.
+  const tabFromUrl = new URLSearchParams(window.location.search).get("tab");
+  const [activeTab, setActiveTab] = useState(tabFromUrl ?? "dashboard");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const { can } = usePermissions();
   const canManageSettings = can("studio.manage_settings");
+  const canCreate = can("studio.create_article");
+
+  // Sync tab when URL search param changes (e.g. clicking a clickable stat card).
+  useEffect(() => {
+    const t = new URLSearchParams(window.location.search).get("tab");
+    if (t && t !== activeTab) {
+      setActiveTab(t);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location]);
 
   const { data: projects, isLoading: projectsLoading } = useQuery<StudioProject[]>({
     queryKey: ["/api/admin/studio/projects"],
@@ -526,6 +619,17 @@ export default function Studio() {
                     action={{ label: "Configure Brand Voice", href: studioPath("/settings/brand-voice") }}
                   />
                 )}
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium text-muted-foreground">Content pipeline</p>
+                  {canCreate && (
+                    <Link href="?tab=articles&new=1">
+                      <Button size="sm" data-testid="button-write-something">
+                        <Plus className="mr-1.5 h-4 w-4" />
+                        Write something
+                      </Button>
+                    </Link>
+                  )}
+                </div>
                 <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                   <StatCard
                     label="Total Articles"
@@ -533,6 +637,7 @@ export default function Studio() {
                     icon={Newspaper}
                     color="text-primary"
                     testId="stat-total"
+                    href={`?tab=articles`}
                   />
                   <StatCard
                     label="Pending Reviews"
@@ -540,6 +645,7 @@ export default function Studio() {
                     icon={Clock3}
                     color="text-amber-500"
                     testId="stat-pending-reviews"
+                    href={`?tab=articles&status=in_review`}
                   />
                   <StatCard
                     label="Scheduled"
@@ -547,6 +653,7 @@ export default function Studio() {
                     icon={CalendarClock}
                     color="text-blue-500"
                     testId="stat-scheduled"
+                    href={`?tab=articles&status=scheduled`}
                   />
                   <StatCard
                     label="Published"
@@ -554,6 +661,7 @@ export default function Studio() {
                     icon={Send}
                     color="text-violet-500"
                     testId="stat-published"
+                    href={`?tab=articles&status=published`}
                   />
                 </div>
 
@@ -564,19 +672,20 @@ export default function Studio() {
                   <CardContent>
                     <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
                       {STATUS_META.map(({ key, icon: Icon, color }) => (
-                        <div
-                          key={key}
-                          className="flex flex-col items-center gap-1 rounded-lg border p-3 text-center"
-                          data-testid={`pipeline-${key}`}
-                        >
-                          <Icon className={`h-5 w-5 ${color}`} />
-                          <span className="text-xl font-bold tabular-nums">
-                            {stats.byStatus[key] ?? 0}
-                          </span>
-                          <span className="text-[11px] text-muted-foreground">
-                            {STATUS_LABELS[key]}
-                          </span>
-                        </div>
+                        <Link key={key} href={`?tab=articles&status=${key}`}>
+                          <div
+                            className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border p-3 text-center transition-shadow hover:shadow-md"
+                            data-testid={`pipeline-${key}`}
+                          >
+                            <Icon className={`h-5 w-5 ${color}`} />
+                            <span className="text-xl font-bold tabular-nums">
+                              {stats.byStatus[key] ?? 0}
+                            </span>
+                            <span className="text-[11px] text-muted-foreground">
+                              {STATUS_LABELS[key]}
+                            </span>
+                          </div>
+                        </Link>
                       ))}
                     </div>
                     {stats.totalArticles === 0 && (
@@ -592,6 +701,7 @@ export default function Studio() {
                   </CardContent>
                 </Card>
 
+                <TriageCard projectId={selectedProjectId} />
                 <ContentPulseCard projectId={selectedProjectId} />
               </>
             )}
@@ -600,7 +710,10 @@ export default function Studio() {
           {/* Articles */}
           <TabsContent value="articles" className="mt-6">
             {selectedProjectId ? (
-              <ArticlesPanel projectId={selectedProjectId} />
+              <ArticlesPanel
+                projectId={selectedProjectId}
+                initialStatus={new URLSearchParams(window.location.search).get("status") ?? undefined}
+              />
             ) : (
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />

@@ -35,6 +35,12 @@ const BRAND_GUARDRAIL =
 const ARTICLE_PARAMS_BLOCK =
   "Brand: {{brand_name}} ({{brand_tagline}}). Voice: {{brand_voice}}. Industry: {{industry}}. Content type: {{content_type}}. Target audience: {{target_audience}}. Author: {{author_name}}, {{author_title}}. Tone: {{tone}}. Desired length: {{desired_length}}. CTA text: {{cta_text}} CTA url: {{cta_url}}. Compliance mode: {{compliance_mode}}.";
 
+// Marketing Intelligence variant: audience is handled by the injected intelligence blocks
+// (AUDIENCE_BLOCKS), so {{target_audience}} is removed to avoid duplication and potential
+// template conflict. Bumped to version 2 so existing environments re-seed on next deploy.
+const ARTICLE_PARAMS_BLOCK_MI =
+  "Brand: {{brand_name}} ({{brand_tagline}}). Voice: {{brand_voice}}. Industry: {{industry}}. Content type: {{content_type}}. Author: {{author_name}}, {{author_title}}. Tone: {{tone}}. Desired length: {{desired_length}}. CTA text: {{cta_text}} CTA url: {{cta_url}}. Compliance mode: {{compliance_mode}}.";
+
 const SOCIAL_PARAMS_BLOCK =
   "Brand: {{brand_name}} ({{brand_tagline}}). Voice: {{brand_voice}}. Industry: {{industry}}. Platform focus: {{platform}}. Target audience: {{target_audience}}. Author: {{author_name}}, {{author_title}}. CTA text: {{cta_text}} CTA url: {{cta_url}}. Visual template hint: {{visual_template}}. Compliance mode: {{compliance_mode}}. Source article title: {{article_title}}. Summary: {{article_summary}}. Body:\n{{article_body}}";
 
@@ -254,6 +260,24 @@ const TEMPLATES: SeedTemplate[] = [
       " This is the Hire'in Marketing Content Intelligence Agent. You produce Insights articles, thought leadership, educational content, job marketing posts, and brand-perspective content for staffing audiences. Apply the intelligence blocks injected above. Write human-sounding, audience-aware, platform-native content. Never invent Hire'in company claims.",
     userPromptTemplate:
       ARTICLE_PARAMS_BLOCK +
+      "\n\nTopic: {{topic}}\nKey points to cover (do not add facts beyond these unless they are general industry knowledge): {{key_points}}\nCompany facts or claims to include (optional, use as provided): {{user_supplied_facts}}\n\nWrite the full article draft now.",
+    modelName: "gpt-5.4",
+    modelTier: "standard",
+    maxTokens: 6000,
+    outputSchemaRef: "article_draft",
+  },
+  // v2: removes {{target_audience}} from params block — audience is handled by the injected
+  // AUDIENCE_BLOCKS in the system prompt, so the placeholder was redundant and could cause
+  // template variable bleed when audience is AUTO_DETECT / not set. All environments that
+  // already have v1 will receive this v2 row on next startup seed run.
+  {
+    contentType: "marketing_intelligence_article",
+    version: 2,
+    systemPrompt:
+      BRAND_GUARDRAIL +
+      " This is the Hire'in Marketing Content Intelligence Agent. You produce Insights articles, thought leadership, educational content, job marketing posts, and brand-perspective content for staffing audiences. Apply the intelligence blocks injected above. Write human-sounding, audience-aware, platform-native content. Never invent Hire'in company claims.",
+    userPromptTemplate:
+      ARTICLE_PARAMS_BLOCK_MI +
       "\n\nTopic: {{topic}}\nKey points to cover (do not add facts beyond these unless they are general industry knowledge): {{key_points}}\nCompany facts or claims to include (optional, use as provided): {{user_supplied_facts}}\n\nWrite the full article draft now.",
     modelName: "gpt-5.4",
     modelTier: "standard",

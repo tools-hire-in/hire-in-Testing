@@ -51,6 +51,7 @@ import {
   ImagePlus,
   Clock3,
   ChevronRight,
+  ChevronLeft,
   Sparkles,
   Wand2,
   Share2,
@@ -61,6 +62,13 @@ import {
   RefreshCw,
   Lock,
   Recycle,
+  Zap,
+  CheckCircle2,
+  XCircle,
+  Target,
+  Users,
+  FileSearch,
+  BookOpen,
 } from "lucide-react";
 import {
   Dialog,
@@ -81,6 +89,49 @@ import {
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import type { StudioArticle, StudioArticleVersion, StudioAuthorProfile } from "@shared/schema";
 import { cardVariantsForLayout, cardBudget, type CardBudget } from "@shared/socialCards";
+
+// CMO Copilot v2.1 — simplified generation format options.
+// Each format maps to a content type + content goal so the intelligence engine
+// fires correctly without requiring the user to fill strategy fields manually.
+const FORMAT_OPTIONS = [
+  { value: "thought_leadership", label: "Thought Leadership Article", contentType: "thought_leadership", contentGoal: "THOUGHT_LEADERSHIP", platform: "ARTICLE" },
+  { value: "educational", label: "Educational / How-To", contentType: "how_to", contentGoal: "EDUCATIONAL", platform: "ARTICLE" },
+  { value: "job_marketing", label: "Job Marketing Post", contentType: "job_marketing", contentGoal: "JOB_MARKETING", platform: "ARTICLE" },
+  { value: "brand_perspective", label: "Brand Perspective", contentType: "brand_perspective", contentGoal: "BRAND_PERSPECTIVE", platform: "ARTICLE" },
+  { value: "insights", label: "Hire'in Insights Article", contentType: "insights", contentGoal: "THOUGHT_LEADERSHIP", platform: "ARTICLE" },
+  { value: "linkedin_post", label: "LinkedIn Post", contentType: "linkedin_post", contentGoal: "THOUGHT_LEADERSHIP", platform: "LINKEDIN" },
+  { value: "instagram", label: "Instagram", contentType: "instagram", contentGoal: "BRAND_PERSPECTIVE", platform: "INSTAGRAM" },
+  { value: "x_post", label: "X / Twitter", contentType: "x_post", contentGoal: "THOUGHT_LEADERSHIP", platform: "X" },
+] as const;
+
+const AUDIENCE_LABELS: Record<string, string> = {
+  EMPLOYER_CLIENT: "Employer Client",
+  CANDIDATE_PROFESSIONAL: "Candidate / Professional",
+  MSP_STAFFING_PARTNER: "MSP / Staffing Partner",
+  RECRUITER_OPERATOR: "Recruiter / Operator",
+};
+
+const DOMAIN_LABELS: Record<string, string> = {
+  // Canonical uppercase enums (persisted by server after v2.1)
+  IT_STAFFING: "IT Staffing",
+  HEALTHCARE_STAFFING: "Healthcare Staffing",
+  GOVERNMENT: "Government",
+  GENERAL_STAFFING: "General Staffing",
+  // Legacy lowercase values (pre-v2.1 articles)
+  it: "IT Staffing",
+  it_staffing: "IT Staffing",
+  healthcare: "Healthcare Staffing",
+  healthcare_staffing: "Healthcare Staffing",
+  government: "Government",
+  general: "General Staffing",
+};
+
+const GOAL_LABELS: Record<string, string> = {
+  THOUGHT_LEADERSHIP: "Thought Leadership",
+  EDUCATIONAL: "Educational",
+  JOB_MARKETING: "Job Marketing",
+  BRAND_PERSPECTIVE: "Brand Perspective",
+};
 
 // Client mirror of the server generic transition map.
 // States managed by dedicated endpoints (CM decision, author sign-off,
@@ -116,6 +167,10 @@ interface EditorState {
   seoDescription: string;
   coverImageUrl: string;
   authorProfileId: string;
+  toneVoice: string;
+  audience: string;
+  generationBrief: string;
+  complianceMode: string;
 }
 
 function ArticleEditorInner({ id }: { id: string }) {
@@ -144,8 +199,31 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [genAudience, setGenAudience] = useState("");
   const [genMarketContext, setGenMarketContext] = useState("COMMERCIAL");
   const [genUserFacts, setGenUserFacts] = useState("");
+  const [genTone, setGenTone] = useState("");
   const [riskFlags, setRiskFlags] = useState<string[]>([]);
   const [requiredEdits, setRequiredEdits] = useState<string[]>([]);
+  // CMO Copilot v2.1 — simplified generation state
+  const [genFormat, setGenFormat] = useState("thought_leadership");
+  const [genStrategySummary, setGenStrategySummary] = useState<{
+    audience: string;
+    domain: string;
+    contentGoal: string;
+    hookArchetype: string;
+    safetyResult: string;
+    safetyFailureCount: number;
+  } | null>(null);
+  const [safetyFailures, setSafetyFailures] = useState<Array<{
+    code: string;
+    sentence: string;
+    reason: string;
+    missingSource?: string;
+    recommendedCorrection: string;
+    autoCorrectSafe: boolean;
+  }>>([]);
+  // Brief resolution state (backend only — not surfaced in UI yet)
+  const [genStep, setGenStep] = useState<"input" | "brief" | "hooks">("input");
+  const [resolvedBrief, setResolvedBrief] = useState<any>(null);
+  const [selectedHookIdx, setSelectedHookIdx] = useState<number>(0);
   // Task #906 defect fix: AI failures surface as a persistent banner with
   // retry + continue-manually, never just a transient toast.
   const [aiError, setAiError] = useState<{ source: "article" | "social"; message: string } | null>(null);
@@ -203,11 +281,56 @@ function ArticleEditorInner({ id }: { id: string }) {
         seoDescription: article.seoDescription ?? "",
         coverImageUrl: article.coverImageUrl ?? "",
         authorProfileId: article.authorProfileId ?? "",
+        toneVoice: (article as any).toneVoice ?? "",
+        audience: (article as any).audience?.[0] ?? "",
+        generationBrief: (article as any).generationBrief ?? "",
+        complianceMode: (article as any).complianceMode ?? "normal",
       };
       setForm(next);
       formRef.current = next;
     }
   }, [article, form]);
+
+  // On article load (or refresh after generation): restore the strategy strip and
+  // safety findings from the persisted article record so they survive page reload.
+  useEffect(() => {
+    if (!article) return;
+    const art = article as any;
+    if (!art.safetyReviewResult && !art.audienceResolved && !art.domainResolved) return;
+    setGenStrategySummary({
+      audience: art.audienceResolved ? (AUDIENCE_LABELS[art.audienceResolved] ?? art.audienceResolved) : "Auto-detected",
+      domain: DOMAIN_LABELS[art.domainResolved] ?? art.domainResolved ?? "General Staffing",
+      contentGoal: GOAL_LABELS[art.contentGoal] ?? art.contentGoal ?? "",
+      hookArchetype: art.selectedHookArchetype ?? "",
+      safetyResult: art.safetyReviewResult ?? "PASS",
+      safetyFailureCount: (art.safetyFailuresJsonb as any[] | null)?.length ?? 0,
+    });
+    if (Array.isArray(art.safetyFailuresJsonb) && art.safetyFailuresJsonb.length > 0) {
+      setSafetyFailures(art.safetyFailuresJsonb as any[]);
+    }
+  // Only re-run when the article id changes or after the article is refetched.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [article?.id, (article as any)?.safetyReviewResult]);
+
+  // Pre-fill AI generation dialog from article state when opened.
+  useEffect(() => {
+    if (genOpen && article) {
+      const art = article as any;
+      if (art.audience?.[0]) setGenAudience(art.audience[0]);
+      if (art.toneVoice) setGenTone(art.toneVoice);
+      if (art.complianceMode) setGenCompliance(art.complianceMode);
+      // Derive content goal from contentType if not yet set (RC-1 client mirror)
+      if (!genContentGoal && art.contentType) {
+        const lower = art.contentType.toLowerCase().replace(/[-\s]/g, "_");
+        if (["quick_take", "deep_dive", "thought_leadership", "opinion"].some((s) => lower === s || lower.includes(s))) {
+          setGenContentGoal("THOUGHT_LEADERSHIP");
+        } else if (["how_to", "insights", "guide", "educational"].some((s) => lower === s || lower.includes(s))) {
+          setGenContentGoal("EDUCATIONAL");
+        }
+      }
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [genOpen]);
 
   useEffect(() => {
     formRef.current = form;
@@ -235,6 +358,10 @@ function ArticleEditorInner({ id }: { id: string }) {
     seoDescription: state.seoDescription || null,
     coverImageUrl: state.coverImageUrl || null,
     authorProfileId: state.authorProfileId || null,
+    toneVoice: state.toneVoice || null,
+    audience: state.audience ? [state.audience] : undefined,
+    generationBrief: state.generationBrief || null,
+    complianceMode: state.complianceMode || null,
     autosave,
   });
 
@@ -306,6 +433,10 @@ function ArticleEditorInner({ id }: { id: string }) {
         seoDescription: restored.seoDescription ?? "",
         coverImageUrl: restored.coverImageUrl ?? "",
         authorProfileId: restored.authorProfileId ?? "",
+        toneVoice: (restored as any).toneVoice ?? "",
+        audience: (restored.audience ?? [])[0] ?? "",
+        generationBrief: (restored as any).generationBrief ?? "",
+        complianceMode: (restored as any).complianceMode ?? "normal",
       };
       setForm(next);
       formRef.current = next;
@@ -373,25 +504,17 @@ function ArticleEditorInner({ id }: { id: string }) {
 
   const generateArticleMutation = useMutation({
     mutationFn: async () => {
+      // Derive content type, goal, and platform from the selected format.
+      const fmt = FORMAT_OPTIONS.find((f) => f.value === genFormat) ?? FORMAT_OPTIONS[0];
       const payload: Record<string, any> = {
-        mode: genMode,
-        industry: genIndustry || undefined,
-        complianceMode: genCompliance,
-        contentType: formRef.current?.contentType,
-        sourceNotes: genSourceNotes || undefined,
-        contentGoal: genContentGoal || undefined,
+        mode: "topic",
+        contentType: fmt.contentType,
+        contentGoal: fmt.contentGoal,
         audience: genAudience || undefined,
-        marketContext: genMarketContext || undefined,
         userSuppliedFacts: genUserFacts || undefined,
+        topic: genTopic,
+        complianceMode: "normal",
       };
-      if (genMode === "topic") {
-        payload.topic = genTopic;
-        payload.keyPoints = genKeyPoints
-          ? genKeyPoints.split("\n").map((l) => l.trim()).filter(Boolean)
-          : undefined;
-      } else {
-        payload.rawInput = genRawInput;
-      }
       const res = await apiRequest(
         "POST",
         `/api/admin/studio/articles/${id}/generate-article`,
@@ -399,9 +522,8 @@ function ArticleEditorInner({ id }: { id: string }) {
       );
       return res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: async (data: any) => {
       const draft = data.draft;
-      // Apply the generated draft into the editor (never auto-publishes).
       setForm((f) =>
         f
           ? {
@@ -420,14 +542,37 @@ function ArticleEditorInner({ id }: { id: string }) {
       setRequiredEdits(data.qualityReview?.required_edits ?? []);
       setGenOpen(false);
       setAiError(null);
+
+      // Build the strategy summary from backend-resolved values (source of truth).
+      const fmt = FORMAT_OPTIONS.find((f) => f.value === genFormat) ?? FORMAT_OPTIONS[0];
+      const resolvedAud = data.resolvedAudience;
+      const resolvedDom = data.resolvedDomain;
+      const resolvedGoal = data.resolvedContentGoal;
+      setGenStrategySummary({
+        audience: resolvedAud ? (AUDIENCE_LABELS[resolvedAud] ?? resolvedAud) : "Auto-detected",
+        domain: resolvedDom ? (DOMAIN_LABELS[resolvedDom] ?? resolvedDom) : "General Staffing",
+        contentGoal: resolvedGoal ? (GOAL_LABELS[resolvedGoal] ?? resolvedGoal) : (GOAL_LABELS[fmt.contentGoal] ?? fmt.label),
+        hookArchetype: draft.hook_archetype_used || "",
+        safetyResult: data.safetyReviewResult ?? "PASS",
+        safetyFailureCount: (data.safetyFailures ?? []).length,
+      });
+      setSafetyFailures(data.safetyFailures ?? []);
+
+      // Persist audience and contentGoal back to the article for next open.
+      apiRequest("PATCH", `/api/admin/studio/articles/${id}`, {
+        ...(genAudience ? { audience: [genAudience] } : {}),
+        contentGoal: fmt.contentGoal,
+      }).catch(() => {/* non-fatal */});
+
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
       const flagCount = (data.riskFlags ?? []).length;
+      const safetyBadge = data.safetyReviewResult === "BLOCK" ? " · ⚠ Important issue found" :
+        data.safetyReviewResult === "REVISE" ? " · Review recommended" : "";
       toast({
         title: "Draft generated",
-        description:
-          flagCount > 0
-            ? `${flagCount} risk flag(s) raised — review before publishing.`
-            : "Review the draft, then Save.",
+        description: flagCount > 0
+          ? `${flagCount} flag(s) raised — review before publishing.`
+          : `Review and save your draft.${safetyBadge}`,
       });
     },
     onError: (err: Error) => {
@@ -831,6 +976,66 @@ function ArticleEditorInner({ id }: { id: string }) {
             </div>
 
             <TabsContent value="write" className="mt-3 space-y-2">
+              {/* CMO Copilot v2.1 — Strategy summary strip (persisted; survives page refresh) */}
+              {genStrategySummary && (
+                <div className="space-y-1.5" data-testid="div-strategy-summary">
+                  {/* One-line summary row */}
+                  <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+                    <span className="flex flex-wrap items-center gap-1">
+                      <Sparkles className="h-3 w-3 shrink-0 text-primary" />
+                      <span className="font-medium text-foreground">Generated for:</span>
+                      {genStrategySummary.audience}
+                      {genStrategySummary.domain && <>{" · "}{genStrategySummary.domain}</>}
+                      {genStrategySummary.contentGoal && <>{" · "}{genStrategySummary.contentGoal}</>}
+                      {genStrategySummary.hookArchetype && (
+                        <> · Hook: <span className="font-medium text-foreground">{genStrategySummary.hookArchetype}</span></>
+                      )}
+                    </span>
+                    {/* Safety badge */}
+                    {genStrategySummary.safetyResult === "BLOCK" ? (
+                      <span className="flex items-center gap-1 font-medium text-red-600 dark:text-red-400" data-testid="badge-safety-block">
+                        <XCircle className="h-3.5 w-3.5" /> Important issue found
+                      </span>
+                    ) : genStrategySummary.safetyResult === "REVISE" ? (
+                      <span className="flex items-center gap-1 font-medium text-amber-600 dark:text-amber-400" data-testid="badge-safety-revise">
+                        <AlertTriangle className="h-3.5 w-3.5" /> Review recommended
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 font-medium text-green-600 dark:text-green-500" data-testid="badge-safety-clear">
+                        <CheckCircle2 className="h-3.5 w-3.5" /> Clear
+                      </span>
+                    )}
+                  </div>
+                  {/* Actionable safety findings — shown when there are failures */}
+                  {safetyFailures.length > 0 && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800/40 dark:bg-amber-950/20" data-testid="div-safety-findings">
+                      <div className="border-b border-amber-200 px-3 py-1.5 dark:border-amber-800/40">
+                        <span className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                          {safetyFailures.length === 1 ? "1 item to review" : `${safetyFailures.length} items to review`}
+                        </span>
+                      </div>
+                      <div className="divide-y divide-amber-100 dark:divide-amber-900/30">
+                        {safetyFailures.map((f, i) => (
+                          <div key={i} className="px-3 py-2.5 text-xs" data-testid={`div-safety-finding-${i}`}>
+                            {/* Flagged phrase */}
+                            <p className="mb-1 font-mono text-[11px] leading-relaxed text-amber-900 dark:text-amber-200 line-clamp-2">
+                              "{f.sentence}"
+                            </p>
+                            {/* Why it was flagged */}
+                            <p className="text-muted-foreground">
+                              <span className="font-medium text-foreground">Why: </span>{f.reason}
+                            </p>
+                            {/* What to do */}
+                            <p className="mt-0.5 text-muted-foreground">
+                              <span className="font-medium text-foreground">Fix: </span>{f.recommendedCorrection}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="flex flex-wrap items-center gap-1 rounded-md border bg-muted/40 p-1">
                 {toolbarButtons.map((b) => (
                   <Button
@@ -1213,6 +1418,93 @@ function ArticleEditorInner({ id }: { id: string }) {
             </CardContent>
           </Card>
 
+          {/* Brief & Strategy sidebar card */}
+          <Card data-testid="card-brief-strategy">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm">Brief &amp; Strategy</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="brief-audience" className="text-xs">Audience</Label>
+                <Select
+                  value={form.audience || "none"}
+                  onValueChange={(v) => update({ audience: v === "none" ? "" : v })}
+                  disabled={!canEdit}
+                >
+                  <SelectTrigger id="brief-audience" className="h-8 text-sm" data-testid="select-brief-audience">
+                    <SelectValue placeholder="Not set" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Not set</SelectItem>
+                    <SelectItem value="AUTO_DETECT">Auto-detect from context</SelectItem>
+                    <SelectItem value="EMPLOYER_CLIENT">Employer / Client</SelectItem>
+                    <SelectItem value="MSP_STAFFING_PARTNER">MSP / Staffing Partner</SelectItem>
+                    <SelectItem value="CANDIDATE_PROFESSIONAL">Candidate / Professional</SelectItem>
+                    <SelectItem value="RECRUITER_OPERATOR">Recruiter / Operator</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="brief-tone" className="text-xs">Tone</Label>
+                <Select
+                  value={form.toneVoice || "none"}
+                  onValueChange={(v) => update({ toneVoice: v === "none" ? "" : v })}
+                  disabled={!canEdit}
+                >
+                  <SelectTrigger id="brief-tone" className="h-8 text-sm" data-testid="select-brief-tone">
+                    <SelectValue placeholder="Brand default" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Brand default (AUTO)</SelectItem>
+                    <SelectItem value="AUTHORITATIVE">Authoritative &amp; Expert</SelectItem>
+                    <SelectItem value="CONVERSATIONAL">Conversational &amp; Warm</SelectItem>
+                    <SelectItem value="EDUCATIONAL">Educational &amp; Informative</SelectItem>
+                    <SelectItem value="INSPIRATIONAL">Inspirational &amp; Motivating</SelectItem>
+                    <SelectItem value="PRACTICAL">Practical &amp; Actionable</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="brief-brief" className="text-xs">Generation brief</Label>
+                <Textarea
+                  id="brief-brief"
+                  rows={3}
+                  value={form.generationBrief}
+                  onChange={(e) => update({ generationBrief: e.target.value })}
+                  placeholder="Key points, angles, or facts the AI must include…"
+                  disabled={!canEdit}
+                  className="text-sm"
+                  data-testid="input-brief-brief"
+                />
+                <p className="text-[11px] text-muted-foreground">
+                  Saved as key points for AI generation. Specific beats generic.
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="brief-compliance" className="text-xs">Compliance mode</Label>
+                <Select
+                  value={form.complianceMode || "normal"}
+                  onValueChange={(v) => update({ complianceMode: v })}
+                  disabled={!canEdit}
+                >
+                  <SelectTrigger id="brief-compliance" className="h-8 text-sm" data-testid="select-brief-compliance">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {COMPLIANCE_MODES.map((m) => (
+                      <SelectItem key={m.value} value={m.value}>
+                        {m.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {form.complianceMode && form.complianceMode !== "normal" && (
+                  <p className="text-[11px] text-muted-foreground">{getComplianceBlurb(form.complianceMode)}</p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+
           <Card>
             <CardHeader className="pb-3">
               <CardTitle className="text-sm">Featured image</CardTitle>
@@ -1410,217 +1702,96 @@ function ArticleEditorInner({ id }: { id: string }) {
       </Dialog>
 
       {/* AI Generate Draft modal — two input modes. */}
-      <Dialog open={genOpen} onOpenChange={setGenOpen}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
+      <Dialog open={genOpen} onOpenChange={(open) => {
+        setGenOpen(open);
+        if (!open) { setGenStep("input"); setResolvedBrief(null); }
+      }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5" />
-              Generate article draft
+              Generate draft
             </DialogTitle>
             <DialogDescription>
-              AI generates a brand-safe draft into the editor. It never publishes — you review and save.
+              The intelligence engine resolves strategy and selects the best hook automatically. You review and approve before anything publishes.
             </DialogDescription>
           </DialogHeader>
 
-          <div className="space-y-4">
+          {editorBrandVoice && !editorBrandVoice.config && (
             <StudioTip
-              id="editor-generation-brief"
-              title="Better briefs, better drafts"
-              body="The more specific your topic and key points, the better the draft. Include the audience, the angle, and any facts the AI must keep."
+              id="editor-default-voice"
+              title="No Brand Voice configured"
+              body="Drafts will use a generic default voice. Configure Brand Voice to sound like Hire'in from the first word."
+              action={{ label: "Configure Brand Voice", href: studioPath("/settings/brand-voice") }}
             />
-            {editorBrandVoice && !editorBrandVoice.config && (
-              <StudioTip
-                id="editor-default-voice"
-                title="No Brand Voice configured"
-                body="This draft will use a generic default voice. Set up your Brand Voice so drafts sound like your brand from the first word."
-                action={{ label: "Configure Brand Voice", href: studioPath("/settings/brand-voice") }}
-              />
-            )}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setGenMode("topic")}
-                className={`rounded-md border p-3 text-left text-sm transition ${
-                  genMode === "topic" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-                }`}
-                data-testid="button-mode-topic"
-              >
-                <span className="flex items-center gap-2 font-medium">
-                  <Sparkles className="h-4 w-4" /> Start from a topic
-                </span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  Give a topic and key points; AI writes the draft.
-                </span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setGenMode("shape")}
-                className={`rounded-md border p-3 text-left text-sm transition ${
-                  genMode === "shape" ? "border-primary bg-primary/5" : "hover:bg-muted/50"
-                }`}
-                data-testid="button-mode-shape"
-              >
-                <span className="flex items-center gap-2 font-medium">
-                  <Wand2 className="h-4 w-4" /> Shape my idea / draft
-                </span>
-                <span className="mt-1 block text-xs text-muted-foreground">
-                  Paste your notes; AI keeps your facts and polishes.
-                </span>
-              </button>
-            </div>
+          )}
 
-            {genMode === "topic" ? (
-              <>
-                <div className="space-y-2">
-                  <Label htmlFor="gen-topic">Topic</Label>
-                  <Input
-                    id="gen-topic"
-                    value={genTopic}
-                    onChange={(e) => setGenTopic(e.target.value)}
-                    placeholder="e.g. How to reduce time-to-hire for night-shift nurses"
-                    data-testid="input-gen-topic"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="gen-key-points">Key points (one per line, optional)</Label>
-                  <Textarea
-                    id="gen-key-points"
-                    rows={3}
-                    value={genKeyPoints}
-                    onChange={(e) => setGenKeyPoints(e.target.value)}
-                    placeholder={"Credentialing checks\nShift reliability\nCompliance"}
-                    data-testid="input-gen-key-points"
-                  />
-                </div>
-              </>
-            ) : (
-              <div className="space-y-2">
-                <Label htmlFor="gen-raw">Your idea, notes, or rough draft</Label>
-                <Textarea
-                  id="gen-raw"
-                  rows={6}
-                  value={genRawInput}
-                  onChange={(e) => setGenRawInput(e.target.value)}
-                  placeholder="Paste your draft or notes here. AI preserves your facts and figures."
-                  data-testid="input-gen-raw"
-                />
-              </div>
-            )}
-
+          <div className="space-y-4">
+            {/* Field 1: Topic or instruction */}
             <div className="space-y-2">
-              <Label htmlFor="gen-source-notes">Company facts or claims to include (optional)</Label>
+              <Label htmlFor="gen-topic">Topic or instruction</Label>
               <Textarea
-                id="gen-source-notes"
-                rows={2}
-                value={genUserFacts || genSourceNotes}
-                onChange={(e) => {
-                  setGenUserFacts(e.target.value);
-                  setGenSourceNotes(e.target.value);
-                }}
-                placeholder="Only include facts you are authorized to publish. The agent will not add company-specific claims on its own."
-                data-testid="input-gen-source-notes"
+                id="gen-topic"
+                rows={3}
+                value={genTopic}
+                onChange={(e) => setGenTopic(e.target.value)}
+                placeholder="e.g. Why IT hiring managers reject technically qualified candidates — and what recruiters miss in the intake call"
+                data-testid="input-gen-topic"
+                autoFocus
               />
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Domain</Label>
-                <Select value={genIndustry || "none"} onValueChange={(v) => setGenIndustry(v === "none" ? "" : v)}>
-                  <SelectTrigger data-testid="select-gen-industry">
-                    <SelectValue placeholder="General Staffing" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="none">General Staffing</SelectItem>
-                    <SelectItem value="it">IT Staffing</SelectItem>
-                    <SelectItem value="healthcare">Healthcare Staffing</SelectItem>
-                    <SelectItem value="government">Government</SelectItem>
-                    <SelectItem value="non_it">Non-IT</SelectItem>
-                    <SelectItem value="hr_tech">HR tech</SelectItem>
-                    <SelectItem value="food">Food / hospitality</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label>Compliance mode</Label>
-                <Select value={genCompliance} onValueChange={setGenCompliance}>
-                  <SelectTrigger data-testid="select-gen-compliance">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {COMPLIANCE_MODES.map((m) => (
-                      <SelectItem key={m.value} value={m.value}>
-                        {m.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+            {/* Field 2: Audience */}
+            <div className="space-y-2">
+              <Label>Audience</Label>
+              <Select value={genAudience || "AUTO_DETECT"} onValueChange={(v) => setGenAudience(v === "AUTO_DETECT" ? "" : v)}>
+                <SelectTrigger data-testid="select-gen-audience">
+                  <SelectValue placeholder="Auto-detect from topic" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="AUTO_DETECT">Auto-detect from topic</SelectItem>
+                  <SelectItem value="EMPLOYER_CLIENT">Employer / Client</SelectItem>
+                  <SelectItem value="CANDIDATE_PROFESSIONAL">Candidate / Professional</SelectItem>
+                  <SelectItem value="MSP_STAFFING_PARTNER">MSP / Staffing Partner</SelectItem>
+                  <SelectItem value="RECRUITER_OPERATOR">Recruiter / Operator</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
-            <p className="text-xs text-muted-foreground">
-              {getComplianceBlurb(genCompliance)}
-            </p>
 
-            {/* Intelligence Settings collapsible */}
-            <details className="group rounded-md border">
-              <summary className="flex cursor-pointer list-none items-center justify-between px-3 py-2 text-sm font-medium select-none hover:bg-muted/40" data-testid="summary-intelligence-settings">
-                <span>Intelligence Settings</span>
-                <span className="text-xs text-muted-foreground group-open:hidden">
-                  {genContentGoal ? "Active" : "Optional"}
-                </span>
-              </summary>
-              <div className="space-y-3 border-t px-3 py-3">
-                <p className="text-xs text-muted-foreground">
-                  Set these to activate audience-aware, staffing-domain-specific generation with platform-native craft rules and anti-slop controls.
-                </p>
-                <div className="space-y-2">
-                  <Label>Content Goal</Label>
-                  <Select value={genContentGoal || "none"} onValueChange={(v) => setGenContentGoal(v === "none" ? "" : v)}>
-                    <SelectTrigger data-testid="select-gen-content-goal">
-                      <SelectValue placeholder="General (no intelligence path)" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="none">General (no intelligence path)</SelectItem>
-                      <SelectItem value="THOUGHT_LEADERSHIP">Thought Leadership</SelectItem>
-                      <SelectItem value="EDUCATIONAL">Educational</SelectItem>
-                      <SelectItem value="JOB_MARKETING">Job Marketing</SelectItem>
-                      <SelectItem value="BRAND_PERSPECTIVE">Brand Perspective</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {genContentGoal && (
-                  <>
-                    <div className="space-y-2">
-                      <Label>Audience</Label>
-                      <Select value={genAudience || "AUTO"} onValueChange={(v) => setGenAudience(v === "AUTO" ? "" : v)}>
-                        <SelectTrigger data-testid="select-gen-audience">
-                          <SelectValue placeholder="Auto-detect" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="AUTO">Auto-detect</SelectItem>
-                          <SelectItem value="EMPLOYER_CLIENT">Employer / Client</SelectItem>
-                          <SelectItem value="MSP_VMS_PARTNER">MSP / Staffing Partner</SelectItem>
-                          <SelectItem value="CANDIDATE">Candidate / Professional</SelectItem>
-                          <SelectItem value="RECRUITER_OPERATOR">Recruiter / Operator</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Market Context</Label>
-                      <Select value={genMarketContext} onValueChange={setGenMarketContext}>
-                        <SelectTrigger data-testid="select-gen-market-context">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="COMMERCIAL">Commercial</SelectItem>
-                          <SelectItem value="STATE_GOVERNMENT">State Government</SelectItem>
-                          <SelectItem value="FEDERAL_GOVERNMENT">Federal Government</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </>
-                )}
-              </div>
-            </details>
+            {/* Field 3: Format */}
+            <div className="space-y-2">
+              <Label>Format</Label>
+              <Select value={genFormat} onValueChange={setGenFormat}>
+                <SelectTrigger data-testid="select-gen-format">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {FORMAT_OPTIONS.map((f) => (
+                    <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Field 4: Facts or context (optional) */}
+            <div className="space-y-2">
+              <Label htmlFor="gen-facts">
+                Facts or context
+                <span className="ml-1 font-normal text-muted-foreground">(optional)</span>
+              </Label>
+              <Textarea
+                id="gen-facts"
+                rows={2}
+                value={genUserFacts}
+                onChange={(e) => setGenUserFacts(e.target.value)}
+                placeholder="Job details, recruiter notes, a leadership POV, or any specific facts to include. Only add what you are authorized to publish."
+                data-testid="input-gen-facts"
+              />
+            </div>
+
+            <p className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
+              The intelligence engine selects staffing domain, hook archetype, and content structure automatically. Safety checks run after generation. You review everything before saving.
+            </p>
           </div>
 
           <DialogFooter>
@@ -1629,18 +1800,20 @@ function ArticleEditorInner({ id }: { id: string }) {
             </Button>
             <Button
               onClick={() => generateArticleMutation.mutate()}
-              disabled={
-                generateArticleMutation.isPending ||
-                (genMode === "topic" ? !genTopic.trim() : !genRawInput.trim())
-              }
+              disabled={generateArticleMutation.isPending || !genTopic.trim()}
               data-testid="button-run-generate"
             >
               {generateArticleMutation.isPending ? (
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating…
+                </>
               ) : (
-                <Sparkles className="mr-2 h-4 w-4" />
+                <>
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Generate
+                </>
               )}
-              {genContentGoal ? "Generate with Intelligence" : "Generate"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -2772,6 +2772,27 @@ export const studioArticles = pgTable("studio_articles", {
   // Structured AI context handed over when an idea is promoted to an article
   // (topic, brief, refs, discussion summary). Never the article body itself.
   generationBrief: text("generation_brief"),
+  // Tone/voice instruction for AI generation (AUTHORITATIVE | CONVERSATIONAL | EDUCATIONAL | INSPIRATIONAL | PRACTICAL | AUTO)
+  toneVoice: varchar("tone_voice"),
+  // Content goal for AI generation (THOUGHT_LEADERSHIP | EDUCATIONAL | LEAD_GEN | ENGAGEMENT | SEO_TRAFFIC | BRAND_AWARENESS).
+  // Persisted at creation so the editor/generate dialog pre-selects the intended goal without relying on derivation from contentType alone.
+  contentGoal: varchar("content_goal"),
+  // CMO Copilot v2.1 — resolved brief metadata (populated by resolve-brief endpoint)
+  audienceQuestion: text("audience_question"),      // real decision/tension the audience faces
+  audienceResolved: varchar("audience_resolved"),   // canonical v2.1 audience slug
+  domainResolved: varchar("domain_resolved"),       // GENERAL_STAFFING | IT_STAFFING | HEALTHCARE_STAFFING
+  marketContextResolved: varchar("market_context_resolved"), // COMMERCIAL | STATE_GOVERNMENT | FEDERAL_GOVERNMENT
+  sourceType: varchar("source_type"),              // USER_PROVIDED | GENERAL_EDUCATIONAL_CONTEXT | NONE | etc.
+  readerAction: text("reader_action"),             // desired reader action after reading
+  businessObjective: text("business_objective"),
+  singleTakeaway: text("single_takeaway"),
+  hookOptionsJsonb: jsonb("hook_options_jsonb"),   // [{text, archetype, rationale, contentStructure}]
+  selectedHookText: text("selected_hook_text"),
+  selectedHookArchetype: varchar("selected_hook_archetype"),
+  selectedContentStructure: varchar("selected_content_structure"),
+  safetyReviewResult: varchar("safety_review_result"), // PASS | REVISE | BLOCK
+  safetyFailuresJsonb: jsonb("safety_failures_jsonb"),  // [{code, sentence, reason, missingSource, recommendedCorrection, autoCorrectSafe}]
+  generationV1Markdown: text("generation_v1_markdown"), // initial accepted version for editing-effort tracking
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

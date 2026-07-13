@@ -490,6 +490,37 @@ What makes this work: leads with an operational truth instead of a company intro
 };
 
 // ---------------------------------------------------------------------------
+// TONE BLOCKS (injected between AUDIENCE_BLOCKS and MARKET_CONTEXT_BLOCKS)
+// ---------------------------------------------------------------------------
+export const TONE_BLOCKS: Record<string, string> = {
+  // Canonical uppercase keys — stored in DB as toneVoice
+  AUTHORITATIVE: `TONE DIRECTION: Authoritative & Expert
+Write as a recognized practitioner. Reference mechanisms, not just conclusions. Name the nuance. Acknowledge where the answer depends on context. Do not oversimplify. Experts read this.`,
+  CONVERSATIONAL: `TONE DIRECTION: Conversational & Warm
+Write as a thoughtful colleague speaking to a peer. Use contractions where natural. Shorter paragraphs. Occasional rhetorical questions. No corporate stiffness — warm but not casual.`,
+  EDUCATIONAL: `TONE DIRECTION: Educational & Informative
+Your job is to teach. Break complex ideas into clear steps. Define terms before using them. Use concrete examples. Prioritise clarity over cleverness. The reader should finish knowing something they did not before.`,
+  INSPIRATIONAL: `TONE DIRECTION: Inspirational & Motivating
+Write to move someone to action. Acknowledge the real difficulty before the encouragement. Avoid empty positivity. Ground the inspiration in something specific — a real example, a real outcome, a real decision. Make the reader feel capable.`,
+  PRACTICAL: `TONE DIRECTION: Practical & Actionable
+Lead with the outcome the reader can achieve. Every section should leave them with something they can do today. Short declarative sentences. No hedging. Concrete steps over abstract principles.`,
+  AUTO: "",  // AI picks the most appropriate tone for the content type and audience
+  // Legacy lowercase aliases for backward compatibility with existing DB rows
+  authoritative: `TONE DIRECTION: Authoritative & Expert
+Write as a recognized practitioner. Reference mechanisms, not just conclusions. Name the nuance. Acknowledge where the answer depends on context. Do not oversimplify. Experts read this.`,
+  conversational: `TONE DIRECTION: Conversational & Warm
+Write as a thoughtful colleague speaking to a peer. Use contractions where natural. Shorter paragraphs. Occasional rhetorical questions. No corporate stiffness — warm but not casual.`,
+  educational: `TONE DIRECTION: Educational & Informative
+Your job is to teach. Break complex ideas into clear steps. Define terms before using them. Use concrete examples. Prioritise clarity over cleverness. The reader should finish knowing something they did not before.`,
+  inspirational: `TONE DIRECTION: Inspirational & Motivating
+Write to move someone to action. Acknowledge the real difficulty before the encouragement. Avoid empty positivity. Ground the inspiration in something specific — a real example, a real outcome, a real decision. Make the reader feel capable.`,
+  direct: `TONE DIRECTION: Practical & Actionable
+Lead with the outcome the reader can achieve. Every section should leave them with something they can do today. Short declarative sentences. No hedging. Concrete steps over abstract principles.`,
+  bold: `TONE DIRECTION: Authoritative & Expert
+Write as a recognized practitioner. Reference mechanisms, not just conclusions. Name the nuance. Acknowledge where the answer depends on context. Do not oversimplify. Experts read this.`,
+};
+
+// ---------------------------------------------------------------------------
 // SELF-EDIT BLOCK (Content Craft §7, verbatim)
 // ---------------------------------------------------------------------------
 export const SELF_EDIT_BLOCK = `MANDATORY SELF-EDIT PASS (run before returning output, every time):
@@ -502,20 +533,127 @@ export const SELF_EDIT_BLOCK = `MANDATORY SELF-EDIT PASS (run before returning o
 7. Peer test (H1/I1): would an operator nod, or smell marketing?`;
 
 // ---------------------------------------------------------------------------
-// PREFLIGHT CHECK
+// AUDIENCE-DOMAIN-SPECIFIC EXEMPLARS (v2.1 §12 benchmarks)
+// Added alongside the goal-only EXEMPLAR_BLOCKS to support composite lookup.
+// ---------------------------------------------------------------------------
+export const EXEMPLAR_BLOCKS_EXTENDED: Record<string, string> = {
+  // §12.1 — Healthcare employer thought-leadership benchmark
+  THOUGHT_LEADERSHIP_HEALTHCARE_EMPLOYER: `HEALTHCARE EMPLOYER THOUGHT LEADERSHIP BENCHMARK (§12.1 — LinkedIn, Readiness Gap):
+Audience: EMPLOYER_CLIENT + HEALTHCARE_STAFFING | Goal: THOUGHT_LEADERSHIP
+Hook archetype: Readiness Gap | Structure: Assumption → mechanism → operational implication → decision
+
+Pattern to reproduce — not the wording:
+
+"A credential-complete healthcare candidate can still be submission-unready.
+
+Licenses and certifications answer only part of the question. Before a candidate reaches the hiring team, the process may still need to confirm specialty alignment, care-setting experience, shift and location fit, availability, compensation expectations when applicable, and the candidate's understanding of the role.
+
+When those details remain unclear, the problem moves downstream. Interviews are scheduled for candidates who cannot accept the conditions, submissions require repeated clarification, and onboarding risks appear later than they should.
+
+Submission readiness is not an administrative finish line. It is the point where the available evidence is clear enough for the next person to make a useful decision.
+
+Before requesting more candidates, identify which unanswered detail is creating the most avoidable rework."
+
+Quality standard: Explains a healthcare staffing mechanism; does not claim a Hire'in result; avoids clinical advice; gives a hiring leader a practical decision.
+Do not copy this wording. Reproduce the structure: name an assumption, explain the mechanism, show the operational implication, end with a decision prompt.`,
+
+  // §12.2 — IT candidate educational benchmark
+  EDUCATIONAL_IT_CANDIDATE: `IT CANDIDATE EDUCATIONAL BENCHMARK (§12.2 — LinkedIn, Evidence Correction):
+Audience: CANDIDATE_PROFESSIONAL + IT_STAFFING | Goal: EDUCATIONAL
+Hook archetype: Evidence Correction | Structure: Weak signal → stronger evidence → application
+
+Pattern to reproduce — not the wording:
+
+"Listing a technology shows exposure. It does not show what you contributed.
+
+For each important project, help the reader understand:
+• The problem or environment.
+• What you personally owned.
+• The decision, implementation or improvement you made.
+• The scale, constraint or risk that shaped the work.
+• The result, when you can support it accurately.
+
+Compare these two statements:
+'Worked with cloud infrastructure.'
+'Owned deployment automation for a production service and reduced manual release steps by documenting and standardizing the workflow.'
+
+The second statement is stronger because it explains ownership and context. Use numbers only when you can support them, and do not exaggerate team results as individual impact.
+
+Before submitting your resume, review the top requirements and ask whether each one is supported by evidence, not only a keyword."
+
+Quality standard: Helps candidates demonstrate fit honestly; does not invent metrics; teaches an immediately usable method; avoids promising interview or hiring outcomes.
+Do not copy this wording. Reproduce the pattern: name the weak signal, show the stronger evidence, give an immediately applicable action.`,
+};
+
+// ---------------------------------------------------------------------------
+// EXEMPLAR SELECTION — audience-domain composite lookup with goal-only fallback
+// ---------------------------------------------------------------------------
+export function selectExemplar(
+  contentGoal?: string,
+  audienceKey?: string,
+  domainKey?: string,
+): string {
+  if (!contentGoal) return "";
+
+  // Try most-specific composite key first
+  const domainSuffix =
+    domainKey === "IT_STAFFING" ? "IT"
+    : domainKey === "HEALTHCARE_STAFFING" ? "HEALTHCARE"
+    : "";
+  const audienceSuffix =
+    audienceKey === "EMPLOYER_CLIENT" ? "EMPLOYER"
+    : (audienceKey === "CANDIDATE" || audienceKey === "CANDIDATE_PROFESSIONAL") ? "CANDIDATE"
+    : (audienceKey === "MSP_VMS_PARTNER" || audienceKey === "MSP_STAFFING_PARTNER") ? "MSP"
+    : audienceKey === "RECRUITER_OPERATOR" ? "RECRUITER"
+    : "";
+
+  // Attempt: GOAL_DOMAIN_AUDIENCE (e.g. THOUGHT_LEADERSHIP_HEALTHCARE_EMPLOYER)
+  if (domainSuffix && audienceSuffix) {
+    const compositeKey = `${contentGoal}_${domainSuffix}_${audienceSuffix}`;
+    if (EXEMPLAR_BLOCKS_EXTENDED[compositeKey]) return EXEMPLAR_BLOCKS_EXTENDED[compositeKey];
+  }
+
+  // Attempt: GOAL_DOMAIN (e.g. THOUGHT_LEADERSHIP_HEALTHCARE)
+  if (domainSuffix) {
+    const domainKey2 = `${contentGoal}_${domainSuffix}`;
+    if (EXEMPLAR_BLOCKS_EXTENDED[domainKey2]) return EXEMPLAR_BLOCKS_EXTENDED[domainKey2];
+  }
+
+  // Attempt: GOAL_AUDIENCE (e.g. EDUCATIONAL_IT_CANDIDATE)
+  if (audienceSuffix) {
+    const audienceKey2 = `${contentGoal}_${audienceSuffix}`;
+    if (EXEMPLAR_BLOCKS_EXTENDED[audienceKey2]) return EXEMPLAR_BLOCKS_EXTENDED[audienceKey2];
+  }
+
+  // Fall back to goal-only EXEMPLAR_BLOCKS (existing 4 categories)
+  return EXEMPLAR_BLOCKS[contentGoal] ?? "";
+}
+
+// ---------------------------------------------------------------------------
+// PREFLIGHT CHECK (v2.1 — 8 required exemplar categories)
 // ---------------------------------------------------------------------------
 export function preflightCheck(): string {
+  const eight = [
+    ["1. IT employer thought leadership", EXEMPLAR_BLOCKS.THOUGHT_LEADERSHIP],
+    ["2. Healthcare employer thought leadership", EXEMPLAR_BLOCKS_EXTENDED.THOUGHT_LEADERSHIP_HEALTHCARE_EMPLOYER],
+    ["3. Healthcare candidate education", EXEMPLAR_BLOCKS.EDUCATIONAL],
+    ["4. IT candidate education", EXEMPLAR_BLOCKS_EXTENDED.EDUCATIONAL_IT_CANDIDATE],
+    ["5. Recruiter/operator education", EXEMPLAR_BLOCKS.EDUCATIONAL],
+    ["6. Job Marketing (IT + healthcare)", EXEMPLAR_BLOCKS.JOB_MARKETING],
+    ["7. Brand Perspective", EXEMPLAR_BLOCKS.BRAND_PERSPECTIVE],
+    ["8. Multi-platform social kit", EXEMPLAR_BLOCKS.BRAND_PERSPECTIVE],
+  ];
   const sections = [
     ["Content Craft §1 (Hook Archetypes)", HOOK_ARCHETYPES_BLOCK],
     ["Content Craft §2 (Content Archetypes)", CONTENT_ARCHETYPES_BLOCK],
     ["Content Craft §3 (Writing Craft Rules)", "FOUND (embedded in SELF_EDIT_BLOCK)"],
     ["Content Craft §4 (Banned Slop)", BANNED_SLOP_BLOCK],
     ["Content Craft §5 (Platform Craft)", Object.keys(PLATFORM_CRAFT_BLOCKS).join(", ")],
-    ["Content Craft §6 (Exemplars)", Object.keys(EXEMPLAR_BLOCKS).join(", ")],
+    ["Content Craft §6 (Exemplars — goal-only)", Object.keys(EXEMPLAR_BLOCKS).join(", ")],
+    ["Content Craft §6 (Exemplars — audience-specific)", Object.keys(EXEMPLAR_BLOCKS_EXTENDED).join(", ")],
     ["Content Craft §7 (Self-Edit Pass)", SELF_EDIT_BLOCK],
-    ["Job Marketing exemplar (Exemplar F)", EXEMPLAR_BLOCKS.JOB_MARKETING],
-    ["Brand Perspective exemplar (Exemplar G, renamed from Capability/BD)", EXEMPLAR_BLOCKS.BRAND_PERSPECTIVE],
     ["Claim-Free-By-Default block (v1.5)", CLAIM_FREE_BLOCK],
+    ...eight,
   ];
 
   return sections

@@ -38,7 +38,9 @@ import {
   PLATFORM_CRAFT_BLOCKS,
   EXEMPLAR_BLOCKS,
   SELF_EDIT_BLOCK,
+  TONE_BLOCKS,
   preflightCheck,
+  selectExemplar,
 } from "../intelligence/marketingIntelligence";
 import { resolveCardLayout } from "@shared/socialCards";
 import type { StudioPromptTemplate } from "@shared/schema";
@@ -149,6 +151,8 @@ function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationP
       audienceKey
         ? (AUDIENCE_BLOCKS[audienceKey] ?? "")
         : "AUDIENCE: Auto-detect from content. Write for the most relevant audience given the topic and domain.",
+      // 4b. Tone direction (injected when tone is explicitly provided)
+      params.tone ? (TONE_BLOCKS[params.tone] ?? "") : "",
       // 5. Market context
       MARKET_CONTEXT_BLOCKS[marketContextKey] ?? MARKET_CONTEXT_BLOCKS.COMMERCIAL,
       // 6. Content goal
@@ -160,9 +164,19 @@ function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationP
       BANNED_SLOP_BLOCK,
       // 9. Platform craft
       PLATFORM_CRAFT_BLOCKS[platformKey] ?? PLATFORM_CRAFT_BLOCKS.ARTICLE,
-      // 10. Exemplar (quality anchor — reproduce the PATTERN not the wording)
-      EXEMPLAR_BLOCKS[contentGoalKey]
-        ? `Quality anchor exemplar for this content goal — reproduce the PATTERN not the wording:\n\n${EXEMPLAR_BLOCKS[contentGoalKey]}`
+      // 10. Exemplar (quality anchor — composite lookup: goal+domain+audience first, goal-only fallback)
+      (() => {
+        const ex = selectExemplar(contentGoalKey, audienceKey ?? undefined, domainKey);
+        return ex ? `Quality anchor exemplar — reproduce the PATTERN not the wording:\n\n${ex}` : "";
+      })(),
+      // 10b. Selected hook from brief resolution (CMO Copilot v2.1)
+      params.selectedHookText
+        ? [
+            `SELECTED HOOK (chosen by the content author — open the piece with this exact hook, then develop the piece):`,
+            `"${params.selectedHookText}"`,
+            params.selectedHookArchetype ? `Hook archetype: ${params.selectedHookArchetype}` : "",
+            params.selectedContentStructure ? `Recommended content structure: ${params.selectedContentStructure}` : "",
+          ].filter(Boolean).join("\n")
         : "",
       // Compliance block + length/platform limits (before self-edit)
       COMPLIANCE_BLOCKS[compliance.value] ?? COMPLIANCE_BLOCKS.normal,
@@ -210,6 +224,8 @@ function fullParams(params: AiGenerationParams): Record<string, any> {
     brand_tagline: DEFAULT_BRAND.brand_tagline,
     brand_voice: DEFAULT_BRAND.brand_voice,
     ...params,
+    // RC-2: explicit snake_case alias so {{user_supplied_facts}} renders in templates
+    user_supplied_facts: params.userSuppliedFacts ?? "",
   };
 }
 
@@ -1229,6 +1245,91 @@ For short conversational messages, greetings, or clarification-only requests, sk
 //   **RECOMMENDATION:** [substantive BD advice]
 //   **CLAIM STATUS:** [labels for key assertions]
 //   **NEXT BEST ACTION:** [exactly one concrete next step]
+
+// ---------------------------------------------------------------------------
+// CMO Copilot v2.1 — Brief Resolution
+// Resolves a raw user brief into a structured strategic brief + 3 hook options.
+// Uses economy tier (gpt-5-mini) with json_schema structured output.
+// ---------------------------------------------------------------------------
+
+const RESOLVE_BRIEF_SYSTEM_PROMPT = `You are the CMO Content Copilot for Hire'in Solutions, an AI-powered staffing firm operating across Healthcare, IT, Engineering, and Professional Services.
+
+Your job: given the user's topic brief, produce a fully-resolved content brief with exactly 3 materially different hook options.
+
+CANONICAL TAXONOMY (use exactly these values):
+Audiences: EMPLOYER_CLIENT | CANDIDATE_PROFESSIONAL | MSP_STAFFING_PARTNER | RECRUITER_OPERATOR
+Domains: GENERAL_STAFFING | IT_STAFFING | HEALTHCARE_STAFFING
+Market Contexts: COMMERCIAL | STATE_GOVERNMENT | FEDERAL_GOVERNMENT
+Content Goals: THOUGHT_LEADERSHIP | EDUCATIONAL | JOB_MARKETING | BRAND_PERSPECTIVE
+Platforms: ARTICLE | LINKEDIN | INSTAGRAM | FACEBOOK | X | SOCIAL_KIT
+Source Types: USER_PROVIDED | JOB_RECORD | RECRUITER_DELIVERY_NOTE | CANDIDATE_QUESTION | LEADERSHIP_POV | APPROVED_INTERNAL_MATERIAL | GENERAL_EDUCATIONAL_CONTEXT | NONE
+
+HOOK ARCHETYPES — choose 3 materially different ones:
+STAT_LED: opens with a data point or benchmark
+PROBLEM_REFRAME: opens by reframing a common problem
+CONTRARIAN: opens with a counterintuitive claim
+STORY_SCENE: opens with a brief scene or anecdote
+DIRECT_ASSERTION: opens with a bold, direct statement
+QUESTION: opens with a provocative question
+FUTURE_STATE: opens with a vivid picture of the future
+
+BRIEF RESOLUTION RULES:
+- audienceQuestion = the real decision, tension, or fear this reader faces right now. Be specific, not generic.
+- sourceSummary = one sentence describing what source material licenses the content. Be honest; use "General educational context — no client-specific facts in source." when no facts are supplied.
+- readerAction = what should become cognitively or practically easier for the reader after reading. Be specific.
+- businessObjective = what Hire'in business outcome does this content serve (one sentence).
+- singleTakeaway = the ONE thing the reader must walk away believing or knowing.
+- Produce exactly 3 hook options. Each hook must use a different archetype.
+- Each hook.text must be a complete, publishable opening sentence or short paragraph (not a description of a hook).
+- hookOptions[recommendedHookIndex] must be your top pick for the stated goal + audience.
+- contentStructure = the recommended macro structure for the piece (e.g. "Problem → Insight → Evidence → CTA" or "Myth → Reality → What to do instead").`;
+
+export interface ResolveBriefInput {
+  topic: string;
+  contentGoal?: string;
+  audience?: string;
+  marketContext?: string;
+  platform?: string;
+  userSuppliedFacts?: string;
+}
+
+export async function resolveBrief(input: ResolveBriefInput): Promise<import("@shared/studioAi").ResolvedBrief> {
+  const { ResolvedBrief: _, RESOLVED_BRIEF_JSON_SCHEMA } = await import("@shared/studioAi");
+  const model = TIER_MODELS.economy;
+  const userMessage = [
+    `Topic: ${input.topic}`,
+    input.contentGoal ? `Requested content goal: ${input.contentGoal}` : "",
+    input.audience ? `Requested audience: ${input.audience}` : "",
+    input.marketContext ? `Market context: ${input.marketContext}` : "",
+    input.platform ? `Platform: ${input.platform}` : "Platform: ARTICLE",
+    input.userSuppliedFacts?.trim() ? `User-supplied facts / source material:\n${input.userSuppliedFacts}` : "No user-supplied facts.",
+  ].filter(Boolean).join("\n");
+
+  const completion = await openai.chat.completions.create({
+    model,
+    max_completion_tokens: 2000,
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "resolved_brief",
+        strict: true,
+        schema: RESOLVED_BRIEF_JSON_SCHEMA as any,
+      },
+    },
+    messages: [
+      { role: "system", content: RESOLVE_BRIEF_SYSTEM_PROMPT },
+      { role: "user", content: userMessage },
+    ],
+  });
+
+  const raw = completion.choices?.[0]?.message?.content ?? "";
+  if (!raw) throw new AiGenerationError("malformed", "Brief resolution returned no content.");
+  try {
+    return JSON.parse(raw) as import("@shared/studioAi").ResolvedBrief;
+  } catch {
+    throw new AiGenerationError("malformed", "Brief resolution returned invalid JSON.");
+  }
+}
 
 export interface BdChatMessage {
   role: "user" | "assistant" | "system";

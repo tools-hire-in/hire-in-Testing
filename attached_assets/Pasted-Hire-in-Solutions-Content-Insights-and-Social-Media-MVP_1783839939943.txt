@@ -1,0 +1,608 @@
+Hire'in Solutions
+Content Insights and Social Media MVP Strategy
+
+Phase 1: 30-Day Pilot
+
+Internal Working Document
+
+Version 1.0 | July 2026
+
+Release owner: Content and Marketing Leadership
+
+This document defines the minimum strategy, operating process and quality standards required to launch Hire'in Insights and social media content during the first 30-day pilot.
+
+Core principle
+
+Every asset must identify one primary audience, answer one real question and guide one useful next action.
+
+Distribution
+
+Content and Marketing team
+
+Social Media team
+
+Design team
+
+One Recruiting or Delivery subject-matter expert
+
+Approving leader
+
+Release guidance
+
+Use this strategy immediately for the first 30 days. Do not introduce later-phase processes, tools or reporting requirements until the MVP workflow is operating consistently.
+
+
+HIRE'IN SOLUTIONS  |  CONTENT INSIGHTS & SOCIAL MEDIA MVP
+
+1. MVP Objective
+
+Build a repeatable content system that turns real staffing knowledge into useful Hire'in Insights and social media content.
+
+The pilot is successful when the team can consistently move from an audience question to a useful insight, adapt that insight for the appropriate channels and measure the response.
+
+In scope for the first 30 days
+
+Hire'in Insights articles or substantial insight posts.
+
+LinkedIn, Instagram and X adaptations.
+
+Selective Facebook content for relevant healthcare, community and candidate topics.
+
+Audience-led job and opportunity posts supported by current requirements.
+
+Simple reusable graphics, carousels, short videos, reels and text-led posts.
+
+Basic measurement of qualified reach, engagement, clicks and useful actions.
+
+Not in scope for the MVP
+
+Website redesign, navigation changes or new portal functionality.
+
+Complex marketing automation, lead scoring or large campaign funnels.
+
+A complete CMS taxonomy or advanced analytics dashboard.
+
+Formal business-development proposals, capability statements, RFP responses or capture content.
+
+Unsupported client names, metrics, compliance claims or AI performance claims.
+
+Content intended to address every audience at the same time.
+
+2. Primary Audiences
+
+The MVP uses four audience groups. Each piece of content must select one primary audience, even when another audience may also find the topic useful.
+
+H1: Healthcare hiring and talent leaders
+
+Primary decision: Can this staffing partner understand the role, submit relevant professionals and support a reliable hiring process?
+
+Useful content: Hard-to-fill roles, intake quality, submission readiness, credentialing friction, onboarding and workforce planning.
+
+H2: Healthcare professionals and candidates
+
+Primary decision: Is this opportunity relevant, trustworthy and worth my time? Am I prepared to move forward?
+
+Useful content: Jobs, specialty guidance, credential readiness, resume and interview preparation, process expectations and career decisions.
+
+I1: IT and engineering hiring and talent leaders
+
+Primary decision: Can this partner identify evidence of fit and reduce unqualified submissions?
+
+Useful content: Technical screening, role calibration, project context, hiring quality, contract and permanent talent, and regulated-industry hiring.
+
+I2: IT and engineering professionals and candidates
+
+Primary decision: Does this role fit my skills and goals, and how should I demonstrate fit?
+
+Useful content: Jobs, resume evidence, interviews, skill positioning, career transitions and contract or full-time guidance.
+
+Supporting brand layer
+
+Process, people, company culture and Hire'in perspective may support any of the four audiences. Brand content should remain connected to a real audience question or a clear reason to trust Hire'in. It should not become disconnected 'about us' content.
+
+Audience labels in the strategy and Studio
+
+The H1, H2, I1 and I2 labels are planning shorthand used in this strategy. The Content Studio stores audience and staffing domain as separate selections. Use the following translation when creating content in the Studio:
+
+H1 = EMPLOYER_CLIENT audience + HEALTHCARE domain.
+
+H2 = CANDIDATE audience + HEALTHCARE domain.
+
+I1 = EMPLOYER_CLIENT audience + IT domain.
+
+I2 = CANDIDATE audience + IT domain.
+
+When the Studio displays additional audiences such as MSP/VMS or Staffing Partner and Recruiter or Staffing Operator, select them only when the content is specifically written for that audience. The audience shown in the Studio, the content brief and the saved article metadata must remain consistent.
+
+3. Audience Decision Standard
+
+Before drafting, document the following:
+
+Primary audience.
+
+The audience's current question or decision.
+
+The single takeaway the content should deliver.
+
+The source, subject-matter expert or approved input.
+
+The next action the audience should take.
+
+Example
+
+Primary audience: H2 - an experienced Labor and Delivery RN considering a permanent role.
+
+Current question: What should I confirm before accepting an onsite nurse manager opportunity?
+
+Single takeaway: The right role is more than title and salary; candidates should clarify scope, schedule, team, support and expectations.
+
+Input: Recruiter notes, current job requirements and an approved nursing subject-matter review.
+
+Next action: Review the open role or contact the recruiter.
+
+4. MVP Content Pillars
+
+Hiring intelligence
+
+Purpose: Help employers make better staffing and hiring decisions.
+
+Examples:
+
+Why role calibration matters.
+
+Why submissions fail.
+
+Credentialing and onboarding bottlenecks.
+
+Evidence of technical or clinical fit.
+
+Career enablement
+
+Purpose: Help professionals understand, prepare for and evaluate opportunities.
+
+Examples:
+
+Resume guidance.
+
+Interview preparation.
+
+Credential readiness.
+
+Career transitions.
+
+Specialty or skill positioning.
+
+Jobs and opportunities
+
+Purpose: Convert active demand into clear and respectful candidate communication.
+
+Examples:
+
+Role-specific job posts.
+
+Multi-role roundups.
+
+Location or specialty spotlights.
+
+Requirement updates supported by current information.
+
+Process and proof
+
+Purpose: Show how Hire'in approaches the work without relying on unsupported claims.
+
+Examples:
+
+Intake-to-submission workflow.
+
+Quality checks.
+
+Recruiter preparation.
+
+Communication standards.
+
+Candidate support.
+
+People and perspective
+
+Purpose: Humanize the company and build professional trust.
+
+Examples:
+
+Recruiter insights.
+
+Founder or leadership point of view.
+
+Team learning.
+
+Candidate-care principles.
+
+Responsible recruiting practices.
+
+Studio content-goal mapping
+
+In the Content Studio, select Brand Perspective for People and Perspective content. This includes founder or leadership points of view, recruiter insights, team learning, culture, candidate-care principles and responsible recruiting practices. Brand Perspective is marketing content that explains how Hire'in thinks; it is not a formal capability statement, proposal or business-development document.
+
+5. Content Idea Sources
+
+The strongest topics usually exist inside daily recruiting, delivery, candidate and client conversations. The team should capture that knowledge rather than invent generic advice.
+
+Recruiter and sourcing conversations
+
+What are candidates repeatedly asking?
+
+Where do candidates hesitate?
+
+What makes an opportunity clear or confusing?
+
+Client requirements and intake discussions
+
+Which must-haves are misunderstood?
+
+Which details improve targeting?
+
+What creates delays or rework?
+
+Candidate feedback and rejection reasons
+
+What can be taught without exposing confidential details?
+
+Which preparation gap appears repeatedly?
+
+Sales and partnership discussions
+
+What does a buyer need to trust before sharing a requirement or pilot role?
+
+Delivery and onboarding workflow
+
+Where do documents, credentials, scheduling or communication commonly break down?
+
+Leadership and subject-matter perspective
+
+Which industry belief, practice or misconception can Hire'in explain clearly?
+
+Audience Questions Bank
+
+Maintain one shared Audience Questions Bank. Each entry should record the audience, exact question, source, staffing domain, urgency and possible next action. Raw audience questions are more useful than a list of vague topics.
+
+6. MVP Operating Workflow
+
+Capture. Add real audience questions from recruiters, candidates, clients and market conversations.
+
+Prioritize. Select ideas based on active business needs, audience value and available input.
+
+Brief. Complete the MVP content brief before writing or designing.
+
+Validate. Obtain the required recruiter, clinical, technical or leadership input.
+
+Create. Develop the core insight first. Copy and design should support the same takeaway.
+
+Adapt. Change the hook, depth, visual and call to action for each channel. Do not copy the same post everywhere.
+
+Approve and publish. Complete accuracy, privacy, brand, job-detail and link checks.
+
+Measure and learn. Review audience response, clicks and actions. Record what should be reused, changed or stopped.
+
+Minimum weekly operating rhythm
+
+Monday: 20-minute insight huddle with Content, Social Media and one subject-matter expert. Select the audience question and assign the owner and required input.
+
+Tuesday: Complete the brief and subject-matter input. Confirm the angle, takeaway, source and call to action.
+
+Wednesday: Draft the core insight and visual direction.
+
+Thursday: Review, adapt and schedule the platform-specific versions.
+
+Friday: Publish and engage, or review early performance and record learning.
+
+7. 30-Day Pilot Plan
+
+Use one primary audience theme per week. This creates learning across all four audiences without forcing daily content for everyone.
+
+Week 1 - H1: Healthcare hiring leaders
+
+Hero insight: What improves submission readiness before a healthcare candidate reaches the client?
+
+Minimum outputs:
+
+One LinkedIn insight or carousel.
+
+One short process post.
+
+One X adaptation.
+
+Week 2 - H2: Healthcare professionals
+
+Hero insight: Credential readiness - what candidates can prepare before the interview or onboarding stage.
+
+Minimum outputs:
+
+One insight article or substantial post.
+
+One Instagram carousel.
+
+One short video or reel script.
+
+One LinkedIn adaptation.
+
+Week 3 - I1: IT and engineering hiring leaders
+
+Hero insight: Evidence of fit - why technical submissions need project context, not only a skills list.
+
+Minimum outputs:
+
+One LinkedIn insight.
+
+One carousel or process visual.
+
+Two concise X posts.
+
+Week 4 - I2: IT and engineering professionals
+
+Hero insight: Show the work - how to demonstrate technical impact on a resume and in interviews.
+
+Minimum outputs:
+
+One insight article or substantial post.
+
+One LinkedIn candidate post.
+
+One Instagram carousel.
+
+One X adaptation.
+
+Volume standard
+
+The minimum output is designed for quality and learning. Do not increase volume until the team can maintain audience clarity, accuracy, visual quality and timely approvals.
+
+
+HIRE'IN SOLUTIONS  |  CONTENT INSIGHTS & SOCIAL MEDIA MVP
+
+8. Channel Strategy and Adaptation
+
+Hire'in Insights
+
+Primary role: The canonical home for deeper, searchable ideas and long-term credibility.
+
+Answer one substantial question.
+
+Use clear sections and practical examples.
+
+End with a relevant next action.
+
+LinkedIn
+
+Primary role: B2B credibility, professional education, talent visibility and founder or team perspective.
+
+Lead with a professional tension, decision or useful observation.
+
+Provide substance, not promotional filler.
+
+Use a relevant conversation, job or insight call to action.
+
+Instagram
+
+Primary role: Candidate attraction, career education, people, jobs and visual explanations.
+
+Use concise hooks.
+
+Use carousels, short videos and readable visuals.
+
+Prioritize saves, shares and relevant role interest.
+
+X
+
+Primary role: Timely observations, concise tips, job alerts and conversation testing.
+
+Use short standalone insights.
+
+Avoid turning every post into a link or promotional announcement.
+
+Use a thread only when the idea requires multiple steps.
+
+Facebook
+
+Primary role: Selective healthcare and community reach, local roles and shareable candidate information.
+
+Use practical job and career content.
+
+Use community-friendly language.
+
+Do not duplicate Instagram without adaptation.
+
+One core idea, minimum repurposing model
+
+1. Create the core Hire'in Insights article or substantial source post.
+
+2. Extract one employer or candidate takeaway for LinkedIn.
+
+3. Convert the process, framework or checklist into an Instagram carousel or short video.
+
+4. Turn one sharp observation into an X post.
+
+5. Connect the relevant versions to one clear destination or action.
+
+9. MVP Content Brief
+
+Complete the following before content creation begins:
+
+Working title.
+
+Primary audience: H1, H2, I1 or I2.
+
+Domain: Healthcare, IT and Engineering, or Cross-industry.
+
+Audience question.
+
+Business objective: awareness, credibility, candidate interest, employer inquiry, application or engagement.
+
+Single takeaway.
+
+Source or subject-matter expert.
+
+Approved facts or user-provided details.
+
+Primary call to action.
+
+Core format: insight article, carousel, video, text post or job post.
+
+Channels and required adaptations.
+
+Owner and due date.
+
+10. Content Quality Standard
+
+Audience: One primary audience is obvious from the hook and context.
+
+Relevance: The content reflects a real role, setting, skill, process or decision.
+
+Usefulness: The reader receives an insight, instruction, opportunity or practical takeaway.
+
+Accuracy: Role, clinical, technical and company statements are reviewed where required.
+
+Respect: Candidate and employee language is professional, warm and non-exploitative.
+
+Platform fit: The length, visual direction, caption and call to action suit the selected channel.
+
+Conversion: The next step is clear, relevant and functional.
+
+Accessibility: Visuals are readable, captions or alt text are provided, and graphics are not overloaded.
+
+Privacy and claims: No confidential details, unapproved client names, invented job facts, unsupported metrics or exaggerated claims are included.
+
+Claim-free default
+
+If the user or approved source does not provide a company-specific claim, the content should omit the claim and remain useful through education, insight and point of view. The agent or content team should not add proof placeholders or unsupported promotional language.
+
+11. Measurement and 30-Day Success Framework
+
+Qualified reach: Whether the intended professional audience is seeing the content.
+
+Saves, shares and meaningful comments: Whether the content is useful enough to retain, discuss or pass on.
+
+Click-through and page engagement: Whether the hook and promise lead the audience to explore further.
+
+Applications, recruiter contacts or employer inquiries: Whether the content creates a useful action.
+
+Audience questions generated: What the team should explain, create or test next.
+
+Production time and reuse: Whether the process is becoming easier and more efficient.
+
+Measurement approach
+
+The first 30 days are intended to establish a reliable baseline, not to chase vanity metrics. Performance should be reviewed by audience, content goal, format and platform so the team can identify what is useful and repeatable.
+
+Where each metric comes from
+
+Native social-platform analytics: LinkedIn, Instagram, Facebook and X provide reach or impressions, reactions, saves, shares, comments, video views and other platform-native engagement. These metrics are not generated by the Content Studio and must be recorded from the relevant social platform.
+
+Content Studio and website analytics: The Studio records the content brief, audience, domain, content goal, platform, publishing details and available CTA or link-click activity. Website analytics measure what happens after a reader follows a link, including article visits, referral traffic, page engagement and CTA clicks where tracking is configured.
+
+ATS and recruiter records: Applications, recruiter contacts, qualified candidate conversations, employer inquiries and other downstream actions should be confirmed through the ATS, recruiting records, shared inbox or responsible owner.
+
+Manual MVP tracker: Audience questions, qualitative feedback, production time, approval delays and successful content reuse should be recorded manually during the pilot.
+
+Studio data should not be presented as native LinkedIn, Instagram, Facebook or X reach. The 30-day review should combine the four sources above to produce one complete performance view.
+
+Record for every published asset
+
+Primary audience and staffing domain.
+
+Content goal and platform.
+
+Publication date and owner.
+
+Qualified reach or relevant impressions.
+
+Saves, shares and meaningful comments.
+
+Clicks or page engagement where a link is used.
+
+Applications, recruiter contacts, employer inquiries or other useful actions.
+
+Audience questions or feedback generated.
+
+Production time and whether the asset was successfully reused across channels.
+
+Day-30 success criteria
+
+Four audience-led content cycles are completed using the MVP brief.
+
+At least two substantive Hire'in Insights pieces or equivalent high-value source assets are published.
+
+The minimum social outputs defined in the 30-day pilot plan are completed or any shortfall is documented with a clear reason.
+
+Every published asset is tagged internally by audience, domain, objective, platform and call to action.
+
+No unsupported company claims, invented job details or preventable privacy and accuracy issues are published.
+
+The team identifies the strongest audience questions, content formats and channels based on actual response.
+
+The team records at least three content lessons to repeat and three changes to test in the next phase.
+
+A short Phase 1 retrospective is completed with decisions on what to keep, change, stop and introduce next.
+
+How success should be interpreted
+
+A successful MVP does not require large follower growth or viral reach. Success means the team has established a disciplined content process, reached the intended audiences, generated useful actions or learning, and can make evidence-based decisions for the next phase.
+
+12. Roles and Responsibilities
+
+Content and Marketing Owner
+
+Selects priorities, owns the brief, writes or edits the core insight, coordinates approval and reports learning.
+
+Social Media Owner
+
+Adapts content by platform, schedules or publishes, monitors comments and captures audience signals.
+
+Designer
+
+Creates reusable and readable visual patterns and supports format selection without overloading the asset.
+
+Recruiting or Delivery Subject-Matter Expert
+
+Provides real questions, validates role and process accuracy, and identifies confidential or misleading content.
+
+Leadership Approver
+
+Reviews sensitive company, client, metric, compliance, pricing or capability statements and prevents unnecessary scope expansion.
+
+
+13. MVP Guardrails
+
+Do not combine healthcare buyers, healthcare candidates, IT buyers and IT candidates into one generic post.
+
+Do not use unsupported AI, compliance, client, nationwide, best, fastest or similar claims.
+
+Do not copy the same caption and visual to every platform.
+
+Do not allow job posts to become unclear graphics with too much text and no next step.
+
+Do not invent compensation, location, schedule, requirements, credentials, sponsorship or other job facts.
+
+Do not publish clinical, legal, financial or immigration advice beyond approved expertise.
+
+Do not measure success only by total likes or follower count.
+
+Do not expand the MVP into website redesign, complex automation, campaign orchestration or business-development workflows.
+
+14. End-of-Pilot Review
+
+1. Which audience questions produced the strongest useful response?
+
+2. Which platform and format worked best for each audience?
+
+3. Which content led to qualified applications, conversations or inquiries?
+
+4. Where did the workflow slow down or create rework?
+
+5. Which subject-matter inputs or approved facts were missing?
+
+6. What should be standardized before Phase 2?
+
+7. Is the team ready to adopt the next audience messaging and content operations process?
+
+Final decision standard
+
+Before approving any MVP content, ask: Who is this for, what real question are we answering, why should the audience trust it, and what should become easier next?
+

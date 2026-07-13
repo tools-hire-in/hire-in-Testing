@@ -612,6 +612,26 @@ async function ensureContentStudioTables() {
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS audience text[]`);
     // Studio T1: structured AI context handed over at idea → article promotion.
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS generation_brief text`);
+    // Article Brief Pipeline: tone/voice instruction for AI generation.
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS tone_voice varchar`);
+    // Article Brief Pipeline: persisted content goal so generate dialog pre-selects user intent.
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS content_goal varchar`);
+    // CMO Copilot v2.1 — resolved brief + hook metadata columns
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS audience_question text`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS audience_resolved varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS domain_resolved varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS market_context_resolved varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS source_type varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS reader_action text`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS business_objective text`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS single_takeaway text`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS hook_options_jsonb jsonb`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS selected_hook_text text`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS selected_hook_archetype varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS selected_content_structure varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS safety_review_result varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS safety_failures_jsonb jsonb`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS generation_v1_markdown text`);
     // Newsletter deliverability suppression columns (analytics subscriber counts).
     await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS suppressed_at timestamp`);
     await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS bounce_count integer DEFAULT 0 NOT NULL`);

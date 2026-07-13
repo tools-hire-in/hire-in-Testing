@@ -88,7 +88,9 @@ import {
   generateOutreachSequence,
   generateBdTemplate,
   runBdAgentChat,
+  resolveBrief,
 } from "./services/aiDraftService";
+import { runStaffingSafetyGate } from "./services/staffingSafetyGate";
 import { bdConversations, bdMessages } from "@shared/schema";
 import { z } from "zod";
 // express-rate-limit kept for other potential uses; verify endpoint uses a
@@ -17103,29 +17105,92 @@ export async function registerRoutes(
     return true;
   }
 
+  // RC-3: Map MarketingAudience enum → human-readable label for the target_audience template variable.
+  // ICP-compatible canonical slugs (CANDIDATE_PROFESSIONAL, MSP_STAFFING_PARTNER, AUTO_DETECT)
+  // plus legacy aliases (CANDIDATE, MSP_VMS_PARTNER) kept for backward compat with existing DB rows.
+  function audienceLabel(audience?: string): string | undefined {
+    const map: Record<string, string> = {
+      EMPLOYER_CLIENT: "Employer / Client (Hiring Leader)",
+      CANDIDATE_PROFESSIONAL: "Candidate / Professional (Job Seeker)",
+      MSP_STAFFING_PARTNER: "MSP / Staffing Partner",
+      RECRUITER_OPERATOR: "Recruiter / Staffing Operator",
+      // Legacy aliases — kept for existing DB rows
+      CANDIDATE: "Candidate / Professional (Job Seeker)",
+      MSP_VMS_PARTNER: "MSP / Staffing Partner",
+    };
+    if (!audience || audience === "AUTO" || audience === "AUTO_DETECT") return undefined;
+    return map[audience] ?? audience;
+  }
+
+  // RC-1: Derive a default contentGoal from the article's contentType when not explicitly provided.
+  // Mapping is exact-slug-first (content types stored as kebab/snake strings from STUDIO_CONTENT_TYPES).
+  function defaultContentGoal(contentType?: string): string | undefined {
+    if (!contentType) return undefined;
+    const lower = contentType.toLowerCase().replace(/[-\s]/g, "_");
+    // Exact slugs that map to Thought Leadership
+    if (["quick_take", "deep_dive", "thought_leadership", "opinion"].some((s) => lower === s || lower.includes(s))) {
+      return "THOUGHT_LEADERSHIP";
+    }
+    // Exact slugs that map to Educational
+    if (["how_to", "insights", "guide", "educational"].some((s) => lower === s || lower.includes(s))) {
+      return "EDUCATIONAL";
+    }
+    if (lower.includes("job_post") || lower.includes("job_marketing")) return "JOB_MARKETING";
+    if (lower.includes("brand_perspective") || lower.includes("culture")) return "BRAND_PERSPECTIVE";
+    return undefined;
+  }
+
   function buildArticleParams(article: any, body: any): AiGenerationParams {
     const compliance = getComplianceMode(body?.complianceMode ?? article.complianceMode);
+    // RC-3: resolve audience label from structured audience field, falling back to article audience array
+    const rawAudience = body?.audience || article.audience?.[0];
+    const resolvedAudienceLabel = audienceLabel(rawAudience);
+    // RC-1: fall back to deriving contentGoal from article content type when not explicitly set
+    const resolvedContentGoal =
+      body?.contentGoal ||
+      defaultContentGoal(body?.contentType ?? article.contentType) ||
+      undefined;
+    // RC-7: fall back to article.generationBrief for key_points when not provided in body
+    const resolvedKeyPoints = body?.keyPoints
+      ? (Array.isArray(body.keyPoints) ? body.keyPoints.join("\n") : body.keyPoints)
+      : (article.generationBrief || undefined);
     return {
       industry: body?.industry,
       content_type: body?.contentType ?? article.contentType,
       topic: body?.topic,
       raw_input: body?.rawInput,
-      key_points: Array.isArray(body?.keyPoints) ? body.keyPoints.join("\n") : body?.keyPoints,
+      key_points: resolvedKeyPoints,
       source_notes: body?.sourceNotes,
-      target_audience: body?.targetAudience,
+      target_audience: resolvedAudienceLabel ?? body?.targetAudience,
       author_name: body?.authorName,
       author_title: body?.authorTitle,
-      tone: body?.tone,
+      tone: body?.tone ?? article.toneVoice,
       desired_length: body?.desiredLength,
       cta_text: body?.ctaText,
       cta_url: body?.ctaUrl,
       compliance_mode: compliance.value,
       // Marketing Intelligence Layer v1.5 fields
-      contentGoal: body?.contentGoal || undefined,
-      audience: body?.audience || undefined,
+      contentGoal: resolvedContentGoal,
+      // Normalize new ICP-compatible slugs → legacy AUDIENCE_BLOCKS keys at this single
+      // boundary so the intelligence engine always sees the keys it can look up.
+      // AUTO_DETECT treated as "AUTO" (undefined → fallback auto-audience instruction).
+      audience: normalizeAudienceSlug(rawAudience),
       marketContext: body?.marketContext || undefined,
       userSuppliedFacts: body?.userSuppliedFacts || undefined,
+      // CMO Copilot v2.1 — selected hook from brief resolution
+      selectedHookText: body?.selectedHookText || undefined,
+      selectedHookArchetype: body?.selectedHookArchetype || undefined,
+      selectedContentStructure: body?.selectedContentStructure || undefined,
     };
+  }
+
+  function normalizeAudienceSlug(slug?: string): string | undefined {
+    if (!slug || slug === "AUTO" || slug === "AUTO_DETECT") return undefined; // auto-detect path in intelligence engine
+    const aliasMap: Record<string, string> = {
+      CANDIDATE_PROFESSIONAL: "CANDIDATE",
+      MSP_STAFFING_PARTNER: "MSP_VMS_PARTNER",
+    };
+    return aliasMap[slug] ?? slug;
   }
 
   function handleAiError(error: any, res: Response) {
@@ -17157,6 +17222,69 @@ export async function registerRoutes(
     return result;
   }
 
+  // CMO Copilot v2.1 — Resolve Brief endpoint.
+  // POST /api/admin/studio/articles/:id/resolve-brief
+  // Resolves a raw user topic into a structured strategic brief + 3 hook options.
+  // Saves the resolved brief to the article and returns it for UI display.
+  app.post(
+    "/api/admin/studio/articles/:id/resolve-brief",
+    requireAuth,
+    requirePermission("studio.generate_ai_draft", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI provider is not configured", code: "upstream" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+
+        const { topic, contentGoal, audience, marketContext, platform, userSuppliedFacts } = req.body;
+        if (!topic?.trim()) return res.status(400).json({ error: "topic is required" });
+
+        if (!(await checkAiRateLimit(req.session.userId!, res))) return;
+
+        const brief = await resolveBrief({
+          topic,
+          contentGoal: contentGoal || undefined,
+          audience: audience || undefined,
+          marketContext: marketContext || undefined,
+          platform: platform || "ARTICLE",
+          userSuppliedFacts: userSuppliedFacts || undefined,
+        });
+
+        // Persist the resolved brief fields to the article.
+        await storage.updateStudioArticle(article.id, {
+          audienceQuestion: brief.audienceQuestion,
+          audienceResolved: brief.audienceResolved,
+          domainResolved: brief.domain,
+          marketContextResolved: brief.marketContext,
+          sourceType: brief.sourceType,
+          readerAction: brief.readerAction,
+          businessObjective: brief.businessObjective,
+          singleTakeaway: brief.singleTakeaway,
+          hookOptionsJsonb: brief.hookOptions,
+          contentGoal: brief.contentGoal,
+        } as any);
+
+        await storage.createStudioAuditEvent({
+          articleId: article.id,
+          actorUserId: req.session.userId,
+          eventType: "resolve_brief",
+          metadata: {
+            contentGoal: brief.contentGoal,
+            audienceResolved: brief.audienceResolved,
+            domain: brief.domain,
+            recommendedHookIndex: brief.recommendedHookIndex,
+          },
+        });
+
+        res.json({ brief });
+      } catch (error: any) {
+        handleAiError(error, res);
+      }
+    },
+  );
+
   // Generate a full article draft. Modes: "topic" (default) | "shape".
   app.post(
     "/api/admin/studio/articles/:id/generate-article",
@@ -17171,7 +17299,15 @@ export async function registerRoutes(
         if (!article) return res.status(404).json({ error: "Article not found" });
 
         const mode = req.body?.mode === "shape" ? "shape" : "topic";
-        const hasContentGoal = !!req.body?.contentGoal;
+        // RC-1 (server): resolve contentGoal from request body first, then stored article.contentGoal,
+        // then derive from contentType — so the intelligence path fires whenever a goal is knowable,
+        // not just when the client explicitly POSTs one.
+        const resolvedContentGoalForPath =
+          req.body?.contentGoal ||
+          (article as any).contentGoal ||
+          defaultContentGoal(article.contentType) ||
+          null;
+        const hasContentGoal = !!resolvedContentGoalForPath;
         // When contentGoal is set, prefer the intelligence-tier template; fall back to standard.
         const preferredKey = hasContentGoal ? "marketing_intelligence_article"
           : mode === "shape" ? "shape_my_draft" : "article_generator";
@@ -17186,10 +17322,16 @@ export async function registerRoutes(
 
         if (!(await checkAiRateLimit(req.session.userId!, res))) return;
 
+        // RC-4: track the actual tier used (may fall back from intelligence → standard).
+        let actualPath: "intelligence" | "standard" = hasContentGoal ? "intelligence" : "standard";
         let template = await storage.getActiveStudioPromptTemplate(preferredKey, article.projectId);
         if (!template && preferredKey !== fallbackKey) {
-          console.warn(`[generate-article] template '${preferredKey}' not found, falling back to '${fallbackKey}'`);
+          console.warn(
+            `[generate-article] template '${preferredKey}' not found for article ${article.id} ` +
+            `(project ${article.projectId}), falling back to '${fallbackKey}'`
+          );
           template = await storage.getActiveStudioPromptTemplate(fallbackKey, article.projectId);
+          actualPath = "standard";
         }
         const contentTypeKey = template?.contentType ?? fallbackKey;
         if (!template) {
@@ -17257,13 +17399,69 @@ export async function registerRoutes(
           status: "reviewed",
         } as any);
 
-        // Track compliance mode + risk flags on the article so the publish gate
-        // can act on them. New flags reset any prior resolution.
+        // CMO Copilot v2.1 — lightweight domain inference from topic text.
+        // Returns canonical enum values that the safety gate contract requires
+        // (HEALTHCARE_STAFFING, IT_STAFFING, GOVERNMENT, GENERAL_STAFFING).
+        // \bit\b intentionally removed — too many false positives from pronoun "it".
+        function inferDomainFromText(topic?: string, contentType?: string, explicitIndustry?: string): string {
+          if (explicitIndustry) {
+            // Normalize any legacy lowercase value that may arrive from old form state.
+            const up = explicitIndustry.toUpperCase();
+            if (up.includes("HEALTH")) return "HEALTHCARE_STAFFING";
+            if (up.includes("GOV")) return "GOVERNMENT";
+            if (up === "IT" || up.includes("IT_")) return "IT_STAFFING";
+            return "GENERAL_STAFFING";
+          }
+          const text = `${topic ?? ""} ${contentType ?? ""}`.toLowerCase();
+          if (/healthcare|nurse|nursing|medical|clinical|patient|hospital|physician|allied health|credentiali/.test(text)) return "HEALTHCARE_STAFFING";
+          if (/\btech\b|software|engineer|developer|cyber|cloud|devops|\bsre\b|scrum|agile|javascript|python|\bjava\b|staffing.*tech|tech.*staffing/.test(text)) return "IT_STAFFING";
+          if (/government|federal|state gov|\bdod\b|clearance|cleared|\bgsa\b|\bsewp\b/.test(text)) return "GOVERNMENT";
+          return "GENERAL_STAFFING";
+        }
+
+        // Resolved strategy values — canonical, source of truth for strip and safety gate.
+        const resolvedAudience: string | undefined = params.audience ?? undefined;
+        const resolvedDomain: string = (article as any).domainResolved
+          ?? inferDomainFromText(req.body?.topic ?? req.body?.rawInput, req.body?.contentType ?? article.contentType, params.industry);
+        const resolvedContentGoal: string | null = resolvedContentGoalForPath;
+
+        // CMO Copilot v2.1 — Staffing Safety Gate.
+        // Gate receives canonical domain enum so healthcare/IT checks fire correctly.
+        const safetyResult = runStaffingSafetyGate({
+          generatedText: result.draft.body_markdown ?? "",
+          userSuppliedFacts: params.userSuppliedFacts,
+          contentGoal: params.contentGoal,
+          domain: resolvedDomain,
+          marketContext: params.marketContext,
+        });
+        const safetyReviewResult = safetyResult.pass ? "PASS" : safetyResult.failures.some((f) => !f.autoCorrectSafe) ? "BLOCK" : "REVISE";
+
+        // Hook archetype: prefer request param (when guided mode later sends it),
+        // fall back to the AI's self-reported archetype from the draft output.
+        const persistedHookArchetype: string | undefined =
+          params.selectedHookArchetype ||
+          (result.draft as any).hook_archetype_used ||
+          undefined;
+
+        // Track compliance mode + risk flags + resolved strategy on the article.
         await storage.updateStudioArticle(article.id, {
           complianceMode: compliance.value,
           riskFlags: riskFlags as any,
           riskFlagsResolvedAt: null as any,
           riskFlagsResolvedBy: null as any,
+          safetyReviewResult: safetyReviewResult as any,
+          safetyFailuresJsonb: safetyResult.failures.length ? safetyResult.failures : null,
+          // Persist resolved strategy metadata so the strip survives page refresh.
+          ...(resolvedAudience ? { audienceResolved: resolvedAudience } : {}),
+          domainResolved: resolvedDomain,
+          ...(resolvedContentGoal ? { contentGoal: resolvedContentGoal } : {}),
+          ...(persistedHookArchetype ? { selectedHookArchetype: persistedHookArchetype } : {}),
+          // Save the v1 markdown for editing-effort tracking (only on first accepted generation).
+          ...((article as any).generationV1Markdown
+            ? {}
+            : { generationV1Markdown: result.draft.body_markdown }),
+          ...(params.selectedHookText ? { selectedHookText: params.selectedHookText } : {}),
+          ...(params.selectedContentStructure ? { selectedContentStructure: params.selectedContentStructure } : {}),
         } as any);
 
         await storage.createStudioAuditEvent({
@@ -17276,6 +17474,7 @@ export async function registerRoutes(
             promptVersion: template.version,
             complianceMode: compliance.value,
             riskFlagCount: riskFlags.length,
+            safetyReviewResult,
           },
         });
 
@@ -17286,6 +17485,15 @@ export async function registerRoutes(
           complianceMode: compliance.value,
           generationId: generation.id,
           model: result.model,
+          generationPath: actualPath,
+          // CMO Copilot v2.1 — safety gate result
+          safetyReviewResult,
+          safetyFailures: safetyResult.failures,
+          safetyWarnings: safetyResult.warnings,
+          // Resolved strategy — source of truth for the strategy strip
+          resolvedAudience: resolvedAudience ?? null,
+          resolvedDomain,
+          resolvedContentGoal,
         });
       } catch (error: any) {
         handleAiError(error, res);

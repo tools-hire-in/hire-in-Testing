@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Megaphone, Plus, Sparkles, Loader2, CalendarDays, Trash2, UserPlus, Users, Trophy, MousePointerClick, Heart, Recycle } from "lucide-react";
+import { StudioShell } from "@/components/studio/StudioShell";
 
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -869,9 +870,14 @@ export default function CampaignsView() {
     enabled: !!selectedProjectId,
   });
 
-  if (params?.id) return <CampaignDetail id={params.id} />;
+  if (params?.id) return (
+    <StudioShell>
+      <CampaignDetail id={params.id} />
+    </StudioShell>
+  );
 
   return (
+    <StudioShell>
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <div>
@@ -944,5 +950,6 @@ export default function CampaignsView() {
         <CampaignFormDialog open={createOpen} onOpenChange={setCreateOpen} projectId={selectedProjectId} />
       )}
     </div>
+    </StudioShell>
   );
 }

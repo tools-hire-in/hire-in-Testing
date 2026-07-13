@@ -8,6 +8,10 @@ import {
   ArrowRight,
   ArrowUpRight,
   ChevronRight,
+  Target,
+  ShieldCheck,
+  BarChart3,
+  Users,
 } from "lucide-react";
 import { studioPath } from "@/lib/studioBase";
 import { INSIGHT_REACTIONS } from "@shared/insights";
@@ -161,6 +165,11 @@ const SECTIONS: { id: string; index: string; label: string }[] = [
   { id: "s7", index: "7", label: "Multiple Brand Projects" },
   { id: "s8", index: "8", label: "Reading the Signals" },
   { id: "s9", index: "9", label: "Notification Setup" },
+  { id: "s10", index: "10", label: "Audience-First Strategy" },
+  { id: "s11", index: "11", label: "Content Pillars & Goals" },
+  { id: "s12", index: "12", label: "The Content Brief" },
+  { id: "s13", index: "13", label: "Content Guardrails" },
+  { id: "s14", index: "14", label: "Measuring What Matters" },
 ];
 
 export default function Guide() {
@@ -901,11 +910,502 @@ export default function Guide() {
                 You won't know what's noise until you've seen the volume. After 7 days, look at which
                 notifications you ignored. Turn those email alerts off; keep the in-app ones.
               </ProTip>
-              <div className="mt-8 rounded-md border bg-muted/40 p-4 text-center text-sm">
-                <p className="font-medium">That's the whole Playbook.</p>
+              <div className="mt-6 rounded-md border bg-muted/40 p-4 text-center text-sm">
+                <p className="font-medium">That covers the tools.</p>
                 <p className="mt-1 text-muted-foreground">
-                  Head back to the <ScreenLink href={studioPath("")}>Dashboard</ScreenLink> and start with the
-                  setup checklist — the Studio teaches the rest as you go.
+                  Sections 10–14 cover the strategy layer — audience, pillars, briefs, guardrails, and measurement.
+                  Read them before your first campaign brief.
+                </p>
+              </div>
+            </section>
+
+            {/* ── Section 10 ── */}
+            <section>
+              <SectionHeading
+                id="s10"
+                index="10"
+                title="Audience-First Strategy"
+                subtitle="Every piece of content must identify one primary audience. Not two. One."
+              />
+              <Why>
+                The fastest way to produce content that reaches nobody is to write for everyone. The Studio's
+                audience model exists to force that decision before any word is written. One article, one
+                audience, one question answered. The channels adapt — the audience does not.
+              </Why>
+              <div className="my-4 flex items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+                <Users className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="font-semibold text-foreground">The core principle</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    Every asset must identify one primary audience, answer one real question, and guide one useful
+                    next action. This is the gate every piece of content must pass before production begins.
+                  </p>
+                </div>
+              </div>
+              <H3>The four primary audiences for Hire'in Solutions:</H3>
+              <div className="my-4 grid gap-3 sm:grid-cols-2">
+                {[
+                  {
+                    code: "H1",
+                    label: "Healthcare Hiring Leaders",
+                    decision: "Can this partner understand the role, submit relevant professionals, and support a reliable hiring process?",
+                    content: "Hard-to-fill roles, intake quality, submission readiness, credentialing friction, workforce planning.",
+                    color: "border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30",
+                    badge: "text-blue-700 dark:text-blue-300",
+                  },
+                  {
+                    code: "H2",
+                    label: "Healthcare Professionals",
+                    decision: "Is this opportunity relevant, trustworthy and worth my time? Am I prepared?",
+                    content: "Jobs, specialty guidance, credential readiness, resume preparation, career decisions.",
+                    color: "border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-950/30",
+                    badge: "text-emerald-700 dark:text-emerald-300",
+                  },
+                  {
+                    code: "I1",
+                    label: "IT & Engineering Hiring Leaders",
+                    decision: "Can this partner identify evidence of fit and reduce unqualified submissions?",
+                    content: "Technical screening, role calibration, project context, hiring quality, contract staffing.",
+                    color: "border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-950/30",
+                    badge: "text-violet-700 dark:text-violet-300",
+                  },
+                  {
+                    code: "I2",
+                    label: "IT & Engineering Professionals",
+                    decision: "Does this role fit my skills and goals, and how do I demonstrate fit?",
+                    content: "Jobs, resume evidence, interviews, skill positioning, career transitions.",
+                    color: "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30",
+                    badge: "text-amber-700 dark:text-amber-300",
+                  },
+                ].map((a) => (
+                  <div key={a.code} className={`rounded-md border p-3 ${a.color}`}>
+                    <div className="flex items-center gap-2">
+                      <span className={`text-xs font-bold uppercase tracking-wider ${a.badge}`}>{a.code}</span>
+                      <span className="text-sm font-semibold">{a.label}</span>
+                    </div>
+                    <p className="mt-1.5 text-xs leading-relaxed text-muted-foreground">
+                      <span className="font-medium">Their decision: </span>{a.decision}
+                    </p>
+                    <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                      <span className="font-medium">Useful content: </span>{a.content}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <H3>Studio translation — H1/H2/I1/I2 to Studio fields:</H3>
+              <P>
+                The H1/H2/I1/I2 codes are planning shorthand. The Studio stores audience and staffing domain as
+                separate selections. Use this translation every time you create an article or idea:
+              </P>
+              <div className="my-3 overflow-x-auto">
+                <table className="w-full border-collapse text-sm">
+                  <thead>
+                    <tr className="border-b text-left">
+                      <th className="py-2 pr-3 font-semibold">Strategy Code</th>
+                      <th className="py-2 pr-3 font-semibold">Studio Audience</th>
+                      <th className="py-2 font-semibold">Studio Domain</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {[
+                      ["H1 — Healthcare Hiring Leaders", "EMPLOYER_CLIENT", "Healthcare"],
+                      ["H2 — Healthcare Professionals", "CANDIDATE", "Healthcare"],
+                      ["I1 — IT & Engineering Hiring Leaders", "EMPLOYER_CLIENT", "IT"],
+                      ["I2 — IT & Engineering Professionals", "CANDIDATE", "IT"],
+                    ].map(([code, audience, domain]) => (
+                      <tr key={code} className="border-b last:border-b-0">
+                        <td className="py-2 pr-3 font-medium">{code}</td>
+                        <td className="py-2 pr-3 font-mono text-xs text-primary">{audience}</td>
+                        <td className="py-2 font-mono text-xs text-primary">{domain}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              <P>
+                The Studio also shows <strong>MSP/VMS Partner</strong> and <strong>Recruiter/Staffing Operator</strong>{" "}
+                as audience options. Select these only when the content is specifically written for those audiences —
+                do not default to them. The audience in the Studio, the brief, and the article metadata must always
+                stay consistent.
+              </P>
+              <H3>Before writing any piece, answer these five questions:</H3>
+              <StepList
+                steps={[
+                  <><strong>Primary audience</strong> — which of H1, H2, I1, I2 is the single target?</>,
+                  <><strong>Their current question or decision</strong> — what are they actively trying to resolve right now?</>,
+                  <><strong>Single takeaway</strong> — what is the one thing they should think, feel, or do differently after reading this?</>,
+                  <><strong>Source or approved input</strong> — what recruiter note, client intake, candidate feedback, or verified fact is this based on?</>,
+                  <><strong>Next action</strong> — what is the one thing you want them to do after reading: apply, contact a recruiter, read the article, request a consultation?</>,
+                ]}
+              />
+              <ProTip title="The source question is the quality gate">
+                If you cannot name a real source — a recruiter conversation, a client intake, a verified fact —
+                the piece is not ready to brief. Generic content comes from generic inputs. The best Hire'in
+                content comes from what a recruiter told a candidate last Tuesday.
+              </ProTip>
+              <ProTip title="One primary audience, not one exclusive audience">
+                An H1 piece may be useful to I1 readers too. That is fine. The primary audience determines the
+                angle, the hook, and the call to action. Other audiences who find it useful are a bonus.
+              </ProTip>
+            </section>
+
+            {/* ── Section 11 ── */}
+            <section>
+              <SectionHeading
+                id="s11"
+                index="11"
+                title="Content Pillars & Goals"
+                subtitle="Five pillars. Four Studio goals. One way to make sure every piece earns its place."
+              />
+              <Why>
+                A pillar is the strategic category your content falls into — why it exists and what job it does
+                for the audience. The Studio's Content Goal is the AI instruction that shapes the draft. They are
+                not the same thing, but they must be selected together every time. Using both prevents content
+                that is strategically correct but tonally wrong, and vice versa.
+              </Why>
+              <div className="my-4 space-y-3">
+                {[
+                  {
+                    pillar: "Hiring Intelligence",
+                    purpose: "Help employers make better staffing and hiring decisions.",
+                    examples: ["Why role calibration matters", "Why submissions fail", "Credentialing bottlenecks", "Evidence of technical or clinical fit"],
+                    goals: ["THOUGHT_LEADERSHIP", "EDUCATIONAL"],
+                    audiences: ["H1", "I1"],
+                    color: "border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20",
+                  },
+                  {
+                    pillar: "Career Enablement",
+                    purpose: "Help professionals understand, prepare for, and evaluate opportunities.",
+                    examples: ["Resume guidance", "Interview preparation", "Credential readiness", "Career transitions", "Skill positioning"],
+                    goals: ["EDUCATIONAL", "JOB_MARKETING"],
+                    audiences: ["H2", "I2"],
+                    color: "border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20",
+                  },
+                  {
+                    pillar: "Jobs & Opportunities",
+                    purpose: "Convert active demand into clear, respectful candidate communication.",
+                    examples: ["Role-specific job posts", "Multi-role roundups", "Location or specialty spotlights", "Requirement updates with current facts only"],
+                    goals: ["JOB_MARKETING"],
+                    audiences: ["H2", "I2"],
+                    color: "border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20",
+                  },
+                  {
+                    pillar: "Process & Proof",
+                    purpose: "Show how Hire'in approaches the work — without relying on unsupported claims.",
+                    examples: ["Intake-to-submission workflow", "Quality checks", "Recruiter preparation", "Communication standards", "Candidate support process"],
+                    goals: ["BRAND_PERSPECTIVE", "THOUGHT_LEADERSHIP"],
+                    audiences: ["H1", "I1"],
+                    color: "border-violet-200 bg-violet-50/50 dark:border-violet-800 dark:bg-violet-950/20",
+                  },
+                  {
+                    pillar: "People & Perspective",
+                    purpose: "Humanize the company and build professional trust.",
+                    examples: ["Recruiter insights", "Founder or leadership point of view", "Team learning", "Candidate-care principles", "Responsible recruiting practices"],
+                    goals: ["BRAND_PERSPECTIVE"],
+                    audiences: ["Any"],
+                    color: "border-rose-200 bg-rose-50/50 dark:border-rose-800 dark:bg-rose-950/20",
+                  },
+                ].map((p) => (
+                  <div key={p.pillar} className={`rounded-md border p-4 ${p.color}`}>
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="font-semibold">{p.pillar}</p>
+                        <p className="mt-0.5 text-xs text-muted-foreground">{p.purpose}</p>
+                      </div>
+                      <div className="flex flex-wrap gap-1">
+                        {p.audiences.map((a) => (
+                          <Badge key={a} variant="outline" className="text-xs">{a}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Examples</p>
+                        <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                          {p.examples.map((e) => <li key={e}>· {e}</li>)}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Studio Content Goal</p>
+                        {p.goals.map((g) => (
+                          <p key={g} className="mt-1 font-mono text-xs text-primary">{g}</p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="my-4 flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm dark:border-amber-800 dark:bg-amber-950/30">
+                <Lightbulb className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                <div>
+                  <p className="font-semibold text-amber-900 dark:text-amber-200">People & Perspective in the Studio</p>
+                  <p className="mt-0.5 text-amber-800 dark:text-amber-300">
+                    Select <strong>Brand Perspective</strong> as the Content Goal for all People & Perspective content.
+                    This includes founder or leadership points of view, recruiter insights, team learning, culture, and
+                    candidate-care principles. Brand Perspective means "how Hire'in thinks" — it is not a formal capability
+                    statement, proposal, or business-development document. If it sounds like a brochure, it belongs in the
+                    BD Agent, not in content.
+                  </p>
+                </div>
+              </div>
+              <H3>Volume discipline:</H3>
+              <P>
+                Do not increase volume until the team can maintain audience clarity, accuracy, visual quality, and
+                timely approvals at the current volume. Three high-quality, on-audience pieces per week beats seven
+                mediocre ones. The Studio's campaign plan enforces a minimum — it is not a target.
+              </P>
+              <ProTip title="Rotate pillars deliberately">
+                If the last three pieces were all Hiring Intelligence, the next piece should be Career Enablement
+                or People & Perspective. Repetition of the same pillar produces an audience that expects one type
+                of content — and leaves when you need to serve a different one.
+              </ProTip>
+            </section>
+
+            {/* ── Section 12 ── */}
+            <section>
+              <SectionHeading
+                id="s12"
+                index="12"
+                title="The Content Brief"
+                subtitle="The single most important document in your content operation. Fill it in before anyone starts writing."
+              />
+              <Why>
+                The brief is not a form. It is the editorial commissioning decision. Every word in the final
+                article can be traced back to a decision made in the brief. A brief that takes 10 minutes to
+                complete saves 3 hours of revision. A brief skipped produces an article that needs to be rewritten
+                from scratch or, worse, gets published and misses the audience entirely.
+              </Why>
+              <H3>The complete MVP brief — field by field:</H3>
+              <div className="my-4 space-y-2">
+                {[
+                  { field: "Working title", why: "Directional, not final. A clear working title forces you to know what you're making.", studio: "Article title field" },
+                  { field: "Primary audience", why: "H1, H2, I1, or I2. One only. The Studio audience + domain fields must match.", studio: "Audience + Domain selectors" },
+                  { field: "Audience question", why: "The exact question or decision this piece answers. Not 'about X' — the question the reader is actually asking.", studio: "Generation Brief field" },
+                  { field: "Business objective", why: "Awareness, credibility, candidate interest, employer inquiry, application, or engagement. Be honest about what you actually want.", studio: "Content Goal + CTA fields" },
+                  { field: "Single takeaway", why: "One sentence. If you cannot state the takeaway in one sentence, the brief is not ready.", studio: "Generation Brief field" },
+                  { field: "Source or SME", why: "Recruiter notes, client intake, verified industry data, approved review. If this field is blank, the piece should not proceed.", studio: "Source Notes field" },
+                  { field: "Approved facts", why: "Any company-specific claim, metric, or capability statement that has been approved for use. Nothing invented.", studio: "User-supplied facts field" },
+                  { field: "Primary CTA", why: "One action. What should the reader do immediately after finishing? A CTA URL and label in the Studio.", studio: "CTA Text + CTA URL" },
+                  { field: "Core format", why: "Insight article, carousel, video, text post, or job post. Format determines the production path.", studio: "Content Type selector" },
+                  { field: "Channels & adaptations", why: "Which platforms need a version? Each channel needs a different hook, depth, and CTA.", studio: "Campaign idea channels" },
+                  { field: "Owner + due date", why: "Named person and real date. 'Someone' and 'soon' are not owners or dates.", studio: "Assignee + due date" },
+                ].map((row) => (
+                  <div key={row.field} className="grid gap-1 rounded-md border bg-muted/30 p-3 text-sm sm:grid-cols-[160px_1fr_140px]">
+                    <p className="font-semibold">{row.field}</p>
+                    <p className="text-muted-foreground">{row.why}</p>
+                    <p className="font-mono text-xs text-primary">{row.studio}</p>
+                  </div>
+                ))}
+              </div>
+              <H3>The minimum weekly operating rhythm:</H3>
+              <div className="my-3 space-y-2">
+                {[
+                  { day: "Monday", action: "20-minute insight huddle — Content, Social, and one SME. Select the audience question. Assign the owner and required input." },
+                  { day: "Tuesday", action: "Complete the brief and SME input. Confirm the angle, takeaway, source, and call to action." },
+                  { day: "Wednesday", action: "Draft the core insight and visual direction. AI generates the first draft from the brief." },
+                  { day: "Thursday", action: "Review, adapt, and schedule the platform-specific versions." },
+                  { day: "Friday", action: "Publish and engage, or review early performance and record learning." },
+                ].map((row) => (
+                  <div key={row.day} className="flex gap-3 rounded-md border p-3 text-sm">
+                    <span className="w-24 shrink-0 font-semibold text-primary">{row.day}</span>
+                    <span className="text-muted-foreground">{row.action}</span>
+                  </div>
+                ))}
+              </div>
+              <ProTip title="The brief is the review checkpoint">
+                In the weekly huddle, review the brief together — not the draft. If everyone agrees the brief is
+                strong, the draft almost writes itself. Reviewing a weak brief early is 10 minutes. Reviewing a
+                weak draft late is 3 hours.
+              </ProTip>
+              <ProTip title="The source field is your quality filter">
+                If the source field is empty, the brief is not ready. Real, useful content comes from real, specific
+                inputs — a recruiter conversation, a candidate question, a client intake discussion. Generic
+                content comes from generic briefs. Never brief without a source.
+              </ProTip>
+            </section>
+
+            {/* ── Section 13 ── */}
+            <section>
+              <SectionHeading
+                id="s13"
+                index="13"
+                title="Content Guardrails"
+                subtitle="These are not suggestions. Every published asset must clear all of them."
+              />
+              <Why>
+                A staffing agency's credibility is built on accuracy and trust. One invented job fact, one
+                unsupported claim, one piece of clinical or legal advice published without approval — and that
+                credibility takes months to rebuild. The guardrails below are enforced both by the AI system
+                (claim-free-by-default) and by the approval workflow. They are not optional.
+              </Why>
+              <div className="my-4 flex items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="font-semibold text-foreground">Claim-free by default</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    If a company-specific claim, metric, or capability statement is not provided by an approved source,
+                    the content omits it and remains useful through education, insight, and point of view. The AI
+                    agent and the content team do not add proof placeholders or unsupported promotional language.
+                    This rule is enforced at generation time and at every approval stage.
+                  </p>
+                </div>
+              </div>
+              <H3>The non-negotiable list:</H3>
+              <div className="my-3 space-y-2">
+                {[
+                  { rule: "Do not combine audiences in one piece", detail: "Healthcare buyers, healthcare candidates, IT buyers, and IT candidates are four different audiences. Writing for all of them at once means writing for none of them. One primary audience per asset." },
+                  { rule: "Do not use unsupported claims", detail: "No unsupported AI performance claims, compliance certifications, 'nationwide' or 'best' or 'fastest' language, client names, placement metrics, or service capability claims without verified, approved source material." },
+                  { rule: "Do not copy the same post to every platform", detail: "LinkedIn and Instagram are different media. A caption optimised for LinkedIn reads wrong on Instagram. A carousel works on Instagram and falls flat on X. Adapt the hook, depth, visual, and CTA for each channel." },
+                  { rule: "Do not invent job facts", detail: "No invented compensation, location, schedule, employment type, work arrangement, sponsorship, credential requirements, number of openings, or deadlines. If you don't have the fact, omit it. Job posts with invented facts create candidate trust failures." },
+                  { rule: "Do not publish clinical, legal, financial, or immigration advice", detail: "Content that implies clinical guidance, legal compliance, immigration eligibility, or financial advice requires approved expertise and must be reviewed before publication. When in doubt, omit and reframe as general education." },
+                  { rule: "Do not measure by follower count or total likes alone", detail: "Follower count is a vanity metric. Total likes without context tells you nothing about whether the right audience saw the content. Measure by qualified reach, saves, CTA clicks, and downstream actions — not raw numbers." },
+                  { rule: "Do not expand scope mid-pilot", detail: "No website redesign, complex automation, campaign orchestration, business-development workflows, or advanced reporting during the MVP phase. Ship the minimum well before expanding." },
+                ].map((g) => (
+                  <div key={g.rule} className="flex gap-3 rounded-md border border-red-100 bg-red-50/50 p-3 text-sm dark:border-red-900/40 dark:bg-red-950/20">
+                    <span className="mt-0.5 shrink-0 text-xs font-bold text-red-600 dark:text-red-400">✕</span>
+                    <div>
+                      <p className="font-semibold text-foreground">{g.rule}</p>
+                      <p className="mt-0.5 text-muted-foreground">{g.detail}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <H3>Final decision standard — ask this before approving any asset:</H3>
+              <div className="my-3 rounded-md border bg-muted/40 p-4 text-sm italic">
+                "Who is this for? What real question are we answering? Why should the audience trust it? And what
+                should become easier next?"
+              </div>
+              <P>
+                If you cannot answer all four questions from the brief alone — without looking at the draft — the
+                brief was not ready. Send it back, not forward.
+              </P>
+            </section>
+
+            {/* ── Section 14 ── */}
+            <section>
+              <SectionHeading
+                id="s14"
+                index="14"
+                title="Measuring What Matters"
+                subtitle="Four sources of truth. None of them is the Studio alone."
+              />
+              <Why>
+                The most common measurement mistake in content marketing: reporting Studio data as if it were
+                reach. The Studio records what happens inside your content operation — brief quality, workflow
+                throughput, CTA clicks on published articles. It does not know how many people saw your LinkedIn
+                post. That data lives on LinkedIn. Using the wrong source for the wrong metric produces decisions
+                based on fiction.
+              </Why>
+              <div className="my-4 flex items-start gap-3 rounded-md border border-primary/20 bg-primary/5 p-3 text-sm">
+                <BarChart3 className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
+                <div>
+                  <p className="font-semibold text-foreground">The baseline principle</p>
+                  <p className="mt-0.5 text-muted-foreground">
+                    The first 30 days are for establishing a reliable baseline — not chasing performance. Review by
+                    audience, content goal, format, and platform so you can identify what is useful and repeatable.
+                    A successful pilot does not require large follower growth or viral reach. It requires a
+                    disciplined process that reached the right audiences and generated useful learning.
+                  </p>
+                </div>
+              </div>
+              <H3>The four measurement sources:</H3>
+              <div className="my-4 space-y-3">
+                {[
+                  {
+                    source: "Native social-platform analytics",
+                    tracks: "Reach or impressions, reactions, saves, shares, comments, video views, and other platform-native engagement.",
+                    where: "LinkedIn Analytics, Instagram Insights, Facebook Page Insights, X Analytics",
+                    note: "These metrics are NOT generated by the Content Studio. Record them directly from each platform.",
+                    color: "border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20",
+                  },
+                  {
+                    source: "Content Studio & website analytics",
+                    tracks: "Content brief metadata (audience, domain, goal, platform), publishing details, CTA link-click activity, article visits, referral traffic, page engagement.",
+                    where: "Studio Analytics tab, Hire'in Insights page analytics",
+                    note: "Studio data measures what happens after a reader follows a link. It does not measure social platform reach.",
+                    color: "border-emerald-200 bg-emerald-50/50 dark:border-emerald-800 dark:bg-emerald-950/20",
+                  },
+                  {
+                    source: "ATS & recruiter records",
+                    tracks: "Applications, recruiter contacts, qualified candidate conversations, employer inquiries, and other downstream actions.",
+                    where: "ATS (Ceipal), recruiting records, shared inbox, responsible owner",
+                    note: "This is the revenue signal. Connect content to downstream actions manually during the pilot.",
+                    color: "border-violet-200 bg-violet-50/50 dark:border-violet-800 dark:bg-violet-950/20",
+                  },
+                  {
+                    source: "Manual MVP tracker",
+                    tracks: "Audience questions generated, qualitative feedback, production time, approval delays, successful content reuse across channels.",
+                    where: "Shared tracker (spreadsheet or project doc)",
+                    note: "The process health signal. If production time is going down, the process is working.",
+                    color: "border-amber-200 bg-amber-50/50 dark:border-amber-800 dark:bg-amber-950/20",
+                  },
+                ].map((s) => (
+                  <div key={s.source} className={`rounded-md border p-4 ${s.color}`}>
+                    <p className="font-semibold text-foreground">{s.source}</p>
+                    <p className="mt-1 text-xs text-muted-foreground"><span className="font-medium">Tracks: </span>{s.tracks}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground"><span className="font-medium">Where: </span>{s.where}</p>
+                    <p className="mt-1.5 rounded-sm bg-background/60 px-2 py-1 text-xs font-medium text-foreground">{s.note}</p>
+                  </div>
+                ))}
+              </div>
+              <H3>What to record for every published asset:</H3>
+              <UL
+                items={[
+                  <>Primary audience and staffing domain</>,
+                  <>Content goal and platform</>,
+                  <>Publication date and owner</>,
+                  <>Qualified reach or relevant impressions (from native platform)</>,
+                  <>Saves, shares, and meaningful comments (from native platform)</>,
+                  <>CTA clicks or page engagement where a link is used (from Studio or website analytics)</>,
+                  <>Applications, recruiter contacts, employer inquiries, or other useful actions (from ATS/records)</>,
+                  <>Audience questions or feedback generated</>,
+                  <>Production time and whether the asset was successfully reused across channels</>,
+                ]}
+              />
+              <H3>Day-30 success criteria:</H3>
+              <UL
+                items={[
+                  <>Four audience-led content cycles completed using the full content brief</>,
+                  <>At least two substantive Hire'in Insights pieces or equivalent high-value source assets published</>,
+                  <>Minimum social outputs from the 30-day plan completed — or any shortfall documented with a clear reason</>,
+                  <>Every published asset tagged internally by audience, domain, objective, platform, and call to action</>,
+                  <>No unsupported company claims, invented job details, or preventable privacy and accuracy issues published</>,
+                  <>At least three content lessons documented to repeat and three changes to test in Phase 2</>,
+                  <>A short retrospective completed: what to keep, change, stop, and introduce next</>,
+                ]}
+              />
+              <H3>End-of-pilot review questions:</H3>
+              <div className="my-3 space-y-1.5">
+                {[
+                  "Which audience questions produced the strongest useful response?",
+                  "Which platform and format worked best for each audience?",
+                  "Which content led to qualified applications, conversations, or inquiries?",
+                  "Where did the workflow slow down or create rework?",
+                  "Which subject-matter inputs or approved facts were missing?",
+                  "What should be standardized before Phase 2?",
+                  "Is the team ready to adopt the next audience messaging and content operations process?",
+                ].map((q, i) => (
+                  <div key={i} className="flex gap-3 rounded-md border bg-muted/30 p-2.5 text-sm">
+                    <span className="w-5 shrink-0 text-xs font-bold tabular-nums text-primary">{i + 1}.</span>
+                    <span className="text-muted-foreground">{q}</span>
+                  </div>
+                ))}
+              </div>
+              <ProTip title="Combine all four sources before reporting">
+                A 30-day review that uses only Studio data will undercount impact (it misses social reach) and
+                overcount relevance (it includes all impressions, not just qualified ones). Combine native
+                platform data, Studio analytics, ATS records, and the manual tracker. That is the complete picture.
+              </ProTip>
+              <ProTip title="Reactions without downstream action is a brand signal, not a pipeline signal">
+                High reactions with no ATS inquiries means your content is building awareness but not converting.
+                That is fine for Phase 1. In Phase 2, add a stronger CTA, a gated resource, or a recruiter
+                contact link to move the audience from aware to acting.
+              </ProTip>
+              <div className="mt-8 rounded-md border bg-muted/40 p-4 text-center text-sm">
+                <p className="font-medium">That is the complete Playbook.</p>
+                <p className="mt-1 text-muted-foreground">
+                  Tools (Sections 0–9) + Strategy (Sections 10–14). Head to the{" "}
+                  <ScreenLink href={studioPath("")}>Dashboard</ScreenLink> and start with a brief.
                 </p>
               </div>
             </section>
