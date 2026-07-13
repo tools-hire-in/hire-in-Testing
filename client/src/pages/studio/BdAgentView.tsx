@@ -371,6 +371,32 @@ export default function BdAgentView() {
     enabled: !!selectedConvId && canUseBd,
   });
 
+  // Clear ratings state when the user switches to a different conversation
+  useEffect(() => {
+    setMsgRatings({});
+    setShowReasonFor(null);
+  }, [selectedConvId]);
+
+  // Pre-populate msgRatings with stored ratings for all assistant messages
+  useEffect(() => {
+    if (!messages.length) return;
+    const assistantIds = messages
+      .filter((m) => m.role === "assistant")
+      .map((m) => m.id);
+    if (!assistantIds.length) return;
+    fetch(
+      `/api/agent-feedback/ratings/bulk?sourceRecordType=bd_message&sourceRecordIds=${assistantIds.join(",")}`,
+      { credentials: "include" },
+    )
+      .then((r) => r.json())
+      .then((ratings: Record<string, "POSITIVE_RATING" | "NEGATIVE_RATING">) => {
+        if (ratings && typeof ratings === "object") {
+          setMsgRatings((prev) => ({ ...ratings, ...prev }));
+        }
+      })
+      .catch(() => {});
+  }, [messages]);
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);

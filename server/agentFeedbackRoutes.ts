@@ -20,6 +20,7 @@ import {
   recordRating,
   recordAction,
   getUserRating,
+  getUserRatingsBulk,
   getFeedbackSummary,
 } from "./services/agentFeedbackService";
 import { db } from "./db";
@@ -224,6 +225,30 @@ export function registerAgentFeedbackRoutes(app: Express) {
       sourceRecordId as string,
     );
     return res.json(rating ?? { eventType: null, reasonCode: null });
+  });
+
+  // GET /api/agent-feedback/ratings/bulk — fetch current user's ratings for multiple source records
+  app.get("/api/agent-feedback/ratings/bulk", async (req: Request, res: Response) => {
+    if (!req.session?.userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const { sourceRecordType, sourceRecordIds } = req.query;
+    if (!sourceRecordType || !sourceRecordIds) {
+      return res.status(400).json({ error: "sourceRecordType and sourceRecordIds are required" });
+    }
+    const ids = String(sourceRecordIds)
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    if (!ids.length) {
+      return res.json({});
+    }
+    const ratings = await getUserRatingsBulk(
+      req.session.userId,
+      sourceRecordType as SourceRecordType,
+      ids,
+    );
+    return res.json(ratings);
   });
 
   // GET /api/admin/agent-feedback/summary — admin validation view

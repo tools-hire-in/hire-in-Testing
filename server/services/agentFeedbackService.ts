@@ -278,6 +278,38 @@ export async function getUserRating(
 }
 
 /**
+ * Fetch the current user's ratings for multiple source records in one query.
+ * Returns a map of sourceRecordId → rating event type.
+ */
+export async function getUserRatingsBulk(
+  userId: string,
+  sourceRecordType: SourceRecordType,
+  sourceRecordIds: string[],
+): Promise<Record<string, "POSITIVE_RATING" | "NEGATIVE_RATING">> {
+  if (!sourceRecordIds.length) return {};
+  try {
+    const idList = sourceRecordIds.map((id) => `'${id.replace(/'/g, "''")}'`).join(",");
+    const result = await db.execute(sql`
+      SELECT DISTINCT ON (source_record_id) source_record_id, event_type
+      FROM agent_feedback_events
+      WHERE user_id = ${userId}
+        AND source_record_type = ${sourceRecordType}
+        AND source_record_id = ANY(ARRAY[${sql.raw(idList)}]::text[])
+        AND event_type IN ('POSITIVE_RATING', 'NEGATIVE_RATING')
+      ORDER BY source_record_id, created_at DESC
+    `);
+    const map: Record<string, "POSITIVE_RATING" | "NEGATIVE_RATING"> = {};
+    for (const row of result.rows as any[]) {
+      map[row.source_record_id] = row.event_type;
+    }
+    return map;
+  } catch (err) {
+    console.error("[agentFeedbackService] getUserRatingsBulk failed:", err);
+    return {};
+  }
+}
+
+/**
  * Summary stats for admin validation endpoint.
  * Returns counts by agent, event type, reason code, and domain.
  */
