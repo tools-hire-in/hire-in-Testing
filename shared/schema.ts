@@ -310,7 +310,6 @@ export const salarySlips = pgTable("salary_slips", {
 }, (table) => [
   uniqueIndex("idx_salary_slips_user_period_version").on(table.userId, table.year, table.month, table.version),
   uniqueIndex("salary_slips_user_year_month_run_unique").on(table.userId, table.year, table.month, table.salaryRunId),
-  uniqueIndex("salary_slips_user_period_jurisdiction_unique").on(table.userId, table.year, table.month, table.jurisdiction),
 ]);
 
 // Leave balance adjustments table
