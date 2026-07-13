@@ -3,6 +3,7 @@ import { db } from "./db";
 import { adminUsers, loginSchema, registerAdminSchema, systemSettings } from "@shared/schema";
 import { eq, and, gt } from "drizzle-orm";
 import { hashPassword, verifyPassword, requireAuth, createSession, destroySession, getCurrentUser, requirePermission } from "./auth";
+import { loginLimiter } from "./rateLimits";
 import { z } from "zod";
 import crypto from "crypto";
 import * as OTPAuth from "otpauth";
@@ -23,7 +24,7 @@ async function getAllowedDomains(): Promise<string[]> {
 
 export function registerAuthRoutes(app: Express) {
   // Login route (supports two-step TOTP)
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/login", loginLimiter, async (req, res) => {
     try {
       const parsed = loginSchema.safeParse(req.body);
       if (!parsed.success) {

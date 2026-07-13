@@ -70,22 +70,11 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
+      const logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
       log(logLine);
     }
   });
@@ -4208,6 +4197,37 @@ async function runStartupTasks() {
   log("Background startup tasks complete");
 }
 
+// ── Startup secret validation ─────────────────────────────────────────────────
+// These env vars are required for correct HMAC signing. In production the
+// server refuses to start without them — fail loudly rather than silently use a
+// weak key. In development the same vars are strongly recommended; missing ones
+// log a clear warning and individual request handlers will still throw (never
+// fall back to a hardcoded string), so no HMAC operation can silently use a
+// weak key regardless of environment.
+{
+  const REQUIRED_SECRETS: string[] = [
+    "SESSION_SECRET",
+    "LETTER_HMAC_SECRET",
+    "OFFER_SIGNING_KEY",
+  ];
+  const missing = REQUIRED_SECRETS.filter((k) => !process.env[k]);
+  if (missing.length > 0) {
+    for (const k of missing) {
+      console.error(`MISSING_SECRET: ${k} is required but not set`);
+    }
+    if (process.env.NODE_ENV === "production") {
+      console.error(
+        `FATAL: ${missing.length} required secret(s) missing — server will not start in production. Set the above environment variable(s) and restart.`,
+      );
+      process.exit(1);
+    } else {
+      console.warn(
+        `WARNING: ${missing.length} required secret(s) missing. Any API call that needs these will fail with a 500. Set them before deploying to production.`,
+      );
+    }
+  }
+}
+
 // ── Bootstrap ─────────────────────────────────────────────────────────────────
 // Open the HTTP port as fast as possible: register routes, the error handler,
 // and the static/vite layer, then listen. The heavy schema "ensure"/seed/
@@ -4217,16 +4237,11 @@ async function runStartupTasks() {
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
-
-    console.error("Internal Server Error:", err);
-
+    console.error("[fallback-error-handler]", err);
     if (res.headersSent) {
       return next(err);
     }
-
-    return res.status(status).json({ message });
+    res.status(500).json({ error: "Internal server error" });
   });
 
   // importantly only setup vite in development and after

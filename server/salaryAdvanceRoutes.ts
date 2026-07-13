@@ -20,7 +20,12 @@ import {
 // client can NEVER substitute an arbitrary objectPath.  The token is opaque to
 // the client and expires after 15 minutes.
 function _uploadTokenSecret(): string {
-  return process.env.SESSION_SECRET || "advance-upload-token-secret-fallback";
+  const secret = process.env.SESSION_SECRET;
+  if (!secret) {
+    console.error("MISSING_SECRET: SESSION_SECRET is not set — advance upload token signing is unsafe");
+    throw new Error("MISSING_SECRET: SESSION_SECRET");
+  }
+  return secret;
 }
 
 function signUploadToken(advanceId: string, objectPath: string): string {
@@ -30,13 +35,17 @@ function signUploadToken(advanceId: string, objectPath: string): string {
 }
 
 function verifyUploadToken(token: string, advanceId: string): string | null {
+  // Obtain the secret first — outside the try/catch so a MISSING_SECRET error
+  // propagates up to the route handler (500) rather than being swallowed as an
+  // invalid-token path (400).
+  const secret = _uploadTokenSecret();
   try {
     const lastDot = token.lastIndexOf(".");
     if (lastDot < 0) return null;
     const payloadB64 = token.slice(0, lastDot);
     const sig = token.slice(lastDot + 1);
     const payloadStr = Buffer.from(payloadB64, "base64url").toString();
-    const expectedSig = crypto.createHmac("sha256", _uploadTokenSecret()).update(payloadStr).digest("hex").slice(0, 20);
+    const expectedSig = crypto.createHmac("sha256", secret).update(payloadStr).digest("hex").slice(0, 20);
     if (sig !== expectedSig) return null;
     const payload = JSON.parse(payloadStr) as { advanceId: string; objectPath: string; ts: number };
     if (payload.advanceId !== advanceId) return null;

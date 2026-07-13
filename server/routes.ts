@@ -855,8 +855,13 @@ export async function registerRoutes(
   // attribute reactions to an HMAC of it (never the raw id). No anonId is
   // created on read — only when a visitor actually reacts.
   function hashSessionAnonId(anonId: string): string {
+    const secret = process.env.SESSION_SECRET;
+    if (!secret) {
+      console.error("MISSING_SECRET: SESSION_SECRET is not set — insight reaction HMAC is unsafe");
+      throw new Error("MISSING_SECRET: SESSION_SECRET");
+    }
     return crypto
-      .createHmac("sha256", process.env.SESSION_SECRET || "insights-reaction-secret")
+      .createHmac("sha256", secret)
       .update(anonId)
       .digest("hex");
   }
@@ -15180,7 +15185,12 @@ export async function registerRoutes(
       const refNumber = `SOP-${doc.code}-V${doc.version}-${userId.slice(0, 8)}`;
       const payload = `${doc.sopMasterId}|${doc.version}|${userId}|${typedName}|${now.toISOString()}`;
       const contentHash = crypto.createHash("sha256").update(payload).digest("hex");
-      const authCode = crypto.createHmac("sha256", process.env.LETTER_HMAC_SECRET || process.env.OFFER_SIGNING_KEY || "sop-fallback")
+      const _sopHmacSecret = process.env.LETTER_HMAC_SECRET || process.env.OFFER_SIGNING_KEY;
+      if (!_sopHmacSecret) {
+        console.error("MISSING_SECRET: LETTER_HMAC_SECRET (or OFFER_SIGNING_KEY) is not set — SOP acknowledgement auth code signing is unsafe");
+        throw new Error("MISSING_SECRET: LETTER_HMAC_SECRET");
+      }
+      const authCode = crypto.createHmac("sha256", _sopHmacSecret)
         .update(payload).digest("hex").substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || "";
 
       await recordSignature({
@@ -24997,6 +25007,19 @@ export async function registerRoutes(
       console.error("[BD] save-as-idea:", err);
       res.status(500).json({ error: err?.message || "Failed to save as content idea" });
     }
+  });
+
+  // ── Global Express error handler ─────────────────────────────────────────────
+  // Must be the last middleware registered (4-argument signature).
+  // Catches any error passed via next(err) or thrown in async route handlers
+  // wrapped by Express 5 / express-async-errors. Returns a safe JSON body
+  // with no stack trace exposed to the client.
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    console.error("[global-error-handler]", err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    res.status(500).json({ error: "Internal server error" });
   });
 
   return httpServer;
