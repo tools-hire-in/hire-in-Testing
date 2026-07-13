@@ -2834,6 +2834,10 @@ export const studioContentIdeas = pgTable("studio_content_ideas", {
   // studio_articles.social_cards_jsonb ({family, layout, generatedAt, cards:[...]}).
   socialCardsJsonb: jsonb("social_cards_jsonb"),
   createdByUserId: varchar("created_by_user_id"),
+  // Commercial Intelligence Bridge: structured metadata when origin = 'bd_agent'.
+  // Stores { sourceConversationId, domain, buyerStage, painPointTheme, icpHint }
+  // from the BD conversation that generated this brief.
+  bdIntelMetadata: jsonb("bd_intel_metadata"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

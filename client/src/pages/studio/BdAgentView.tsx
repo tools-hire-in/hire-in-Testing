@@ -27,7 +27,9 @@ import {
   Copy,
   Edit3,
   Globe,
+  Zap,
 } from "lucide-react";
+import { BUYER_STAGE_OPTIONS, PAIN_POINT_OPTIONS } from "@shared/agentIntelligenceContracts";
 
 type BdAgentMode =
   | "account_discovery"
@@ -210,6 +212,11 @@ export default function BdAgentView() {
   const [showNewConvDialog, setShowNewConvDialog] = useState(false);
   const [newConvDomain, setNewConvDomain] = useState("general");
 
+  // Save-as-idea structured BD intel fields
+  const [saveBuyerStage, setSaveBuyerStage] = useState("");
+  const [savePainPoint, setSavePainPoint] = useState("");
+  const [saveDomain, setSaveDomain] = useState("");
+
   // "Build targeted client deck" modal state
   const [deckSourceMsg, setDeckSourceMsg] = useState<BdMessage | null>(null);
   const [deckClientName, setDeckClientName] = useState("");
@@ -361,11 +368,14 @@ export default function BdAgentView() {
   }, [bdProjects, activeProjectId]);
 
   const saveIdeaMutation = useMutation({
-    mutationFn: (body: { title: string; content: string; projectId: string }) =>
+    mutationFn: (body: { title: string; content: string; projectId: string; detectedDomain?: string; buyerStage?: string; painPointTheme?: string; sourceConversationId?: string }) =>
       apiRequest("POST", "/api/studio/bd/save-as-idea", body).then((r: any) => r.json()),
     onSuccess: () => {
       toast({ title: "Saved!", description: "Added to your Studio content pipeline." });
       setSaveMsg(null);
+      setSaveBuyerStage("");
+      setSavePainPoint("");
+      setSaveDomain("");
     },
     onError: (err: any) =>
       toast({ title: "Save failed", description: err?.message, variant: "destructive" }),
@@ -375,6 +385,9 @@ export default function BdAgentView() {
     setSaveMsg(msg);
     setSaveTitle(msg.content.split("\n")[0].replace(/^#+\s*/, "").slice(0, 100));
     setSaveProjectId(bdProjects[0]?.id ?? "");
+    setSaveBuyerStage("");
+    setSavePainPoint("");
+    setSaveDomain("");
   };
 
   const sendMutation = useMutation({
@@ -892,10 +905,13 @@ export default function BdAgentView() {
       </Dialog>
 
       {/* Save message as content idea dialog */}
-      <Dialog open={!!saveMsg} onOpenChange={(o) => { if (!o) setSaveMsg(null); }}>
+      <Dialog open={!!saveMsg} onOpenChange={(o) => { if (!o) { setSaveMsg(null); setSaveBuyerStage(""); setSavePainPoint(""); setSaveDomain(""); } }}>
         <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle>Save as Content Idea</DialogTitle>
+            <DialogTitle className="flex items-center gap-2">
+              <BookmarkPlus className="h-4 w-4" />
+              Save as Content Idea
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
@@ -925,9 +941,59 @@ export default function BdAgentView() {
                 </Select>
               )}
             </div>
+            <div className="rounded-md border bg-muted/30 px-3 py-2.5 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <Zap className="h-3 w-3" />
+                BD Intel (optional — helps Content team prioritise)
+              </p>
+              <div className="grid grid-cols-3 gap-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Domain</Label>
+                  <Select value={saveDomain || "__none__"} onValueChange={(v) => setSaveDomain(v === "__none__" ? "" : v)}>
+                    <SelectTrigger className="h-7 text-xs" data-testid="select-save-domain">
+                      <SelectValue placeholder="Domain" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— none —</SelectItem>
+                      {DOMAIN_OPTIONS.map((d) => (
+                        <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Buyer stage</Label>
+                  <Select value={saveBuyerStage || "__none__"} onValueChange={(v) => setSaveBuyerStage(v === "__none__" ? "" : v)}>
+                    <SelectTrigger className="h-7 text-xs" data-testid="select-save-buyer-stage">
+                      <SelectValue placeholder="Stage" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— none —</SelectItem>
+                      {BUYER_STAGE_OPTIONS.map((s) => (
+                        <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Pain point</Label>
+                  <Select value={savePainPoint || "__none__"} onValueChange={(v) => setSavePainPoint(v === "__none__" ? "" : v)}>
+                    <SelectTrigger className="h-7 text-xs" data-testid="select-save-pain-point">
+                      <SelectValue placeholder="Theme" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">— none —</SelectItem>
+                      {PAIN_POINT_OPTIONS.map((p) => (
+                        <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSaveMsg(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setSaveMsg(null); setSaveBuyerStage(""); setSavePainPoint(""); setSaveDomain(""); }}>Cancel</Button>
             <Button
               disabled={!saveTitle.trim() || !saveProjectId || saveIdeaMutation.isPending || bdProjects.length === 0}
               onClick={() =>
@@ -935,11 +1001,15 @@ export default function BdAgentView() {
                   title: saveTitle.trim(),
                   content: saveMsg?.content ?? "",
                   projectId: saveProjectId,
+                  ...(saveDomain ? { detectedDomain: saveDomain } : {}),
+                  ...(saveBuyerStage ? { buyerStage: saveBuyerStage } : {}),
+                  ...(savePainPoint ? { painPointTheme: savePainPoint } : {}),
+                  ...(selectedConvId ? { sourceConversationId: selectedConvId } : {}),
                 })
               }
               data-testid="button-agent-confirm-save"
             >
-              {saveIdeaMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+              {saveIdeaMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save to Pipeline"}
             </Button>
           </DialogFooter>
         </DialogContent>

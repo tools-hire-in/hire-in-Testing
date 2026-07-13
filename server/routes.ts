@@ -91,6 +91,8 @@ import {
   resolveBrief,
 } from "./services/aiDraftService";
 import { runStaffingSafetyGate } from "./services/staffingSafetyGate";
+import { buildRelatedContentBlock } from "./services/commercialIntelligenceService";
+import { normalizeDomain } from "@shared/agentIntelligenceContracts";
 import { bdConversations, bdMessages } from "@shared/schema";
 import { z } from "zod";
 // express-rate-limit kept for other potential uses; verify endpoint uses a
@@ -24797,9 +24799,12 @@ export async function registerRoutes(
         .limit(20);
       const contextMessages = history.reverse() as { role: "user" | "assistant"; content: string }[];
 
+      const convDomain = (conv as any).domain ?? "general";
+      const relatedBlock = await buildRelatedContentBlock(normalizeDomain(convDomain)).catch(() => "");
       const result = await runBdAgentChat(contextMessages, {
         brandVoiceContext: bvContext || undefined,
-        domain: (conv as any).domain ?? "general",
+        domain: convDomain,
+        relatedContentBlock: relatedBlock || undefined,
       });
 
       // Persist assistant reply
@@ -24881,10 +24886,13 @@ export async function registerRoutes(
   app.post("/api/studio/bd/save-as-idea", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
     try {
       const userId = (req.session as any)?.userId;
-      const { title, content, contentType, projectId } = req.body || {};
+      const { title, content, contentType, projectId, detectedDomain, buyerStage, painPointTheme, icpHint, sourceConversationId } = req.body || {};
       if (!title?.trim()) return res.status(400).json({ error: "title is required" });
       if (!content?.trim()) return res.status(400).json({ error: "content is required" });
       if (!projectId?.trim()) return res.status(400).json({ error: "projectId is required" });
+      const bdIntelMetadata = (detectedDomain || buyerStage || painPointTheme || icpHint || sourceConversationId)
+        ? { detectedDomain: detectedDomain ?? null, buyerStage: buyerStage ?? null, painPointTheme: painPointTheme ?? null, icpHint: icpHint ?? null, sourceConversationId: sourceConversationId ?? null }
+        : null;
       const created = await storage.createStudioContentIdea({
         projectId,
         topic: String(title).trim().slice(0, 200),
@@ -24894,6 +24902,7 @@ export async function registerRoutes(
         status: "idea",
         brief: String(content).slice(0, 5000),
         createdByUserId: userId,
+        bdIntelMetadata,
       } as any);
       res.status(201).json(created);
     } catch (err: any) {

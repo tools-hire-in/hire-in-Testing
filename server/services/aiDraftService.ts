@@ -951,7 +951,7 @@ async function loadMasterDeckContext(domain: string | null | undefined): Promise
 
 // ── System prompt builder ─────────────────────────────────────────────────────
 
-function buildBdSystemPrompt(mode: BdAgentMode, deckContext: string, brandVoice: string): string {
+function buildBdSystemPrompt(mode: BdAgentMode, deckContext: string, brandVoice: string, relatedContent?: string): string {
   const corePrompt = `You are the BD Agent for Hire'in Solutions — an AI-enabled staffing and talent acquisition operating partner.
 
 IDENTITY RULE: Represent Hire'in as "an AI-enabled staffing and talent acquisition operating partner." NEVER describe it as "a staffing agency with AI."
@@ -1161,7 +1161,7 @@ GUARDRAILS:
 - Do not present an inference, observation, or unverified research item as a confirmed fact
 - Do not claim superiority over a competitor without evidence
 - Be honest when information is insufficient to give a high-confidence answer
-${brandVoice ? `\nBRAND VOICE CONTEXT:\n${brandVoice}` : ""}`;
+${brandVoice ? `\nBRAND VOICE CONTEXT:\n${brandVoice}` : ""}${relatedContent ? `\n\n${relatedContent}` : ""}`;
 
   if (deckContext) {
     return corePrompt + `\n\n${deckContext}\n\nWhen referencing approved positioning, cite the specific slide (e.g., "Based on Slide 4 of the Healthcare master deck…") so the rep knows the source.`;
@@ -1345,11 +1345,12 @@ export interface BdChatResult {
 
 export async function runBdAgentChat(
   messages: BdChatMessage[],
-  opts?: { brandVoiceContext?: string; domain?: string },
+  opts?: { brandVoiceContext?: string; domain?: string; relatedContentBlock?: string },
 ): Promise<BdChatResult> {
   const model = TIER_MODELS.standard;
   const brandVoice = opts?.brandVoiceContext ?? "";
   const domain = opts?.domain ?? "general";
+  const relatedContent = opts?.relatedContentBlock ?? "";
 
   // Classify intent from the last user message (cheap mini-model call)
   const lastUserMsg = [...messages].reverse().find((m) => m.role === "user")?.content ?? "";
@@ -1358,7 +1359,7 @@ export async function runBdAgentChat(
     loadMasterDeckContext(domain),
   ]);
 
-  const systemPrompt = buildBdSystemPrompt(mode, deckContext, brandVoice);
+  const systemPrompt = buildBdSystemPrompt(mode, deckContext, brandVoice, relatedContent);
 
   try {
     const completion = await openai.chat.completions.create({

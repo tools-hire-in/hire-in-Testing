@@ -725,7 +725,13 @@ export function IdeaPeek({
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={idea.status} />
                 <Badge variant="outline" className="text-[10px]">{typeCfg?.label || idea.contentType}</Badge>
-                {idea.origin !== "manual" && <Badge variant="outline" className="text-[10px]">{idea.origin}</Badge>}
+                {idea.origin !== "manual" && idea.origin === "bd_agent" ? (
+                  <Badge variant="outline" className="text-[10px] border-amber-400 text-amber-700 bg-amber-50 dark:bg-amber-950/30 dark:text-amber-400">
+                    ⚡ From BD Intel
+                  </Badge>
+                ) : idea.origin !== "manual" ? (
+                  <Badge variant="outline" className="text-[10px]">{idea.origin}</Badge>
+                ) : null}
                 {(idea.channels as string[] | null)?.map((c) => (
                   <Badge key={c} variant="secondary" className="text-[10px]">{c}</Badge>
                 ))}
@@ -845,6 +851,33 @@ export function IdeaPeek({
                 </div>
               </div>
 
+              {idea.origin === "bd_agent" && (idea as any).bdIntelMetadata && (
+                <div className="rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2 space-y-1">
+                  <p className="text-xs font-medium text-amber-700 dark:text-amber-400 flex items-center gap-1">
+                    ⚡ BD Intel
+                  </p>
+                  <div className="grid grid-cols-3 gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                    {(idea as any).bdIntelMetadata?.detectedDomain && (
+                      <div>
+                        <span className="font-medium">Domain:</span>{" "}
+                        <span className="capitalize">{String((idea as any).bdIntelMetadata.detectedDomain).replace(/_/g, " ")}</span>
+                      </div>
+                    )}
+                    {(idea as any).bdIntelMetadata?.buyerStage && (
+                      <div>
+                        <span className="font-medium">Stage:</span>{" "}
+                        <span className="capitalize">{String((idea as any).bdIntelMetadata.buyerStage).replace(/_/g, " ")}</span>
+                      </div>
+                    )}
+                    {(idea as any).bdIntelMetadata?.painPointTheme && (
+                      <div>
+                        <span className="font-medium">Pain point:</span>{" "}
+                        <span className="capitalize">{String((idea as any).bdIntelMetadata.painPointTheme).replace(/_/g, " ")}</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
               {idea.brief && (
                 <div>
                   <Label className="text-xs text-muted-foreground">Brief</Label>

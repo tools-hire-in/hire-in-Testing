@@ -1,0 +1,198 @@
+Do not make Task #999 depend on the full current Task #997.
+
+That dependency is what creates the problem. Task #997 currently includes registries, dashboards, dynamic prompt changes and governance workflows that #999 does not actually need.
+
+Correct dependency structure
+Shared canonical agent contracts
+        ├── Task #997: Cross-agent bridge
+        └── Task #999: Feedback capture
+
+Both tasks need the same small shared foundation, but neither should wait for the other’s complete feature set.
+
+Change Task #997
+
+Rename it:
+
+#997 — Shared Commercial Intelligence Bridge MVP
+
+Keep in #997
+One shared canonical taxonomy and normalizer
+BD “Send to Content Studio”
+Structured metadata:
+source conversation
+domain
+audience
+buyer stage
+pain-point theme
+“From BD Intelligence” label in Content Studio
+Content owner accept, edit or reject
+Approved or published articles registered as reusable content assets
+Matching content surfaced in the BD Agent as Related Published Content
+One thin commercialIntelligenceService
+Remove from #997 and move to a later backlog task
+Shared Claim Registry
+Automatic article-to-claim creation
+Full ICP database and settings UI
+Dynamic replacement of tested prompt intelligence
+Executive dashboard
+Claim-expiration workflow
+Coverage-gap analytics
+New executive permissions
+Revenue attribution
+Autonomous learning
+Revised dependency for #997
+Depends on:
+- Existing BD Agent conversation/message records
+- Existing Content Studio idea/article records
+- Shared canonical agent contracts
+
+It should not depend on Task #999.
+
+Change Task #999
+
+Rename it:
+
+#999 — Shared Agent Feedback Capture MVP
+
+Remove this dependency
+Dependency:
+Shared Commercial Intelligence Hub — Multi-Agent Foundation
+Replace it with
+Dependencies:
+- Existing BD message IDs
+- Existing Content Studio generation IDs
+- Shared canonical agent contracts
+
+Optional enrichment:
+- If Task #997 metadata is available, include ICP, buyer stage and pain-point theme.
+- If it is not available, store those fields as null and continue capturing feedback.
+
+That last point is important. Feedback must not fail merely because ICP or shared-intelligence metadata has not been completed.
+
+Keep in #999
+One generic agent_feedback_events table
+One shared feedback-recording service
+BD response feedback:
+Helpful
+Not useful
+Used in call
+Used in deck
+Short negative-reason selector
+Existing BD actions recorded as implicit events
+Content lifecycle events:
+Accepted
+Edited then accepted
+Discarded
+Regenerated
+Sent for review
+Published
+Prompt version
+Model version
+Domain and audience when available
+Source record ID
+User and timestamp
+Remove from #999 for tomorrow
+BD Insights dashboard
+Content Performance Feed
+Knowledge Owner weekly digest
+Response Quality Index
+Executive dashboard integration
+Claim Registry analysis
+Automatic gap analysis
+Cron jobs
+New feature flags
+Employee performance scoring
+Prompt tuning
+Add one tiny shared prerequisite
+
+Create a small module before either task:
+
+shared/agentIntelligenceContracts.ts
+
+It should define:
+
+AgentType
+CanonicalDomain
+CanonicalAudience
+BuyerStage
+PainPointTheme
+FeedbackEventType
+FeedbackReasonCode
+SourceSystem
+
+And shared normalizers such as:
+
+normalizeDomain()
+normalizeAudience()
+normalizeBuyerStage()
+
+This should take hours, not days.
+
+Both #997 and #999 import this module. That prevents each task from inventing its own labels.
+
+Correct implementation sequence
+Step 1 — Shared contracts
+
+Build the canonical types and normalizers.
+
+Step 2 — Run #997 and #999 independently
+
+They can be worked on in parallel.
+
+#997 writes and reads commercial context
+BD pain point
+→ Content idea
+→ Published content asset
+→ Related content shown to BD
+#999 records user behavior
+Agent output
+→ User feedback or action
+→ Feedback event stored
+Step 3 — Connect metadata later
+
+When #997 supplies:
+
+ICP
+Buyer stage
+Pain-point theme
+
+#999 records those values with future feedback events.
+
+Existing feedback records do not need to be rewritten unless the source record already contains reliable metadata.
+
+Copy this update into Task #999
+
+Task #999 must no longer depend on completion of the full Shared Commercial Intelligence Hub.
+
+It depends only on the existing BD message records, Content Studio generation records and the shared canonical agent-contract module.
+
+The feedback model must support nullable ICP, buyer-stage and pain-point fields. When Task #997 structured metadata is available, include it. When it is unavailable, feedback capture must continue without it.
+
+Build only the shared feedback-events table, recording service, compact BD feedback controls, implicit BD action tracking and existing Content Studio outcome tracking.
+
+Do not build dashboards, weekly digests, claim analytics, executive reporting, prompt tuning or employee scoring in this release.
+
+Copy this update into Task #997
+
+Reduce Task #997 to the Shared Commercial Intelligence Bridge MVP.
+
+Build only the shared taxonomy, BD-to-Content structured idea handoff, Content-to-BD published-resource handoff and thin commercial-intelligence service.
+
+Published content must be treated as a reusable resource, not a claim or proof point.
+
+Move the claim registry, full ICP registry and management UI, executive dashboard, dynamic prompt replacement, automated coverage analysis and governance workflows to a later task.
+
+Task #997 and Task #999 share canonical contracts but must not block one another.
+
+Final dependency map
+Shared agent contracts
+        |
+        ├── #997 Cross-Agent Bridge MVP
+        |
+        └── #999 Feedback Capture MVP
+
+30–60 days of usage
+        |
+        └── Later analytics, dashboards, digests and governance
+
+This keeps tomorrow’s release achievable while preserving the correct long-term architecture.
