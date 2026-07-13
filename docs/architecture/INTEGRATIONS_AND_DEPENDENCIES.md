@@ -1,0 +1,146 @@
+Status: Current-state automated system reference
+Generated from: code, schema, routes, configuration, and existing documents
+Date: 2026-07-13
+Human approval required: Yes — for all UNABLE_TO_CONFIRM items listed within
+Unresolved items: 4 — see OWNER_REVIEW_REQUIRED sections within
+
+---
+
+# Integrations and External Dependencies
+
+## Ceipal ATS
+
+**Service name:** Ceipal ATS  
+**Purpose:** Bidirectional ATS integration. Inbound: synchronizes job postings from Ceipal into the local `jobs` table. Outbound: pushes applicant records when a candidate applies through the public site.  
+**Authentication method:** Three-credential flow. The service sends `CEIPAL_EMAIL`, `CEIPAL_PASSWORD`, and `CEIPAL_API_KEY` to the Ceipal auth endpoint to obtain a Bearer token. The token is cached in memory and refreshed every 55 minutes. `CONFIRMED_IN_CODE` — `server/ceipalService.ts`  
+**Trigger:** Job sync is triggered by an authenticated admin user action (manual sync button in the Jobs admin UI). Applicant push is triggered automatically when a candidate submits a job application via the public site. `CONFIRMED_IN_CODE`  
+**Data exchanged:**
+- Inbound (job sync): job title, specialty, department, facility, city, state, job type, shift, duration, pay rate, bill rate, start date, description, requirements, Ceipal job code and ID.
+- Outbound (applicant push): candidate name, email, phone, current employer, LinkedIn URL, and base64-encoded resume file.
+**Failure behavior:** `syncCeipalJobs()` throws an error on auth or network failure, which is caught by the calling route and returned as a 500. `pushApplicantToCeipal()` catches errors, updates the application record with `ceipalSyncStatus = 'failed'`, and returns a non-throwing result with the error message — the application is still saved locally. `CONFIRMED_IN_CODE`  
+**Retry behavior:** No automatic retry. Failed pushes remain in `ceipalSyncStatus = 'failed'` state. Admin users can manually retry via the `admin.applications.retryCeipal` permission. `CONFIRMED_IN_CODE`  
+**Owner:** Recruitment / Operations  
+**Test/sandbox availability:** `UNABLE_TO_CONFIRM — OWNER REVIEW REQUIRED` — whether a Ceipal sandbox environment is configured cannot be determined from code alone.  
+**Data sensitivity:** Receives PII (candidate name, email, phone, LinkedIn, resume). Sends the same PII outbound to Ceipal.
+
+---
+
+## SendGrid
+
+**Service name:** SendGrid  
+**Purpose:** All outbound transactional email for the platform.  
+**Authentication method:** `SENDGRID_API_KEY_NEW` environment variable, passed as API key to the `@sendgrid/mail` SDK. `CONFIRMED_IN_CODE` — `server/email.ts`  
+**Confirmed sender address:** `alina.carter@hire-in.com`. Domain authentication verified for `hire-in.com` (DKIM, CNAME, automatic security). `CONFIRMED_IN_EXISTING_GUIDE` — `docs/ops/sendgrid-sender-verification.md`  
+**Trigger:** User actions (offer letter send, letter issue, leave decision, onboarding welcome) and scheduled jobs (monthly leave accrual notification, salary report approval reminder, night shift consent expiry alert, plan overdue reminder). `CONFIRMED_IN_CODE`  
+**Email types sent (confirmed):**
+- Welcome email on account creation
+- Password reset
+- Offer letter to candidate
+- Offer letter pending approval (to Super Admin)
+- Offer letter approval decision (to creating manager)
+- Onboarding welcome with credentials
+- HR letter delivery
+- Addendum delivery and acceptance confirmation
+- Salary slip delivery
+- Salary report dispatch
+- Salary run ready / salary deposited
+- Leave applied notification
+- Leave decision (approved/rejected)
+- Document reminder
+- Studio article published / rejected / author sign-off
+- Newsletter welcome
+- Rayo Academy credentials
+- Salary report approval reminder
+- Plan overdue reminder and escalation
+- Offer letter expiry reminder
+- Night shift consent expiry alert
+**Failure behavior:** Errors are caught and logged to the console. For automated emails, failures are recorded to the `communication_log` database table. The sending function returns `{ success: false, error: ... }` and does not throw, so email failures never block the originating workflow action. `CONFIRMED_IN_CODE`  
+**Retry behavior:** No automatic retry. Failed emails are visible in the `communication_log` table for inspection. `CONFIRMED_IN_CODE`  
+**Owner:** HR / Admin (communications settings managed in HRSettings)  
+**Test/sandbox availability:** `UNABLE_TO_CONFIRM — OWNER REVIEW REQUIRED` — whether a SendGrid sandbox mode is configured is not determinable from code.  
+**Data sensitivity:** Receives PII (employee names, email addresses, salary amounts in slip emails, offer compensation, credentials in onboarding welcome).
+
+---
+
+## Google Cloud Storage
+
+**Service name:** Google Cloud Storage  
+**Purpose:** Object storage for all file uploads: resumes, employee documents, HR letter PDFs, offer letter files, addendum DOCX files, and social card images generated by the Content Studio.  
+**Authentication method:** `CONFIRMED_IN_CODE` — authentication is handled via the Replit Object Storage integration (`javascript_object_storage==2.0.0`). The `ObjectStorageService` class in `server/replit_integrations/object_storage/objectStorage.ts` wraps the GCS client. Environment variable names for GCS credentials are managed by the Replit integration layer.  
+**Trigger:** File uploads are triggered by user actions (resume upload on application, document upload in employee profile, letter PDF generation). Pre-signed URLs are generated server-side and used for client-side direct upload.  
+**Data exchanged:** Binary file uploads (PDF, DOCX, images, resumes). Returns file URLs for storage in the database.  
+**Failure behavior:** Upload route errors are returned as HTTP error responses. `UNABLE_TO_CONFIRM — OWNER REVIEW REQUIRED` — detailed error handling and retry behavior for GCS failures are not fully confirmed from code reading alone.  
+**Retry behavior:** None confirmed.  
+**Owner:** HR / Admin (for employee documents), Candidates (for resumes), Content Studio (for article images)  
+**Test/sandbox availability:** Uses the Replit-provisioned bucket. No separate test bucket confirmed.  
+**Data sensitivity:** Stores PII-containing documents (resumes, identity documents, bank proof) and confidential HR documents (salary slips, offer letters, HR letters).
+
+---
+
+## Rayo Academy
+
+**Service name:** Rayo Academy  
+**Purpose:** External training platform. Hire'in provisions employees, assigns learning tracks, and retrieves progress summaries. The training content, quizzes, and certificates are owned by Rayo Academy. Hire'in is the source of truth for employee records; Rayo Academy is the source of truth for training content and completion. `CONFIRMED_IN_EXISTING_GUIDE` — `docs/training/rayo-academy-blueprint.md`  
+**Authentication method:** Bearer token API key stored in the `system_settings` database table under the key `rayo_academy_api_key`. The API base URL is stored under `rayo_academy_api_url`. Credentials are configured by HR/Admin in the platform settings rather than via environment variables. `CONFIRMED_IN_CODE` — `server/rayoAcademyClient.ts`  
+**Trigger:** Employee provisioning is triggered when HR initiates onboarding for a new hire. Track assignment is triggered by manager/HR action. Progress retrieval is triggered on-demand when training views are loaded. `CONFIRMED_IN_CODE`  
+**Data exchanged:**
+- Outbound (provision): employee email, display name, role.
+- Outbound (assign): employee email, track ID.
+- Inbound (progress): progress percentage, status, compliance data.
+- Inbound (tracks): track definitions (name, description, metadata).
+**Failure behavior:** Graceful fallback. When the API is unavailable, disabled, or returns an error, `rayoAcademyClient.ts` falls back to local database lookups for track definitions and assignment records. API calls use a 10-second timeout. `CONFIRMED_IN_CODE`  
+**Retry behavior:** None confirmed. Failures are logged but not retried automatically.  
+**Owner:** HR / Manager (provisioning and assignment), with `rayoAcademy.assign` and `rayoAcademy.provision` permissions. `CONFIRMED_IN_CODE`  
+**Test/sandbox availability:** `UNABLE_TO_CONFIRM — OWNER REVIEW REQUIRED` — whether a Rayo Academy sandbox environment exists is not determinable from code.  
+**Data sensitivity:** Sends employee email and display name to Rayo Academy.
+
+---
+
+## Replit Auth (OpenID Connect)
+
+**Service name:** Replit Auth  
+**Purpose:** Alternative authentication provider using OpenID Connect. Provides a "Login with Replit" path alongside the native email/password system.  
+**Authentication method:** OpenID Connect. The `openid-client` package is used. The Replit integration `javascript_log_in_with_replit==2.0.0` is installed. `CONFIRMED_IN_CODE`  
+**Trigger:** User-initiated login via "Login with Replit" option.  
+**Data exchanged:** OIDC identity tokens (sub, email, profile claims from Replit's identity provider).  
+**Failure behavior:** `UNABLE_TO_CONFIRM — OWNER REVIEW REQUIRED` — the specific OIDC callback handling and error paths for Replit Auth failure are not fully confirmed from the files reviewed.  
+**Owner:** Platform / IT  
+**Data sensitivity:** Receives Replit user identity (email, display name, Replit user ID).
+
+---
+
+## Replit AI Integrations
+
+**Service name:** Replit AI Integrations (OpenAI-compatible)  
+**Purpose:** Generative AI capabilities for the Content Studio and BD Agent. Powers article draft generation, social kit creation, quality review, campaign planning, repurpose ideas, outreach sequence generation, BD template generation, and BD agent conversational chat.  
+**Authentication method:** `AI_INTEGRATIONS_OPENAI_API_KEY` and `AI_INTEGRATIONS_OPENAI_BASE_URL` environment variables. Proxied through the Replit AI Integrations layer. `CONFIRMED_IN_CODE` — `server/services/aiDraftService.ts`  
+**Trigger:** User-initiated actions within the Content Studio (generate draft, run quality review) and the BD Agent chat interface. Release notes generation is also AI-assisted and triggered by admin action.  
+**Data exchanged:** Text prompts composed from Studio settings (brand name, brand voice, topic, industry, platform, content type, author name). No HR records, salary data, or employee PII are automatically injected into prompts. The risk of a user voluntarily pasting PII into a prompt exists but is not architecturally enforced. `CONFIRMED_IN_CODE` — confirmed by the AI governance audit in `docs/ai-governance-audit/GOVERNANCE-MVP-READINESS.md`.  
+**Model tiers used:** economy (`gpt-5-mini`), standard/strong (`gpt-5.4`). `CONFIRMED_IN_CODE`  
+**Failure behavior:** `isAiConfigured()` checks for the presence of both env vars before any AI call. If not configured, AI features are gracefully disabled with an appropriate error response. `CONFIRMED_IN_CODE`  
+**Owner:** Content Studio / Admin  
+**Data sensitivity:** Low. No automatic PII injection. User-typed content in prompts is the only risk surface.
+
+---
+
+## PostgreSQL (Database)
+
+**Service name:** PostgreSQL  
+**Purpose:** Primary data store for all application data and session management.  
+**Authentication method:** `DATABASE_URL` environment variable (connection string). `CONFIRMED_IN_CODE` — `drizzle.config.ts`, `server/db.ts`.  
+**Connection approach:** Single bounded connection pool managed in `server/db.ts`. The session store reuses this same pool to prevent connection exhaustion during login bursts. `CONFIRMED_IN_CODE`  
+**Data sensitivity:** Contains all employee PII, salary data, HR documents, and authentication credentials (bcrypt-hashed passwords, TOTP secrets). Highest sensitivity data store in the system.
+
+---
+
+## Summary Table
+
+| Service | Purpose | Auth Method | Receives PII | Failure Mode | Retry |
+|---|---|---|---|---|---|
+| Ceipal ATS | Job sync + applicant push | Env vars (email/password/API key) | Yes (candidate) | Local save preserved; sync flagged failed | Manual |
+| SendGrid | Transactional email | Env var (API key) | Yes (employee, candidate) | Logged, non-blocking | None |
+| Google Cloud Storage | File storage | Replit integration | Yes (documents, resumes) | HTTP error returned | None confirmed |
+| Rayo Academy | External training | DB-stored API key | Yes (employee email) | Graceful fallback to local | None |
+| Replit Auth | OIDC login | OIDC (managed by Replit) | Yes (identity) | UNABLE_TO_CONFIRM | UNABLE_TO_CONFIRM |
+| Replit AI Integrations | Generative AI (Studio) | Env vars (AI integration keys) | Low risk | Graceful disabled if not configured | None |
+| PostgreSQL | Primary database | Env var (connection string) | Yes (all data) | Connection pool; bounded | n/a |
