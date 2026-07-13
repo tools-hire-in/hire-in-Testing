@@ -1,6 +1,7 @@
 import { type Express } from "express";
 import { createServer as createViteServer, createLogger } from "vite";
 import { type Server } from "http";
+import http from "http";
 import viteConfig from "../vite.config";
 import fs from "fs";
 import path from "path";
@@ -31,6 +32,17 @@ export async function setupVite(server: Server, app: Express) {
   });
 
   app.use(vite.middlewares);
+
+  // Proxy /__mockup/ requests to the mockup sandbox dev server (port 23636)
+  app.use("/__mockup", (req, res) => {
+    const target = `http://localhost:23636/__mockup${req.url}`;
+    const proxyReq = http.request(target, { method: req.method, headers: req.headers }, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode || 200, proxyRes.headers);
+      proxyRes.pipe(res, { end: true });
+    });
+    proxyReq.on("error", () => res.status(502).send("Mockup sandbox unavailable"));
+    req.pipe(proxyReq, { end: true });
+  });
 
   app.use("/{*path}", async (req, res, next) => {
     const url = req.originalUrl;
