@@ -17,6 +17,106 @@ function LogoIcon({ size = 40 }: { size?: number }) {
   );
 }
 
+/* ─── Subscribe Modal ────────────────────────────────────────────────────── */
+function SubscribeModal({ onClose }: { onClose: () => void }) {
+  const [email, setEmail] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  return (
+    <div style={{ position: "fixed", inset: 0, background: "rgba(10,20,45,0.72)", backdropFilter: "blur(5px)", zIndex: 1000, display: "flex", alignItems: "center", justifyContent: "center" }} onClick={onClose}>
+      <div style={{ background: "white", borderRadius: 20, padding: "40px 44px", maxWidth: 468, width: "90%", position: "relative", boxShadow: "0 40px 100px rgba(0,0,0,0.3)" }} onClick={e => e.stopPropagation()}>
+        {/* Close */}
+        <button onClick={onClose} style={{ position: "absolute", top: 14, right: 14, background: "transparent", border: "none", cursor: "pointer", color: "#9ca3af", padding: 6 }}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+
+        {submitted ? (
+          <div style={{ textAlign: "center", paddingTop: 16, paddingBottom: 8 }}>
+            <div style={{ width: 60, height: 60, borderRadius: "50%", background: ORANGE + "18", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 18px" }}>
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={ORANGE} strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+            </div>
+            <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: NAVY, fontSize: 24, fontWeight: 700, marginBottom: 10 }}>You're in!</h3>
+            <p style={{ fontFamily: "'Inter',sans-serif", color: "#6b7280", fontSize: 14, lineHeight: 1.6 }}>Check your inbox for a confirmation. Executive insights on their way.</p>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22 }}>
+              <img src={`${import.meta.env.BASE_URL}hirein-logo.svg`} alt="" style={{ width: 36, height: 36, borderRadius: 8, flexShrink: 0 }} />
+              <div>
+                <p style={{ fontFamily: "'Inter',sans-serif", color: NAVY, fontWeight: 700, fontSize: 13, lineHeight: 1.1 }}>Hire'in Insights</p>
+                <p style={{ fontFamily: "'Inter',sans-serif", color: "#9ca3af", fontSize: 11, marginTop: 2 }}>Executive workforce intelligence</p>
+              </div>
+            </div>
+            <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: NAVY, fontSize: 26, fontWeight: 700, lineHeight: 1.2, marginBottom: 10 }}>Stay ahead of the talent curve</h2>
+            <p style={{ fontFamily: "'Inter',sans-serif", color: "#6b7280", fontSize: 14, lineHeight: 1.65, marginBottom: 26 }}>
+              Healthcare, IT & Engineering workforce insights from our research team — straight to your inbox. No fluff.
+            </p>
+            {/* Input + button */}
+            <div style={{ display: "flex", alignItems: "center", background: "#f9fafb", border: `1.5px solid ${NAVY}20`, borderRadius: 10, overflow: "hidden", marginBottom: 12 }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 14, flex: 1 }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#9ca3af" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Your work email address"
+                  style={{ background: "transparent", border: "none", outline: "none", fontFamily: "'Inter',sans-serif", fontSize: 14, color: NAVY, padding: "13px 8px 13px 0", flex: 1, width: "100%" }} />
+              </div>
+              <button onClick={() => email && setSubmitted(true)}
+                style={{ background: ORANGE, color: "white", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 700, padding: "13px 20px", border: "none", cursor: email ? "pointer" : "default", opacity: email ? 1 : 0.65, whiteSpace: "nowrap", flexShrink: 0 }}>
+                Subscribe →
+              </button>
+            </div>
+            <p style={{ fontFamily: "'Inter',sans-serif", color: "#9ca3af", fontSize: 11, textAlign: "center" }}>No spam · Unsubscribe anytime · Read by 12,000+ talent leaders</p>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Newsletter Banner (below author card) ──────────────────────────────── */
+function NewsletterBanner() {
+  const [email, setEmail] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  return (
+    <div style={{ background: `linear-gradient(130deg,${NAVY_DARK} 0%,${NAVY} 55%,${NAVY_LIGHT} 100%)`, borderRadius: 16, padding: "36px 44px", margin: "28px 0", position: "relative", overflow: "hidden" }}>
+      <div style={{ position: "absolute", top: 0, right: 0, width: 260, height: 260, borderRadius: "50%", background: ORANGE, opacity: 0.07, transform: "translate(30%,-30%)" }} />
+      {submitted ? (
+        <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+          <div style={{ width: 52, height: 52, borderRadius: "50%", background: "rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke={ORANGE} strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          </div>
+          <div>
+            <p style={{ fontFamily: "'Playfair Display',Georgia,serif", color: "white", fontSize: 20, fontWeight: 700, marginBottom: 5 }}>You're subscribed!</p>
+            <p style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.6)", fontSize: 13 }}>Check your inbox. Executive insights incoming.</p>
+          </div>
+        </div>
+      ) : (
+        <div style={{ display: "flex", alignItems: "center", gap: 48, flexWrap: "wrap" }}>
+          <div style={{ flex: 1, minWidth: 220 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+              <div style={{ width: 4, height: 24, borderRadius: 2, background: ORANGE, flexShrink: 0 }} />
+              <span style={{ fontFamily: "'Inter',sans-serif", color: ORANGE, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase" }}>Insights Newsletter</span>
+            </div>
+            <h3 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: "white", fontSize: 21, fontWeight: 700, lineHeight: 1.25, marginBottom: 8 }}>Never miss an insight</h3>
+            <p style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.5)", fontSize: 13, lineHeight: 1.6 }}>Join 12,000+ talent leaders. One email per week, no fluff.</p>
+          </div>
+          <div style={{ flex: 1, minWidth: 300 }}>
+            <div style={{ display: "flex", alignItems: "center", background: "rgba(255,255,255,0.08)", border: "1.5px solid rgba(255,255,255,0.18)", borderRadius: 10, overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, paddingLeft: 14, flex: 1 }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.45)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Your work email"
+                  style={{ background: "transparent", border: "none", outline: "none", fontFamily: "'Inter',sans-serif", fontSize: 13, color: "white", padding: "12px 6px 12px 0", flex: 1, width: "100%" }} />
+              </div>
+              <button onClick={() => email && setSubmitted(true)}
+                style={{ background: ORANGE, color: "white", fontFamily: "'Inter',sans-serif", fontSize: 13, fontWeight: 700, padding: "12px 20px", border: "none", cursor: email ? "pointer" : "default", whiteSpace: "nowrap", flexShrink: 0 }}>
+                Subscribe to Insights →
+              </button>
+            </div>
+            <p style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.3)", fontSize: 11, marginTop: 8, textAlign: "center" }}>No spam · Unsubscribe anytime</p>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ─── Share Popover ──────────────────────────────────────────────────────── */
 function SharePopover({ onClose }: { onClose: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -157,7 +257,7 @@ function AppHeader() {
 }
 
 /* ─── Article Header ─────────────────────────────────────────────────────── */
-function ArticleHeader() {
+function ArticleHeader({ onSubscribe }: { onSubscribe: () => void }) {
   const [shareOpen, setShareOpen] = useState(false);
 
   return (
@@ -230,6 +330,12 @@ function ArticleHeader() {
           <button style={{ background: NAVY, fontFamily: "'Inter',sans-serif" }} className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-medium text-white hover:brightness-110 transition-all">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" /></svg>
             Save article
+          </button>
+          <button onClick={onSubscribe}
+            className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold hover:brightness-110 transition-all"
+            style={{ background: ORANGE, color: "white", fontFamily: "'Inter',sans-serif", border: "none", cursor: "pointer" }}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+            Get Insights
           </button>
         </div>
       </div>
@@ -412,7 +518,7 @@ function CEOAuthorCard() {
                 <span key={tag} className="px-2.5 py-1 rounded-full text-xs font-medium" style={{ background: "rgba(255,255,255,0.09)", color: "rgba(255,255,255,0.75)", border: "1px solid rgba(255,255,255,0.13)", fontFamily: "'Inter',sans-serif" }}>{tag}</span>
               ))}
             </div>
-            {/* CTAs — no View Profile; LinkedIn + Email */}
+            {/* CTA — LinkedIn only; newsletter moved below author card */}
             <div className="flex items-center gap-3 flex-wrap">
               <a href="https://www.linkedin.com/company/hirein-solutions" target="_blank" rel="noreferrer"
                 className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-semibold transition-all hover:brightness-110"
@@ -420,20 +526,6 @@ function CEOAuthorCard() {
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z" /></svg>
                 Connect on LinkedIn
               </a>
-              {/* Newsletter subscribe inline */}
-              <div style={{ display: "flex", alignItems: "center", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.16)", borderRadius: 40, overflow: "hidden", flexShrink: 0 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 14, paddingRight: 4 }}>
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.6)" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                  <input
-                    type="email"
-                    placeholder="Your work email"
-                    style={{ background: "transparent", border: "none", outline: "none", color: "white", fontFamily: "'Inter',sans-serif", fontSize: 12, width: 150, padding: "8px 4px 8px 0" }}
-                  />
-                </div>
-                <button style={{ background: ORANGE, color: "white", fontFamily: "'Inter',sans-serif", fontSize: 12, fontWeight: 700, padding: "8px 14px", border: "none", cursor: "pointer", whiteSpace: "nowrap", flexShrink: 0 }}>
-                  Subscribe to Insights →
-                </button>
-              </div>
             </div>
           </div>
         </div>
@@ -549,6 +641,8 @@ function SiteFooter() {
 
 /* ─── Root ───────────────────────────────────────────────────────────────── */
 export function ArticlePreview() {
+  const [showSubscribeModal, setShowSubscribeModal] = useState(false);
+
   return (
     <div className="bg-white flex flex-col" style={{ minHeight: "100vh" }}>
       <link rel="stylesheet" media="print" onLoad={(e: any) => { e.target.media = "all"; }}
@@ -559,7 +653,7 @@ export function ArticlePreview() {
       {/* Page content — flex-1 so footer sits flush */}
       <main className="flex-1">
         <div className="max-w-4xl mx-auto px-8">
-          <ArticleHeader />
+          <ArticleHeader onSubscribe={() => setShowSubscribeModal(true)} />
           <HeroImage />
           <ArticleBody />
           <HirinPerspective />
@@ -578,14 +672,19 @@ export function ArticlePreview() {
               <div style={{ background: "#e5e7eb" }} className="h-px flex-1" />
             </div>
             <CEOAuthorCard />
-            {/* Contributing Analyst removed per feedback */}
           </div>
+
+          {/* Newsletter banner — below author, above related */}
+          <NewsletterBanner />
 
           <RelatedArticles />
         </div>
       </main>
 
       <SiteFooter />
+
+      {/* Subscribe modal — rendered at root so it overlays everything */}
+      {showSubscribeModal && <SubscribeModal onClose={() => setShowSubscribeModal(false)} />}
     </div>
   );
 }
