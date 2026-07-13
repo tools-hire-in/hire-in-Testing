@@ -124,9 +124,9 @@ function FeaturedCarousel() {
       <div className="relative rounded-2xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all" style={{ minHeight: 260 }}>
         <div className="flex h-full" style={{ minHeight: 260 }}>
 
-          {/* Left — gradient image panel */}
+          {/* Left — gradient card with title */}
           <div className="relative flex-shrink-0 flex flex-col justify-between p-7"
-            style={{ width: 320, background: art.gradient }}>
+            style={{ width: 400, background: art.gradient }}>
             <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
 
             {/* Badge + label */}
@@ -141,8 +141,14 @@ function FeaturedCarousel() {
               </span>
             </div>
 
+            {/* Title on the card */}
+            <div className="relative my-4">
+              <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: "white", lineHeight: 1.3, fontSize: 18, fontWeight: 700 }}
+                className="line-clamp-4">{art.title}</h2>
+            </div>
+
             {/* Bottom author mini */}
-            <div className="relative flex items-center gap-2.5 mt-auto pt-5">
+            <div className="relative flex items-center gap-2.5 mt-auto pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
               <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm"
                 style={{ background: art.author.color, border: "2px solid rgba(255,255,255,0.3)" }}>
                 <span style={{ fontFamily: "'Inter',sans-serif" }} className="text-white text-[10px] font-bold">{art.author.initials}</span>
@@ -154,10 +160,10 @@ function FeaturedCarousel() {
             </div>
           </div>
 
-          {/* Right — content panel */}
+          {/* Right — meta + deck + actions only, no title */}
           <div className="flex-1 bg-white flex flex-col justify-between p-8">
             <div>
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-5">
                 <TypeBadge type={art.type} />
                 <span style={{ color: "#d1d5db" }}>·</span>
                 <span style={{ fontFamily: "'Inter',sans-serif" }} className="text-xs text-gray-400">{art.date}</span>
@@ -167,9 +173,7 @@ function FeaturedCarousel() {
                   {art.readMin} min read
                 </span>
               </div>
-              <h2 style={{ color: NAVY, fontFamily: "'Playfair Display',Georgia,serif", lineHeight: 1.2 }}
-                className="text-2xl font-bold mb-3 leading-snug">{art.title}</h2>
-              <p style={{ fontFamily: "'Inter',sans-serif" }} className="text-gray-500 text-sm leading-relaxed line-clamp-3">{art.deck}</p>
+              <p style={{ fontFamily: "'Inter',sans-serif" }} className="text-gray-500 text-sm leading-relaxed line-clamp-5">{art.deck}</p>
             </div>
 
             <div className="flex items-center justify-between pt-5 border-t border-gray-50 mt-5">
