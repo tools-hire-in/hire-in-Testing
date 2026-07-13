@@ -1,0 +1,420 @@
+#999 — Shared Agent Feedback Capture MVP
+What and Why
+
+Every meaningful user action on an AI output is a useful quality signal.
+
+Examples include:
+
+A BD recommendation marked helpful
+A response used in a client call
+A recommendation saved as a content idea
+A generated article accepted
+A draft substantially edited before approval
+A response dismissed as irrelevant or inaccurate
+
+These signals should be captured from the beginning so Hire’in can later understand:
+
+Which agent outputs are useful
+Which prompts and modes perform well
+Where users repeatedly make corrections
+Which recommendations lead to real actions
+Where the agents need better context, examples, or instructions
+
+This task does not create an automated self-learning system.
+
+Feedback must not automatically modify prompts, knowledge, ICP definitions, claims, or agent behavior. Human review remains required before any system-level improvement is made.
+
+The goal of this MVP is only to create a clean, shared feedback foundation for the BD Agent, Content Copilot, and future Hire’in agents.
+
+Product Decision
+
+Use one shared feedback architecture for all agents.
+
+Do not create:
+
+A separate BD feedback system
+A separate Content Studio feedback system
+A dependency on the complete Shared Commercial Intelligence Hub
+A management analytics product in this release
+
+Task #999 must continue working even when ICP, buyer-stage, or pain-point metadata from Task #997 is unavailable.
+
+Dependencies
+
+Required:
+
+Existing bd_messages records
+Existing studio_generations records
+Existing user records
+Existing prompt and model version metadata where available
+Shared canonical agent contracts and normalizers
+
+Optional enrichment:
+
+ICP ID from Task #997
+Buyer stage from Task #997
+Pain-point theme from Task #997
+BD conversation mode from Task #996
+
+Optional fields must be nullable.
+
+Task #999 must not fail or wait for Task #997 to be completed.
+
+Shared Canonical Contracts
+
+Use or create one shared module:
+
+shared/agentIntelligenceContracts.ts
+
+It should define:
+
+Agent type
+BD_AGENT
+CONTENT_COPILOT
+
+The schema should remain extensible for future agents.
+
+Feedback event type
+POSITIVE_RATING
+NEGATIVE_RATING
+ACCEPTED
+EDITED_THEN_ACCEPTED
+DISCARDED
+REGENERATED
+SENT_FOR_REVIEW
+PUBLISHED
+SAVED_AS_CONTENT_IDEA
+CREATED_CLIENT_DECK
+USED_IN_CALL
+USED_IN_DECK
+COPIED
+NOT_RELEVANT
+NEEDS_VERIFICATION
+Feedback reason code
+TOO_GENERIC
+INACCURATE
+NOT_RELEVANT
+MISSING_CONTEXT
+CLAIM_CONCERN
+WRONG_AUDIENCE
+WRONG_TONE
+OTHER
+
+Use the same canonical domain and audience normalizers already shared by the BD Agent and Content Copilot.
+
+Step 1 — Shared Feedback Data Model
+
+Create one generic table:
+
+agent_feedback_events
+
+Suggested fields:
+
+id
+agent_type
+interaction_type
+source_record_type
+source_record_id
+generation_id
+conversation_id
+user_id
+event_type
+reason_code
+domain
+audience
+content_goal
+bd_mode
+icp_id
+buyer_stage
+pain_point_theme
+prompt_version
+model_version
+metadata
+created_at
+updated_at
+Field behavior
+source_record_id references the existing message, generation, article, social kit, or deck record.
+ICP, buyer stage, pain-point theme, mode, domain, audience, and content goal may be null.
+Store references rather than duplicating full conversations or generated content.
+metadata should contain only lightweight contextual information needed for future analysis.
+Full output text remains in its existing source table.
+Rating behavior
+
+Ratings and action events must remain separate.
+
+Example:
+
+POSITIVE_RATING
+USED_IN_CALL
+
+These are two events, not one combined event.
+
+Idempotency
+One user may have only one active positive or negative rating for the same agent response.
+A user may change the rating.
+Changing a rating updates or replaces the prior rating rather than creating duplicates.
+Action events such as USED_IN_CALL or COPIED may be recorded independently.
+Repeated requests caused by network retries must not create duplicate events.
+Step 2 — Shared Feedback Service
+
+Create one service:
+
+server/services/agentFeedbackService.ts
+
+Responsibilities:
+
+Validate canonical agent and event values
+Normalize domain and audience values
+Record feedback
+Update an existing rating
+Record action events separately
+Attach prompt and model version information
+Accept optional metadata from Task #996 and Task #997
+Prevent duplicate events caused by request retries
+Write audit information
+Never modify prompts or knowledge automatically
+
+Suggested service methods:
+
+recordRating()
+recordAction()
+recordContentOutcome()
+getUserRating()
+Step 3 — Shared Feedback API
+
+Create a generic endpoint:
+
+POST /api/agent-feedback
+
+Example request:
+
+{
+  "agentType": "BD_AGENT",
+  "sourceRecordType": "bd_message",
+  "sourceRecordId": "123",
+  "eventType": "NEGATIVE_RATING",
+  "reasonCode": "TOO_GENERIC"
+}
+
+The endpoint should:
+
+Require authentication
+Validate that the referenced source record exists
+Confirm the user may access the source record
+Normalize values
+Be idempotent
+Return the saved event
+Never block the original BD or Content workflow when feedback storage fails
+
+Feedback may use optimistic UI, but backend failures should be logged and retried where practical.
+
+Step 4 — BD Agent Feedback Controls
+
+Below every BD assistant response, add a compact feedback row.
+
+Display:
+
+Helpful
+Not useful
+Used in call
+Used in deck
+
+Use simple icons where consistent with the existing interface.
+
+Helpful
+
+Record:
+
+POSITIVE_RATING
+Not useful
+
+Show a small inline reason selector.
+
+Reason options:
+
+Too generic
+Inaccurate
+Not relevant
+Missing context
+Claim concern
+Other
+
+Do not open a modal.
+
+Record:
+
+NEGATIVE_RATING
+
+with the selected reason code.
+
+Existing actions as implicit signals
+
+Record existing BD actions automatically:
+
+Save as Content Idea → SAVED_AS_CONTENT_IDEA
+Create Client Deck → CREATED_CLIENT_DECK
+Copy Response → COPIED
+
+Add optional manual actions:
+
+Used in call → USED_IN_CALL
+Used in deck → USED_IN_DECK
+
+Do not automatically create a positive rating when an action is used. The action itself is already a strong positive behavioral signal.
+
+Step 5 — Content Studio Outcome Capture
+
+Do not add a new feedback form to Content Studio.
+
+Record the actions users already take:
+
+Accept draft → ACCEPTED
+Edit and accept → EDITED_THEN_ACCEPTED
+Discard → DISCARDED
+Regenerate → REGENERATED
+Send for review → SENT_FOR_REVIEW
+Publish → PUBLISHED
+
+Integrate event recording into the existing article, social-kit, and approval mutations.
+
+Edited then accepted
+
+Use the existing original generated version and current accepted version.
+
+For the MVP:
+
+If the accepted content hash differs materially from the original generated content hash, record EDITED_THEN_ACCEPTED.
+Otherwise record ACCEPTED.
+
+Do not build detailed editing-percentage analytics in this task.
+
+Preserve the original generation so more accurate editing analysis can be added later.
+
+Step 6 — Metadata Capture
+
+When available, include:
+
+Agent type
+User
+Source message or generation
+Conversation or article
+Canonical domain
+Canonical audience
+Content goal
+BD conversation mode
+Prompt version
+Model version
+ICP ID
+Buyer stage
+Pain-point theme
+Timestamp
+
+Rules:
+
+Do not require optional metadata.
+Do not backfill uncertain metadata through AI guessing.
+Do not treat missing feedback as negative feedback.
+Do not treat usage volume as employee performance.
+Do not automatically change prompt versions based on ratings.
+Step 7 — Minimal Administrative Visibility
+
+Do not build the proposed BD Insights tab, Content Performance Feed, Executive Dashboard integration, or weekly digest now.
+
+For basic validation, provide one restricted endpoint:
+
+GET /api/admin/agent-feedback/summary
+
+Return only:
+
+Event totals by agent
+Positive and negative ratings
+Top negative reason codes
+Content accepted, edited, discarded, and regenerated
+Most-used BD actions
+Breakdown by domain when available
+
+This endpoint is for validating that feedback is being captured correctly.
+
+A polished dashboard is not required for the MVP release.
+
+Done Looks Like
+
+The task is complete when:
+
+Every BD assistant response displays compact feedback controls.
+Helpful and Not useful ratings are saved.
+Negative feedback captures a reason code.
+A user can change an existing rating.
+Duplicate ratings are prevented.
+Existing BD actions create separate implicit events.
+Content Studio lifecycle actions create feedback events without adding new UI.
+Prompt and model versions are stored when available.
+Canonical domain and audience values are used.
+Missing Task #997 metadata does not block feedback.
+Existing BD and Content workflows continue working.
+Feedback does not automatically change prompts or system behavior.
+No employee-performance scoring is introduced.
+Basic event totals can be verified through the restricted summary endpoint.
+Out of Scope
+
+Do not build in this release:
+
+BD Insights dashboard
+Content Performance Feed
+Knowledge Owner weekly digest
+Response Quality Index
+Executive Dashboard integration
+Claim Registry analysis
+Content-gap analytics
+Scheduled digest cron jobs
+New executive roles
+New feature flags for dashboards
+Automated prompt tuning
+A/B testing
+Sentiment analysis
+Employee performance scoring
+Automated learning
+Revenue or pipeline attribution
+Detailed editing-effort analytics
+Relationship With Task #997
+
+Task #997 and Task #999 share the canonical contracts but must remain independently deployable.
+
+Shared canonical contracts
+        |
+        ├── #997 Shared Commercial Intelligence Bridge MVP
+        |
+        └── #999 Shared Agent Feedback Capture MVP
+
+Task #997 provides optional commercial metadata.
+
+Task #999 captures user behavior regardless of whether that metadata exists.
+
+After 30–60 days of real use, feedback from Task #999 and commercial context from Task #997 may support:
+
+A manager usage summary
+Content-quality trends
+Repeated buyer pain-point reporting
+Prompt-improvement recommendations
+A Knowledge Owner digest
+Coverage-gap analysis
+
+Those should be separate later tasks based on actual data volume and usefulness.
+
+Final Replit Instruction
+
+Replace the existing Task #999 scope with the Shared Agent Feedback Capture MVP.
+
+Build one generic agent_feedback_events table and one shared agentFeedbackService for the BD Agent and Content Copilot.
+
+Capture compact BD response ratings, short negative reason codes, existing BD action events, and existing Content Studio acceptance, editing, regeneration, review, discard, and publishing outcomes.
+
+Store source references, user, agent type, canonical domain and audience, prompt version, model version, and optional commercial metadata when available.
+
+Task #999 must not depend on completion of Task #997. ICP, buyer-stage, pain-point, and BD-mode fields must be nullable.
+
+Do not build dashboards, weekly digests, executive reporting, claim analytics, automated prompt tuning, employee scoring, or autonomous learning in this release.
+
+Preserve all existing BD Agent, Content Studio, review, approval, and publishing behavior.
+
+This is the version I would release. It captures valuable training signals from day one without delaying the product or building analytics before enough data exists.

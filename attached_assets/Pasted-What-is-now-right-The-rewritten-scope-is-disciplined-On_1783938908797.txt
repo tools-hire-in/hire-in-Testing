@@ -1,0 +1,154 @@
+What is now right
+
+The rewritten scope is disciplined:
+
+One shared feedback table
+One shared feedback service
+Generic APIs
+Compact BD feedback controls
+Silent Content Studio outcome capture
+No dependency on Task #997
+No dashboards, digests, executive analytics, or prompt automation
+
+That is exactly the level of infrastructure worth releasing now.
+
+The implementation also appears to preserve the right distinction:
+
+A rating is explicit feedback.
+Saving an idea or creating a deck is a behavioral signal.
+Content acceptance, regeneration, review, and publishing are lifecycle outcomes.
+None of these automatically change prompts.
+
+That architecture should remain.
+
+Release blockers to verify
+1. Access control may be too restrictive
+
+This statement needs confirmation:
+
+employees/executives blocked
+
+Ordinary authorized BD and Content users must be able to submit feedback on records they can access.
+
+Correct behavior:
+
+BD user can rate assistant messages in their accessible conversation.
+Content user can trigger outcomes on Studio records they are authorized to edit.
+Managers and admins can read the summary.
+Users cannot submit feedback against inaccessible records.
+
+Do not require a manager-level or Studio-admin role merely to give feedback.
+
+2. DISCARDED is not listed
+
+The delivered Content Studio hooks include:
+
+Sent for review
+Accepted
+Edited then accepted
+Regenerated
+Published
+
+But no discard or reject event is mentioned.
+
+If the current editor has an explicit discard/reject action, wire:
+
+DISCARDED
+
+A discarded output is one of the strongest quality signals.
+
+3. Confirm database-level rating uniqueness
+
+recordRating() is described as idempotent replacement, which is good. But service logic alone can still suffer from concurrent retries.
+
+Use either:
+
+A database unique constraint plus upsert, or
+A transaction with a reliable locking/update strategy
+
+The uniqueness boundary should effectively be:
+
+user_id
++ agent_type
++ source_record_type
++ source_record_id
++ rating category
+
+There should never be simultaneous active positive and negative ratings from the same user on one response.
+
+4. Feedback must not break the main action
+
+Verify that these actions still succeed when feedback recording fails:
+
+Save as content idea
+Create client deck
+Generate or regenerate content
+Send for review
+Publish
+
+Feedback is secondary telemetry.
+
+Primary action succeeds
+→ feedback recording attempted
+→ failure logged
+→ user workflow continues
+5. Normalize the content comparison
+
+The bodyMarkdown versus generationV1Markdown comparison is appropriate for the MVP, but normalize:
+
+Whitespace
+Line endings
+Trailing spaces
+Basic Markdown serialization differences
+
+Otherwise, a formatting-only change may incorrectly become EDITED_THEN_ACCEPTED.
+
+A full editing-percentage system is not needed.
+
+Important but deferrable
+
+These do not need to delay the release:
+
+Social-kit outcome coverage
+Scheduled-publish event capture
+Used in call / used in deck controls
+Copy-response tracking
+Retry queue for failed telemetry
+Feedback analytics UI
+Detailed edit-distance measurement
+
+Document any missing coverage honestly and add it later based on use.
+
+Recommended completion status
+
+I would classify it as:
+
+Functionally complete against the rewritten scope, pending final verification of access permissions, discard capture, rating uniqueness, normalized edit comparison, and non-blocking telemetry behavior.
+
+Do not reopen the original analytics-heavy requirements during this review.
+
+Final acceptance demonstration
+
+Before closing #999, demonstrate:
+
+User marks a BD response Helpful.
+User changes the same response to Not useful with a reason.
+Only one current rating exists.
+Saving as a content idea records a separate action event.
+Creating a deck records a separate action event.
+An authorized BD user can submit feedback.
+An unauthorized user cannot submit against another user’s record.
+Unchanged accepted content records ACCEPTED.
+Meaningfully edited content records EDITED_THEN_ACCEPTED.
+Regeneration records REGENERATED.
+Review transition records SENT_FOR_REVIEW.
+Publishing records PUBLISHED.
+Discarding records DISCARDED, when that action exists.
+Task #999 works with ICP, buyer stage, and pain point all null.
+Feedback failure does not fail the underlying user action.
+The restricted summary endpoint returns aggregate counts without exposing source content.
+Decision
+
+Do not expand Task #999 further. Close the small verification gaps, release it, and start collecting real signals.
+
+Tasks #1022, #1023, and #1024 should be reviewed separately to ensure they do not reintroduce dashboards, digests, or analytics under different names.

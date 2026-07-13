@@ -1,0 +1,191 @@
+Based on the delivery summary alone, I would give it a conditional pass for release, not a final completion sign-off yet.
+
+What looks correct
+
+The implementation matches the narrowed MVP:
+
+One shared agent_feedback_events table
+One reusable feedback service
+Generic feedback endpoints
+Idempotent ratings
+Short action deduplication
+BD thumbs-up/thumbs-down feedback
+Negative reason codes
+Existing BD actions captured as signals
+Content lifecycle outcomes captured silently
+No dependency on Task #997
+No dashboards, digests, automated learning, or executive analytics
+
+That is exactly the right direction.
+
+The decision to keep ICP, buyer-stage, and pain-point metadata nullable is especially important. Task #999 can now collect useful signals immediately without waiting for the Commercial Intelligence Bridge.
+
+What is particularly well done
+One shared feedback architecture
+
+Using a generic feedback service rather than a separate BD-only feedback table prevents another silo.
+
+Ratings and actions are separate
+
+A user clicking “Helpful” and later creating a deck are different signals. Keeping them separate gives you much better future analysis.
+
+Existing user actions generate signals
+
+Capturing:
+
+Saved as Content Idea
+Created Client Deck
+Sent for review
+Regenerated
+Accepted
+Published
+
+is often more valuable than relying only on thumbs-up ratings.
+
+No automatic learning
+
+The system records evidence but does not change prompts or agent behavior. That is the correct control model at this stage.
+
+Items I would verify before closing Task #999
+1. DISCARDED appears to be missing
+
+The rewritten scope included:
+
+Accepted
+Edited then accepted
+Discarded
+Regenerated
+Sent for review
+Published
+
+The delivery summary does not mention a DISCARDED hook.
+
+If Content Studio has an existing discard, reject, or abandon action, wire it now.
+
+This is a meaningful signal because rejected drafts often reveal more than accepted drafts.
+
+2. Confirm whether social-kit outcomes were included
+
+The summary mentions article routes, but it does not explicitly mention the social-kit flow.
+
+Verify whether these events are captured for social kits:
+
+Accepted
+Edited then accepted
+Discarded
+Regenerated
+Sent for review or approved, where applicable
+
+If the social-kit flow is not stable yet, document it as a limitation rather than pretending it is complete.
+
+3. Verify the access-control interpretation
+
+This line needs careful checking:
+
+employees/executives blocked
+
+BD recruiters, salespeople, content creators, and managers who actually use the agents must be able to submit feedback on records they are authorized to see.
+
+The correct behavior should be:
+
+A BD user can rate an accessible BD message
+A Content user can generate outcome events for accessible Studio records
+An administrator or authorized manager can use the summary endpoint
+A user cannot submit feedback against another inaccessible conversation or article
+
+Do not block ordinary authorized users merely because they do not have an elevated Studio role.
+
+4. Add database-level uniqueness for ratings
+
+Service-level idempotency is good, but concurrent clicks or retries can still race.
+
+There should be a database constraint or safe upsert pattern guaranteeing one active rating per:
+
+user
++ agent type
++ source record type
++ source record ID
+
+A user changing from positive to negative should update the existing rating, not create two records.
+
+The 30-second action deduplication is acceptable for the MVP, provided it uses a stable idempotency rule and does not suppress legitimate actions on different records.
+
+5. Validate EDITED_THEN_ACCEPTED
+
+Comparing bodyMarkdown with generationV1Markdown is directionally correct.
+
+But confirm that formatting-only changes do not always produce EDITED_THEN_ACCEPTED, such as:
+
+Line-break changes
+Trailing spaces
+Markdown normalization
+Case-only changes
+Editor serialization differences
+
+For tomorrow, a simple normalized comparison is sufficient. You do not need an edit-percentage engine.
+
+6. Confirm prompt and model versions reach the events
+
+The service may support those fields, but verify the actual call sites populate them when available.
+
+This will be critical later when you ask:
+
+Did quality improve after prompt version 6?
+
+Without prompt-version metadata, historical feedback becomes much less useful.
+
+7. Confirm feedback failure does not break user actions
+
+Saving an idea, generating a deck, publishing, or accepting a draft must succeed even if feedback logging fails.
+
+The correct behavior is:
+
+Primary action succeeds
+→ feedback event attempted
+→ failure logged for retry or investigation
+→ user workflow is not blocked
+Not required before tomorrow
+
+These are useful but not release blockers:
+
+Used in call button
+Used in deck button
+Copy event capture
+Analytics dashboard
+Weekly summaries
+Editing-effort percentages
+Feedback trend charts
+Prompt-quality scoring
+
+They can follow after users start producing data.
+
+Recommended release checklist
+
+Before marking complete, demonstrate:
+
+A BD user marks a response Helpful.
+The same user changes it to Not useful with a reason.
+Only one active rating remains.
+Saving as a content idea records a separate action.
+Creating a client deck records a separate action.
+An unauthorized user cannot rate an inaccessible message.
+Accepting an unchanged draft records ACCEPTED.
+Accepting a meaningfully edited draft records EDITED_THEN_ACCEPTED.
+Regenerating records REGENERATED.
+Sending for review records SENT_FOR_REVIEW.
+Publishing records PUBLISHED.
+Discarding records DISCARDED.
+Feedback failure does not break the original action.
+The admin summary returns totals without exposing restricted content.
+Task #999 works with all Task #997 fields null.
+Final verdict
+
+The scope rewrite was correct, and the implementation appears mostly aligned.
+
+I would not reopen dashboards, digests, or analytics. Close only the small signal-capture gaps.
+
+My release decision would be:
+
+Approve for tomorrow after verifying discard tracking, intended-user access, rating uniqueness, normalized edit comparison, and social-kit coverage.
+
+Also review the proposed Tasks #1022, #1023, and #1024 carefully. They should not quietly reintroduce the analytics-heavy scope that was intentionally removed.

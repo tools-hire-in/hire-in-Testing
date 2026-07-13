@@ -28,8 +28,16 @@ import {
   Edit3,
   Globe,
   Zap,
+  ThumbsUp,
+  ThumbsDown,
 } from "lucide-react";
-import { BUYER_STAGE_OPTIONS, PAIN_POINT_OPTIONS } from "@shared/agentIntelligenceContracts";
+import {
+  BUYER_STAGE_OPTIONS,
+  PAIN_POINT_OPTIONS,
+  FEEDBACK_REASON_CODES,
+  FEEDBACK_REASON_LABELS,
+  type FeedbackReasonCode,
+} from "@shared/agentIntelligenceContracts";
 
 type BdAgentMode =
   | "account_discovery"
@@ -217,6 +225,11 @@ export default function BdAgentView() {
   const [savePainPoint, setSavePainPoint] = useState("");
   const [saveDomain, setSaveDomain] = useState("");
 
+  // BD Feedback ratings state: msgId → current rating
+  const [msgRatings, setMsgRatings] = useState<Record<string, "POSITIVE_RATING" | "NEGATIVE_RATING">>({});
+  // Which message is showing the "why not helpful?" reason picker
+  const [showReasonFor, setShowReasonFor] = useState<string | null>(null);
+
   // "Build targeted client deck" modal state
   const [deckSourceMsg, setDeckSourceMsg] = useState<BdMessage | null>(null);
   const [deckClientName, setDeckClientName] = useState("");
@@ -246,11 +259,13 @@ export default function BdAgentView() {
 
   const customizeDeckMutation = useMutation({
     mutationFn: ({
+      _sourceMsg: _,
       masterId,
       clientName,
       positioningAngle,
       contextSummary,
     }: {
+      _sourceMsg: BdMessage | null;
       masterId: string;
       clientName: string;
       positioningAngle: string;
@@ -261,7 +276,8 @@ export default function BdAgentView() {
         positioning_angle: positioningAngle,
         context_summary: contextSummary.trim() || null,
       }).then((r: any) => r.json()),
-    onSuccess: () => {
+    onSuccess: (_data, { _sourceMsg }) => {
+      if (_sourceMsg) sendBdFeedback(_sourceMsg, "CREATED_CLIENT_DECK");
       queryClient.invalidateQueries({ queryKey: ["/api/bd/decks"] });
       toast({
         title: "Targeted deck ready!",
@@ -293,6 +309,31 @@ export default function BdAgentView() {
     // Pilot / expansion → operating model
     if (["pilot_or_contracting", "expansion_or_renewal"].includes(stage)) return "rpo";
     return "full_staffing";
+  }
+
+  // Fire-and-forget feedback recording for BD agent messages
+  function sendBdFeedback(
+    msg: BdMessage,
+    eventType: "POSITIVE_RATING" | "NEGATIVE_RATING" | "USED_IN_CALL" | "USED_IN_DECK" | "COPIED" | "SAVED_AS_CONTENT_IDEA" | "CREATED_CLIENT_DECK",
+    reasonCode?: FeedbackReasonCode,
+  ) {
+    const currentConv = (conversations as BdConversation[]).find((c) => c.id === selectedConvId);
+    apiRequest("POST", "/api/agent-feedback", {
+      agentType: "BD_AGENT",
+      sourceRecordType: "bd_message",
+      sourceRecordId: msg.id,
+      eventType,
+      reasonCode: reasonCode ?? null,
+      conversationId: msg.conversationId,
+      domain: currentConv?.domain ?? null,
+      bdMode: lastMode,
+    }).catch(() => {});
+    if (eventType === "POSITIVE_RATING" || eventType === "NEGATIVE_RATING") {
+      setMsgRatings((prev) => ({ ...prev, [msg.id]: eventType }));
+      if (eventType === "POSITIVE_RATING") {
+        setShowReasonFor(null);
+      }
+    }
   }
 
   function handleCreateClientDeck(msg: BdMessage) {
@@ -368,9 +409,10 @@ export default function BdAgentView() {
   }, [bdProjects, activeProjectId]);
 
   const saveIdeaMutation = useMutation({
-    mutationFn: (body: { title: string; content: string; projectId: string; detectedDomain?: string; buyerStage?: string; painPointTheme?: string; sourceConversationId?: string }) =>
+    mutationFn: ({ _sourceMsg: _, ...body }: { _sourceMsg: BdMessage | null; title: string; content: string; projectId: string; detectedDomain?: string; buyerStage?: string; painPointTheme?: string; sourceConversationId?: string }) =>
       apiRequest("POST", "/api/studio/bd/save-as-idea", body).then((r: any) => r.json()),
-    onSuccess: () => {
+    onSuccess: (_data, { _sourceMsg }) => {
+      if (_sourceMsg) sendBdFeedback(_sourceMsg, "SAVED_AS_CONTENT_IDEA");
       toast({ title: "Saved!", description: "Added to your Studio content pipeline." });
       setSaveMsg(null);
       setSaveBuyerStage("");
@@ -682,7 +724,61 @@ export default function BdAgentView() {
                             Update master
                           </button>
                         )}
+
+                        {/* Feedback strip */}
+                        <span className="text-muted-foreground/30">·</span>
+                        <button
+                          className={`flex items-center gap-1 text-xs transition-colors ${
+                            msgRatings[msg.id] === "POSITIVE_RATING"
+                              ? "text-emerald-600"
+                              : "text-muted-foreground hover:text-emerald-600"
+                          }`}
+                          onClick={() => {
+                            sendBdFeedback(msg, "POSITIVE_RATING");
+                            setShowReasonFor(null);
+                          }}
+                          data-testid={`button-helpful-${msg.id}`}
+                          title="Helpful"
+                        >
+                          <ThumbsUp className="h-3 w-3" />
+                          Helpful
+                        </button>
+                        <button
+                          className={`flex items-center gap-1 text-xs transition-colors ${
+                            msgRatings[msg.id] === "NEGATIVE_RATING"
+                              ? "text-rose-600"
+                              : "text-muted-foreground hover:text-rose-500"
+                          }`}
+                          onClick={() => {
+                            sendBdFeedback(msg, "NEGATIVE_RATING");
+                            setShowReasonFor((prev) => (prev === msg.id ? null : msg.id));
+                          }}
+                          data-testid={`button-not-helpful-${msg.id}`}
+                          title="Not helpful"
+                        >
+                          <ThumbsDown className="h-3 w-3" />
+                          Not useful
+                        </button>
                       </div>
+
+                      {/* Reason picker — shown when thumbs down is active */}
+                      {showReasonFor === msg.id && (
+                        <div className="mt-1 flex flex-wrap gap-1.5 pl-1">
+                          {FEEDBACK_REASON_CODES.map((code) => (
+                            <button
+                              key={code}
+                              className="rounded-full border border-muted px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:border-rose-400 hover:text-rose-600"
+                              onClick={() => {
+                                sendBdFeedback(msg, "NEGATIVE_RATING", code);
+                                setShowReasonFor(null);
+                              }}
+                              data-testid={`button-reason-${code}-${msg.id}`}
+                            >
+                              {FEEDBACK_REASON_LABELS[code]}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   ) : (
                     <div className="max-w-[75%] rounded-xl bg-primary px-4 py-3 text-sm text-primary-foreground">
@@ -887,6 +983,7 @@ export default function BdAgentView() {
                   if (!master) return;
                   const posLabel = POSITIONING_OPTIONS.find((p) => p.value === deckPositioning)?.label ?? deckPositioning;
                   customizeDeckMutation.mutate({
+                    _sourceMsg: deckSourceMsg,
                     masterId: master.id,
                     clientName: deckClientName,
                     positioningAngle: posLabel,
@@ -998,6 +1095,7 @@ export default function BdAgentView() {
               disabled={!saveTitle.trim() || !saveProjectId || saveIdeaMutation.isPending || bdProjects.length === 0}
               onClick={() =>
                 saveIdeaMutation.mutate({
+                  _sourceMsg: saveMsg,
                   title: saveTitle.trim(),
                   content: saveMsg?.content ?? "",
                   projectId: saveProjectId,

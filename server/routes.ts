@@ -128,6 +128,8 @@ import { registerPraiseRoutes, seedPraiseBadgeTypes } from "./praiseRoutes";
 import { registerPolicySigningRoutes } from "./policySigningRoutes";
 import { registerAttendanceReportRoutes } from "./attendanceReportRoutes";
 import { registerBdDecksRoutes } from "./bdDecksRoutes";
+import { registerAgentFeedbackRoutes } from "./agentFeedbackRoutes";
+import { recordContentOutcome } from "./services/agentFeedbackService";
 import { registerReleaseNotesRoutes } from "./releaseNotesRoutes";
 import { registerHelpDeskRoutes } from "./helpDeskRoutes";
 import { registerSalaryAdvanceRoutes, applyAdvanceRecoveriesForRun, applyCreditsForRun } from "./salaryAdvanceRoutes";
@@ -17481,6 +17483,19 @@ export async function registerRoutes(
           },
         });
 
+        // Feedback signal: REGENERATED when the article already had content before this run
+        if (article.bodyMarkdown?.trim()) {
+          void recordContentOutcome({
+            agentType: "CONTENT_COPILOT",
+            sourceRecordType: "studio_article",
+            sourceRecordId: article.id,
+            userId: req.session.userId!,
+            eventType: "REGENERATED",
+            generationId: generation.id,
+            contentGoal: resolvedContentGoalForPath || null,
+          });
+        }
+
         res.json({
           draft: result.draft,
           qualityReview,
@@ -17607,9 +17622,22 @@ export async function registerRoutes(
         } as any);
 
         // Persist the canonical kit on the article (never auto-publishes).
+        const hadSocialKit = !!(article as any).socialKitJsonb;
         await storage.updateStudioArticle(article.id, {
           socialKitJsonb: result.kit as any,
         } as any);
+        // Feedback signal: REGENERATED when a social kit already existed (i.e. this is a redo)
+        if (hadSocialKit) {
+          void recordContentOutcome({
+            agentType: "CONTENT_COPILOT",
+            sourceRecordType: "studio_article",
+            sourceRecordId: article.id,
+            userId: req.session.userId!,
+            eventType: "REGENERATED",
+            generationId: generation.id,
+            metadata: { kind: "social_kit" },
+          });
+        }
 
         await storage.createStudioAuditEvent({
           articleId: article.id,
@@ -17812,6 +17840,33 @@ export async function registerRoutes(
             );
           } catch (routeErr) {
             console.error("Studio auto-route error:", routeErr);
+          }
+          // Feedback signal: article sent for review
+          void recordContentOutcome({
+            agentType: "CONTENT_COPILOT",
+            sourceRecordType: "studio_article",
+            sourceRecordId: req.params.id,
+            userId: req.session.userId!,
+            eventType: "SENT_FOR_REVIEW",
+          });
+
+          // Bonus signal: detect if the author accepted AI draft as-is or edited it
+          // before submitting for review (requires both v1 and current body to exist).
+          // Normalize before comparison: collapse whitespace runs and trim so that
+          // editor-serialization differences (trailing spaces, line-break normalization,
+          // case-only changes in blank lines) don't produce false EDITED_THEN_ACCEPTED.
+          const normalizeBody = (s: string) => s.replace(/\s+/g, " ").trim();
+          const v1 = (article as any).generationV1Markdown;
+          const current = article.bodyMarkdown;
+          if (v1 && current) {
+            const outcomeType = normalizeBody(current) === normalizeBody(v1) ? "ACCEPTED" : "EDITED_THEN_ACCEPTED";
+            void recordContentOutcome({
+              agentType: "CONTENT_COPILOT",
+              sourceRecordType: "studio_article",
+              sourceRecordId: req.params.id,
+              userId: req.session.userId!,
+              eventType: outcomeType,
+            });
           }
         }
 
@@ -19283,6 +19338,17 @@ export async function registerRoutes(
           eventType: "status_changed",
           metadata: { from: article.status, to: toStatus, via: "marketing_decision" },
         } as any);
+        // Feedback signal: article discarded at marketing review
+        if (decision === "reject") {
+          void recordContentOutcome({
+            agentType: "CONTENT_COPILOT",
+            sourceRecordType: "studio_article",
+            sourceRecordId: req.params.id,
+            userId,
+            eventType: "DISCARDED",
+            metadata: { stage: "marketing_review" },
+          });
+        }
 
         const actor = await storage.getAdminUser(userId);
         const actorName = userDisplayName(actor);
@@ -19505,6 +19571,15 @@ export async function registerRoutes(
             eventType: "status_changed",
             metadata: { from: article.status, to: "draft", via: "final_decision" },
           } as any);
+          // Feedback signal: article discarded at final sign-off
+          void recordContentOutcome({
+            agentType: "CONTENT_COPILOT",
+            sourceRecordType: "studio_article",
+            sourceRecordId: req.params.id,
+            userId,
+            eventType: "DISCARDED",
+            metadata: { stage: "final_approval" },
+          });
 
           // Notify editor + the marketing recommender.
           try {
@@ -19569,6 +19644,16 @@ export async function registerRoutes(
           metadata: { from: article.status, to: scheduled ? "scheduled" : "published", via: "final_decision" },
         } as any);
         await notifyPublished(req, updated ?? article, scheduled, when, scheduled ? null : new Date());
+        // Feedback signal: article published (fire-and-forget)
+        if (!scheduled) {
+          void recordContentOutcome({
+            agentType: "CONTENT_COPILOT",
+            sourceRecordType: "studio_article",
+            sourceRecordId: req.params.id,
+            userId,
+            eventType: "PUBLISHED",
+          });
+        }
         res.json(updated);
       } catch (error: any) {
         if (error?.code === "risk_flags_block_publish") {
@@ -24883,6 +24968,7 @@ export async function registerRoutes(
 
   // BD Pitch Deck Library routes
   registerBdDecksRoutes(app);
+  registerAgentFeedbackRoutes(app);
 
   // POST /api/studio/bd/save-as-idea — save BD output as a Studio content idea
   app.post("/api/studio/bd/save-as-idea", requireAuth, requireBdAgent, async (req: Request, res: Response) => {

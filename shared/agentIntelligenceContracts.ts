@@ -2,7 +2,90 @@
 // Both the BD Agent and Content Studio import from this module.
 // Prevents each system from inventing its own labels for the same concepts.
 
-export type AgentType = "bd_agent" | "content_studio";
+export type AgentType = "BD_AGENT" | "CONTENT_COPILOT";
+
+export const AGENT_TYPES: AgentType[] = ["BD_AGENT", "CONTENT_COPILOT"];
+
+// ── Feedback event types ──────────────────────────────────────────────────────
+
+export type FeedbackEventType =
+  | "POSITIVE_RATING"
+  | "NEGATIVE_RATING"
+  | "ACCEPTED"
+  | "EDITED_THEN_ACCEPTED"
+  | "DISCARDED"
+  | "REGENERATED"
+  | "SENT_FOR_REVIEW"
+  | "PUBLISHED"
+  | "SAVED_AS_CONTENT_IDEA"
+  | "CREATED_CLIENT_DECK"
+  | "USED_IN_CALL"
+  | "USED_IN_DECK"
+  | "COPIED"
+  | "NOT_RELEVANT"
+  | "NEEDS_VERIFICATION";
+
+export const FEEDBACK_EVENT_TYPES: FeedbackEventType[] = [
+  "POSITIVE_RATING",
+  "NEGATIVE_RATING",
+  "ACCEPTED",
+  "EDITED_THEN_ACCEPTED",
+  "DISCARDED",
+  "REGENERATED",
+  "SENT_FOR_REVIEW",
+  "PUBLISHED",
+  "SAVED_AS_CONTENT_IDEA",
+  "CREATED_CLIENT_DECK",
+  "USED_IN_CALL",
+  "USED_IN_DECK",
+  "COPIED",
+  "NOT_RELEVANT",
+  "NEEDS_VERIFICATION",
+];
+
+/** Rating events — only one active per user+source record */
+export const RATING_EVENT_TYPES: FeedbackEventType[] = ["POSITIVE_RATING", "NEGATIVE_RATING"];
+
+// ── Feedback reason codes ─────────────────────────────────────────────────────
+
+export type FeedbackReasonCode =
+  | "TOO_GENERIC"
+  | "INACCURATE"
+  | "NOT_RELEVANT"
+  | "MISSING_CONTEXT"
+  | "CLAIM_CONCERN"
+  | "WRONG_AUDIENCE"
+  | "WRONG_TONE"
+  | "OTHER";
+
+export const FEEDBACK_REASON_CODES: FeedbackReasonCode[] = [
+  "TOO_GENERIC",
+  "INACCURATE",
+  "NOT_RELEVANT",
+  "MISSING_CONTEXT",
+  "CLAIM_CONCERN",
+  "WRONG_AUDIENCE",
+  "WRONG_TONE",
+  "OTHER",
+];
+
+export const FEEDBACK_REASON_LABELS: Record<FeedbackReasonCode, string> = {
+  TOO_GENERIC: "Too generic",
+  INACCURATE: "Inaccurate",
+  NOT_RELEVANT: "Not relevant",
+  MISSING_CONTEXT: "Missing context",
+  CLAIM_CONCERN: "Claim concern",
+  WRONG_AUDIENCE: "Wrong audience",
+  WRONG_TONE: "Wrong tone",
+  OTHER: "Other",
+};
+
+/** Source record types for cross-table references */
+export type SourceRecordType =
+  | "bd_message"
+  | "studio_generation"
+  | "studio_article"
+  | "bd_deck";
 
 export type CanonicalDomain =
   | "healthcare"

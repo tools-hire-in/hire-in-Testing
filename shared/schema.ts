@@ -4525,3 +4525,40 @@ export const insertGovernanceControlSchema = createInsertSchema(governanceContro
 
 export type GovernanceControl = typeof governanceControls.$inferSelect;
 export type InsertGovernanceControl = z.infer<typeof insertGovernanceControlSchema>;
+
+// ── Agent Feedback Events ─────────────────────────────────────────────────────
+// Shared feedback table for BD Agent and Content Copilot signals.
+// Applied via scripts/apply-agent-feedback-table.ts (not drizzle-kit push).
+// Declared here so db:push does NOT treat the live table as a drift orphan.
+export const agentFeedbackEvents = pgTable("agent_feedback_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  agentType: varchar("agent_type", { length: 50 }).notNull(),
+  sourceRecordType: varchar("source_record_type", { length: 50 }).notNull(),
+  sourceRecordId: varchar("source_record_id", { length: 100 }).notNull(),
+  userId: varchar("user_id", { length: 100 }).notNull(),
+  eventType: varchar("event_type", { length: 50 }).notNull(),
+  reasonCode: varchar("reason_code", { length: 50 }),
+  generationId: varchar("generation_id", { length: 100 }),
+  conversationId: varchar("conversation_id", { length: 100 }),
+  domain: varchar("domain", { length: 50 }),
+  audience: varchar("audience", { length: 50 }),
+  contentGoal: varchar("content_goal", { length: 100 }),
+  bdMode: varchar("bd_mode", { length: 100 }),
+  icpId: varchar("icp_id", { length: 100 }),
+  buyerStage: varchar("buyer_stage", { length: 50 }),
+  painPointTheme: varchar("pain_point_theme", { length: 100 }),
+  promptVersion: integer("prompt_version"),
+  modelVersion: varchar("model_version", { length: 50 }),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("afe_user_source_idx").on(t.userId, t.sourceRecordType, t.sourceRecordId),
+  index("afe_agent_type_idx").on(t.agentType, t.eventType, t.createdAt),
+  index("afe_event_type_idx").on(t.eventType, t.createdAt),
+  index("afe_domain_idx").on(t.domain, t.createdAt),
+]);
+
+export const insertAgentFeedbackEventSchema = createInsertSchema(agentFeedbackEvents).omit({ id: true, createdAt: true, updatedAt: true });
+export type AgentFeedbackEvent = typeof agentFeedbackEvents.$inferSelect;
+export type InsertAgentFeedbackEvent = z.infer<typeof insertAgentFeedbackEventSchema>;
