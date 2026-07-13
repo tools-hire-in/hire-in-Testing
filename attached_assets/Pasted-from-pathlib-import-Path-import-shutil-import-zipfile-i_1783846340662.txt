@@ -1,0 +1,437 @@
+from pathlib import Path
+import shutil
+import zipfile
+import re
+
+base = Path("/mnt/data")
+src_pkg = base / "Hirein_BD_Agent_Final_Replit_Package_v2.2"
+out_pkg = base / "Hirein_BD_Agent_Final_Replit_Package_v2.3"
+
+if out_pkg.exists():
+    shutil.rmtree(out_pkg)
+shutil.copytree(src_pkg, out_pkg)
+
+# Remove the entire legacy source-materials directory.
+legacy_sources = out_pkg / "source-materials"
+if legacy_sources.exists():
+    shutil.rmtree(legacy_sources)
+
+docs = out_pkg / "docs"
+
+# ---------------- README-FIRST ----------------
+readme_path = out_pkg / "README-FIRST.md"
+readme = readme_path.read_text(encoding="utf-8")
+readme = readme.replace("**Version:** 1.0", "**Version:** 1.1", 1)
+readme = readme.replace(
+    "6. **Supporting source files** - evidence and historical context only, subject to their classification.\n",
+    "6. **Future human-approved knowledge sources** - admitted only through the manual review process defined in `docs/bd-agent-source-classification.md`.\n"
+)
+readme = readme.replace(
+    "- Appendix A seeds without silently upgrading status;\n- Appendix B quarantine records;\n",
+    "- an empty/manual Proof Point Registry with no legacy claims pre-approved;\n- restricted and prohibited claim guardrails;\n"
+)
+readme = readme.replace(
+    "- seeds added;\n",
+    "- configuration or manually approved records added;\n"
+)
+readme = readme.replace(
+    "Attach the package, place files at their documented paths, and run Task 0 only.",
+    "Attach this package only, place the files at their documented paths, and run Task 0 only. Do not upload the old capability decks, business plan, or historical architecture documents as Agent knowledge."
+)
+readme_path.write_text(readme, encoding="utf-8")
+
+# ---------------- FINAL FILE LIST ----------------
+file_list_path = out_pkg / "FINAL-FILE-LIST.md"
+file_list = """# Final File List for Replit
+
+## Required Authoritative Documents
+
+1. `README-FIRST.md`
+2. `docs/bd-agent-architecture-guide.md`
+3. `docs/bd-agent-task-0-audit-prompt.md`
+4. `docs/bd-agent-playbook.md` - Version 2.3
+5. `docs/bd-agent-strategy-sync-implementation.md` - Version 2.3
+6. `docs/bd-agent-source-classification.md`
+
+## No Source-Materials Folder
+
+Do not include the previous `source-materials/` folder.
+
+Do not upload the old capability decks, business plan, historical architecture documents, or other legacy files as Agent knowledge, proof, test fixtures, or seed data.
+
+Future knowledge sources must be reviewed manually and admitted one at a time through the Knowledge Library.
+
+## Do Not Give Replit as Competing Instructions
+
+- Older Version 2.0, 2.1, or 2.2 playbooks
+- Older synchronization prompts
+- Earlier ZIP packages
+- Earlier generic standards documents
+- Legacy capability decks or business plans as approved knowledge
+- Duplicate versioned copies of the canonical files
+
+## First Action
+
+Run `docs/bd-agent-task-0-audit-prompt.md` only. Review the audit before Task 1.
+"""
+file_list_path.write_text(file_list, encoding="utf-8")
+
+# ---------------- SOURCE CLASSIFICATION / ADMISSION POLICY ----------------
+classification_path = docs / "bd-agent-source-classification.md"
+classification = """# Hire'in BD Agent Knowledge Source Admission Policy
+
+**Version:** 2.0  
+**Purpose:** Prevent outdated, unverified, irrelevant, or low-quality material from becoming Agent knowledge.
+
+## Current Decision
+
+No legacy document is approved as a knowledge source merely because it existed in a previous handoff, repository folder, deck, business plan, or company archive.
+
+The previous capability decks, business plan, historical architecture documents, and other old files are excluded from the BD Agent knowledge base unless the CEO or designated business leader later reviews and explicitly re-admits a specific file.
+
+There is no `source-materials/` seed folder in the current Replit handoff.
+
+## Authoritative Product Documents
+
+### `docs/bd-agent-playbook.md`
+
+Use as the authoritative business-development operating standard.
+
+It defines strategy, positioning methodology, qualification, communication standards, manual proof-point governance, and human decision authority.
+
+It is not evidence for client-facing factual claims.
+
+### `docs/bd-agent-architecture-guide.md`
+
+Use as target architecture and phased implementation guidance.
+
+The live repository remains the source of truth for current code, database, roles, routes, dependencies, and deployment.
+
+### `docs/bd-agent-strategy-sync-implementation.md`
+
+Use as the implementation requirements that synchronize the product with the playbook.
+
+## Excluded Legacy Materials
+
+The following categories are excluded by default:
+
+- old or unofficial capability decks;
+- outdated company presentations;
+- legacy capability statements;
+- internal business plans and projections;
+- unreviewed case studies;
+- old client lists;
+- unsupported performance statistics;
+- historical architecture documents that do not match the live repository;
+- documents created by team members without approval;
+- copied, generic, aspirational, or brochure-style marketing content.
+
+Excluded material must not be:
+
+- uploaded as approved Agent knowledge;
+- used to seed proof points;
+- used as grounding for external drafts;
+- used as a master deck;
+- treated as evidence;
+- embedded into prompts;
+- added as test fixtures representing approved company truth.
+
+## Manual Admission Process
+
+A future source may enter the Knowledge Library only after an authorized human reviews:
+
+- source owner;
+- purpose;
+- creation and review date;
+- accuracy;
+- current relevance;
+- domain;
+- confidentiality;
+- client-use permission;
+- claim quality;
+- supporting evidence;
+- duplication or conflict with existing knowledge;
+- required restrictions or expiration.
+
+The reviewer must assign one of these states:
+
+- draft;
+- review_required;
+- approved_internal;
+- approved_for_external_grounding;
+- restricted;
+- superseded;
+- expired;
+- rejected.
+
+Approval applies only to the specific reviewed version.
+
+## Proof-Point Rule
+
+No factual client-facing claim is approved simply because it appears in an admitted document.
+
+Material claims must be represented as separate Proof Point Registry records with:
+
+- exact wording;
+- source and locator;
+- owner;
+- status;
+- allowed audience;
+- allowed channel;
+- qualifier or restriction;
+- effective date;
+- review date;
+- human reviewer.
+
+## Master Deck Rule
+
+A master deck provides approved narrative and design structure only after manual review.
+
+A slide does not automatically authorize every claim written on it. Material claims must still resolve to the Proof Point Registry.
+
+## Market Research Rule
+
+Market research provided by a team member may be used as an input to analysis, but it must be labeled according to provenance and reliability.
+
+Team-submitted research is not automatically verified.
+
+## Product Enforcement
+
+The system must:
+
+- default new knowledge sources to review_required;
+- require human approval before production retrieval;
+- preserve source version and review history;
+- prevent rejected, expired, superseded, and restricted material from normal external grounding;
+- show source and status beside material recommendations;
+- never silently promote a source or claim to approved status.
+
+## Current Operating Principle
+
+Start with no assumed knowledge.
+
+Build the governance, ingestion, retrieval, positioning, and approval system first. Add current, useful, verified knowledge manually as Hire'in learns from real clients and chooses the markets it wants to target.
+"""
+classification_path.write_text(classification, encoding="utf-8")
+
+# ---------------- PLAYBOOK ----------------
+playbook_path = docs / "bd-agent-playbook.md"
+playbook = playbook_path.read_text(encoding="utf-8")
+playbook = re.sub(r"\*\*Version:\*\*\s*2\.2", "**Version:** 2.3", playbook, count=1)
+
+appendix_start = playbook.index("# Appendix A - Initial Proof Point Registry")
+appendix_d = playbook.index("# Appendix D - Change Control")
+
+new_appendices = """# Appendix A - Manual Proof Point Registry
+
+The BD Agent will begin with no legacy proof points treated as approved.
+
+No claim from an old capability deck, business plan, company presentation, historical document, or team-created material may be seeded as approved company truth.
+
+Authorized leadership will add or approve proof points manually as current evidence becomes available.
+
+Each proof-point record must contain:
+
+- Proof-point ID
+- Domain
+- Category
+- Exact approved or proposed wording
+- Source and source locator
+- Evidence owner
+- Status
+- Allowed audience
+- Allowed channels
+- Required qualifier or restriction
+- Effective date
+- Review date
+- Superseded wording, when applicable
+- Internal notes
+- Human reviewer and review date
+
+The system may support draft records and suggestions, but it must never automatically approve or upgrade a proof point.
+
+## Initial Registry State
+
+At launch:
+
+- the registry may be empty;
+- approved claims may be entered manually after review;
+- process descriptions may be documented as draft until leadership confirms they are currently followed;
+- client, outcome, scale, speed, compliance, certification, and performance claims require supporting evidence;
+- the absence of an approved proof point must not be bypassed by using language from an old deck.
+
+# Appendix B - Restricted and Prohibited Claims
+
+The following claims must remain prohibited or require verification unless current evidence is manually reviewed and approved:
+
+- percentage-based quality, success, accuracy, compliance, fill-rate, or placement claims;
+- fixed turnaround promises such as 24-hour delivery;
+- candidates delivered "in hours";
+- 24/7 or around-the-clock staffing support;
+- nationwide deployment or scale claims;
+- guaranteed placements, starts, compliance, or candidate availability;
+- certification, accreditation, or regulatory-alignment claims without exact evidence and approved wording;
+- named-client delivery claims without authorization and supporting records;
+- government-contract, diversity-certification, or certified-engagement claims without current documentation;
+- client logos without written permission;
+- any performance statistic without a defined calculation, period, population, source, and owner;
+- financial projections, fill-rate assumptions, ROI models, margin data, or future plans;
+- claims copied from old decks or team-created materials solely because they were previously used.
+
+# Appendix C - Knowledge Source Admission
+
+No legacy files are authorized as initial BD Agent knowledge.
+
+Future sources must be:
+
+1. submitted to the Knowledge Library;
+2. classified and versioned;
+3. reviewed by an authorized human;
+4. approved for a defined use;
+5. linked to atomic proof points when material claims are involved; and
+6. re-reviewed when the source, market, service, or claim changes.
+
+The system must begin from a clean knowledge state rather than inheriting outdated assumptions.
+
+"""
+playbook = playbook[:appendix_start] + new_appendices + playbook[appendix_d:]
+playbook_path.write_text(playbook, encoding="utf-8")
+
+# ---------------- STRATEGY SYNC IMPLEMENTATION ----------------
+impl_path = docs / "bd-agent-strategy-sync-implementation.md"
+impl = impl_path.read_text(encoding="utf-8")
+impl = re.sub(r"Version 2\.2", "Version 2.3", impl)
+impl = impl.replace(
+    "- Never auto-approve a claim or automatically upgrade a seeded status.",
+    "- Never auto-approve a claim or automatically upgrade a draft, imported, or suggested status."
+)
+impl = impl.replace(
+    "Seed the registry with Appendix A from the playbook. Preserve the stated status; do not silently upgrade Requires verification entries to Approved.",
+    "Create the Proof Point Registry structure, but do not seed approved claims from legacy documents. The initial registry may be empty. Authorized leadership will manually add or approve current proof points."
+)
+impl = impl.replace(
+    "- Quarantine the claims listed in Appendix B.\n- Treat the internal business plan as internal-only.\n- Do not treat a slide as verified merely because it exists in a master deck.",
+    "- Enforce the restricted and prohibited claim rules in Appendix B.\n- Do not ingest or rely on legacy capability decks, business plans, or historical documents as approved grounding.\n- Do not treat a slide as verified merely because it exists in a master deck."
+)
+impl = impl.replace(
+    "- seeded records",
+    "- manually approved records or empty-registry behavior"
+)
+impl_path.write_text(impl, encoding="utf-8")
+
+# ---------------- ARCHITECTURE GUIDE ----------------
+arch_path = docs / "bd-agent-architecture-guide.md"
+arch = arch_path.read_text(encoding="utf-8")
+arch = arch.replace(
+    "12. add the Healthcare Capability Deck and other approved Hire’in materials as test fixtures or seed instructions without hard-coding business text into application code;",
+    "12. do not seed the knowledge base from legacy decks or documents; use synthetic fixtures for extraction tests and require human approval for any future real source;"
+)
+
+source_section_start = arch.index("# 29. Source Materials to Seed the Knowledge Base")
+source_section_end = arch.index("# 30. Final Product Principle")
+
+new_source_section = """# 29. Initial Knowledge State and Future Source Admission
+
+The production BD Agent must not begin with legacy company decks, old business plans, historical presentations, or unreviewed documents as assumed knowledge.
+
+Initial implementation should use synthetic or clearly non-authoritative fixtures to test:
+
+- PPTX, PDF, DOCX, MD, and TXT extraction;
+- slide and page boundaries;
+- versioning;
+- checksums;
+- approval filters;
+- provenance;
+- claim linkage;
+- rejected and superseded states;
+- prompt-injection handling.
+
+Future real company sources must enter through the manual Knowledge Library review process.
+
+A file must not become production grounding until an authorized human confirms:
+
+- the version is current;
+- the content is accurate;
+- the source owner is known;
+- the intended domain and audience are defined;
+- confidentiality and usage restrictions are recorded;
+- material claims are linked to Proof Point Registry records;
+- the source is approved for the intended retrieval context.
+
+The system should start clean and accumulate current, verified intelligence from real client work, approved operating processes, and intentionally selected markets.
+
+---
+
+"""
+arch = arch[:source_section_start] + new_source_section + arch[source_section_end:]
+arch_path.write_text(arch, encoding="utf-8")
+
+# ---------------- TASK 0 ----------------
+task0_path = docs / "bd-agent-task-0-audit-prompt.md"
+task0 = task0_path.read_text(encoding="utf-8")
+task0 += """
+
+## Additional Source-Control Instruction
+
+Do not treat any legacy capability deck, business plan, historical presentation, or old architecture document found in the repository as approved BD Agent knowledge.
+
+Identify any existing legacy knowledge, deck, claim, or seed content that could contaminate the new Agent and list it in the audit as:
+
+- keep after review;
+- quarantine;
+- supersede;
+- delete from future seed flow; or
+- requires leadership decision.
+
+Do not delete or migrate it during Task 0.
+"""
+task0_path.write_text(task0, encoding="utf-8")
+
+# ---------------- Standalone files and ZIP ----------------
+standalone_readme = base / "Hirein_BD_Agent_Final_Replit_Handoff_README_v2.3.md"
+standalone_list = base / "Hirein_BD_Agent_Final_File_List_for_Replit_v2.3.md"
+standalone_playbook = base / "Hirein_BD_Agent_Playbook_v2.3.md"
+standalone_impl = base / "Hirein_BD_Agent_Strategy_Sync_Implementation_v2.3.md"
+standalone_policy = base / "Hirein_BD_Agent_Knowledge_Source_Admission_Policy_v2.3.md"
+
+for src, dst in [
+    (readme_path, standalone_readme),
+    (file_list_path, standalone_list),
+    (playbook_path, standalone_playbook),
+    (impl_path, standalone_impl),
+    (classification_path, standalone_policy),
+]:
+    shutil.copy2(src, dst)
+
+zip_path = base / "Hirein_BD_Agent_Final_Replit_Package_v2.3.zip"
+if zip_path.exists():
+    zip_path.unlink()
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+    for p in out_pkg.rglob("*"):
+        if p.is_file():
+            zf.write(p, p.relative_to(out_pkg))
+
+# Verify no legacy source names or folder references remain.
+blocked_terms = [
+    "source-materials/",
+    "Hirein_Healthcare_Staffing_Capability_Deck",
+    "HireInSolns_CapablityDeck",
+    "HireinAI_Business_Plan",
+    "Hire-in.docx",
+    "Multi-Portal-System-Architecture-Implementation-Plan",
+    "Healthcare Staffing Capability Deck",
+]
+hits = []
+for p in out_pkg.rglob("*"):
+    if p.is_file() and p.suffix.lower() in {".md", ".txt"}:
+        text = p.read_text(encoding="utf-8", errors="ignore")
+        for term in blocked_terms:
+            if term in text:
+                hits.append((str(p.relative_to(out_pkg)), term))
+
+print(f"Created: {zip_path}")
+print(f"ZIP size: {zip_path.stat().st_size:,} bytes")
+print(f"Legacy source folder present: {(out_pkg / 'source-materials').exists()}")
+print(f"Blocked legacy references remaining: {len(hits)}")
+for item in hits[:20]:
+    print(" -", item)

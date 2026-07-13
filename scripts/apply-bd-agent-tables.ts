@@ -13,9 +13,15 @@ async function main() {
       id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
       user_id VARCHAR NOT NULL REFERENCES admin_users(id),
       title VARCHAR(200) NOT NULL DEFAULT 'New conversation',
+      domain VARCHAR(50) NOT NULL DEFAULT 'general',
       created_at TIMESTAMP NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMP NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Idempotent backfill — add domain column if the table was created before this column existed
+  await db.execute(sql`
+    ALTER TABLE bd_conversations ADD COLUMN IF NOT EXISTS domain VARCHAR(50) NOT NULL DEFAULT 'general'
   `);
 
   await db.execute(sql`

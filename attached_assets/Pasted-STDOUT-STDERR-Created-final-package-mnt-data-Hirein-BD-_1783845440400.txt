@@ -1,0 +1,235 @@
+STDOUT/STDERR
+Created final package:
+/mnt/data/Hirein_BD_Agent_Final_Replit_Package_v2.2.zip
+ZIP size: 1,954,936 bytes
+Core files:
+- Hirein_BD_Agent_Final_Replit_Handoff_README_v2.2.md: 5,697 bytes
+- Hirein_BD_Agent_Final_File_List_for_Replit_v2.2.md: 997 bytes
+- Hirein_BD_Agent_Playbook_v2.2.md: 54,210 bytes
+- Hirein_BD_Agent_Strategy_Sync_Implementation_v2.2.md: 19,383 bytes
+
+Final Replit Handoff
+
+Give Replit the Version 2.2 package only. Do not mix it with the older Version 2.0 or 2.1 files, because duplicate instructions could create conflicting implementation decisions.
+
+Download the complete Hire’in BD Agent Replit Package v2.2
+
+Files Replit must receive
+1. README-FIRST.md
+
+This controls:
+
+document precedence;
+implementation order;
+what Replit may and may not change;
+how Tasks 1–5 connect;
+stop conditions;
+required reporting after every task.
+
+Hirein_BD_Agent_Final_Replit_Handoff_README_v2.2.md
+
+2. docs/bd-agent-architecture-guide.md
+
+This is the complete technical and product architecture.
+
+It defines:
+
+existing-system reuse rules;
+modular architecture;
+data and knowledge models;
+Agent orchestration;
+deck ingestion and collaboration;
+security and audit requirements;
+Tasks 0–5;
+acceptance criteria.
+
+The source file in the package is the finalized copy of:
+
+Hirein_AI_BD_Agent_Replit_Architecture_and_Implementation_Guide.md
+
+3. docs/bd-agent-task-0-audit-prompt.md
+
+This is the first and only instruction Replit should run initially.
+
+It requires Replit to:
+
+inspect the existing repository;
+identify reusable code;
+verify architecture assumptions;
+identify role and migration risks;
+produce docs/bd-agent-codebase-audit.md;
+make no functional changes;
+stop after the audit.
+
+Do not allow Replit to start Task 1 before reviewing this audit.
+
+4. docs/bd-agent-playbook.md — Version 2.2
+
+This is the authoritative business strategy and operating standard.
+
+It now includes:
+
+Where Hire’in Wins;
+selectivity guardrails;
+prioritized value strategy by domain;
+buyer-specific positioning;
+opportunity qualification;
+Virtual CBDO Copilot methodology;
+market-research reliability rules;
+client-positioning recommendations;
+competitive strategy guidance;
+six opportunity verdicts;
+manual human decisions;
+proof-point governance;
+deck and communication standards;
+human review requirements;
+approved and restricted claim appendices.
+
+Hirein_BD_Agent_Playbook_v2.2.md
+
+5. docs/bd-agent-strategy-sync-implementation.md — Version 2.2
+
+This translates the business playbook into implementation requirements.
+
+It tells Replit to build:
+
+the manual Proof Point Registry;
+Where-We-Win intelligence;
+selectivity warnings;
+domain value priorities;
+structured qualification;
+the Virtual CBDO positioning engine;
+market-research provenance;
+structured Client Positioning Recommendations;
+competitive recommendations with evidence limitations;
+separate Agent recommendations and human decisions;
+positioning reuse across decks and communication;
+pre-send validation;
+manual administrative controls;
+evaluation and hardening.
+
+Hirein_BD_Agent_Strategy_Sync_Implementation_v2.2.md
+
+6. docs/bd-agent-source-classification.md
+
+This tells Replit how each source file may be used.
+
+It prevents the Agent from assuming that every uploaded document or master-deck slide is automatically approved.
+
+The classifications are:
+
+Healthcare capability deck: primary candidate source, subject to review
+Legacy capability statement: quarantine and verification source
+Business plan: internal only
+Platform architecture documents: technical reference only
+Playbook: business methodology, not external factual proof
+
+This file is included in the ZIP package.
+
+Supporting source materials
+
+These should be provided as evidence and architecture context, not as independent build instructions:
+
+Hirein_Healthcare_Staffing_Capability_Deck.pptx
+HireInSolns_CapablityDeck.pdf
+HireinAI_Business_Plan.docx
+Hire-in.docx
+Multi-Portal-System-Architecture-Implementation-Plan.md
+Exact build order
+Step 1: Add the files
+
+Place the documents in the paths defined above. Keep the business and architecture source materials in a secure internal seed or source-materials location, not a public static folder.
+
+Step 2: Run Task 0 only
+
+Use:
+
+docs/bd-agent-task-0-audit-prompt.md
+
+Replit must inspect and stop.
+
+Step 3: Review the audit
+
+Confirm:
+
+the actual authentication and RBAC model;
+existing BD Agent implementation;
+current database schema;
+role-enum risks;
+knowledge and claims models;
+existing deck functionality;
+existing AI provider wrapper;
+reusable upload, audit, storage, and approval systems.
+Step 4: Run Task 1
+
+Build the safe feature foundation and data model.
+
+Include:
+
+opportunity and account foundation;
+proof-point model;
+Where-We-Win configuration;
+positioning model;
+separate Agent and human decisions;
+no unnecessary new roles.
+Step 5: Run Task 2
+
+Build:
+
+knowledge and deck ingestion;
+source provenance;
+research reliability labels;
+manual Proof Point Registry;
+initial approved and quarantined records;
+master-deck ingestion;
+Playbook integration.
+Step 6: Run Task 3
+
+Build:
+
+BD workspace;
+qualification;
+Virtual CBDO intelligence;
+client positioning;
+competitive angle;
+opportunity verdicts;
+human Accept, Modify, Escalate, Deprioritize, and Pending Review controls;
+reuse of approved positioning across workflows.
+Step 7: Run Task 4
+
+Build:
+
+slide-level Deck Collaborator;
+master-deck versioning;
+proof-point linkage;
+branding controls;
+approval workflow;
+human review before external use.
+Step 8: Run Task 5
+
+Complete:
+
+evaluation;
+pre-send validation;
+audit history;
+contextual Playbook help;
+pilot feedback;
+governance testing;
+production hardening;
+launch recommendation.
+Do not give Replit these older files
+
+Exclude:
+
+Version 2.0 playbook
+Version 2.1 playbook
+previous synchronization prompts
+previous synchronization ZIP packages
+original generic standards document
+duplicate copies of canonical documents
+
+Hirein_BD_Agent_Final_File_List_for_Replit_v2.2.md
+
+The most important instruction is:
+
+Run Task 0 first. Then execute Tasks 1–5 individually. Never give the full architecture and implementation documents to Replit as one mega-task.

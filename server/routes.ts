@@ -24469,14 +24469,37 @@ export async function registerRoutes(
       const title = typeof req.body?.title === "string" && req.body.title.trim()
         ? req.body.title.trim().slice(0, 200)
         : "New conversation";
+      const validDomains = ["healthcare", "it", "engineering", "professional_services", "general", "cross_domain"];
+      const domain = validDomains.includes(req.body?.domain) ? req.body.domain : "general";
       const [conv] = await db
         .insert(bdConversations)
-        .values({ userId, title })
+        .values({ userId, title, domain })
         .returning();
       res.json(conv);
     } catch (err) {
       console.error("[BD] create conversation:", err);
       res.status(500).json({ error: "Failed to create conversation" });
+    }
+  });
+
+  // PATCH /api/studio/bd/conversations/:id/domain — update domain on an existing conversation
+  app.patch("/api/studio/bd/conversations/:id/domain", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const [conv] = await db
+        .select({ id: bdConversations.id, userId: bdConversations.userId })
+        .from(bdConversations)
+        .where(eq(bdConversations.id, req.params.id))
+        .limit(1);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+      if (conv.userId !== userId) return res.status(403).json({ error: "Not your conversation" });
+      const validDomains = ["healthcare", "it", "engineering", "professional_services", "general", "cross_domain"];
+      if (!validDomains.includes(req.body?.domain)) return res.status(400).json({ error: "Invalid domain" });
+      await db.execute(sql`UPDATE bd_conversations SET domain=${req.body.domain}, updated_at=NOW() WHERE id=${req.params.id}`);
+      res.json({ success: true, domain: req.body.domain });
+    } catch (err) {
+      console.error("[BD] update domain:", err);
+      res.status(500).json({ error: "Failed to update domain" });
     }
   });
 
@@ -24566,7 +24589,10 @@ export async function registerRoutes(
         .limit(20);
       const contextMessages = history.reverse() as { role: "user" | "assistant"; content: string }[];
 
-      const result = await runBdAgentChat(contextMessages, bvContext || undefined);
+      const result = await runBdAgentChat(contextMessages, {
+        brandVoiceContext: bvContext || undefined,
+        domain: (conv as any).domain ?? "general",
+      });
 
       // Persist assistant reply
       const [assistantMsg] = await db
@@ -24580,13 +24606,13 @@ export async function registerRoutes(
         contentType: "bd_chat",
         generatedByUserId: userId,
         modelName: result.model,
-        inputJson: { conversationId: conv.id, messageLength: userContent.length },
+        inputJson: { conversationId: conv.id, messageLength: userContent.length, mode: result.mode },
         outputJson: { replyLength: result.reply.length },
         tokenEstimate: result.tokenEstimate,
         status: "draft",
       } as any).catch(() => {});
 
-      res.json({ message: assistantMsg, model: result.model });
+      res.json({ message: assistantMsg, model: result.model, mode: result.mode });
     } catch (err: any) {
       if (err instanceof AiGenerationError) {
         return res.status(502).json({ error: err.message, code: err.code, retryable: err.retryable });

@@ -26,13 +26,46 @@ import {
   LayoutTemplate,
   Copy,
   Edit3,
+  Globe,
 } from "lucide-react";
 
+type BdAgentMode =
+  | "account_discovery"
+  | "opportunity_qualification"
+  | "meeting_preparation"
+  | "deck_collaboration"
+  | "positioning_objection"
+  | "executive_brief"
+  | "follow_up_drafting"
+  | "general";
+
+const BD_MODE_META: Record<BdAgentMode, { label: string; icon: string }> = {
+  account_discovery:        { label: "Account Discovery",         icon: "🔍" },
+  opportunity_qualification:{ label: "Opportunity Qualification", icon: "📊" },
+  meeting_preparation:      { label: "Meeting Preparation",       icon: "📋" },
+  deck_collaboration:       { label: "Deck Collaboration",        icon: "🃏" },
+  positioning_objection:    { label: "Positioning & Objection",   icon: "🎯" },
+  executive_brief:          { label: "Executive Brief",           icon: "📝" },
+  follow_up_drafting:       { label: "Follow-Up Draft",          icon: "✏️" },
+  general:                  { label: "General",                   icon: "💬" },
+};
+
+const DOMAIN_OPTIONS = [
+  { value: "healthcare",          label: "Healthcare" },
+  { value: "it",                  label: "IT / Technology" },
+  { value: "engineering",         label: "Engineering" },
+  { value: "professional_services", label: "Professional Services" },
+  { value: "general",             label: "General" },
+  { value: "cross_domain",        label: "Cross-Domain" },
+];
+
 const DOMAIN_LABELS: Record<string, string> = {
-  healthcare: "Healthcare",
-  it: "IT",
-  engineering: "Engineering",
-  professional_services: "Prof. Services",
+  healthcare:           "Healthcare",
+  it:                   "IT",
+  engineering:          "Engineering",
+  professional_services:"Prof. Services",
+  general:              "General",
+  cross_domain:         "Cross-Domain",
 };
 
 interface BdDeckStub {
@@ -48,6 +81,7 @@ interface BdDeckStub {
 interface BdConversation {
   id: string;
   title: string;
+  domain: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -60,31 +94,99 @@ interface BdMessage {
   createdAt: string;
 }
 
+// Structured section metadata — maps header text → display config
+const STRUCTURED_SECTIONS: Record<string, { bg: string; border: string; label: string }> = {
+  "BUYER STAGE":      { bg: "bg-blue-50 dark:bg-blue-950/30",   border: "border-blue-200 dark:border-blue-800",   label: "Buyer Stage" },
+  "FIT ASSESSMENT":   { bg: "bg-emerald-50 dark:bg-emerald-950/30", border: "border-emerald-200 dark:border-emerald-800", label: "Fit Assessment" },
+  "KEY GAPS":         { bg: "bg-amber-50 dark:bg-amber-950/30",  border: "border-amber-200 dark:border-amber-800",  label: "Key Gaps" },
+  "RECOMMENDATION":   { bg: "bg-primary/5",                      border: "border-primary/20",                       label: "Recommendation" },
+  "CLAIM STATUS":     { bg: "bg-muted/60",                       border: "border-muted",                            label: "Claim Status" },
+  "NEXT BEST ACTION": { bg: "bg-orange-50 dark:bg-orange-950/30",border: "border-orange-200 dark:border-orange-800",label: "Next Best Action" },
+};
+
+function renderInlineMarkdown(text: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let remaining = text;
+  let key = 0;
+  while (remaining.length > 0) {
+    const boldMatch = remaining.match(/\*\*(.+?)\*\*/);
+    if (boldMatch && boldMatch.index !== undefined) {
+      if (boldMatch.index > 0) parts.push(<span key={key++}>{remaining.slice(0, boldMatch.index)}</span>);
+      parts.push(<strong key={key++}>{boldMatch[1]}</strong>);
+      remaining = remaining.slice(boldMatch.index + boldMatch[0].length);
+    } else {
+      parts.push(<span key={key++}>{remaining}</span>);
+      break;
+    }
+  }
+  return parts;
+}
+
 function MarkdownProse({ text }: { text: string }) {
   const lines = text.split("\n");
-  return (
-    <div className="space-y-1.5 text-sm leading-relaxed">
-      {lines.map((line, i) => {
-        if (line.startsWith("### ")) {
-          return <p key={i} className="mt-3 font-semibold text-foreground">{line.slice(4)}</p>;
+  const elements: React.ReactNode[] = [];
+  let i = 0;
+
+  while (i < lines.length) {
+    const line = lines[i];
+
+    // Detect structured section headers: **BUYER STAGE:** or **NEXT BEST ACTION:**
+    const sectionMatch = line.match(/^\*\*([A-Z][A-Z\s]+?):\*\*\s*(.*)/);
+    if (sectionMatch) {
+      const sectionKey = sectionMatch[1].trim();
+      const meta = STRUCTURED_SECTIONS[sectionKey];
+      if (meta) {
+        // Collect all lines until the next structured section or blank separator
+        const sectionLines: string[] = [];
+        if (sectionMatch[2]) sectionLines.push(sectionMatch[2]);
+        let j = i + 1;
+        while (j < lines.length) {
+          const nextLine = lines[j];
+          if (nextLine.match(/^\*\*([A-Z][A-Z\s]+?):\*\*/)) break;
+          sectionLines.push(nextLine);
+          j++;
         }
-        if (line.startsWith("## ")) {
-          return <p key={i} className="mt-4 text-base font-bold text-foreground">{line.slice(3)}</p>;
-        }
-        if (line.startsWith("**") && line.endsWith("**")) {
-          return <p key={i} className="font-semibold">{line.slice(2, -2)}</p>;
-        }
-        if (line.startsWith("- ") || line.startsWith("• ")) {
-          return <p key={i} className="pl-4 before:content-['•'] before:mr-2 before:text-primary">{line.slice(2)}</p>;
-        }
-        if (/^\d+\.\s/.test(line)) {
-          return <p key={i} className="pl-4">{line}</p>;
-        }
-        if (line.trim() === "") return <div key={i} className="h-1" />;
-        return <p key={i}>{line}</p>;
-      })}
-    </div>
-  );
+        // Trim trailing blanks
+        while (sectionLines.length && !sectionLines[sectionLines.length - 1].trim()) sectionLines.pop();
+        elements.push(
+          <div key={`section-${i}`} className={`mt-3 rounded-lg border px-3.5 py-2.5 ${meta.bg} ${meta.border}`}>
+            <p className="text-[10px] font-bold uppercase tracking-wider opacity-60 mb-1">{meta.label}</p>
+            <div className="space-y-1">
+              {sectionLines.map((sl, si) => {
+                if (!sl.trim()) return null;
+                if (sl.startsWith("- ") || sl.startsWith("• ")) {
+                  return <p key={si} className="text-sm pl-3 before:content-['•'] before:mr-2 before:opacity-50">{renderInlineMarkdown(sl.slice(2))}</p>;
+                }
+                if (/^\d+\.\s/.test(sl)) {
+                  return <p key={si} className="text-sm pl-3">{renderInlineMarkdown(sl)}</p>;
+                }
+                return <p key={si} className="text-sm">{renderInlineMarkdown(sl)}</p>;
+              })}
+            </div>
+          </div>
+        );
+        i = j;
+        continue;
+      }
+    }
+
+    if (line.startsWith("### ")) {
+      elements.push(<p key={i} className="mt-3 font-semibold text-foreground">{line.slice(4)}</p>);
+    } else if (line.startsWith("## ")) {
+      elements.push(<p key={i} className="mt-4 text-base font-bold text-foreground">{line.slice(3)}</p>);
+    } else if (line.startsWith("- ") || line.startsWith("• ")) {
+      elements.push(<p key={i} className="pl-4 before:content-['•'] before:mr-2 before:text-primary text-sm">{renderInlineMarkdown(line.slice(2))}</p>);
+    } else if (/^\d+\.\s/.test(line)) {
+      elements.push(<p key={i} className="pl-4 text-sm">{renderInlineMarkdown(line)}</p>);
+    } else if (line.trim() === "") {
+      elements.push(<div key={i} className="h-1" />);
+    } else {
+      elements.push(<p key={i} className="text-sm leading-relaxed">{renderInlineMarkdown(line)}</p>);
+    }
+    i++;
+  }
+
+  return <div className="space-y-1.5">{elements}</div>;
 }
 
 type ActiveTab = "chat" | "decks";
@@ -100,6 +202,13 @@ export default function BdAgentView() {
   const [selectedConvId, setSelectedConvId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [activeProjectId, setActiveProjectId] = useState("");
+
+  // Mode indicator — updated from each AI response
+  const [lastMode, setLastMode] = useState<BdAgentMode>("general");
+
+  // New conversation dialog state
+  const [showNewConvDialog, setShowNewConvDialog] = useState(false);
+  const [newConvDomain, setNewConvDomain] = useState("general");
 
   // "Build targeted client deck" modal state
   const [deckSourceMsg, setDeckSourceMsg] = useState<BdMessage | null>(null);
@@ -161,13 +270,44 @@ export default function BdAgentView() {
     onError: () => toast({ title: "Failed to build deck", description: "Check your connection and try again.", variant: "destructive" }),
   });
 
+  // Map BUYER STAGE value → best-fit deck positioning angle
+  function inferPositioningFromBuyerStage(content: string): string {
+    const stageMatch = content.match(/\*\*BUYER STAGE:\*\*\s*([a-z_]+)/i);
+    if (!stageMatch) return "full_staffing";
+    const stage = stageMatch[1].toLowerCase().trim();
+    // Early stages → consultative/problem-framing angles
+    if (["problem_identification", "solution_exploration"].includes(stage)) return "delivery_partner";
+    // Requirements definition → show we understand the spec
+    if (stage === "requirements_definition") return "domain_specialist";
+    // Evaluation → prove we reduce risk
+    if (stage === "supplier_evaluation") return "domain_specialist";
+    // Commercial → cost clarity
+    if (stage === "commercial_validation") return "cost_efficiency";
+    // Pilot / expansion → operating model
+    if (["pilot_or_contracting", "expansion_or_renewal"].includes(stage)) return "rpo";
+    return "full_staffing";
+  }
+
   function handleCreateClientDeck(msg: BdMessage) {
     setDeckSourceMsg(msg);
-    // Pre-fill the context with the agent's reply — user can trim/edit
-    setDeckContext(msg.content.slice(0, 800).trim());
-    setDeckDomain("healthcare");
+    // Extract structured context from the AI response — pull BUYER STAGE + FIT ASSESSMENT + KEY GAPS + RECOMMENDATION sections
+    const content = msg.content;
+    const structuredSections = ["BUYER STAGE", "FIT ASSESSMENT", "KEY GAPS", "RECOMMENDATION"];
+    const extracted: string[] = [];
+    for (const section of structuredSections) {
+      const match = content.match(new RegExp(`\\*\\*${section}:\\*\\*([^]*?)(?=\\*\\*[A-Z][A-Z ]+:\\*\\*|$)`, "i"));
+      if (match) extracted.push(`${section}:\n${match[1].trim()}`);
+    }
+    const ctxText = extracted.length > 0
+      ? extracted.join("\n\n").slice(0, 800)
+      : content.slice(0, 800).trim();
+    setDeckContext(ctxText);
+    // Detect domain from current conversation
+    const currentConv = (conversations as BdConversation[]).find((c) => c.id === selectedConvId);
+    setDeckDomain(currentConv?.domain ?? "healthcare");
     setDeckClientName("");
-    setDeckPositioning("full_staffing");
+    // Infer positioning angle from buyer stage in the response
+    setDeckPositioning(inferPositioningFromBuyerStage(content));
   }
 
   const { data: conversations = [], isLoading: convsLoading } = useQuery<BdConversation[]>({
@@ -188,12 +328,13 @@ export default function BdAgentView() {
   }, [messages]);
 
   const newConvMutation = useMutation({
-    mutationFn: () =>
-      apiRequest("POST", "/api/studio/bd/conversations", { title: "New conversation" }),
+    mutationFn: (domain: string) =>
+      apiRequest("POST", "/api/studio/bd/conversations", { title: "New conversation", domain }),
     onSuccess: async (res: any) => {
       const conv = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/studio/bd/conversations"] });
       setSelectedConvId(conv.id);
+      setShowNewConvDialog(false);
     },
     onError: () => toast({ title: "Error", description: "Could not create conversation.", variant: "destructive" }),
   });
@@ -243,8 +384,12 @@ export default function BdAgentView() {
         ...(activeProjectId ? { projectId: activeProjectId } : {}),
       }).then((r: any) => r.json()),
     onMutate: () => setDraft(""),
-    onSuccess: () =>
-      queryClient.invalidateQueries({ queryKey: ["/api/studio/bd/conversations", selectedConvId, "messages"] }),
+    onSuccess: (data: any) => {
+      if (data?.mode && BD_MODE_META[data.mode as BdAgentMode]) {
+        setLastMode(data.mode as BdAgentMode);
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/bd/conversations", selectedConvId, "messages"] });
+    },
     onError: () => toast({ title: "Error", description: "Failed to send message.", variant: "destructive" }),
   });
 
@@ -327,7 +472,7 @@ export default function BdAgentView() {
                 size="sm"
                 variant="outline"
                 className="h-7 px-2"
-                onClick={() => newConvMutation.mutate()}
+                onClick={() => setShowNewConvDialog(true)}
                 disabled={newConvMutation.isPending}
                 data-testid="button-bd-new-conversation"
               >
@@ -361,6 +506,9 @@ export default function BdAgentView() {
                 >
                   <MessageSquare className="h-3.5 w-3.5 shrink-0" />
                   <span className="flex-1 truncate">{conv.title}</span>
+                  {conv.domain && conv.domain !== "general" && (
+                    <span className="shrink-0 text-[9px] font-medium uppercase tracking-wide opacity-50">{DOMAIN_LABELS[conv.domain] ?? conv.domain}</span>
+                  )}
                   <button
                     className="opacity-0 group-hover:opacity-100 transition-opacity"
                     onClick={(e) => {
@@ -384,9 +532,24 @@ export default function BdAgentView() {
                 <Briefcase className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <p className="text-sm font-semibold leading-none">BD Agent</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-sm font-semibold leading-none">BD Agent</p>
+                  {selectedConvId && (
+                    <Badge
+                      variant="secondary"
+                      className="h-4.5 gap-1 px-1.5 py-0 text-[10px] font-medium"
+                      data-testid="badge-bd-mode"
+                    >
+                      {BD_MODE_META[lastMode].icon} {BD_MODE_META[lastMode].label}
+                    </Badge>
+                  )}
+                </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
-                  Business development strategy & copywriting assistant
+                  Grounded intelligence engine · {(() => {
+                    const conv = (conversations as BdConversation[]).find((c) => c.id === selectedConvId);
+                    const d = conv?.domain ?? "general";
+                    return <span className="inline-flex items-center gap-0.5"><Globe className="h-2.5 w-2.5" />{DOMAIN_LABELS[d] ?? d}</span>;
+                  })()}
                 </p>
               </div>
               <div className="ml-auto flex items-center gap-2">
@@ -406,7 +569,7 @@ export default function BdAgentView() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => newConvMutation.mutate()}
+                    onClick={() => setShowNewConvDialog(true)}
                     disabled={newConvMutation.isPending}
                     data-testid="button-bd-start-conversation"
                   >
@@ -442,7 +605,7 @@ export default function BdAgentView() {
                         key={prompt}
                         className="rounded-lg border bg-muted/40 px-3 py-2 text-left text-xs text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
                         onClick={() => {
-                          newConvMutation.mutate();
+                          setShowNewConvDialog(true);
                           setDraft(prompt);
                         }}
                         data-testid="button-bd-starter-prompt"
@@ -777,6 +940,50 @@ export default function BdAgentView() {
               data-testid="button-agent-confirm-save"
             >
               {saveIdeaMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* New Conversation Dialog — domain picker */}
+      <Dialog open={showNewConvDialog} onOpenChange={(o) => { if (!o) setShowNewConvDialog(false); }}>
+        <DialogContent className="max-w-sm" data-testid="modal-new-conversation">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Globe className="h-4 w-4 text-primary" />
+              New BD Conversation
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <p className="text-sm text-muted-foreground">
+              Choose the staffing domain for this conversation. The Agent will load the relevant master
+              deck knowledge and adjust its domain ontology accordingly.
+            </p>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Domain</Label>
+              <Select value={newConvDomain} onValueChange={setNewConvDomain}>
+                <SelectTrigger data-testid="select-new-conv-domain">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {DOMAIN_OPTIONS.map((opt) => (
+                    <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              You can change the domain later from the conversation settings.
+            </p>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowNewConvDialog(false)}>Cancel</Button>
+            <Button
+              onClick={() => newConvMutation.mutate(newConvDomain)}
+              disabled={newConvMutation.isPending}
+              data-testid="button-confirm-new-conversation"
+            >
+              {newConvMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Start conversation"}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -4379,6 +4379,7 @@ export const bdConversations = pgTable("bd_conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id").notNull().references(() => adminUsers.id),
   title: varchar("title", { length: 200 }).notNull().default("New conversation"),
+  domain: varchar("domain", { length: 50 }).default("general"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => [

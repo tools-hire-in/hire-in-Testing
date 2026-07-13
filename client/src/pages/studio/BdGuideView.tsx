@@ -93,9 +93,10 @@ const SECTIONS = [
   { id: "s2", index: "2", label: "Discovery Calls" },
   { id: "s3", index: "3", label: "Proposal & Rate Conversations" },
   { id: "s4", index: "4", label: "Follow-Up & Nurture" },
-  { id: "s5", index: "5", label: "Domain Playbooks" },
-  { id: "s6", index: "6", label: "Using the BD Agent" },
-  { id: "s7", index: "7", label: "Common Pitfalls" },
+  { id: "s5", index: "5", label: "Domain Value Priorities" },
+  { id: "s6", index: "6", label: "Where Hire'in Wins" },
+  { id: "s7", index: "7", label: "Using the BD Agent" },
+  { id: "s8", index: "8", label: "Common Pitfalls" },
 ];
 
 // ── Main page ─────────────────────────────────────────────────────────────────
@@ -197,13 +198,17 @@ export default function BdGuideView() {
                 Every BD conversation should reinforce that difference: we are an embedded extension of their
                 talent function, not a CV supplier.
               </P>
-              <H3>Our proof points (use these, don't invent others):</H3>
+              <H3>Approved positioning (use these — do not invent others):</H3>
               <UL items={[
-                <><strong>95% first-year retention rate</strong> — we measure fit, not just skills</>,
-                <><strong>24-hour first candidate submissions</strong> — our AI pre-screening runs 24/7</>,
-                <><strong>Multi-domain capability</strong> — Healthcare, IT, Engineering, and Professional Services under one account team</>,
-                <><strong>Flexible engagement models</strong> — Contract, Contract-to-Hire, Permanent</>,
+                <><strong>Role calibration and targeted sourcing</strong> — we align before we source, not after [approved_positioning]</>,
+                <><strong>Submission-readiness review</strong> — candidate packages reviewed for completeness before submission [approved_positioning]</>,
+                <><strong>Credential-aware pre-screening</strong> — applied based on role and program requirements [approved_positioning]</>,
+                <><strong>Multi-domain capability</strong> — Healthcare, IT, Engineering, and Professional Services under one account team [approved_positioning]</>,
+                <><strong>Focused pilot entry point</strong> — test on a defined role set before expanding; measurable, low-risk [approved_positioning]</>,
               ]} />
+              <div className="mt-2 rounded border border-destructive/20 bg-destructive/5 p-2.5 text-xs text-destructive/80">
+                <strong>Prohibited claims</strong> — never use externally: 95% retention/quality rates, 24-hour delivery guarantees, "candidates in hours," nationwide coverage, 24/7 responsiveness, Joint Commission alignment, named client delivery statistics. Check the Agent's [claim status] labels before any external use.
+              </div>
               <H3>The BD pipeline:</H3>
               <FlowStrip stages={["PROSPECT", "QUALIFY", "DISCOVER", "PROPOSE", "NEGOTIATE", "CLOSE", "DELIVER", "EXPAND"]} />
               <P>
@@ -413,33 +418,55 @@ export default function BdGuideView() {
               <SectionHeading
                 id="s5"
                 index="5"
-                title="Domain Playbooks"
-                subtitle="Healthcare, IT, Engineering, and Professional Services each have distinct buying patterns."
+                title="Domain Value Priorities"
+                subtitle="Lead with the right 2-3 pillars — different by domain and buyer."
               />
+              <P>
+                Hire'in has four company-wide value pillars. In any conversation or document, lead with only
+                the two or three most relevant for the domain, buyer, and opportunity — never all four.
+              </P>
+              <div className="my-3 rounded-md border bg-muted/40 p-4 text-sm">
+                <p className="font-semibold mb-2">The Four Value Pillars</p>
+                <ol className="list-decimal pl-5 space-y-1.5">
+                  <li><strong>Relevant, submission-ready talent</strong> — aligned, screened, presented with the information needed for a decision</li>
+                  <li><strong>Responsive and disciplined delivery</strong> — urgency with quality, documentation, and realistic expectations</li>
+                  <li><strong>Domain- and credential-aware screening</strong> — reflects role, environment, clinical scope, licenses, and client-specific conditions</li>
+                  <li><strong>Clear ownership and operational visibility</strong> — clients know what's being worked, what's changed, who owns the next action</li>
+                </ol>
+              </div>
               <div className="my-4 space-y-4">
                 <div className="rounded-lg border p-4">
-                  <p className="font-semibold text-primary">Healthcare</p>
-                  <P>Buyers: VP/Director of Clinical Operations, CNO, HR Director. Primary pains: time-to-credential, nurse/therapist/phlebotomist shortages, float pool management, travel-to-perm conversion.</P>
-                  <P>Key differentiators to emphasize: credentialing assistance, clinical domain expertise, retention rates, Joint Commission awareness.</P>
-                  <P>Seasonal pattern: budget cycles often reset in Q4; expansion announcements follow CMS certification timelines.</P>
+                  <p className="font-semibold text-primary">Healthcare — lead in this order</p>
+                  <OL items={[
+                    "Credential-aware, submission-ready candidates",
+                    "Quality and relevance of submissions",
+                    "Responsive coordination through interview and onboarding",
+                  ]} />
+                  <P>Approved message direction: role calibration before sourcing; confirm experience/availability/credentials/compensation; credential-aware checks by role; completeness review before submission; clear status and coordination.</P>
+                  <div className="mt-3 rounded border border-destructive/30 bg-destructive/5 p-3 text-xs text-destructive">
+                    <strong>Do not lead with:</strong> nationwide reach, 24/7 delivery, candidates in hours, guaranteed compliance, or named health-system experience.
+                  </div>
                 </div>
                 <div className="rounded-lg border p-4">
-                  <p className="font-semibold text-primary">IT / Technology</p>
-                  <P>Buyers: VP Engineering, CTO (small companies), IT Director, Procurement (large). Primary pains: specific-skill shortages (cloud, security, AI/ML), contractor-to-permanent conversion, project-based surge capacity.</P>
-                  <P>Key differentiators: technical screening quality (not just keyword matching), speed-to-submit, contractor bench availability.</P>
-                  <P>Watch for: company growth stage (Series B+ = real hiring budget), funded startups, digital transformation programs at mid-market firms.</P>
+                  <p className="font-semibold text-primary">IT — lead in this order</p>
+                  <OL items={[
+                    "Accurate alignment to technical and business requirements",
+                    "Speed to qualified and available candidates",
+                    "Reliable communication and ownership throughout the process",
+                  ]} />
+                  <P>Approved message direction: clarify required skills, work model, authorization, compensation, project context; distinguish must-have vs. preferred; present fit, gaps, and risks transparently; clear follow-through from submission to start.</P>
+                  <div className="mt-3 rounded border border-amber-300/40 bg-amber-50/50 p-3 text-xs text-amber-800 dark:text-amber-300">
+                    <strong>Proof requirement:</strong> IT delivery claims must tie to documented client, consultant, or placement records. Internal financial projections are not external proof.
+                  </div>
                 </div>
                 <div className="rounded-lg border p-4">
-                  <p className="font-semibold text-primary">Engineering / Industrial</p>
-                  <P>Buyers: Plant Manager, VP Operations, Project Manager, HR. Primary pains: skilled trades shortages, project ramp-up speed, safety certification requirements, union/non-union complexity.</P>
-                  <P>Key differentiators: trades expertise, on-site safety compliance knowledge, regional candidate access.</P>
-                  <P>Seasonal pattern: project-driven; watch capital project announcements, infrastructure awards.</P>
-                </div>
-                <div className="rounded-lg border p-4">
-                  <p className="font-semibold text-primary">Professional Services</p>
-                  <P>Buyers: COO, HR Director, Office Manager (smaller firms). Primary pains: admin/coordinator/office management shortages, finance & accounting gaps, paralegal and compliance roles.</P>
-                  <P>Key differentiators: white-collar domain expertise, culture fit screening, professional reference verification.</P>
-                  <P>Approach: these buyers respond strongly to case-based framing. "We've helped similar firms fill roles like X in Y days" (generic, not invented specific clients).</P>
+                  <p className="font-semibold text-primary">Engineering / General Professional — lead in this order</p>
+                  <OL items={[
+                    "Role-specific screening and practical fit",
+                    "Focused support for priority or difficult requirements",
+                    "Clear accountability and communication",
+                  ]} />
+                  <P>Use conservative positioning until approved case studies, delivery metrics, and proof points exist for each professional domain.</P>
                 </div>
               </div>
             </section>
@@ -449,41 +476,82 @@ export default function BdGuideView() {
               <SectionHeading
                 id="s6"
                 index="6"
-                title="Using the BD Agent"
-                subtitle="Your AI co-strategist — for research, copy, and objection prep."
+                title="Where Hire'in Wins"
+                subtitle="The 5 win profiles — and where to be selective."
               />
               <P>
-                The BD Agent is a conversational AI trained on Hire'in's positioning, domains, and BD
-                methodology. It helps with strategy, copy, and thinking — not with sending messages or
-                accessing CRMs.
+                These win profiles are more important than a broad list of services. Use them to decide
+                which opportunities deserve aggressive pursuit and which need leadership review first.
               </P>
-              <H3>What to use the BD Agent for:</H3>
-              <UL items={[
-                "Thinking through how to approach a specific account or buyer type",
-                "Preparing for objections before a call",
-                "Drafting or refining outreach copy",
-                "Exploring angles you haven't thought of",
-                "Pressure-testing a proposal framing",
-              ]} />
-              <H3>What to use the Templates for:</H3>
-              <UL items={[
-                <><ScreenLink href={studioPath("/bd-templates")}>Proposal Outline</ScreenLink> — structured proposal with the prospect's pain, our approach, and value propositions</>,
-                <><ScreenLink href={studioPath("/bd-templates")}>Rate Card Talking Points</ScreenLink> — framing fees as ROI, with pre-built objection responses</>,
-                <><ScreenLink href={studioPath("/bd-templates")}>Call Prep Brief</ScreenLink> — discovery questions, likely objections, call flow for a specific account</>,
-                <><ScreenLink href={studioPath("/bd-templates")}>Follow-Up Sequence</ScreenLink> — multi-touch follow-up copy ready to personalise and send</>,
-              ]} />
-              <H3>Guardrails the BD Agent enforces (always):</H3>
-              <UL items={[
-                "Never invents statistics, named clients, or outcome figures not given by you",
-                "Never makes placement guarantees",
-                "Copy is for human manual use — never auto-sent",
-                "Flags when advice needs local market or compliance verification",
-              ]} />
-              <ProTip title="Give the agent context">
-                The more context you give — the company, the contact's role, the pain they expressed, any
-                rates you've agreed on — the more specific and useful the output. Vague input produces
-                generic output. The agent is only as good as the brief you give it.
-              </ProTip>
+              <div className="my-4 space-y-3">
+                {[
+                  {
+                    id: "WIN-1",
+                    title: "Focused Permanent Healthcare Hiring",
+                    signals: ["Defined priority roles, locations, or specialties", "Buyer values relevant submissions over raw volume", "Client will clarify must-haves, credentials, compensation", "Wants support through interview coordination or onboarding", "Engagement can start with a pilot"],
+                    why: "Role calibration, targeted outreach, role-specific pre-screening, credential-aware review, submission-readiness QC, intake-to-onboarding coordination.",
+                  },
+                  {
+                    id: "WIN-2",
+                    title: "Buyers With Submission Noise or Incomplete Packages",
+                    signals: ["Hiring managers screening too many unsuitable resumes", "Vendors missing required info or submission formats", "Candidate interest/availability/credentials not confirmed consistently", "Client wants fewer, better-aligned submissions"],
+                    why: "Hire'in applies structured pre-screening and submission-readiness review so the client receives more complete and relevant candidate information.",
+                  },
+                  {
+                    id: "WIN-3",
+                    title: "Structured MSP, VMS, and Partner-Led Programs",
+                    signals: ["Defined submission rules and templates", "Candidate ownership and status documentation matter", "MSP/VMS team expects timely acknowledgment and follow-through", "Priority roles require clear escalation paths"],
+                    why: "Process discipline, submission completeness, responsiveness, clear escalation — use only when exact program requirements are understood.",
+                  },
+                  {
+                    id: "WIN-4",
+                    title: "Focused Pilot Opportunities",
+                    signals: ["Client open to testing on defined roles/locations before wider rollout", "Agreed must-haves and submission standards can be set", "Clear owner on both sides", "2-4 measurable success indicators can be defined"],
+                    why: `Preferred ask: "Let us demonstrate our process on a focused group of roles where quality, responsiveness, and communication can be measured."`,
+                  },
+                  {
+                    id: "WIN-5",
+                    title: "Buyers Who Value Direct Access, Ownership, and Flexibility",
+                    signals: ["Buyer wants access to decision-makers, not an account manager layer", "Values faster escalation and adaptable delivery support", "Willing to work with a partner that adapts to their operating model"],
+                    why: "Service-model advantage — present as accessibility and ownership, not as a claim to always be faster or cheaper than larger competitors.",
+                  },
+                ].map(({ id, title, signals, why }) => (
+                  <div key={id} className="rounded-lg border p-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-bold text-primary">{id}</span>
+                      <p className="font-semibold text-sm">{title}</p>
+                    </div>
+                    <p className="text-xs font-medium text-muted-foreground mb-1">Strong fit signals:</p>
+                    <ul className="list-disc pl-4 text-xs space-y-0.5 text-muted-foreground mb-2">
+                      {signals.map((s, i) => <li key={i}>{s}</li>)}
+                    </ul>
+                    <p className="text-xs"><span className="font-semibold">Why Hire'in is relevant:</span> {why}</p>
+                  </div>
+                ))}
+              </div>
+
+              <H3>Where we should be selective</H3>
+              <P>
+                Not every requirement deserves pursuit. Flag these conditions for qualification review
+                or leadership sign-off before committing resources:
+              </P>
+              <div className="my-2 rounded-md border border-destructive/20 bg-destructive/5 p-3">
+                <ul className="list-disc pl-4 text-xs space-y-1 text-destructive/80 dark:text-destructive/90">
+                  {[
+                    "Buyer selecting solely on lowest rate, no value for quality or process",
+                    "Program requires nationwide deployment scale not yet verified",
+                    "Client expects guaranteed placements, turnaround, or compliance",
+                    "Requires certifications or program experience Hire'in cannot substantiate",
+                    "Role categories outside demonstrated recruiting expertise",
+                    "Client won't provide enough information to calibrate the requirement",
+                    "Commercial terms create unacceptable margin, payment, legal, or operational risk",
+                    "Requires 24/7 surge coverage not yet operationally established",
+                    "Large-volume travel/per diem/locum healthcare delivery without verified infrastructure",
+                    "Would require unapproved client names, metrics, or performance claims to appear credible",
+                  ].map((w, i) => <li key={i}>{w}</li>)}
+                </ul>
+              </div>
+              <P>A decision not to pursue is not a failure. It protects team capacity and allows focus on opportunities the company can serve credibly.</P>
             </section>
 
             {/* ── Section 7 ── */}
@@ -491,6 +559,94 @@ export default function BdGuideView() {
               <SectionHeading
                 id="s7"
                 index="7"
+                title="Using the BD Agent"
+                subtitle="A governed Virtual CBDO Copilot — not just an AI chat box."
+              />
+              <P>
+                The BD Agent operates as a governed decision-support system built on 7 components: Buyer
+                Decision Model, Fit Scoring Framework, Buyer Stage Model, Domain Value Priorities (v2.3),
+                Claim Discipline, Storyline Model, and Next-Best-Action Model. Every response is grounded
+                in approved master deck knowledge loaded from the Decks library before the AI answers.
+              </P>
+              <P>
+                The Agent recommends, explains, drafts, and identifies risk. It does not approve
+                claims, commit commercial terms, automatically send communications, or replace human
+                judgment and leadership approval.
+              </P>
+
+              <H3>7 operating modes — auto-detected from your message</H3>
+              <UL items={[
+                <><strong>🔍 Account Discovery</strong> — company research, buyer org mapping, win-profile signal identification</>,
+                <><strong>📊 Opportunity Qualification</strong> — win-profile match, go/no-go verdict, 10-dimension scoring, selectivity warnings</>,
+                <><strong>📋 Meeting Preparation</strong> — call objective, agenda, discovery questions, likely objections and responses</>,
+                <><strong>🃏 Deck Collaboration</strong> — slide-by-slide evaluation against the 8-slide storyline model, claim-status flags</>,
+                <><strong>🎯 Positioning & Objection</strong> — value-pillar-grounded objection responses with claim-status labels</>,
+                <><strong>📝 Executive Brief</strong> — leadership-ready summary: win profile, fit verdict, gaps, one next step</>,
+                <><strong>✏️ Follow-Up Draft</strong> — 4-part communication framework, clean copy only, under 150 words by default</>,
+              ]} />
+
+              <H3>What structured responses include</H3>
+              <P>For substantive opportunity questions, the Agent returns these labeled sections:</P>
+              <UL items={[
+                <><strong>BUYER STAGE</strong> — which of 7 decision stages the buyer is at, with rationale</>,
+                <><strong>WIN PROFILE MATCH</strong> — which of the 5 win profiles this opportunity aligns with, fit signals detected, selectivity warnings if triggered</>,
+                <><strong>FIT ASSESSMENT</strong> — qualification verdict (pursue / qualify_further / pilot_recommended / nurture / leadership_review_required / do_not_prioritize) with top scored dimensions</>,
+                <><strong>KEY GAPS</strong> — missing information flagged [unknown]; selectivity conditions flagged</>,
+                <><strong>RECOMMENDATION</strong> — substantive BD advice with the value pillars to lead with for this buyer</>,
+                <><strong>CLAIM STATUS</strong> — every key assertion labeled with its standing</>,
+                <><strong>NEXT BEST ACTION</strong> — exactly one concrete next step from a defined list</>,
+              ]} />
+
+              <H3>Claim discipline — the governance guardrail</H3>
+              <P>The Agent labels every important assertion. Check the label before using any claim externally:</P>
+              <UL items={[
+                <><strong>[approved_positioning]</strong> — safe to use externally; describes process or approach, not a specific metric</>,
+                <><strong>[inferred]</strong> — plausible from context; verify before external use</>,
+                <><strong>[requires_verification]</strong> — do not use externally without a leadership check</>,
+                <><strong>[prohibited]</strong> — never use externally (fill-rate guarantees, named clients without authorization, certification claims, speed guarantees, nationwide coverage claims, etc.)</>,
+              ]} />
+
+              <H3>Qualification verdicts</H3>
+              <div className="my-3 space-y-1.5 text-sm">
+                {[
+                  { verdict: "pursue", color: "text-green-700 dark:text-green-400", label: "Strong win-profile alignment, credible proof, viable commercial conditions, clear next step." },
+                  { verdict: "qualify_further", color: "text-blue-700 dark:text-blue-400", label: "Potential alignment — material information, access, or evidence is missing." },
+                  { verdict: "pilot_recommended", color: "text-indigo-700 dark:text-indigo-400", label: "Promising — a limited role set or evaluation period is the most credible entry point." },
+                  { verdict: "nurture", color: "text-amber-700 dark:text-amber-400", label: "Strategically relevant — timing, urgency, or access is insufficient for active pursuit now." },
+                  { verdict: "leadership_review_required", color: "text-orange-700 dark:text-orange-400", label: "New market, significant commitment, unusual terms, material risk, or unverified claims needed." },
+                  { verdict: "do_not_prioritize", color: "text-destructive", label: "Weak fit, conflicts with capacity or evidence, unlikely to justify the cost of pursuit." },
+                ].map(({ verdict, color, label }) => (
+                  <div key={verdict} className="rounded border bg-muted/30 px-3 py-2">
+                    <span className={`font-mono text-xs font-bold ${color}`}>{verdict}</span>
+                    <span className="text-xs text-muted-foreground ml-2">— {label}</span>
+                  </div>
+                ))}
+              </div>
+              <P>These are advisory. The Agent does not automatically reject, close, or commit to an opportunity.</P>
+
+              <H3>Templates</H3>
+              <UL items={[
+                <><ScreenLink href={studioPath("/bd-templates")}>Proposal Outline</ScreenLink> — structured proposal with prospect's pain, approach, and value pillars</>,
+                <><ScreenLink href={studioPath("/bd-templates")}>Rate Card Talking Points</ScreenLink> — framing fees as ROI, with pre-built objection responses</>,
+                <><ScreenLink href={studioPath("/bd-templates")}>Call Prep Brief</ScreenLink> — discovery questions, likely objections, call flow for a specific account</>,
+                <><ScreenLink href={studioPath("/bd-templates")}>Follow-Up Sequence</ScreenLink> — multi-touch follow-up copy ready to personalize and send</>,
+              ]} />
+
+              <ProTip title="Brief the agent before asking it anything">
+                Answer the five qualification questions yourself first: (1) What problem? (2) Why now?
+                (3) What are the buyer, process, domain, and delivery conditions? (4) Why is Hire'in
+                relevant and what approved proof exists? (5) What's the smallest practical next step?
+                Then give that context to the Agent. A 3-sentence brief produces qualitatively better
+                output than a 1-sentence vague question. Master decks fill the approved knowledge — you
+                fill the client specifics.
+              </ProTip>
+            </section>
+
+            {/* ── Section 8 ── */}
+            <section>
+              <SectionHeading
+                id="s8"
+                index="8"
                 title="Common Pitfalls"
                 subtitle="The mistakes that cost deals — and how to avoid them."
               />

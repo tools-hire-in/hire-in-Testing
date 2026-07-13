@@ -1,0 +1,762 @@
+Hire'in Solutions
+
+Business Development and Client Communication Standards
+
+Version 1.0
+
+Effective Date: July 11, 2026
+
+Document Owner: CEO and Business Development Leadership
+
+Applies To: Business Development, Account Management, Delivery, Recruitment, Marketing, Operations, and Leadership
+
+One company. One standard. One professional client experience.
+
+
+Hire'in Solutions | Business Development and Client Communication Standards
+
+1. Purpose of This Standard
+
+Every email, call, meeting, capability deck, proposal, candidate update, and follow-up sent on behalf of Hire'in Solutions shapes the client's perception of our company. This standard establishes how we communicate, position our value, create client-facing materials, and manage approvals so that every interaction reflects professionalism, credibility, consistency, and accountability.
+
+The purpose is not to slow down the team or limit initiative. The purpose is to give the team a clear, efficient system so people can focus on the substance of the opportunity - the client's needs, the right solution, the strongest proof points, and the next action - while the company's brand, language, structure, and quality standards remain consistent.
+
+This document is the internal operating standard for business development and client communication at Hire'in Solutions.
+
+2. Scope
+
+This standard applies to all employees, contractors, and leaders who communicate with or create materials for:
+
+Prospective clients and hiring managers
+
+Existing clients and account stakeholders
+
+MSP and VMS program teams
+
+Procurement and vendor management teams
+
+Referral and channel partners
+
+Consultants, candidates, and other external stakeholders when representing Hire'in Solutions
+
+It applies to the following external-facing materials and activities:
+
+Capability decks and company presentations
+
+Proposals, pilot recommendations, and partnership documents
+
+Client emails, direct messages, and meeting invitations
+
+Discovery calls, capability discussions, and account reviews
+
+Requirement acknowledgments and clarification requests
+
+Candidate submissions and delivery updates
+
+Follow-up, re-engagement, escalation, and service-recovery communication
+
+Any document, message, or presentation that uses the Hire'in Solutions name, logo, capabilities, client references, or proof points
+
+3. Our Business Development Philosophy
+
+Hire'in Solutions does not compete by sending generic introductions, presenting long lists of services, or claiming that we can fill every role. We build credibility by understanding the buyer's situation, asking relevant questions, focusing on the business impact of the hiring need, and recommending a practical next step.
+
+Our business development approach is consultative, evidence-based, and delivery-aware.
+
+3.1 What We Sell
+
+We do not simply sell resumes or recruiter activity. We create value through:
+
+Access to qualified and relevant talent
+
+Reduced time spent reviewing unsuitable candidates
+
+Faster hiring progress without sacrificing screening quality
+
+Domain-aware recruiting for healthcare, IT, and professional roles
+
+Credential and compliance awareness where required
+
+Responsive communication and clear ownership
+
+Operational visibility throughout the recruiting and hiring process
+
+A dependable extension of the client's internal talent acquisition or delivery team
+
+3.2 Five Questions Behind Every Opportunity
+
+Before presenting Hire'in Solutions or recommending an action, the account owner should be able to answer:
+
+What business or workforce problem is the client trying to solve?
+
+Why is the requirement important now?
+
+What is the cost, delay, or operational risk if the need remains unresolved?
+
+Why is Hire'in Solutions relevant and credible for this specific opportunity?
+
+What is the smallest practical next step that can move the opportunity forward?
+
+3.3 Client-Centered Communication
+
+Our communication should spend more time on the client's situation than on our company.
+
+A strong message demonstrates:
+
+We understand the request or context.
+
+We know what information is still required.
+
+We can explain how we will approach the work.
+
+We understand the risks of poor alignment or delayed action.
+
+We have a clear and reasonable next step.
+
+4. Value Perception Standards
+
+Clients determine value from the quality of our thinking, preparation, responsiveness, and delivery discipline. Every communication should reinforce one or more approved value pillars. Do not force every value pillar into every message. Select the two or three most relevant to the buyer and situation.
+
+4.1 Quality of Submission
+
+Our candidates and recommendations should be relevant, properly screened, and aligned with the stated requirement. We should never create the impression that speed is being achieved by lowering quality.
+
+Clarify unclear or conflicting requirements before broad sourcing.
+
+Submit only candidates who meet the agreed screening criteria.
+
+Explain important gaps, risks, or availability constraints honestly.
+
+Avoid excessive or irrelevant submissions that transfer screening work back to the client.
+
+4.2 Speed With Discipline
+
+Speed matters when a vacancy affects patient care, technology delivery, operations, revenue, or business continuity. Our communication should show urgency, but not desperation or carelessness.
+
+Confirm what has been started and what remains dependent on the client.
+
+Set realistic expectations instead of making unsupported promises.
+
+Prioritize roles based on urgency, feasibility, and business impact.
+
+Share early market feedback when requirements, rates, location, or availability may limit results.
+
+4.3 Domain Understanding
+
+Healthcare, IT, and professional staffing require different buyer conversations, screening criteria, proof points, and risk considerations. Generic staffing language weakens credibility.
+
+Use role-specific and domain-appropriate terminology.
+
+Ask questions that demonstrate understanding of the operating environment.
+
+Adjust the value message to the buyer's priorities.
+
+Do not claim expertise that has not been approved or supported.
+
+4.4 Operational Transparency
+
+Clients should understand what is being worked on, what has been completed, what challenges exist, and what action is needed from them.
+
+Provide clear status updates even when there is no final result yet.
+
+Separate facts, assumptions, and recommendations.
+
+Escalate risks early rather than hiding them.
+
+End communication with a specific next step or decision.
+
+4.5 Credential and Compliance Awareness
+
+For healthcare and other regulated roles, qualification extends beyond experience. Licensure, credentials, background requirements, work authorization, and client-specific onboarding conditions may affect candidate eligibility.
+
+Do not state that a candidate is fully compliant unless the required verification is complete.
+
+Do not represent internal process support as a legal or regulatory guarantee.
+
+Use approved compliance language only.
+
+Escalate uncertainty to the appropriate leader or knowledge owner.
+
+4.6 Responsiveness and Ownership
+
+Clients should experience Hire'in Solutions as organized, dependable, proactive, and accountable.
+
+Acknowledge important requests promptly.
+
+Assign a clear owner for each opportunity and client action.
+
+Avoid making the client repeat information already provided.
+
+Document commitments and follow through by the stated time.
+
+5. Buyer-Specific Focal Points
+
+The same presentation or message should not be used for every audience. The account owner must adjust the focal points based on the buyer's role and decision responsibility.
+
+5.1 Hiring Manager
+
+Primary focal points:
+
+Understanding of the role and working environment
+
+Candidate quality and practical fit
+
+Screening depth and interview readiness
+
+Speed to qualified submission
+
+Reduced time spent reviewing irrelevant candidates
+
+5.2 Procurement or Vendor Management
+
+Primary focal points:
+
+Process compliance and consistency
+
+Commercial clarity and rate discipline
+
+Contracts, documentation, and reporting
+
+Risk management and accountability
+
+Ability to work within established vendor processes
+
+5.3 MSP or VMS Program Team
+
+Primary focal points:
+
+Adherence to submission and candidate-ownership rules
+
+Responsiveness to requisition priorities
+
+Submission quality and completeness
+
+Credential and onboarding readiness
+
+Program performance, communication, and issue resolution
+
+5.4 Executive Buyer
+
+Primary focal points:
+
+Workforce continuity and business impact
+
+Cost and risk of vacancies
+
+Scalability and operational visibility
+
+Delivery accountability
+
+Long-term partnership value
+
+5.5 Referral or Channel Partner
+
+Primary focal points:
+
+Trust and protection of the relationship
+
+Clear ownership of client and candidate communication
+
+Commercial structure and responsibilities
+
+Transparency and timely updates
+
+Long-term partnership conduct
+
+6. Client Communication Tone and Language
+
+The Hire'in Solutions communication tone must be:
+
+Professional and prepared
+
+Confident without being aggressive
+
+Warm and respectful
+
+Concise without being abrupt
+
+Consultative rather than transactional
+
+Specific rather than generic
+
+Honest about what is known, unknown, and still being verified
+
+6.1 Language We Should Use
+
+Based on the roles you are prioritizing, we recommend...
+
+To ensure we target the correct candidate profile, we would like to clarify...
+
+We reviewed the requirement and identified the following factors that may affect candidate availability...
+
+Our proposed first step is a focused pilot on...
+
+Here is what has been completed, what remains open, and what we recommend next.
+
+We do not yet have enough verified information to confirm that point. We will validate it before including it externally.
+
+6.2 Language and Behaviors to Avoid
+
+We can provide any resource anywhere.
+
+We are the best staffing company.
+
+We guarantee immediate placements.
+
+Please give us requirements.
+
+Repeated follow-ups that add no new value.
+
+Long introductions focused mainly on Hire'in Solutions.
+
+Overly promotional, desperate, or exaggerated language.
+
+Claims about clients, compliance, nationwide coverage, delivery speed, results, or certifications that have not been approved.
+
+Informal wording, internal shorthand, spelling errors, or unfinished messages in client communication.
+
+7. Standard Communication Framework
+
+Most client communication should follow a simple four-part structure. The structure may be brief, but each part should be clear.
+
+7.1 Context
+
+Acknowledge the conversation, requirement, meeting, issue, or decision. Demonstrate that the communication is specific to the client.
+
+7.2 Relevance and Value
+
+Connect the client's situation to the most relevant Hire'in value pillar. Explain why the point matters.
+
+7.3 Evidence, Action, or Recommendation
+
+State what has been reviewed, completed, found, or recommended. Use approved proof points when needed.
+
+7.4 Clear Next Step
+
+End with one specific request, decision, meeting, clarification, or action. Avoid vague endings such as 'Please advise' when a more precise ask is possible.
+
+8. Opportunity Preparation and Qualification
+
+Before a capability discussion, proposal, or customized deck is prepared, the account owner should document:
+
+Client name and account owner
+
+Buyer name, role, and decision influence
+
+Staffing domain and role categories
+
+Known workforce problem or business need
+
+Urgency and expected timeline
+
+Hiring volume, location, work model, and engagement type
+
+Required qualifications, credentials, or technology experience
+
+Current process, vendor model, MSP, or VMS environment
+
+Known competitors or incumbent vendors
+
+Commercial constraints, rates, or budget information
+
+Relevant approved Hire'in proof points
+
+Risks, assumptions, and unanswered questions
+
+Recommended next action
+
+A customized deck or proposal should not be created only because a prospect requested information. The team should first determine what decision the material needs to support.
+
+9. Capability Deck and Client-Facing Material Standards
+
+Capability decks, proposals, and company presentations are controlled client-facing assets. They must present one consistent Hire'in Solutions brand and message.
+
+9.1 Authorized Creation and Modification
+
+Only authorized users may create or modify capability decks.
+
+Delivery and recruitment team members may provide opportunity details, client needs, role information, market observations, and proof inputs.
+
+Unapproved personal templates must not be used for external communication.
+
+An approved master deck may not be modified and shared externally without the required review.
+
+9.2 Content Standards
+
+Every deck must be tailored to the client's decision, not simply filled with generic company information.
+
+The opening should reflect the client's context or opportunity.
+
+Capabilities should be prioritized by relevance.
+
+Proof points must come from approved sources.
+
+Unsupported or outdated claims must be removed.
+
+The deck must end with a clear recommendation or next step.
+
+9.3 Brand and Presentation Standards
+
+Use the approved Hire'in Solutions logo, fonts, colors, page structure, and footer.
+
+Use consistent terminology and company naming.
+
+Keep slide content concise and readable.
+
+Avoid excessive text, inconsistent icons, random colors, stock imagery that does not support the message, or copied client logos without approval.
+
+Check spelling, grammar, alignment, spacing, page numbering, and contact information before review.
+
+9.4 External Sharing
+
+Only the approved final version may be shared externally.
+
+The shared file must come from the approved central location.
+
+The account owner must confirm the recipient and purpose before sending.
+
+Draft, internal-only, expired, superseded, or restricted materials must never be sent externally.
+
+Any material containing pricing, client references, confidential information, partnership terms, or new claims requires the appropriate leadership approval.
+
+10. Review and Approval Standards
+
+The following approval principles apply:
+
+Routine communication using an approved template may be sent by the authorized account or delivery owner.
+
+Customized client messaging must be reviewed when it introduces new positioning, proof points, pricing, or commitments.
+
+Modified capability decks require business and brand approval before external use.
+
+New capability claims, case studies, client references, metrics, certifications, or compliance language require approval by the designated knowledge owner and leadership.
+
+Pricing, margin commitments, commercial exceptions, partnership structures, and contract terms require approval from authorized leadership.
+
+Strategic proposals or high-visibility executive communications require CEO or designated executive approval.
+
+Approval should be traceable. Verbal approval alone is not sufficient for controlled materials. The approved version, approver, date, and intended use should be documented.
+
+11. Documentation and Version Control
+
+Approved materials must be stored in the designated central repository.
+
+File names must include the document type, client or purpose when applicable, and version or approval date.
+
+Only one current approved master version should be available for routine use.
+
+Superseded versions must be archived or clearly marked so they cannot be shared accidentally.
+
+Client communication and important commitments must be recorded in the approved CRM, ATS, account system, or designated collaboration platform.
+
+WhatsApp or personal messaging should not be the sole record of a business decision or client commitment.
+
+12. Standard Client Communication Templates
+
+These templates provide an approved structure. They must be personalized to the client, buyer, requirement, and next action. Do not send placeholders or use the templates as generic mass outreach.
+
+12.1 New Prospect Introduction
+
+Subject: [Relevant workforce need or introduction]
+
+Hello [Name],
+
+I am reaching out regarding [specific client priority, role category, program, or referral context]. Hire'in Solutions supports organizations with healthcare, IT, and professional staffing through focused recruiting, disciplined screening, and responsive delivery.
+
+Based on [known context], the area where we may be most relevant is [specific capability or problem]. Rather than sending a general capability overview, I would value a brief discussion to understand your current priorities, process, and any roles requiring immediate attention.
+
+Would [specific day or time range] be convenient for a short introductory conversation?
+
+Best,
+
+[Name]
+
+12.2 Meeting Confirmation
+
+Subject: Confirmed: [Meeting Purpose] - [Date]
+
+Hello [Name],
+
+Thank you for confirming. We look forward to discussing [specific purpose or opportunity] on [date] at [time and time zone].
+
+Our focus will be:
+
+[Priority or challenge]
+
+[Roles, program, or process to be discussed]
+
+[Recommended next step or decision]
+
+We will keep the discussion focused and come prepared with the relevant information.
+
+Best,
+
+[Name]
+
+12.3 Requirements Received Acknowledgment
+
+Subject: Requirements Received - [Client or Role Group]
+
+Hello [Name],
+
+Thank you for sharing the requirements. We have reviewed the information and started aligning the appropriate delivery resources.
+
+Our immediate focus is [roles or priorities]. To maintain submission quality and avoid misalignment, we will confirm any open questions before presenting candidates.
+
+We will provide the next update by [date or time].
+
+Best,
+
+[Name]
+
+12.4 Requirement Clarification
+
+Subject: Clarification Required - [Position Title]
+
+Hello [Name],
+
+We reviewed the requirement for [position title] and would like to clarify [specific requirement]. The information currently provided indicates [known information], but it does not confirm [missing or conflicting point].
+
+Could you please confirm:
+
+[Question 1]
+
+[Question 2, when necessary]
+
+This will help us apply the correct screening criteria and avoid sending candidates who do not meet the hiring team's expectations.
+
+Thank you,
+
+[Name]
+
+12.5 Capability Deck Sharing
+
+Subject: Hire'in Solutions Capabilities - [Client or Opportunity]
+
+Hello [Name],
+
+Thank you for the opportunity to share additional information about Hire'in Solutions.
+
+Attached is the approved capability overview prepared for [client, program, or discussion]. It focuses on [relevant services or priorities] and outlines how we can support [specific need or outcome].
+
+The most practical next step would be [meeting, pilot, role review, or vendor-process discussion]. Please let us know a suitable time to continue the conversation.
+
+Best,
+
+[Name]
+
+12.6 Meeting Summary and Next Steps
+
+Subject: Summary and Next Steps - [Meeting Topic]
+
+Hello [Name],
+
+Thank you for your time today. Below is our understanding of the discussion:
+
+Current priority: [summary]
+
+Roles or scope: [summary]
+
+Key requirements or constraints: [summary]
+
+Hire'in action items: [actions and dates]
+
+Client action items: [actions and dates]
+
+Our recommended next step is [specific action]. Please let us know if any part of the summary should be corrected.
+
+Best,
+
+[Name]
+
+12.7 Follow-Up When There Is No Response
+
+Subject: Following Up - [Relevant Topic]
+
+Hello [Name],
+
+I am following up regarding [specific topic]. Since our last communication, [include a useful update, observation, or reason the matter remains relevant].
+
+If [priority] is still active, we recommend [specific next action]. If the timing has changed, a brief update will help us align our team appropriately.
+
+Thank you,
+
+[Name]
+
+12.8 Delivery or Candidate Pipeline Update
+
+Subject: Delivery Update - [Role or Program]
+
+Hello [Name],
+
+Here is the current update for [role or program]:
+
+Work completed: [summary]
+
+Qualified pipeline: [summary]
+
+Current challenge or market feedback: [summary]
+
+Action in progress: [summary]
+
+Input required from the client: [summary, if applicable]
+
+Next update: [date or time]
+
+We are continuing to prioritize quality and will communicate any material risk or change promptly.
+
+Best,
+
+[Name]
+
+12.9 Service Issue or Recovery Communication
+
+Subject: Action Plan Regarding [Issue]
+
+Hello [Name],
+
+Thank you for raising the concern regarding [issue]. We understand the impact this has had on [process, timeline, candidate experience, or team].
+
+We have reviewed the situation and identified the following immediate actions:
+
+[Corrective action 1]
+
+[Corrective action 2]
+
+[Owner and completion date]
+
+We will provide a progress update by [date or time]. We appreciate the opportunity to correct the issue and improve the process.
+
+Best,
+
+[Name]
+
+12.10 Focused Pilot Recommendation
+
+Subject: Proposed Pilot - [Roles or Program]
+
+Hello [Name],
+
+Based on our discussion, we recommend starting with a focused pilot covering [roles, locations, or requisition group].
+
+The pilot would allow both teams to evaluate:
+
+Quality and relevance of submissions
+
+Responsiveness and communication
+
+Understanding of requirements
+
+Interview and hiring progress
+
+Operational fit with your process
+
+Proposed duration or scope: [details].
+
+Success measures: [two or three agreed measures].
+
+If this approach is acceptable, the next step is [specific approval, meeting, or requirement handoff].
+
+Best,
+
+[Name]
+
+13. Prohibited Practices
+
+The following practices are not permitted:
+
+Creating or externally sharing an unapproved capability deck, proposal, or company presentation
+
+Using personal templates or changing approved branding without authorization
+
+Making unsupported claims or guarantees
+
+Using a client name, logo, result, or case study without approval
+
+Committing to pricing, rates, margins, service levels, timelines, or contractual terms without authority
+
+Sending draft, internal-only, expired, restricted, or superseded materials
+
+Copying content from another company or source without authorization
+
+Sharing confidential client, candidate, employee, or commercial information with unauthorized recipients
+
+Allowing AI-generated content to be sent externally without human review
+
+Representing assumptions as verified facts
+
+14. Team Rhythms and Management Review
+
+14.1 Daily Expectations
+
+Review upcoming client meetings and prepare the objective, questions, and next step.
+
+Update active opportunities and important client commitments in the approved system.
+
+Use approved communication structures and materials.
+
+Escalate claims, pricing, or approval questions before sending.
+
+14.2 Weekly Review
+
+Review active opportunities, next actions, and stalled decisions.
+
+Confirm that client-facing materials are current and approved.
+
+Review message quality, buyer relevance, and follow-up discipline.
+
+Capture new objections, market feedback, and proof-point needs for knowledge review.
+
+14.3 Monthly Review
+
+Review conversion by opportunity stage.
+
+Review response rates and meeting progression.
+
+Review quality and usage of approved decks and templates.
+
+Identify outdated claims, missing case studies, and content gaps.
+
+Update standards when the business, market, or product changes.
+
+15. Pre-Send and Pre-Share Checklist
+
+Before sending any important client communication or client-facing document, confirm:
+
+The recipient, company, role, and purpose are correct.
+
+The message reflects the client's situation rather than a generic sales pitch.
+
+The most relevant value pillar is clear.
+
+All facts, proof points, names, metrics, and claims are approved and current.
+
+No confidential or internal-only information is included.
+
+The requested next step is specific.
+
+The tone is professional, confident, warm, and concise.
+
+Spelling, grammar, dates, time zones, attachments, and contact information are correct.
+
+The correct approved version is being shared.
+
+The required approval is documented.
+
+16. Ownership and Accountability
+
+Every employee who communicates externally on behalf of Hire'in Solutions is responsible for following this standard. Managers are responsible for coaching, review, and enforcement. The Knowledge Owner is responsible for maintaining approved claims, proof points, templates, and source materials. Leadership is responsible for approving strategic positioning, commercial commitments, and exceptions.
+
+Initiative is encouraged. However, external communication must operate within the company's approved standards. When there is uncertainty, the team member should pause external sharing and request review rather than assume approval.
+
+17. Implementation Principle
+
+Hire'in Solutions will support the team with approved templates, current capability materials, a controlled knowledge library, and a business development tool that helps maintain brand, language, structure, and quality. Team members remain responsible for providing the client context, business need, relevant opportunity details, and sound judgment.
+
+The objective is to allow the team to move faster with greater consistency - not by removing human ownership, but by giving every team member a professional and repeatable system.
+
+18. Final Standard
+
+Every client interaction should communicate one message:
+
+Hire'in Solutions understands the need, acts with discipline, communicates clearly, and takes ownership of delivery.

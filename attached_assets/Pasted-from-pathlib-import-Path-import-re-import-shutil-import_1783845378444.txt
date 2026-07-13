@@ -1,0 +1,867 @@
+from pathlib import Path
+import re
+import shutil
+import zipfile
+
+base = Path("/mnt/data")
+src_docs = base / "docs"
+out_root = base / "Hirein_BD_Agent_Final_Replit_Package_v2.2"
+out_docs = out_root / "docs"
+out_sources = out_root / "source-materials"
+
+if out_root.exists():
+    shutil.rmtree(out_root)
+out_docs.mkdir(parents=True)
+out_sources.mkdir(parents=True)
+
+playbook_src = src_docs / "bd-agent-playbook.md"
+impl_src = src_docs / "bd-agent-strategy-sync-implementation.md"
+arch_src = base / "Hirein_AI_BD_Agent_Replit_Architecture_and_Implementation_Guide.md"
+task0_src = base / "Hirein_AI_BD_Agent_Replit_First_Prompt_Task_0.md"
+
+playbook = playbook_src.read_text(encoding="utf-8")
+impl = impl_src.read_text(encoding="utf-8")
+
+# Update playbook version.
+playbook = re.sub(r"\*\*Version:\*\*\s*2\.1", "**Version:** 2.2", playbook, count=1)
+
+# Renumber top-level sections after qualification.
+heading_updates = [
+    ("## 18. Final Standard", "## 19. Final Standard"),
+    ("## 17. Ownership and Accountability", "## 18. Ownership and Accountability"),
+    ("## 16. Pre-Send and Pre-Share Checklist", "## 17. Pre-Send and Pre-Share Checklist"),
+    ("## 15. Team Rhythms and KPIs", "## 16. Team Rhythms and KPIs"),
+    ("## 14. How the Hire'in BD Agent Enforces This Standard", "## 15. How the Hire'in BD Agent Enforces This Standard"),
+    ("## 13. Approval, Documentation, and Version Control", "## 14. Approval, Documentation, and Version Control"),
+    ("## 12. Standard Client Communication Templates", "## 13. Standard Client Communication Templates"),
+    ("## 11. Proof Point and Claim Governance", "## 12. Proof Point and Claim Governance"),
+    ("## 10. Capability Deck and Client-Facing Material Standards", "## 11. Capability Deck and Client-Facing Material Standards"),
+]
+for old, new in heading_updates:
+    playbook = playbook.replace(old, new)
+
+cbdo_section = """
+## 10. AI-Led Market Intelligence, Client Positioning, and Opportunity Strategy
+
+### 10.1 Virtual CBDO Copilot Role
+
+The Hire'in BD Agent operates as a governed Virtual Chief Business Development Officer Copilot. It combines market research, account intelligence, buyer context, Hire'in's approved knowledge, and opportunity information to recommend how the company should qualify, position, pursue, and advance an opportunity.
+
+The Agent is expected to provide strategic direction, not only generate messages or presentations. It should help the team answer:
+
+- Is this opportunity attractive and relevant to Hire'in?
+- Does it align with a situation where Hire'in is likely to win?
+- Which client problem should lead the conversation?
+- Which one primary and two supporting value arguments are most relevant?
+- What proof is available, and what still requires verification?
+- What risks or selectivity concerns could reduce the likelihood of success?
+- What is the most practical next action?
+- What should Hire'in avoid saying, promising, or emphasizing?
+
+The Agent recommends and explains strategy. Authorized humans retain authority for final positioning, pursuit decisions, commercial commitments, and all external communication.
+
+### 10.2 Market and Account Intelligence Inputs
+
+The Agent may use:
+
+- team-provided market research;
+- public industry and workforce research;
+- account and buyer research;
+- discovery notes and client-provided information;
+- job, requirement, location, volume, and rate information;
+- MSP, VMS, procurement, and vendor-program information;
+- delivery-team and candidate-market feedback;
+- competitor observations;
+- previous approved decks, proposals, emails, and meeting summaries;
+- approved internal knowledge sources; and
+- current account and opportunity records.
+
+Information submitted by a team member is not automatically verified or approved.
+
+### 10.3 Research Provenance and Reliability
+
+Before using research in a strategic recommendation, the Agent should evaluate and preserve, when available:
+
+- source and source type;
+- publication, observation, or submission date;
+- author or submitting user;
+- domain and geography;
+- account or opportunity association;
+- reliability;
+- verification status;
+- confidentiality;
+- whether the information is factual, interpretive, inferred, or speculative;
+- whether it conflicts with approved company knowledge; and
+- whether additional verification is required.
+
+Use clear labels such as:
+
+- Verified external source
+- Client-provided information
+- Approved internal knowledge
+- Team observation
+- Inference
+- Requires verification
+- Conflicting evidence
+- Insufficient information
+
+The Agent must not present an inference, observation, or unverified research item as a confirmed fact.
+
+### 10.4 Client Positioning Recommendation
+
+For each meaningful opportunity, the Agent should produce a structured Client Positioning Recommendation containing:
+
+1. **Client situation**
+   - client problem;
+   - business impact or risk;
+   - urgency;
+   - buyer role and priorities;
+   - opportunity stage.
+
+2. **Recommended positioning**
+   - one primary positioning statement;
+   - one primary value pillar;
+   - no more than two supporting value pillars;
+   - recommended tone and urgency;
+   - capabilities or messages that should not lead.
+
+3. **Hire'in relevance**
+   - matched Where-We-Win scenario;
+   - supporting fit signals;
+   - relevant Hire'in capabilities;
+   - available proof points;
+   - evidence gaps and required qualifications.
+
+4. **Competitive strategy**
+   - likely alternatives or incumbent approach, when supported by evidence;
+   - where Hire'in can credibly differentiate;
+   - where a larger or specialist competitor may be stronger;
+   - whether to lead with specialization, submission quality, process discipline, direct access, ownership, flexibility, responsiveness, or a focused pilot;
+   - whether competing mainly on price would weaken the opportunity.
+
+5. **Recommended next action**
+   - discovery meeting;
+   - clarification request;
+   - focused pilot;
+   - approved capability deck;
+   - market-feedback discussion;
+   - leadership introduction;
+   - initial candidate slate;
+   - nurture;
+   - leadership review; or
+   - deprioritization.
+
+The Agent must not invent competitor facts or claim superiority without evidence.
+
+### 10.5 Opportunity Strategy Verdicts
+
+The Agent may recommend:
+
+- **Pursue:** Strong alignment with current capabilities, a defined win profile, credible proof, viable commercial conditions, and a clear next action.
+- **Qualify further:** Potential alignment exists, but material information, access, evidence, or commercial clarity is missing.
+- **Pilot recommended:** The opportunity is promising, but a limited role set, location, workstream, or evaluation period is the most credible entry point.
+- **Nurture:** The account may be strategically relevant, but the timing, urgency, access, or current need is insufficient for active pursuit.
+- **Leadership review required:** The opportunity involves a new market, significant commitment, strategic partnership, unusual commercial terms, material risk, or reliance on unverified claims.
+- **Do not prioritize:** The opportunity has weak strategic or economic fit, conflicts with current capacity or evidence, or is unlikely to justify the cost of pursuit.
+
+These are advisory recommendations. The Agent must not automatically reject, close, archive, or approve an opportunity.
+
+### 10.6 Opportunity Assessment Factors
+
+The Agent should consider:
+
+- domain and service-model alignment;
+- buyer access and decision influence;
+- urgency and cost of delay;
+- hiring volume and role difficulty;
+- geography and work model;
+- delivery capacity;
+- availability of approved proof;
+- rate, fee, margin, and commercial viability;
+- procurement, MSP, VMS, or compliance demands;
+- competitive intensity;
+- willingness to begin with a focused pilot;
+- strategic account value;
+- cost of pursuit;
+- risk of overcommitting; and
+- unanswered questions.
+
+The Agent should explain the most influential positive and negative factors rather than output only a score.
+
+### 10.7 Where-We-Win and Selectivity Use
+
+The five Where-We-Win profiles are strategic guidance. The Agent should identify:
+
+- the matched scenario or lack of a strong match;
+- the evidence supporting the match;
+- missing information;
+- recommended positioning because of the match; and
+- the most relevant pilot or next action.
+
+The selectivity guardrails must be equally visible. They should generate warnings and leadership-review recommendations when appropriate, but must not automatically create a no-bid decision.
+
+### 10.8 Proof-Point Selection
+
+The Agent may recommend proof points based on the domain, buyer role, client problem, opportunity stage, channel, audience, and documented restrictions.
+
+Every surfaced material proof point should show:
+
+- exact approved or proposed wording;
+- status;
+- source;
+- qualifier or restriction; and
+- review date, when available.
+
+A human must confirm suitability before external use.
+
+### 10.9 Human Decision Record
+
+The system should preserve the Agent's recommendation separately from the final human decision.
+
+Human decisions may include:
+
+- Accepted
+- Modified
+- Escalated
+- Deprioritized
+- Pending review
+
+The reviewer should be able to record rationale or modifications. The Agent's original recommendation must remain available for audit, evaluation, and learning.
+
+### 10.10 Reuse Across Workflows
+
+After a human accepts or modifies a positioning recommendation, the current strategy should be reused by:
+
+- Pre-Call Brief;
+- Discovery and Profile Building;
+- Qualification;
+- Deck Collaborator;
+- Follow-Up Drafter;
+- Meeting Summary;
+- Pilot Proposal;
+- Objection Response; and
+- Manager Review.
+
+A material new discovery may trigger a proposed revision, but the system must not silently replace the current human-reviewed positioning.
+
+### 10.11 What the Agent Must Not Do
+
+The BD Agent must not:
+
+- approve a new company claim;
+- automatically reject or close an opportunity;
+- commit pricing, margins, timelines, SLAs, guarantees, or contractual terms;
+- present unverified market research as confirmed;
+- invent a client problem or buyer priority;
+- claim superiority over a competitor without evidence;
+- use prohibited or internal-only claims externally;
+- automatically send messages, decks, or proposals;
+- replace client discovery with assumptions; or
+- represent an AI-generated strategy as final leadership approval.
+
+### 10.12 Current-Phase Operating Principle
+
+During the development and scale phase, the Agent should think like a disciplined CBDO while operating as a governed decision-support system.
+
+AI recommends, explains, drafts, and identifies risk. Human leadership and authorized account owners approve, modify, and own the decision.
+""".strip()
+
+marker = "## 11. Capability Deck and Client-Facing Material Standards"
+if "## 10. AI-Led Market Intelligence, Client Positioning, and Opportunity Strategy" not in playbook:
+    playbook = playbook.replace(marker, cbdo_section + "\n\n" + marker, 1)
+
+playbook = playbook.replace(
+    "- recommend a qualification verdict and next action;",
+    "- recommend a qualification verdict, client positioning, competitive angle, and next action;",
+)
+
+playbook_out = out_docs / "bd-agent-playbook.md"
+playbook_out.write_text(playbook, encoding="utf-8")
+
+# Update implementation prompt.
+impl = re.sub(
+    r"enforces Version 2\.0 of the Hire'in Solutions Business Development and Client Communication Standards",
+    "enforces Version 2.2 of the Hire'in Solutions Business Development and Client Communication Standards",
+    impl,
+    count=1,
+)
+impl = impl.replace("Add the supplied Version 2.0 Markdown content", "Add the supplied Version 2.2 Markdown content")
+
+impl = impl.replace(
+    "- The role of the BD Agent and its limitations",
+    """- The role of the BD Agent and its limitations
+- Market-research provenance and reliability labeling
+- A structured Client Positioning Recommendation
+- Virtual CBDO opportunity strategy and competitive guidance
+- Separate Agent recommendation and human decision records
+- Reuse of human-reviewed positioning across decks, messages, and workflows""",
+    1,
+)
+
+for old, new in [
+    ("## Step 11 - Audit, Evaluation, and Acceptance Criteria", "## Step 12 - Audit, Evaluation, and Acceptance Criteria"),
+    ("## Step 10 - Update Templates and Master Deck Grounding", "## Step 11 - Update Templates and Master Deck Grounding"),
+    ("## Step 9 - Manual Registry Administration Experience", "## Step 10 - Manual Registry Administration Experience"),
+    ("## Step 8 - Implement the Pre-Send Review", "## Step 9 - Implement the Pre-Send Review"),
+    ("## Step 7 - Align Every Agent Mode", "## Step 8 - Align Every Agent Mode"),
+]:
+    impl = impl.replace(old, new)
+
+cbdo_impl = """
+## Step 7 - Implement the Virtual CBDO Positioning and Opportunity Strategy Engine
+
+Extend the existing Hire'in BD Agent so it operates as a governed Virtual Chief Business Development Officer Copilot.
+
+This is a decision-support capability. It must recommend and explain client positioning and opportunity strategy, but it must not autonomously approve claims, reject opportunities, commit commercial terms, change opportunity state, or send external communication.
+
+### Research and Account Intelligence Inputs
+
+Reuse existing knowledge-upload, account, opportunity, meeting-note, job, requirement, and user-input workflows. Do not create a parallel research platform when the current Knowledge Library can be extended.
+
+Relevant input types include:
+
+- public market and workforce research;
+- client and account research;
+- buyer and discovery notes;
+- client-provided information;
+- delivery-team and candidate-market feedback;
+- competitor observations;
+- MSP, VMS, procurement, and vendor-program information;
+- job, role, volume, location, rate, and urgency data;
+- approved internal sources;
+- previous approved decks, proposals, emails, and meeting summaries.
+
+Each material research item used by the strategy engine should preserve or infer, where available:
+
+- sourceType;
+- sourceTitle;
+- sourceLocator;
+- author or submittedByUserId;
+- publishedAt or observedAt;
+- domain;
+- geography;
+- accountId and opportunityId;
+- reliabilityLabel;
+- verificationStatus;
+- confidentiality;
+- createdAt and updatedAt.
+
+Do not treat team-submitted research as automatically verified.
+
+### Reliability Labels
+
+Support these labels or equivalent within the current knowledge model:
+
+- verified_external_source;
+- client_provided;
+- approved_internal;
+- team_observation;
+- inferred;
+- requires_verification;
+- conflicting_evidence;
+- insufficient_information.
+
+The Agent must distinguish facts from interpretations, assumptions, and recommendations.
+
+### Structured Client Positioning Recommendation
+
+Generate a validated structured output containing:
+
+- clientSituation;
+- clientProblem;
+- businessImpactOrRisk;
+- buyerRole;
+- buyerPriorities;
+- opportunityStage;
+- primaryPositioningStatement;
+- primaryValuePillar;
+- supportingValuePillars;
+- matchedWinProfileIds;
+- fitSignals;
+- whyHireinIsRelevant;
+- recommendedProofPointIds;
+- evidenceGaps;
+- claimsRequiringVerification;
+- capabilitiesNotToEmphasize;
+- recommendedTone;
+- urgencyLevel;
+- competitiveAngle;
+- competitorEvidenceLimitations;
+- selectivityWarnings;
+- recommendedNextAction;
+- recommendedPilotAsk;
+- agentVerdict;
+- confidence;
+- humanReviewRequired.
+
+Use no more than one primary and two supporting value pillars unless the user explicitly requests a broader internal analysis.
+
+### Advisory Opportunity Verdicts
+
+Support:
+
+- pursue;
+- qualify_further;
+- pilot_recommended;
+- nurture;
+- leadership_review_required;
+- do_not_prioritize.
+
+Do not automatically close, reject, archive, no-bid, approve, or change the status of an opportunity based on the Agent verdict.
+
+### Competitive Strategy
+
+Where sufficient evidence exists, the Agent may recommend whether Hire'in should lead with:
+
+- domain specialization;
+- submission quality;
+- credential-aware screening;
+- process discipline;
+- direct access and ownership;
+- responsiveness;
+- flexibility;
+- a focused pilot; or
+- account-specific delivery insight.
+
+The Agent must not invent competitor clients, pricing, performance, capabilities, weaknesses, or market share. When evidence is limited, label the assessment as directional and requiring verification.
+
+### Human Decision Record
+
+Store the Agent recommendation separately from the human decision.
+
+Supported human decisions:
+
+- accepted;
+- modified;
+- escalated;
+- deprioritized;
+- pending_review.
+
+Record, using existing audit and user patterns:
+
+- reviewerUserId;
+- decision;
+- rationale or modifications;
+- decidedAt;
+- positioningVersion.
+
+Do not overwrite the original Agent recommendation.
+
+### Positioning Data Model
+
+Extend the existing opportunity model when safe. Otherwise add a related versioned positioning entity using current schema, repository, migration, and audit conventions.
+
+Required fields or equivalent:
+
+- id;
+- opportunityId;
+- version;
+- clientSituation;
+- primaryPositioning;
+- primaryValuePillar;
+- supportingValuePillars;
+- matchedWinProfileIds;
+- proofPointIds;
+- evidenceGaps;
+- competitiveAngle;
+- selectivityWarnings;
+- recommendedNextAction;
+- recommendedPilotAsk;
+- agentVerdict;
+- agentConfidence;
+- humanDecision;
+- humanRationale;
+- reviewedBy;
+- reviewedAt;
+- createdAt;
+- updatedAt.
+
+### Positioning Reuse
+
+After a human accepts or modifies a strategy, make the current positioning available to:
+
+- Pre-Call Brief;
+- Discovery;
+- Qualification;
+- Deck Collaborator;
+- Follow-Up Drafter;
+- Meeting Summary;
+- Pilot Proposal;
+- Objection Response;
+- Manager Review.
+
+A material new discovery may trigger a proposed revision. It must not silently replace the current human-reviewed positioning.
+
+### Product Interface
+
+Add a Positioning and Strategy view within the opportunity workspace showing:
+
+- Agent verdict;
+- human decision status;
+- Where-We-Win alignment;
+- client problem and business impact;
+- recommended positioning;
+- primary and supporting value pillars;
+- approved proof available;
+- evidence gaps;
+- research sources and reliability labels;
+- competitive angle and limitations;
+- risks and selectivity warnings;
+- recommended pilot;
+- next best action;
+- confidence;
+- human-review notice.
+
+Provide actions consistent with current UI and permissions:
+
+- Accept;
+- Modify;
+- Escalate;
+- Deprioritize;
+- Regenerate using new evidence.
+
+Do not implement autonomous opportunity-state changes or external sending.
+""".strip()
+
+marker_impl = "## Step 8 - Align Every Agent Mode"
+if "## Step 7 - Implement the Virtual CBDO Positioning and Opportunity Strategy Engine" not in impl:
+    impl = impl.replace(marker_impl, cbdo_impl + "\n\n" + marker_impl, 1)
+
+impl = impl.replace(
+    "- healthcare opportunity that strongly matches a win profile",
+    """- healthcare opportunity that strongly matches a win profile
+- opportunity with accepted human positioning reused across deck and follow-up
+- market research labeled as team observation rather than verified fact
+- directional competitive recommendation with insufficient competitor evidence""",
+    1,
+)
+
+impl = impl.replace(
+    "- opportunity qualification uses win profiles and selectivity rules;",
+    """- opportunity qualification uses win profiles and selectivity rules;
+- the Virtual CBDO engine produces structured positioning and strategy recommendations;
+- Agent recommendations and human decisions are stored separately;
+- accepted or modified positioning is reused consistently across downstream workflows;""",
+    1,
+)
+
+impl_out = out_docs / "bd-agent-strategy-sync-implementation.md"
+impl_out.write_text(impl, encoding="utf-8")
+
+# Source classification file.
+source_classification = """# Hire'in BD Agent Source Classification and Ingestion Rules
+
+**Version:** 1.0  
+**Purpose:** Define how each supplied file may be used. Uploading a file does not make every statement externally approved.
+
+## Primary Business Standard
+
+### `docs/bd-agent-playbook.md`
+
+Use as the authoritative business-development, communication, positioning, qualification, manual proof-point governance, and human-review standard.
+
+Do not treat the playbook itself as evidence for external factual claims. It defines methodology and operating rules.
+
+## Technical Architecture Context
+
+### `docs/bd-agent-architecture-guide.md`
+
+Use as target product architecture and phased implementation context.
+
+The live repository remains the source of truth for current files, schemas, roles, dependencies, routes, services, and migrations.
+
+### `Multi-Portal-System-Architecture-Implementation-Plan.md`
+
+Use only as historical technical reference for likely stack and shared-platform patterns. Verify every assumption against live code.
+
+Do not implement its broad multi-portal scope as part of the BD Agent work. Do not copy its proposed role-enum changes without explicit approval.
+
+### `Hire-in.docx`
+
+Use as historical CredentialRX/platform architecture reference. It may help identify reusable auth, database, encryption, upload, PDF, audit, and storage patterns. Verify against live code.
+
+## Business and Evidence Sources
+
+### `Hirein_Healthcare_Staffing_Capability_Deck.pptx`
+
+Classification: **Primary candidate source for healthcare process and capability grounding, subject to human review.**
+
+May seed:
+- healthcare delivery workflow;
+- supported role categories;
+- credential-aware screening language;
+- submission-readiness process;
+- MSP/VMS operating discipline;
+- focused pilot positioning.
+
+Do not automatically approve every slide statement. Material claims require Proof Point Registry records with source location, status, qualifier, and human reviewer.
+
+### `HireInSolns_CapablityDeck.pdf`
+
+Classification: **Legacy/high-risk capability source; quarantine by default.**
+
+Use to identify claims requiring verification, including:
+- nationwide reach or deployment;
+- candidates delivered in hours;
+- 24/7 responsiveness;
+- named-client experience;
+- government-program performance;
+- Joint Commission, HIPAA, FISMA, or other compliance assertions;
+- rapid-deployment and guaranteed-outcome language.
+
+Do not use these externally unless individually verified and manually approved.
+
+### `HireinAI_Business_Plan.docx`
+
+Classification: **Internal only.**
+
+Financial projections, margins, fill-rate assumptions, ROI, break-even, investment needs, operating costs, and growth forecasts may support internal strategy but must never be inserted into client-facing outputs as proof.
+
+## General Ingestion Rules
+
+For every source:
+
+- preserve file name, version, upload date, source owner, confidentiality, domain, and source locator;
+- distinguish approved internal knowledge from public research, client-provided information, team observation, inference, and unverified content;
+- never infer external approval from the existence of a document;
+- never treat a master-deck slide as an automatically approved claim;
+- link material claims to atomic Proof Point Registry records;
+- preserve required qualifiers;
+- quarantine prohibited, internal-only, expired, superseded, and requires-verification claims from approved external artifacts;
+- require human review before external use.
+"""
+source_classification_out = out_docs / "bd-agent-source-classification.md"
+source_classification_out.write_text(source_classification, encoding="utf-8")
+
+# Copy architecture and Task 0 into exact repository-ready names.
+shutil.copy2(arch_src, out_docs / "bd-agent-architecture-guide.md")
+shutil.copy2(task0_src, out_docs / "bd-agent-task-0-audit-prompt.md")
+
+# Master README.
+readme = """# Hire'in AI BD Agent - Final Replit Handoff and Build Instructions
+
+**Version:** 1.0  
+**Read this file first.**
+
+## Authoritative Precedence
+
+When documents appear to conflict, use this order:
+
+1. **Live repository** - source of truth for current code, database, roles, dependencies, routes, and deployment.
+2. **`docs/bd-agent-playbook.md`** - source of truth for business strategy, client positioning, qualification, proof-point governance, communication, and human approval.
+3. **`docs/bd-agent-architecture-guide.md`** - source of truth for target architecture and phased product design.
+4. **`docs/bd-agent-strategy-sync-implementation.md`** - cross-cutting build requirements that keep the implementation aligned with the playbook.
+5. **`docs/bd-agent-source-classification.md`** - controls how supplied source documents may be ingested and used.
+6. **Supporting source files** - evidence and historical context only, subject to their classification.
+
+Do not use older versions of the playbook, standards document, synchronization prompt, or ZIP packages.
+
+## Mandatory Execution Sequence
+
+### Phase A - Repository Audit Only
+
+Run `docs/bd-agent-task-0-audit-prompt.md`.
+
+Task 0 must inspect the repository, identify reusable systems and conflicts, create `docs/bd-agent-codebase-audit.md`, make no functional changes, and stop.
+
+Do not begin implementation until the audit is reviewed.
+
+### Phase B - Implement One Architecture Task at a Time
+
+Use Tasks 1 through 5 in `docs/bd-agent-architecture-guide.md`.
+
+Do not ask Replit to build the complete architecture guide or the full synchronization prompt in one run.
+
+#### Task 1 - Feature Foundation and Safe Data Model
+
+Include:
+- modular BD feature boundary;
+- reuse of current auth, RBAC, API, DB, audit, AI provider, and UI;
+- account and opportunity foundations;
+- proof-point, win-profile, and positioning models only when the audit confirms they do not already exist;
+- versioned Agent recommendation and separate human decision records;
+- safe migrations and rollback notes;
+- no new role-enum values unless explicitly approved.
+
+Stop and report.
+
+#### Task 2 - Knowledge Library and Deck Ingestion
+
+Include:
+- source provenance and reliability labels;
+- manual Proof Point Registry;
+- Appendix A seeds without silently upgrading status;
+- Appendix B quarantine records;
+- master-deck and slide ingestion;
+- atomic proof points separate from slide narrative;
+- internal-only protection for financial plans;
+- in-product Playbook links and Knowledge Owner/admin guidance.
+
+Stop and report.
+
+#### Task 3 - Workspace, Grounded Conversation, and Virtual CBDO Strategy
+
+Include:
+- account and opportunity workspace;
+- five-question qualification;
+- six advisory opportunity verdicts;
+- Where-We-Win profiles and equally visible selectivity guardrails;
+- market-research provenance;
+- structured Client Positioning Recommendation;
+- competitive angle with evidence limitations;
+- one primary and no more than two supporting value pillars;
+- human Accept, Modify, Escalate, Deprioritize, and Pending Review decisions;
+- separate storage of Agent recommendation and human decision;
+- reuse of human-reviewed positioning across downstream workflows;
+- no automatic opportunity rejection or state change.
+
+Stop and report.
+
+#### Task 4 - Slide-Level Deck Collaborator
+
+Include:
+- approved master-deck version control;
+- buyer- and opportunity-specific slide selection;
+- accepted positioning as the narrative basis;
+- proof-point status and citations for material claims;
+- protected brand elements;
+- review and approval states;
+- human approval before external use.
+
+Stop and report.
+
+#### Task 5 - Evaluation, Learning, and Production Hardening
+
+Include:
+- pre-send server-side validation;
+- contextual Playbook help;
+- audit trail;
+- evaluation fixtures for claims, positioning, research reliability, selectivity, decks, and follow-ups;
+- human review and approval testing;
+- pilot feedback;
+- final implementation report and launch recommendation.
+
+Stop and report.
+
+## Cross-Cutting Product Rule
+
+The BD Agent operates as a governed Virtual CBDO Copilot.
+
+It may analyze, recommend, explain, draft, label, and warn.
+
+It must not approve its own claims, treat team research as verified, automatically reject opportunities, commit commercial terms, invent competitor facts, use prohibited content externally, or automatically send materials.
+
+## Manual Governance During Development and Scale
+
+Proof-point governance, client positioning, opportunity decisions, and external communication remain human-controlled.
+
+Use existing feature permissions. Do not create a new Knowledge Owner role in the MVP. HR access alone does not grant sales-claim approval authority.
+
+## Required Completion Report for Every Task
+
+Return:
+- areas inspected;
+- reused components;
+- files changed;
+- schema and migration changes;
+- rollback notes;
+- API and UI changes;
+- Agent/orchestration changes;
+- seeds added;
+- tests and results;
+- quarantined claims;
+- unresolved risks;
+- confirmation that unrelated functionality was not changed;
+- confirmation that work stopped at the requested task boundary.
+
+## Stop Conditions
+
+Stop and report instead of improvising when:
+- the live repository conflicts materially with the proposed model;
+- a role-enum migration appears necessary;
+- an existing system may be duplicated;
+- source provenance cannot be preserved;
+- a destructive migration would be required;
+- an unsupported claim would need to be approved;
+- a second auth, database, API client, AI provider, storage, or audit system would be introduced.
+
+## First Instruction
+
+Attach the package, place files at their documented paths, and run Task 0 only.
+"""
+readme_out = out_root / "README-FIRST.md"
+readme_out.write_text(readme, encoding="utf-8")
+
+# Final file list.
+file_list = """# Final File List for Replit
+
+## Required Authoritative Documents
+
+1. `README-FIRST.md`
+2. `docs/bd-agent-architecture-guide.md`
+3. `docs/bd-agent-task-0-audit-prompt.md`
+4. `docs/bd-agent-playbook.md` - Version 2.2
+5. `docs/bd-agent-strategy-sync-implementation.md` - Version 2.2
+6. `docs/bd-agent-source-classification.md`
+
+## Supporting Source and Architecture Files
+
+7. `source-materials/Hirein_Healthcare_Staffing_Capability_Deck.pptx`
+8. `source-materials/HireInSolns_CapablityDeck.pdf`
+9. `source-materials/HireinAI_Business_Plan.docx`
+10. `source-materials/Hire-in.docx`
+11. `source-materials/Multi-Portal-System-Architecture-Implementation-Plan.md`
+
+## Do Not Give Replit as Competing Instructions
+
+- Older Version 2.0 or Version 2.1 playbooks
+- Older synchronization prompts
+- Earlier ZIP packages
+- Earlier generic standards documents
+- Duplicate versioned copies of the canonical files
+
+## First Action
+
+Run `docs/bd-agent-task-0-audit-prompt.md` only. Review the audit before Task 1.
+"""
+(out_root / "FINAL-FILE-LIST.md").write_text(file_list, encoding="utf-8")
+
+# Copy source materials.
+for name in [
+    "Hirein_Healthcare_Staffing_Capability_Deck.pptx",
+    "HireInSolns_CapablityDeck.pdf",
+    "HireinAI_Business_Plan.docx",
+    "Hire-in.docx",
+    "Multi-Portal-System-Architecture-Implementation-Plan.md",
+]:
+    src = base / name
+    if src.exists():
+        shutil.copy2(src, out_sources / name)
+
+# Create a standalone master instructions file at /mnt/data too.
+standalone_readme = base / "Hirein_BD_Agent_Final_Replit_Handoff_README_v2.2.md"
+standalone_list = base / "Hirein_BD_Agent_Final_File_List_for_Replit_v2.2.md"
+standalone_playbook = base / "Hirein_BD_Agent_Playbook_v2.2.md"
+standalone_impl = base / "Hirein_BD_Agent_Strategy_Sync_Implementation_v2.2.md"
+
+shutil.copy2(readme_out, standalone_readme)
+shutil.copy2(out_root / "FINAL-FILE-LIST.md", standalone_list)
+shutil.copy2(playbook_out, standalone_playbook)
+shutil.copy2(impl_out, standalone_impl)
+
+# ZIP package.
+zip_path = base / "Hirein_BD_Agent_Final_Replit_Package_v2.2.zip"
+if zip_path.exists():
+    zip_path.unlink()
+
+with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+    for p in out_root.rglob("*"):
+        if p.is_file():
+            zf.write(p, p.relative_to(out_root))
+
+print("Created final package:")
+print(zip_path)
+print(f"ZIP size: {zip_path.stat().st_size:,} bytes")
+print("Core files:")
+for p in [standalone_readme, standalone_list, standalone_playbook, standalone_impl]:
+    print(f"- {p.name}: {p.stat().st_size:,} bytes")
