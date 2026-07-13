@@ -181,7 +181,9 @@ export const attendance = pgTable("attendance", {
   exceptionResolvedAt: timestamp("exception_resolved_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_att_exception_status").on(table.exceptionStatus).where(sql`${table.exceptionStatus} IS NOT NULL`),
+]);
 
 export const leaveTypes = pgTable("leave_types", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -831,7 +833,7 @@ export const hrLetters = pgTable("hr_letters", {
   signatoryDesignation: varchar("signatory_designation"),
   issueDate: varchar("issue_date"),
 
-  referenceNumber: varchar("reference_number").unique(),
+  referenceNumber: varchar("reference_number"),
   authCode: varchar("auth_code"),
   documentHash: varchar("document_hash"),
 
@@ -856,7 +858,9 @@ export const hrLetters = pgTable("hr_letters", {
   metadata: jsonb("metadata"),
   manualEmployeeEmail: varchar("manual_employee_email"),
   annexureData: jsonb("annexure_data"),
-});
+}, (table) => [
+  uniqueIndex("hr_letters_reference_number_idx").on(table.referenceNumber),
+]);
 
 export const insertHrLetterSchema = createInsertSchema(hrLetters).omit({
   id: true,
@@ -930,7 +934,9 @@ export const goalMilestones = pgTable("goal_milestones", {
   sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("goal_milestones_goal_id_idx").on(table.goalId),
+]);
 
 export const checkInTypeEnum = pgEnum("check_in_type", ["milestone", "weekly", "pip_review", "weekly_update"]);
 
@@ -1049,6 +1055,7 @@ export const employeePlans = pgTable("employee_plans", {
     "ck_employee_plans_nonpending_has_employee",
     sql`${table.status} = 'pending' OR ${table.employeeId} IS NOT NULL`,
   ),
+  index("idx_employee_plans_employee").on(table.employeeId),
 ]);
 
 export const planGoalTemplates = pgTable("plan_goal_templates", {
@@ -1076,7 +1083,10 @@ export const planGoalTemplates = pgTable("plan_goal_templates", {
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_plan_goal_templates_type_role").on(table.planType, table.roleSlug),
+  uniqueIndex("idx_plan_goal_templates_unique").on(table.planType, table.roleSlug, table.goalTitle),
+]);
 
 // Probation scoring bands (Section 7 of the framework doc) — structured data the
 // milestone-scorecard feature consumes to map a numeric score to an outcome.
@@ -1937,7 +1947,10 @@ export const breakRecords = pgTable("break_records", {
   endedAt: timestamp("ended_at"),
   durationMinutes: numeric("duration_minutes"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("break_records_user_date_idx").on(table.userId, table.date),
+  index("break_records_attendance_idx").on(table.attendanceId),
+]);
 
 export const breakRecordsRelations = relations(breakRecords, ({ one }) => ({
   attendance: one(attendance, {
@@ -2023,7 +2036,11 @@ export const attendanceRegularizations = pgTable("attendance_regularizations", {
   attachmentUrl: text("attachment_url"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_att_reg_employee_id").on(table.employeeId),
+  index("idx_att_reg_status").on(table.status),
+  index("idx_att_reg_date").on(table.attendanceDate),
+]);
 
 export const policyAcknowledgements = pgTable("policy_acknowledgements", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -2031,7 +2048,9 @@ export const policyAcknowledgements = pgTable("policy_acknowledgements", {
   policyType: varchar("policy_type").notNull(),
   policyVersion: varchar("policy_version").notNull(),
   acceptedAt: timestamp("accepted_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_policy_ack_user_type").on(table.userId, table.policyType),
+]);
 
 export const attendanceRegularizationsRelations = relations(attendanceRegularizations, ({ one }) => ({
   employee: one(adminUsers, {
@@ -2517,7 +2536,9 @@ export const attendanceReportRuns = pgTable("attendance_report_runs", {
   notifiedAt: timestamp("notified_at"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_att_report_runs_month_year_active").on(table.year, table.month, table.isActive),
+]);
 
 export const insertAttendanceReportRunSchema = createInsertSchema(attendanceReportRuns).omit({
   id: true,
@@ -2546,7 +2567,10 @@ export const attendanceReportEntries = pgTable("attendance_report_entries", {
   curHolidayDays: integer("cur_holiday_days").notNull().default(0),
   curTotalHours: real("cur_total_hours").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_att_report_entries_run").on(table.runId),
+  index("idx_att_report_entries_manager").on(table.managerId),
+]);
 
 export const insertAttendanceReportEntrySchema = createInsertSchema(attendanceReportEntries).omit({ id: true, createdAt: true });
 export type AttendanceReportEntry = typeof attendanceReportEntries.$inferSelect;
@@ -2566,7 +2590,10 @@ export const attendanceReportEdits = pgTable("attendance_report_edits", {
   reviewedAt: timestamp("reviewed_at"),
   rejectionNote: text("rejection_note"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_att_report_edits_run").on(table.runId),
+  index("idx_att_report_edits_status").on(table.status),
+]);
 
 export const insertAttendanceReportEditSchema = createInsertSchema(attendanceReportEdits).omit({ id: true, createdAt: true });
 export type AttendanceReportEdit = typeof attendanceReportEdits.$inferSelect;
@@ -2582,7 +2609,9 @@ export const attendanceReportManagerApprovals = pgTable("attendance_report_manag
   overrideBy: varchar("override_by").references(() => adminUsers.id),
   overrideNote: text("override_note"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_att_report_mgr_approvals_run").on(table.runId),
+]);
 
 export const insertAttendanceReportManagerApprovalSchema = createInsertSchema(attendanceReportManagerApprovals).omit({ id: true, createdAt: true });
 export type AttendanceReportManagerApproval = typeof attendanceReportManagerApprovals.$inferSelect;
@@ -2600,7 +2629,10 @@ export const planAcknowledgements = pgTable("plan_acknowledgements", {
   typedName: varchar("typed_name").notNull(),     // full name as typed by the employee
   acknowledgedAt: timestamp("acknowledged_at").defaultNow(),
   ipAddress: varchar("ip_address"),              // optional — request IP for audit trail
-});
+}, (table) => [
+  index("idx_plan_acks_plan_id").on(table.planId),
+  index("idx_plan_acks_user_id").on(table.userId),
+]);
 
 export const insertPlanAcknowledgementSchema = createInsertSchema(planAcknowledgements).omit({ id: true, acknowledgedAt: true });
 export type PlanAcknowledgement = typeof planAcknowledgements.$inferSelect;
@@ -2630,7 +2662,10 @@ export const signatureRecords = pgTable("signature_records", {
   metadata: jsonb("metadata"),                      // any document-type-specific extras
   consentAcceptedAt: timestamp("consent_accepted_at"), // timestamp when e-sign T&C consent was accepted (DocuSign flow)
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_signature_records_doc").on(table.documentType, table.documentId),
+  index("idx_signature_records_ref").on(table.referenceNumber),
+]);
 
 export const insertSignatureRecordSchema = createInsertSchema(signatureRecords).omit({ id: true, createdAt: true });
 export type SignatureRecord = typeof signatureRecords.$inferSelect;
@@ -2795,7 +2830,10 @@ export const studioArticles = pgTable("studio_articles", {
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("studio_articles_project_idx").on(table.projectId),
+  index("studio_articles_status_idx").on(table.status),
+]);
 
 // ── Studio T1: content planning pipeline ────────────────────────────────────
 // One planning object rendered through three lenses (Calendar / Board / Table).
@@ -2917,7 +2955,9 @@ export const studioArticleVersions = pgTable("studio_article_versions", {
   bodyJson: jsonb("body_json"),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("studio_article_versions_article_idx").on(table.articleId),
+]);
 
 // Review workflow assignments.
 export const studioReviewAssignments = pgTable("studio_review_assignments", {
@@ -2930,7 +2970,9 @@ export const studioReviewAssignments = pgTable("studio_review_assignments", {
   comment: text("comment"),
   assignedBy: varchar("assigned_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("studio_review_assignments_article_idx").on(table.articleId),
+]);
 
 // Public reactions on published articles.
 export const studioArticleReactions = pgTable("studio_article_reactions", {
@@ -3028,7 +3070,9 @@ export const cardTemplates = pgTable("card_templates", {
   isActive: boolean("is_active").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("card_templates_default_idx").on(table.family, table.layout, table.platform).where(sql`${table.projectId} IS NULL`),
+]);
 
 // Singleton brand reference for Content Studio (palette + typography).
 export const studioBrandSettings = pgTable("studio_brand_settings", {
@@ -3069,7 +3113,9 @@ export const studioPromptTemplates = pgTable("studio_prompt_templates", {
   // (article_draft | social_kit | quality_review).
   outputSchemaRef: varchar("output_schema_ref").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  uniqueIndex("studio_prompt_templates_global_key").on(table.contentType, table.version).where(sql`${table.projectId} IS NULL`),
+]);
 
 // Versioned record of every AI generation, for audit + reproducibility.
 export const studioGenerations = pgTable("studio_generations", {
@@ -3094,7 +3140,10 @@ export const studioGenerations = pgTable("studio_generations", {
   reviewedAt: timestamp("reviewed_at"),
   approvalNotes: text("approval_notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("studio_generations_article_idx").on(table.articleId),
+  index("studio_generations_user_idx").on(table.generatedByUserId),
+]);
 
 // Release Notes — AI-generated deployment changelog broadcaster
 export const releaseNotes = pgTable("release_notes", {
@@ -3732,7 +3781,10 @@ export const travelQuotes = pgTable("travel_quotes", {
   complianceOverrideReason: text("compliance_override_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_travel_quotes_recruiter").on(table.recruiterId),
+  index("idx_travel_quotes_status").on(table.status),
+]);
 
 export const travelQuoteOutputs = pgTable("travel_quote_outputs", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
