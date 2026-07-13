@@ -5,6 +5,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { useStudioProject } from "@/pages/admin/studio/useStudioProject";
 import { BRAND_VOICE_FRAMEWORKS, type BrandVoiceConfig } from "@shared/studioAi";
+import { StudioShell } from "@/components/studio/StudioShell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -161,10 +162,11 @@ export default function BrandVoiceView() {
     onError: (e: any) => toast({ title: "Failed to save", description: e?.message, variant: "destructive" }),
   });
 
-  if (!selectedProjectId) return <p className="text-sm text-muted-foreground">Select a project first.</p>;
-  if (isLoading) return <Skeleton className="h-80 w-full" />;
+  if (!selectedProjectId) return <StudioShell><p className="text-sm text-muted-foreground">Select a project first.</p></StudioShell>;
+  if (isLoading) return <StudioShell><Skeleton className="h-80 w-full" /></StudioShell>;
 
   return (
+    <StudioShell>
     <div className="mx-auto max-w-3xl space-y-4">
       <div>
         <h1 className="flex items-center gap-2 text-xl font-bold">
@@ -308,5 +310,6 @@ export default function BrandVoiceView() {
         </Card>
       )}
     </div>
+    </StudioShell>
   );
 }
