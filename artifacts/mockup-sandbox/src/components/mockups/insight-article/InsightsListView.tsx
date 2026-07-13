@@ -120,17 +120,17 @@ function FeaturedCarousel() {
         </div>
       </div>
 
-      {/* Card */}
-      <div className="relative rounded-2xl overflow-hidden border border-gray-100 hover:shadow-xl transition-all" style={{ minHeight: 260 }}>
-        <div className="flex h-full" style={{ minHeight: 260 }}>
+      {/* Full-width gradient card — title + controls all on card */}
+      <div className="relative rounded-2xl overflow-hidden cursor-pointer hover:shadow-2xl transition-all" style={{ minHeight: 300, background: art.gradient }}>
+        {/* Dot texture */}
+        <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
+        {/* Subtle bottom fade so text pops */}
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.45) 0%, transparent 55%)" }} />
 
-          {/* Left — gradient card with title */}
-          <div className="relative flex-shrink-0 flex flex-col justify-between p-7"
-            style={{ width: 400, background: art.gradient }}>
-            <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
-
-            {/* Badge + label */}
-            <div className="relative flex flex-col gap-2">
+        <div className="relative flex flex-col justify-between p-10 h-full" style={{ minHeight: 300 }}>
+          {/* Top row — badge + meta + prev/next */}
+          <div className="flex items-start justify-between">
+            <div className="flex flex-col gap-2">
               <span style={{ fontFamily: "'Inter',sans-serif", background: card.badgeBg, backdropFilter: "blur(6px)", color: "white", border: "1px solid rgba(255,255,255,0.2)" }}
                 className="self-start px-3 py-1 rounded-full text-[11px] font-bold">
                 {card.badge}
@@ -140,65 +140,45 @@ function FeaturedCarousel() {
                 {card.label}
               </span>
             </div>
-
-            {/* Title on the card */}
-            <div className="relative my-4">
-              <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: "white", lineHeight: 1.3, fontSize: 18, fontWeight: 700 }}
-                className="line-clamp-4">{art.title}</h2>
-            </div>
-
-            {/* Bottom author mini */}
-            <div className="relative flex items-center gap-2.5 mt-auto pt-4" style={{ borderTop: "1px solid rgba(255,255,255,0.12)" }}>
-              <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm"
-                style={{ background: art.author.color, border: "2px solid rgba(255,255,255,0.3)" }}>
-                <span style={{ fontFamily: "'Inter',sans-serif" }} className="text-white text-[10px] font-bold">{art.author.initials}</span>
-              </div>
-              <div>
-                <p style={{ fontFamily: "'Inter',sans-serif", color: "white" }} className="text-xs font-semibold leading-tight">{art.author.name}</p>
-                <p style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.55)" }} className="text-[10px] leading-tight">{art.author.role}</p>
-              </div>
+            {/* Prev / Next on card */}
+            <div className="flex items-center gap-2">
+              <button onClick={prev}
+                style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.1)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+              <button onClick={next}
+                style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.22)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}>
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6" /></svg>
+              </button>
             </div>
           </div>
 
-          {/* Right — meta + deck + actions only, no title */}
-          <div className="flex-1 bg-white flex flex-col justify-between p-8">
-            <div>
-              <div className="flex items-center gap-2 mb-5">
-                <TypeBadge type={art.type} />
-                <span style={{ color: "#d1d5db" }}>·</span>
-                <span style={{ fontFamily: "'Inter',sans-serif" }} className="text-xs text-gray-400">{art.date}</span>
-                <span style={{ color: "#d1d5db" }}>·</span>
-                <span style={{ fontFamily: "'Inter',sans-serif" }} className="text-xs text-gray-400 flex items-center gap-1">
-                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" /></svg>
-                  {art.readMin} min read
-                </span>
-              </div>
-              <p style={{ fontFamily: "'Inter',sans-serif" }} className="text-gray-500 text-sm leading-relaxed line-clamp-5">{art.deck}</p>
-            </div>
+          {/* Title — centre of card */}
+          <div className="py-8 max-w-3xl">
+            <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: "white", lineHeight: 1.25, fontWeight: 700 }}
+              className="text-3xl line-clamp-3">{art.title}</h2>
+          </div>
 
-            <div className="flex items-center justify-between pt-5 border-t border-gray-50 mt-5">
-              <div className="flex items-center gap-1.5 text-sm text-gray-400" style={{ fontFamily: "'Inter',sans-serif" }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" /><circle cx="12" cy="12" r="3" /></svg>
-                {art.impressions.toLocaleString()} views
+          {/* Bottom row — author + type + views + CTA */}
+          <div className="flex items-end justify-between" style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16 }}>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+                style={{ background: art.author.color, border: "2px solid rgba(255,255,255,0.35)" }}>
+                <span style={{ fontFamily: "'Inter',sans-serif" }} className="text-white text-[10px] font-bold">{art.author.initials}</span>
               </div>
-              <div className="flex items-center gap-2.5">
-                {/* Prev / Next */}
-                <button onClick={prev}
-                  style={{ border: "1.5px solid #e5e7eb", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "white", cursor: "pointer", color: "#6b7280" }}
-                  className="hover:border-gray-300 hover:text-gray-900 transition-all">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6" /></svg>
-                </button>
-                <button onClick={next}
-                  style={{ border: "1.5px solid #e5e7eb", borderRadius: "50%", width: 32, height: 32, display: "flex", alignItems: "center", justifyContent: "center", background: "white", cursor: "pointer", color: "#6b7280" }}
-                  className="hover:border-gray-300 hover:text-gray-900 transition-all">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6" /></svg>
-                </button>
-                <button style={{ background: NAVY, fontFamily: "'Inter',sans-serif" }}
-                  className="px-5 py-2 rounded-full text-white text-sm font-semibold hover:brightness-110 transition-all">
-                  Read article →
-                </button>
+              <div>
+                <p style={{ fontFamily: "'Inter',sans-serif", color: "white" }} className="text-sm font-semibold leading-tight">{art.author.name}</p>
+                <p style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.5)" }} className="text-[11px] leading-tight">{art.author.role}</p>
               </div>
+              <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.15)", margin: "0 6px" }} />
+              <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.6)", fontSize: 12 }}>{art.date}</span>
+              <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.6)", fontSize: 12 }}>· {art.readMin} min read</span>
+              <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.6)", fontSize: 12 }}>· {art.impressions.toLocaleString()} views</span>
             </div>
+            <button style={{ background: ORANGE, fontFamily: "'Inter',sans-serif", flexShrink: 0 }}
+              className="px-6 py-2.5 rounded-full text-white text-sm font-bold hover:brightness-110 transition-all">
+              Read article →
+            </button>
           </div>
         </div>
       </div>
