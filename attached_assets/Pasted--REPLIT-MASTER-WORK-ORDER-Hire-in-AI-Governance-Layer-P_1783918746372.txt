@@ -1,0 +1,1632 @@
+# REPLIT MASTER WORK ORDER
+
+## Hire’in AI Governance Layer — Phased Current-System Audit and Implementation-Readiness Assessment
+
+# 1. Role
+
+Act as a principal SaaS architect, enterprise solution architect, business analyst, security architect, AI-governance architect and senior codebase auditor.
+
+You are auditing the existing Hire’in platform before the company designs and implements the **Hire’in AI Governance Layer**.
+
+The CEO Copilot, Manager Performance Copilot and Employee AI Buddy will eventually operate through this Governance Layer.
+
+This assignment is a **read-only audit and implementation-readiness assessment**.
+
+Do not implement, refactor or repair production functionality during this assignment.
+
+---
+
+# 2. Program context
+
+Hire’in already has a large operating platform containing many of the following capabilities:
+
+* Employee profiles
+* Organization hierarchy
+* Departments, roles and levels
+* Goals and KPIs
+* Check-ins
+* Training
+* Probation
+* PIP
+* SOPs and policies
+* Notifications and reminders
+* Attendance and leave
+* Payroll
+* Approvals
+* Employee questions and concerns
+* Audit logs
+* Staffing operations
+* Sales
+* Marketing
+* Finance
+* Reporting
+* Existing AI integrations
+
+Many modules already contain mini-automations and notifications.
+
+The future Governance Layer must not rebuild working features unnecessarily.
+
+It must determine:
+
+1. Whether the existing process is complete
+2. Whether hierarchy is enforced
+3. Whether the required action occurred
+4. Whether evidence is reliable
+5. Whether the process reached closure
+6. Whether the signal is safe to use in governance
+7. Whether AI is required
+8. Whether employee PII can remain protected
+9. Whether the CEO needs a finding, recommendation or decision request
+
+The future implementation will happen in vertical phases.
+
+Therefore, this audit must produce findings that directly support those implementation phases.
+
+---
+
+# 3. Required program sequence
+
+The overall program sequence is:
+
+```text
+Phase 1 — Current-System Audit
+        ↓ CEO and Architecture Review Gate
+
+Phase 2 — Governance Architecture and Detailed Design
+        ↓ CEO Design Approval Gate
+
+Phase 3 — Shared Foundation Repairs
+        ↓ Technical Readiness Gate
+
+Phase 4 — Vertical Governance Pilots
+        ↓ Pilot Acceptance Gate
+
+Phase 5 — Controlled Company Rollout
+```
+
+This task covers **Phase 1 only**.
+
+Do not:
+
+* Design the final implementation in detail
+* Build the Governance Layer
+* Modify existing workflows
+* Fix technical debt
+* Create migrations
+* Add AI services
+* Change production configuration
+
+You may recommend what should be designed or repaired later.
+
+---
+
+# 4. Core audit objective
+
+The audit must answer:
+
+> Which existing Hire’in processes can reliably support governance today, which require targeted repair before use, which should be consolidated, and which new primitives must be designed?
+
+The audit is not complete merely because modules and tables are listed.
+
+It must trace the complete control chain:
+
+```text
+Business requirement
+→ System trigger
+→ Responsible person
+→ Notification or task
+→ Acknowledgement
+→ Required action
+→ Evidence
+→ Validation
+→ Escalation
+→ Resolution
+→ Closure
+→ Audit record
+```
+
+Where the chain stops, identify the exact gap.
+
+---
+
+# 5. Source-of-truth order
+
+Use the following authority order:
+
+1. Current running application behavior
+2. Current backend code paths
+3. Current database schema and migrations
+4. Current authorization middleware
+5. Current jobs, schedulers and event handlers
+6. Current tests
+7. Current frontend behavior
+8. Current repository documentation
+9. Historical plans or archived documentation
+
+Do not classify a capability as active merely because:
+
+* A table exists
+* A UI page exists
+* A route name exists
+* A document describes it
+* A service is present but unused
+* A component is not connected to live navigation
+* An automation creates a notification but does not track action completion
+
+---
+
+# 6. Read-only restrictions
+
+Do not:
+
+* Modify production code
+* Refactor services
+* Change schema
+* Run migrations
+* Modify environment variables
+* Enable or disable jobs
+* Send notifications
+* Create or update employee records
+* Change goals, check-ins, probation plans or PIPs
+* Execute payroll
+* Modify production data
+* Add providers or packages
+* Print secrets
+* Print employee PII
+* Commit implementation changes
+
+Permitted changes are limited to:
+
+```text
+docs/ai-governance-audit/
+```
+
+Any read-only helper script must be placed under:
+
+```text
+docs/ai-governance-audit/tools/
+```
+
+The script must never perform:
+
+* INSERT
+* UPDATE
+* DELETE
+* ALTER
+* DROP
+* TRUNCATE
+* Migration operations
+* External notifications
+
+Record Git status before and after every audit wave.
+
+---
+
+# 7. Privacy requirements
+
+Never copy real employee information into audit documents.
+
+Do not include:
+
+* Names
+* Personal emails
+* Phone numbers
+* Addresses
+* Dates of birth
+* Bank details
+* Tax identifiers
+* Government identifiers
+* Salary documents
+* Medical information
+* Complaint details
+* Investigation details
+* Authentication credentials
+* API keys
+* Tokens
+* Encryption keys
+* Raw payroll data
+
+Use pseudonymous references:
+
+```text
+EMP-001
+MGR-002
+DEPT-HEALTHCARE
+PLAN-PIP-003
+CONTROL-CHECKIN-004
+```
+
+Environment variable names may be documented. Their values must never be displayed.
+
+---
+
+# 8. Evidence and inspection classifications
+
+Every material finding must have both an evidence classification and an inspection-depth classification.
+
+## Evidence classification
+
+* `VERIFIED`
+* `INFERRED`
+* `UNVERIFIED`
+
+## Inspection-depth classification
+
+* `RUNTIME_VERIFIED`
+* `TEST_VERIFIED`
+* `CODE_TRACED_END_TO_END`
+* `SCHEMA_VERIFIED`
+* `PARTIALLY_TRACED`
+* `DOCUMENTATION_ONLY`
+* `UNABLE_TO_VERIFY`
+
+A finding may not be marked `VERIFIED_ACTIVE` based only on schema or UI presence.
+
+Every material finding must include:
+
+* Finding ID
+* Domain
+* Statement
+* Evidence classification
+* Inspection depth
+* Code reference
+* Database reference
+* API or function reference
+* Test or runtime reference, where available
+* Confidence
+* Business impact
+* Governance impact
+* Recommended disposition
+
+---
+
+# 9. Capability classifications
+
+Classify every capability as:
+
+* `VERIFIED_ACTIVE`
+* `VERIFIED_PARTIAL`
+* `PRESENT_BUT_NOT_CONNECTED`
+* `DOCUMENTED_ONLY`
+* `DEPRECATED`
+* `DUPLICATED`
+* `NOT_FOUND`
+* `UNABLE_TO_VERIFY`
+
+Also classify the recommended treatment:
+
+* `REUSE_AS_IS`
+* `REUSE_WITH_EXTENSION`
+* `REPAIR_FIRST`
+* `CONSOLIDATE`
+* `NEW_CAPABILITY_REQUIRED`
+* `DEFER`
+* `DO_NOT_BUILD`
+
+---
+
+# 10. Signal Eligibility Gate
+
+The future Governance Layer must not treat every existing record as a trustworthy governance signal.
+
+For each workflow, determine its signal eligibility.
+
+## `ELIGIBLE`
+
+The signal may support governance findings and CEO reporting.
+
+It must be:
+
+* Verified active
+* Backend-authorized
+* Hierarchy-aware
+* Measurable
+* Evidence-linked
+* Time-bounded
+* Auditable
+* Completion-tracked
+* Exception-aware
+* Data-quality checked
+
+## `CONDITIONALLY_ELIGIBLE`
+
+The signal may support informational reporting but not consequential findings.
+
+## `SYSTEM_REMEDIATION_ONLY`
+
+The workflow may generate a technical or process-control finding, but not an employee or manager performance finding.
+
+## `INELIGIBLE`
+
+The workflow must not feed the Governance Layer until repaired.
+
+Example:
+
+```text
+Notification sent
++ No acknowledgement tracking
++ No action-completion tracking
++ No closure state
+= SYSTEM_REMEDIATION_ONLY
+```
+
+The future system may conclude:
+
+> The notification workflow is incomplete.
+
+It may not conclude:
+
+> The manager refused to complete the review.
+
+---
+
+# 11. Technical-debt classifications
+
+Place each gap into one category.
+
+## Category A — Critical blocker
+
+Must be resolved before any Governance Layer implementation.
+
+Examples:
+
+* Restricted PII can reach an external AI provider
+* Backend authorization weakness
+* Cross-employee or cross-role data exposure
+* Payroll-integrity risk
+* Consequential actions without audit logging
+* Secrets exposed in logs or client payloads
+
+## Category B — Governance prerequisite
+
+Must be fixed before the affected vertical slice goes live.
+
+Examples:
+
+* Manager hierarchy not enforced
+* Action completion not tracked
+* Goal evidence source missing
+* PIP coaching not recorded
+* Check-in closure state missing
+* Employee dispute path absent
+
+## Category C — Opportunistic repair
+
+Repair when the related code path is already being changed, provided scope remains controlled.
+
+Examples:
+
+* Duplicate helpers
+* Repeated notification formatting
+* Inconsistent naming
+* Local service consolidation
+* Minor enum or validation cleanup
+
+## Category D — Deferred debt
+
+Document but do not include in the current Governance Layer program unless it later becomes a blocker.
+
+Examples:
+
+* Legacy inactive pages
+* Cosmetic inconsistencies
+* Unrelated broad refactors
+* Historical modules not used by the pilot
+
+---
+
+# 12. Audit execution model
+
+Execute the audit in four independent waves.
+
+After each wave:
+
+1. Complete the required deliverables.
+2. Provide an evidence summary.
+3. List unknowns.
+4. List contradictions.
+5. List manual verification requirements.
+6. Record Git status.
+7. Stop.
+8. Do not begin the next wave until the CEO or designated architect approves continuation.
+
+Do not generate the final implementation-readiness conclusions before Wave 4.
+
+---
+
+# AUDIT WAVE 1
+
+# Trust Foundations
+
+## 13. Wave 1 objective
+
+Answer:
+
+> Can the current Hire’in platform produce trustworthy, secure and privacy-safe governance signals?
+
+Audit:
+
+* Repository architecture
+* Application entry points
+* Database and ORM
+* Authentication
+* Authorization and RBAC
+* Management hierarchy
+* Sessions
+* Audit logs
+* Background jobs
+* Schedulers
+* Queues
+* Notifications
+* Automation infrastructure
+* Existing AI integrations
+* PII storage
+* External data exposure
+* Logging and observability
+
+---
+
+## 14. Repository and architecture inspection
+
+Document:
+
+* Frontend framework
+* Backend framework
+* Database
+* ORM
+* Authentication
+* Session model
+* Authorization model
+* Background jobs
+* Scheduler
+* Queue
+* Email
+* SMS
+* In-app notifications
+* File storage
+* Audit logging
+* Analytics
+* AI providers
+* Test frameworks
+* Deployment model
+* Feature flags
+* Environment structure
+
+Inspect actual repository paths, including where applicable:
+
+```text
+package.json
+replit.md
+client/
+server/
+shared/
+src/
+routes/
+services/
+workers/
+jobs/
+scheduler/
+notifications/
+automations/
+workflows/
+database/
+schema/
+migrations/
+tests/
+config/
+```
+
+Run only safe checks:
+
+* Build
+* Type check
+* Lint
+* Existing tests
+
+Record failures. Do not fix them.
+
+---
+
+## 15. Database and data-model audit
+
+Inspect the full schema and migrations.
+
+For relevant tables, document:
+
+* Purpose
+* Primary key
+* Foreign keys
+* Owner fields
+* Manager fields
+* Status fields
+* Approval fields
+* Date fields
+* Audit fields
+* Versioning
+* Soft deletes
+* Tenant/company scope
+* PII fields
+* Encryption
+* Retention
+* Indexes
+* Integrity constraints
+
+Identify:
+
+* Duplicate concepts
+* Orphan risks
+* Missing foreign keys
+* Missing owner fields
+* Missing audit fields
+* Missing version history
+* Missing company scoping
+* Overuse of free text
+* Conflicting status enums
+* Unused tables
+* Undocumented active tables
+
+Produce a Mermaid ERD.
+
+---
+
+## 16. Hierarchy and RBAC audit
+
+Trace hierarchy through:
+
+* Schema
+* Backend services
+* APIs
+* Middleware
+* Frontend
+* Notifications
+* Escalations
+* Reports
+
+Determine:
+
+1. Where manager relationships are stored
+2. Whether APIs enforce direct-report access
+3. Whether access exists only in UI
+4. Whether skip-level access exists
+5. Whether department-head access exists
+6. Whether HR and Super Admin override access
+7. Whether CEO company-wide access exists
+8. Whether delegated reviewers exist
+9. What happens when no manager is assigned
+10. What happens when a manager is inactive
+11. Whether hierarchy history is retained
+12. Whether circular relationships are prevented
+13. Whether hierarchy changes update existing workflows
+14. Whether notifications resolve hierarchy correctly
+15. Whether confidential concerns can bypass the immediate manager
+
+Perform representative code tracing for:
+
+* Direct-report access
+* Unauthorized employee access
+* Department access
+* Skip-level access
+* HR override
+* Super Admin override
+* CEO access
+
+Do not accept frontend visibility as proof of backend enforcement.
+
+---
+
+## 17. Notification and automation infrastructure audit
+
+Audit:
+
+* In-app notifications
+* Email
+* SMS
+* Push
+* Teams or Slack, if present
+* Cron jobs
+* Scheduled jobs
+* Event handlers
+* Status-change hooks
+* Approval reminders
+* Escalation jobs
+* Digest reports
+* Retry mechanisms
+* Deduplication
+* Delivery tracking
+* Acknowledgement tracking
+* Completion tracking
+* Closure tracking
+
+For representative automations, trace:
+
+```text
+Trigger
+→ Notification created
+→ Delivery attempted
+→ Delivery result
+→ Acknowledgement
+→ Required action
+→ Completion
+→ Escalation
+→ Resolution
+→ Closure
+```
+
+---
+
+## 18. PII and external-AI exposure audit
+
+Classify data as:
+
+* `PUBLIC`
+* `INTERNAL`
+* `CONFIDENTIAL_BUSINESS`
+* `RESTRICTED_EMPLOYEE_PII`
+* `HIGHLY_SENSITIVE_EMPLOYEE`
+* `SECURITY_SECRET`
+
+Inspect:
+
+* Schema
+* APIs
+* Logs
+* Error handling
+* Notifications
+* Email templates
+* Browser storage
+* Client state
+* Exports
+* File uploads
+* Third-party calls
+* Existing AI prompts and context builders
+
+Verify active encryption code paths rather than relying on documentation.
+
+The future requirement is:
+
+> Restricted employee PII, payroll records, medical information, investigation records, authentication data and other highly sensitive employee information must never be sent to an external AI provider.
+
+Create a preliminary proposal for:
+
+* AI field allowlist
+* AI prohibited-field list
+* Pseudonymization
+* Redaction
+* DLP validation
+* Local-processing-only workflows
+* Human-only workflows
+
+Do not implement it.
+
+---
+
+## 19. Wave 1 deliverables
+
+Create:
+
+```text
+docs/ai-governance-audit/wave-1/
+├── 00-WAVE-README.md
+├── 01-CURRENT-ARCHITECTURE.md
+├── 02-DATABASE-AND-ERD.md
+├── 03-HIERARCHY-AND-RBAC.md
+├── 04-NOTIFICATION-AND-AUTOMATION-INFRASTRUCTURE.md
+├── 05-AUDIT-LOGGING-AND-OBSERVABILITY.md
+├── 06-PII-PRIVACY-AND-AI-BOUNDARY.md
+├── 07-TRUST-FOUNDATION-RISKS.md
+├── 08-WAVE-1-EXECUTIVE-SUMMARY.md
+├── hierarchy-evidence.json
+├── data-classification.json
+├── infrastructure-automation-catalog.json
+└── evidence-index.json
+```
+
+## 20. Wave 1 exit questions
+
+Answer:
+
+1. Is backend hierarchy enforcement reliable?
+2. Are authorization rules centralized or fragmented?
+3. Can actions be traced end to end?
+4. Can notification effectiveness be measured?
+5. Can action completion be measured?
+6. Can resolution and closure be measured?
+7. Is PII safely isolated from external AI?
+8. Are current audit logs sufficient?
+9. What Category A blockers exist?
+10. Is the platform safe to continue into people-governance auditing?
+
+Stop after Wave 1.
+
+---
+
+# AUDIT WAVE 2
+
+# People Governance Workflows
+
+Begin only after Wave 1 review and approval.
+
+## 21. Wave 2 objective
+
+Answer:
+
+> Are Hire’in’s people-management workflows complete, hierarchy-owned, evidence-based and suitable for phased Governance Layer implementation?
+
+Audit separately:
+
+* Goals
+* Check-ins
+* Feedback
+* Training
+* Probation
+* PIP
+* SOPs
+* Policies
+* Employee concerns
+* Manager actions
+* Escalations
+* Acknowledgements
+* Existing notifications
+* Existing automations
+
+---
+
+## 22. Goals audit
+
+Audit:
+
+* Company goals
+* Department goals
+* Team goals
+* Role goals
+* Level goals
+* Individual goals
+* Weekly commitments
+* Goal templates
+* Baselines
+* Targets
+* Units
+* Weights
+* Evidence
+* Progress calculations
+* Status calculations
+* Approval
+* Acknowledgement
+* Version history
+* Editing
+* Exceptions
+* Escalation
+* Closure
+
+Determine whether the following cascade exists:
+
+```text
+Company
+→ Department
+→ Team
+→ Role and level
+→ Employee
+→ Weekly commitment
+```
+
+For each stage, classify:
+
+* Built
+* Partially built
+* Missing
+* Duplicated
+* Not connected
+
+---
+
+## 23. Check-in and feedback audit
+
+Audit:
+
+* Scheduling
+* Immediate-manager ownership
+* Employee preparation
+* Manager preparation
+* Agenda
+* Questions
+* Goal review
+* Evidence review
+* Guidance
+* Blockers
+* Employee concerns
+* Manager actions
+* Employee commitments
+* Follow-ups
+* Acknowledgements
+* Corrections
+* Disputes
+* Confidential notes
+* Visibility
+* Escalation
+* Quarterly feedback
+* Bottom-up feedback
+* Skip-level feedback
+* Confidential concerns
+
+Determine whether the system records only that a check-in occurred or whether it verifies check-in quality.
+
+A complete check-in should be able to prove:
+
+* Goals reviewed
+* Evidence reviewed
+* Guidance provided
+* Blockers recorded
+* Employee questions addressed
+* Manager support actions assigned
+* Employee commitments recorded
+* Next review scheduled
+
+---
+
+## 24. Training audit
+
+Audit:
+
+* Training catalog
+* Required training
+* Role-based training
+* Level-based training
+* Assignments
+* Deadlines
+* Completion
+* Evidence
+* Assessment
+* Manager review
+* Notifications
+* Escalations
+* Acknowledgement
+* Version history
+
+---
+
+## 25. Probation audit
+
+Audit separately from PIP:
+
+* Plan creation
+* Templates
+* Milestones
+* Goals
+* Owner
+* Manager
+* HR reviewer
+* Employee acknowledgement
+* Review schedule
+* Coaching
+* Support provided
+* Evidence
+* Extensions
+* Amendments
+* Outcome options
+* Approval chain
+* Audit log
+* Notifications
+* Escalations
+
+Determine whether the system can distinguish:
+
+* Employee performance issue
+* Missing manager support
+* Missing evidence
+* External dependency
+* Data-quality issue
+* Approved exception
+
+---
+
+## 26. PIP audit
+
+Audit:
+
+* Initiation
+* Approval
+* Employee acknowledgement
+* Defined expectations
+* Measurement
+* Evidence
+* Weekly checkpoints
+* Coaching
+* Manager support
+* Employee response
+* Amendments
+* Extensions
+* Final review
+* Outcome options
+* Decision authority
+* Notifications
+* Escalations
+* Audit history
+
+Determine whether process integrity can be proven before any final outcome.
+
+---
+
+## 27. SOP and policy audit
+
+Determine whether each SOP is:
+
+* Document only
+* Checklist
+* Workflow
+* Machine-checkable control
+* Hybrid
+
+Audit:
+
+* Creation
+* Versioning
+* Approval
+* Publication
+* Assignment
+* Acknowledgement
+* Testing
+* Review
+* Retirement
+* Role mapping
+* Department mapping
+* Training mapping
+* Goal mapping
+* PIP/probation mapping
+* Required evidence
+* SLA
+* Exceptions
+* Escalation
+* Closure
+
+---
+
+## 28. Manager accountability audit
+
+Determine whether managers can be measured on:
+
+* Check-ins completed
+* Feedback quality
+* Goal clarification
+* Evidence validation
+* Blocker resolution
+* Employee questions
+* Training support
+* Probation reviews
+* PIP coaching
+* Follow-up completion
+* Escalation responsiveness
+* Record accuracy
+
+Identify whether the system separates employee accountability from manager accountability.
+
+---
+
+## 29. People-workflow control chain
+
+For every major workflow, map:
+
+```text
+Trigger
+→ Employee responsibility
+→ Immediate-manager responsibility
+→ Skip-level responsibility
+→ HR/Ops responsibility
+→ CEO authority
+→ Evidence
+→ SLA
+→ Notification
+→ Action
+→ Escalation
+→ Resolution
+→ Closure
+```
+
+---
+
+## 30. Wave 2 deliverables
+
+Create:
+
+```text
+docs/ai-governance-audit/wave-2/
+├── 00-WAVE-README.md
+├── 01-GOALS-AND-GOAL-CASCADE.md
+├── 02-CHECKINS-AND-FEEDBACK.md
+├── 03-TRAINING.md
+├── 04-PROBATION.md
+├── 05-PIP.md
+├── 06-SOP-AND-POLICY-GOVERNANCE.md
+├── 07-MANAGER-ACCOUNTABILITY.md
+├── 08-PEOPLE-AUTOMATION-CATALOG.md
+├── 09-PEOPLE-CONTROL-MATRIX.md
+├── 10-PEOPLE-SIGNAL-ELIGIBILITY.md
+├── 11-WAVE-2-EXECUTIVE-SUMMARY.md
+├── people-automation-catalog.json
+├── people-control-matrix.json
+├── people-signal-eligibility.json
+└── evidence-index.json
+```
+
+## 31. Wave 2 exit questions
+
+Answer:
+
+1. Which people workflows are eligible for governance now?
+2. Which require targeted repair?
+3. Can immediate-manager ownership be enforced?
+4. Can manager actions be measured?
+5. Can employees correct or dispute records?
+6. Can concerns bypass the immediate manager safely?
+7. Can probation process integrity be proven?
+8. Can PIP process integrity be proven?
+9. Can SOP compliance be measured?
+10. Which workflow is the safest first pilot?
+
+Stop after Wave 2.
+
+---
+
+# AUDIT WAVE 3
+
+# Operating and Business Workflows
+
+Begin only after Wave 2 review and approval.
+
+## 32. Wave 3 objective
+
+Answer:
+
+> Which operating and commercial workflows can be connected to the Governance Layer in later implementation slices?
+
+Audit only functionality that currently exists.
+
+---
+
+## 33. HR operations
+
+Audit:
+
+* Attendance
+* Attendance exceptions
+* Timesheets
+* Leave
+* Holidays
+* Payroll
+* Salary structure
+* Incentives
+* Deductions
+* Reimbursements
+* Salary advances
+* Approvals
+* Employee tickets
+* Onboarding
+* Offboarding
+
+Trace cross-module reconciliation, such as:
+
+```text
+Attendance
++ Approved leave
++ Payroll
++ Employee ticket
+```
+
+Determine whether discrepancies can be detected without AI.
+
+---
+
+## 34. Staffing delivery
+
+Audit where present:
+
+* Clients
+* Partners
+* Requirements
+* Recruiter assignments
+* Candidates
+* Submissions
+* Interviews
+* Offers
+* Starts
+* Falloffs
+* Retention
+* Credentials
+* Quality controls
+* ATS integrations
+* Bill rate
+* Pay rate
+* Margin
+* Client feedback
+
+Determine whether performance can be adjusted for:
+
+* Active demand
+* Job quality
+* Client delays
+* Manager support
+* External dependencies
+* Support resources
+* Role difficulty
+
+---
+
+## 35. Sales and GTM
+
+Audit where present:
+
+* Target accounts
+* Prospects
+* Contacts
+* Opportunities
+* Pipeline stages
+* Next actions
+* Meetings
+* Proposals
+* Agreements
+* Win/loss reasons
+* Account revenue
+* Partner relationships
+* ICP definitions
+* Growth experiments
+* Account prioritization
+
+---
+
+## 36. Marketing
+
+Audit where present:
+
+* Content plans
+* Content creation
+* Review and approval
+* Brand standards
+* Claims
+* Campaigns
+* Channels
+* Leads
+* Attribution
+* Marketing-to-pipeline tracking
+* Content performance
+* Existing AI usage
+
+---
+
+## 37. Finance and company reporting
+
+Audit where present:
+
+* Revenue
+* Gross margin
+* Operating expenses
+* Payroll expenses
+* Tool costs
+* Receivables
+* Payables
+* Partner shares
+* Budget versus actual
+* Department reporting
+* Executive reporting
+* All-hands reports
+* Decision tracking
+* Action tracking
+
+---
+
+## 38. Wave 3 deliverables
+
+Create:
+
+```text
+docs/ai-governance-audit/wave-3/
+├── 00-WAVE-README.md
+├── 01-ATTENDANCE-LEAVE-AND-PAYROLL.md
+├── 02-EMPLOYEE-SERVICE-WORKFLOWS.md
+├── 03-STAFFING-DELIVERY.md
+├── 04-SALES-AND-GTM.md
+├── 05-MARKETING.md
+├── 06-FINANCE-AND-REPORTING.md
+├── 07-BUSINESS-CONTROL-MATRIX.md
+├── 08-BUSINESS-SIGNAL-ELIGIBILITY.md
+├── 09-WAVE-3-EXECUTIVE-SUMMARY.md
+├── business-control-matrix.json
+├── business-signal-eligibility.json
+└── evidence-index.json
+```
+
+## 39. Wave 3 exit questions
+
+Answer:
+
+1. Which operational signals are reliable?
+2. Which payroll and financial controls are deterministic?
+3. Which staffing metrics are supported by verified evidence?
+4. Which commercial modules exist but are incomplete?
+5. Which data can support cross-module governance?
+6. Which areas must remain outside the first release?
+7. What privacy restrictions apply?
+8. What shared foundations are required?
+9. Which later vertical slices are technically feasible?
+10. What major dependencies remain?
+
+Stop after Wave 3.
+
+---
+
+# AUDIT WAVE 4
+
+# Verification, Prioritization and Implementation Readiness
+
+Begin only after Wave 3 review and approval.
+
+## 40. Wave 4 objective
+
+Validate high-consequence findings and convert all previous audits into an implementation-aligned readiness pack.
+
+Do not implement anything.
+
+---
+
+## 41. Mandatory verification pass
+
+Recheck:
+
+### A. Hierarchy and authorization
+
+Verify representative backend paths for:
+
+* Direct reports
+* Skip-level access
+* Department access
+* HR access
+* Super Admin access
+* CEO access
+* Unauthorized access
+* Manager reassignment
+* Inactive managers
+* Confidential concerns
+
+### B. Automation effectiveness
+
+Verify representative workflows for:
+
+```text
+Trigger
+→ Delivery
+→ Acknowledgement
+→ Action
+→ Completion
+→ Escalation
+→ Resolution
+→ Closure
+```
+
+### C. PII and AI exposure
+
+Trace:
+
+```text
+Database
+→ Service
+→ API
+→ Prompt/context builder
+→ AI provider
+→ Output
+→ Storage
+→ Logs
+```
+
+### D. People-management integrity
+
+Verify:
+
+* Goal calculation
+* Goal ownership
+* Check-in completion
+* Manager actions
+* Probation milestones
+* PIP checkpoints
+* SOP evidence
+* Employee correction rights
+
+### E. Auditability
+
+Verify that consequential actions can be reconstructed.
+
+---
+
+## 42. Vertical implementation-slice readiness
+
+Classify readiness for:
+
+### Slice 1 — Goals, check-ins and manager accountability
+
+Assess:
+
+* Reusable assets
+* Required repairs
+* Missing primitives
+* Signal eligibility
+* PII considerations
+* AI requirements
+* Human approval requirements
+* Pilot readiness
+
+### Slice 2 — Training, probation and PIP
+
+Assess the same fields.
+
+### Slice 3 — SOP and policy compliance
+
+Assess the same fields.
+
+### Slice 4 — Attendance, leave and payroll controls
+
+Assess the same fields.
+
+### Slice 5 — Staffing delivery governance
+
+Assess the same fields.
+
+### Slice 6 — Sales, GTM and marketing governance
+
+Assess the same fields.
+
+---
+
+## 43. Shared foundation readiness
+
+Determine whether the following already exist:
+
+* Central hierarchy-resolution service
+* Unified authorization middleware
+* Unified governance event model
+* Event outbox
+* Control registry
+* Evidence registry
+* Finding lifecycle
+* Manager-action tracking
+* Escalation service
+* Closure model
+* CEO decision queue
+* AI Privacy Gateway
+* Model-provider abstraction
+* AI cost ledger
+* Governance audit log
+* Report-generation framework
+
+Classify each as:
+
+* Existing and reusable
+* Existing but requires extension
+* Existing but should be consolidated
+* Missing and required
+* Not required
+
+---
+
+## 44. Repair backlog requirements
+
+Create a prioritized backlog.
+
+Every repair item must contain:
+
+* Repair ID
+* Domain
+* Technical component
+* Problem
+* Evidence
+* Risk category
+* Governance impact
+* Affected vertical slice
+* Required before pilot: yes/no
+* Recommended treatment
+* Dependencies
+* Test requirement
+* Acceptance criterion
+
+Do not estimate implementation dates unless requested.
+
+---
+
+## 45. Final readiness scoring
+
+Score 0–100:
+
+* Data readiness
+* Workflow readiness
+* Hierarchy readiness
+* Authorization readiness
+* Automation readiness
+* Completion-and-closure readiness
+* Auditability
+* Privacy readiness
+* AI readiness
+* Manager-accountability readiness
+* CEO-reporting readiness
+
+Every score must cite evidence.
+
+Do not average scores into a misleading single score without also showing individual dimensions.
+
+---
+
+## 46. Wave 4 deliverables
+
+Create:
+
+```text
+docs/ai-governance-audit/final/
+├── 00-FINAL-README.md
+├── 01-EXECUTIVE-SUMMARY.md
+├── 02-VERIFIED-CAPABILITY-INVENTORY.md
+├── 03-SIGNAL-ELIGIBILITY-MATRIX.md
+├── 04-REUSE-REPAIR-CONSOLIDATE-BUILD-MATRIX.md
+├── 05-CRITICAL-BLOCKERS.md
+├── 06-GOVERNANCE-PREREQUISITE-BACKLOG.md
+├── 07-SHARED-FOUNDATION-READINESS.md
+├── 08-VERTICAL-SLICE-READINESS.md
+├── 09-AI-PRIVACY-BOUNDARY.md
+├── 10-CEO-DECISIONS-REQUIRED.md
+├── 11-ARCHITECTURE-DESIGN-INPUT-PACK.md
+├── 12-RECOMMENDED-NEXT-PHASE-SEQUENCE.md
+├── system-inventory.json
+├── signal-eligibility.json
+├── repair-backlog.json
+├── vertical-slice-readiness.json
+├── data-classification.json
+├── automation-catalog.json
+├── control-matrix.json
+└── evidence-index.json
+```
+
+---
+
+# 47. Architecture design-input pack requirements
+
+`11-ARCHITECTURE-DESIGN-INPUT-PACK.md` must include:
+
+## Verified reusable assets
+
+Only assets proven to exist:
+
+* Tables
+* APIs
+* Services
+* Components
+* Schedulers
+* Notification services
+* Escalation services
+* Audit services
+* Reporting services
+* Authorization middleware
+
+## Shared primitives requiring design
+
+Only genuinely missing capabilities, such as:
+
+* Governance event model
+* Control registry
+* Evidence registry
+* Signal Eligibility Gate
+* Finding lifecycle
+* Closure model
+* CEO decision queue
+* AI Privacy Gateway
+* Model router
+* AI cost ledger
+
+## Targeted repair requirements
+
+Separate:
+
+* Critical blockers
+* Shared governance prerequisites
+* Slice-specific prerequisites
+* Opportunistic repairs
+* Deferred debt
+
+## Proposed vertical sequence
+
+Recommend the order of implementation slices based on verified readiness.
+
+Do not automatically assume the proposed order is correct.
+
+## CEO decisions
+
+List only questions that cannot be answered from code, including:
+
+* Visibility boundaries
+* Escalation thresholds
+* Confidential-feedback access
+* Approved external AI providers
+* Approved AI data fields
+* Pilot department
+* Check-in cadence
+* Final authority boundaries
+* Reporting cadence
+* Risk tolerance
+
+---
+
+# 48. Required final conclusions
+
+The final report must answer:
+
+1. What is reliably built?
+2. What is partially built?
+3. What is duplicated?
+4. What is disconnected?
+5. Which notifications have full action-and-closure tracking?
+6. Which automations are notification-only?
+7. Is hierarchy enforced in backend APIs?
+8. Can manager accountability be measured?
+9. Can employee accountability be separated from management failure?
+10. Can check-in quality be measured?
+11. Can probation and PIP integrity be proven?
+12. Can employee concerns safely bypass the manager?
+13. Can employees correct or dispute AI-assisted records?
+14. What PII could currently reach third parties or AI?
+15. Which signals are eligible for governance?
+16. Which signals are ineligible?
+17. What must be repaired before Slice 1?
+18. Which shared foundations are missing?
+19. Which implementation slice should launch first?
+20. What decisions must the CEO make before architecture design begins?
+
+---
+
+# 49. Final Replit chat response
+
+At the end of each wave, return:
+
+* Wave completed
+* Areas inspected
+* Build/test status
+* Documents created
+* Number of findings
+* Number of verified findings
+* Number of inferred findings
+* Critical blockers
+* Governance prerequisites
+* Unknowns
+* Manual checks required
+* Confirmation that no production code or data was modified
+
+At the end of Wave 4, also return:
+
+* Recommended first implementation slice
+* Required shared foundation repairs
+* Number of eligible signals
+* Number of conditionally eligible signals
+* Number of remediation-only signals
+* Number of ineligible signals
+* Readiness scores
+* CEO decisions required
+
+---
+
+# 50. Acceptance criteria
+
+The audit is complete only when:
+
+* Work is executed in four separate review-gated waves.
+* Live code is treated as the primary source of truth.
+* Every material claim has technical evidence.
+* Schema or UI presence is not treated as end-to-end verification.
+* Hierarchy enforcement is traced through backend APIs.
+* Automation delivery is separated from action completion.
+* Action completion is separated from resolution and closure.
+* Signal eligibility is classified for every major workflow.
+* Employee performance findings are not supported by incomplete system chains.
+* Manager accountability is audited separately.
+* PII and external-AI exposure are traced end to end.
+* Existing AI usage is fully cataloged.
+* Technical debt is classified by implementation relevance.
+* Repair work is mapped to vertical implementation slices.
+* Shared foundation repairs are separated from slice-specific repairs.
+* The final design-input pack contains verified facts rather than assumptions.
+* No production logic, configuration or data is modified.
+
+Begin with Audit Wave 1 only.
+
+Do not begin Wave 2 until Audit Wave 1 has been reviewed and approved.

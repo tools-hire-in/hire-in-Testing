@@ -1,0 +1,626 @@
+# TASK #1009-0
+
+## Hire’in AI Governance Layer — System Knowledge Assimilation and Baseline Confirmation
+
+## 1. Purpose
+
+Before beginning the formal AI Governance Layer audit, build an accurate and concise understanding of the existing Hire’in platform.
+
+This phase exists to prevent the audit from starting with incorrect assumptions about missing integrations, automations, workflows, access controls or system capabilities.
+
+The task must establish:
+
+* What the platform was designed to do
+* What relevant documentation currently exists
+* What the current code appears to implement
+* Where documentation and code align
+* Which earlier assumptions were incorrect
+* Which capabilities appear reusable
+* Which questions require formal verification during Wave 1
+
+This is a knowledge-assimilation and baseline-confirmation task only.
+
+Do not implement, repair or refactor anything.
+
+---
+
+# 2. Program structure
+
+This task is the first child task under:
+
+```text
+#1009 — Hire’in AI Governance Layer Audit Program
+```
+
+The program structure is:
+
+```text
+#1009-0 — Phase 0: System Knowledge Assimilation
+#1009-A — Wave 1: Trust Foundations
+#1009-B — Wave 2: People Governance Workflows
+#1009-C — Wave 3: Business and Operating Workflows
+#1009-D — Wave 4: Verification and Implementation Readiness
+```
+
+Complete Phase 0 and stop.
+
+Do not begin Wave 1 until Simranjeet Sidana provides an explicit written approval.
+
+---
+
+# 3. CEO-approved operating baseline
+
+Treat the following as approved system intent unless current authoritative documentation clearly contradicts it.
+
+1. Simranjeet Sidana is the CEO, System Design Authority and final gate approver.
+
+2. CEIPAL is the operational source of truth for staffing execution across Healthcare, IT and other staffing domains.
+
+3. Hire’in is the source of truth for:
+
+   * Employee governance
+   * Goals
+   * Weekly check-ins
+   * Training
+   * Probation
+   * PIP
+   * SOPs and policies
+   * Attendance
+   * Leave
+   * Payroll
+   * Manager actions
+   * Employee concerns
+   * Escalations
+   * Audit findings
+   * CEO decisions
+
+4. Existing CEIPAL integration should be extended where needed rather than replaced.
+
+5. Immediate managers remain responsible for employee check-ins, feedback, guidance, coaching and blocker resolution.
+
+6. The system must audit managers as well as employees.
+
+7. The CEO should receive material exceptions, trends and decision requests—not routine operational noise.
+
+8. Existing notifications, schedulers, integrations and workflow automations should be reused where reliable.
+
+9. A notification being sent is not proof that the required action was completed.
+
+10. Missing acknowledgement, action completion or closure must be treated as a system-control gap until verified.
+
+11. Restricted employee PII, payroll information, medical information, complaint or investigation records, authentication data and security secrets must never be sent to an external AI provider.
+
+12. AI may summarize, classify, question, correlate and recommend.
+
+13. Consequential employment, compensation, payroll, legal, contractual and financial decisions remain human-controlled.
+
+14. Technical debt should be repaired with the relevant vertical implementation slice unless it is a shared critical blocker.
+
+---
+
+# 4. Read-only restrictions
+
+Do not:
+
+* Modify application code
+* Refactor services
+* Change schemas
+* Run migrations
+* Modify environment variables
+* Enable or disable jobs
+* Trigger scheduled jobs manually
+* Send notifications
+* Create or update production records
+* Modify goals, check-ins, probation plans or PIPs
+* Execute payroll
+* Add packages
+* Add AI providers
+* Print secrets
+* Print real employee PII
+* Create files outside the approved output directory
+
+Permitted changes are limited to:
+
+```text
+docs/ai-governance-audit/baseline/
+```
+
+Record Git status before and after the task.
+
+---
+
+# 5. Evidence model
+
+Use the following three-way comparison:
+
+```text
+Documented intent
+versus
+Implemented code
+versus
+Runtime or test evidence
+```
+
+Documentation defines intended behavior.
+
+Code shows what appears to have been implemented.
+
+Runtime wiring, logs and tests provide stronger operational evidence.
+
+Do not treat:
+
+* A work order
+* A prompt
+* A database table
+* A route name
+* A UI page
+* An unused service
+* An unregistered scheduler
+
+as proof that the full capability is operational.
+
+---
+
+# 6. Documentation review
+
+Read and classify relevant documentation that actually exists in the repository.
+
+Do not search indefinitely for documents merely because a possible document category is listed.
+
+Review available items such as:
+
+* `replit.md`
+* README files
+* Architecture documentation
+* System-design documents
+* Feature specifications
+* Completed implementation notes
+* Work orders
+* Historical plans
+* SOP and policy specifications
+* Goal, training, probation and PIP documentation
+* Notification and automation documentation
+* CEIPAL integration documentation
+* Attendance, leave and payroll documentation
+* Audit, encryption and vault documentation
+* AI integration documentation
+* Known issue and technical-debt notes
+* Superseded architecture decisions
+
+Classify each reviewed document as:
+
+* `CURRENT_AUTHORITATIVE`
+* `CURRENT_SUPPORTING`
+* `HISTORICAL`
+* `SUPERSEDED`
+* `WORK_ORDER_ONLY`
+* `DRAFT`
+* `CONFLICTING`
+* `UNABLE_TO_CLASSIFY`
+
+A work order or agent prompt must not be treated as evidence that implementation was completed.
+
+---
+
+# 7. Preliminary code reconnaissance
+
+Perform a focused inspection of the current technical foundation.
+
+This is not the full Wave 1 audit.
+
+Inspect relevant primary files, including where present:
+
+* `shared/schema.ts`
+* `server/index.ts`
+* Route registration
+* `server/routes.ts`
+* `server/scheduler.ts`
+* `server/notifications.ts`
+* `server/email.ts`
+* `shared/accessControl.ts`
+* `server/accessControlService.ts`
+* `server/auth.ts`
+* `server/authRoutes.ts`
+* Audit logging services and tables
+* Vault and encryption services
+* CEIPAL integration services
+* Goal and performance entry points
+* Check-in and plan-reminder services
+* Training, probation and PIP entry points
+* SOP governance services
+* Existing AI service entry points
+* Environment-variable names used by integrations
+
+Do not expose environment-variable values.
+
+---
+
+# 8. Baseline claims requiring confirmation
+
+The following claims were identified during preliminary discussion.
+
+Confirm, narrow or correct them.
+
+## 8.1 CEIPAL integration
+
+Possible current capabilities:
+
+* JWT authentication
+* Token refresh
+* Paginated job synchronization
+* Candidate search
+* Applicant push
+* Resume attachment handling
+* Deduplication
+* Error recovery
+* Graceful fallback
+
+Possible future extensions:
+
+* Submission pipeline synchronization
+* Interview stages
+* Offer disposition
+* Placement and start status
+* Falloff status
+* Client feedback
+* Pipeline aging
+
+Use precise classifications.
+
+Do not describe the CEIPAL integration as “fully implemented” unless the supported operational scope is explicitly stated.
+
+Preferred form:
+
+> Active for jobs and selected candidate or applicant operations; likely reusable with extension for complete staffing-pipeline governance.
+
+## 8.2 Scheduler
+
+Possible scheduled functions include:
+
+* Salary reporting
+* Salary approval reminders
+* Leave accrual
+* Night-shift consent alerts
+* Absence sweeps
+* Attendance reports
+* Attendance safety nets
+* Manager attendance reminders
+* Deadline expiration and escalation
+* Content Studio reminders
+* Campaign digests
+* Weekly digests
+* Regularization reminders
+* Plan check-in reminders
+
+Safe scheduler verification means:
+
+1. Confirm the job definition exists.
+2. Confirm the scheduler is registered from the application entry point.
+3. Confirm relevant feature-flag or environment conditions.
+4. Confirm timezone configuration.
+5. Inspect available recent execution logs or audit records.
+6. Inspect failure handling and retry behavior.
+7. Inspect idempotency or duplicate-run protections where present.
+
+Do not manually trigger cron jobs.
+
+## 8.3 Notification gateway
+
+Possible current foundation:
+
+* Central `notifyUser()` function
+* User-level channel preferences
+* Multi-channel delivery
+* Safe failure handling
+
+Confirm:
+
+* Which active modules use the gateway
+* Whether any modules bypass it
+* Whether delivery outcomes are recorded
+* Whether acknowledgement is tracked
+* Whether the required action is linked
+* Whether escalation is linked
+* Whether closure is recorded
+
+## 8.4 Access-control foundation
+
+Possible current foundation:
+
+* Central `ACCESS_REGISTRY`
+* `resolveRoles()` or equivalent role-resolution logic
+
+Confirm:
+
+* Whether major backend routes use it
+* Whether legacy routes use separate logic
+* Whether access is enforced only by role or also by employee hierarchy
+* Whether direct-report filtering is applied
+* Whether skip-level and department access exist
+* Whether HR, Super Admin and CEO overrides are controlled
+* Which claims require deeper Wave 1 tracing
+
+---
+
+# 9. Capability assessment model
+
+For each major foundation, record:
+
+* Business purpose
+* Documented intent
+* Relevant documentation
+* Relevant code
+* Runtime or test evidence available
+* Current scope
+* Current limitation
+* Preliminary reuse classification
+* Required deeper audit question
+* Relevant future implementation slice
+
+Use these alignment classifications:
+
+* `ALIGNED`
+* `IMPLEMENTATION_AHEAD_OF_DOCUMENTATION`
+* `DOCUMENTATION_AHEAD_OF_IMPLEMENTATION`
+* `PARTIALLY_ALIGNED`
+* `CONTRADICTORY`
+* `OBSOLETE_DOCUMENTATION`
+* `UNABLE_TO_VERIFY`
+
+Use these baseline capability classifications:
+
+* `FOUNDATION_VERIFIED`
+* `FOUNDATION_PRESENT_REQUIRES_DEEP_VERIFICATION`
+* `CAPABILITY_ACTIVE_WITH_LIMITED_SCOPE`
+* `CAPABILITY_DOCUMENTED_NOT_YET_VERIFIED`
+* `CAPABILITY_SUPERSEDED`
+* `POSSIBLE_GAP_REQUIRES_AUDIT`
+* `CONFIRMED_GAP`
+
+Do not classify something as a confirmed gap until:
+
+1. Relevant documentation was reviewed.
+2. Relevant terminology and aliases were searched.
+3. Relevant code paths were searched.
+4. Related services, routes or modules were inspected.
+5. The absence is supported by evidence.
+
+---
+
+# 10. Assumption corrections
+
+Document only material assumptions that changed the understanding of the system.
+
+For each correction include:
+
+* Earlier assumption
+* Corrected understanding
+* Supporting documentation
+* Supporting code reference
+* Remaining limitation or uncertainty
+* Audit wave responsible for final verification
+
+Keep this concise.
+
+Do not create an unnecessarily large assumption register.
+
+---
+
+# 11. Required outputs
+
+Create only the following four documents:
+
+```text
+docs/ai-governance-audit/baseline/
+├── 01-DOCUMENT-INVENTORY.md
+├── 02-CAPABILITY-REGISTER.md
+├── 03-ASSUMPTION-CORRECTIONS.md
+└── 04-WAVE-1-FOCUS.md
+```
+
+No JSON files are required in Phase 0.
+
+Machine-readable inventories and evidence indexes will begin in Wave 1 after the system foundations have been more rigorously verified.
+
+---
+
+# 12. Output requirements
+
+## 12.1 `01-DOCUMENT-INVENTORY.md`
+
+Include:
+
+* Document name
+* Path
+* Classification
+* Subject area
+* Apparent authority
+* Whether it describes intended behavior, completed implementation or historical planning
+* Conflicts or superseded information
+* Relevant code areas to verify
+
+End with:
+
+* Documents considered authoritative
+* Documents considered supporting
+* Work orders that must not be treated as implementation evidence
+* Major documentation gaps
+* Major documentation contradictions
+
+## 12.2 `02-CAPABILITY-REGISTER.md`
+
+Include one section or table for each relevant foundation:
+
+* CEIPAL
+* Scheduler
+* Notifications
+* Access control
+* Authentication
+* Audit logging
+* Encryption and vault
+* Goals
+* Check-ins
+* Training
+* Probation
+* PIP
+* SOP governance
+* Attendance
+* Leave
+* Payroll
+* AI integrations
+* Other material foundations discovered
+
+For each capability include:
+
+* Intended purpose
+* Current implementation evidence
+* Current operational scope
+* Alignment classification
+* Baseline capability classification
+* Preliminary treatment:
+
+  * Reuse
+  * Extend
+  * Consolidate
+  * Formal audit required
+* Remaining uncertainty
+* Relevant Wave 1 or later audit question
+
+## 12.3 `03-ASSUMPTION-CORRECTIONS.md`
+
+Record only important corrected assumptions.
+
+Include examples such as:
+
+* CEIPAL was assumed to be a major unknown but an active integration exists.
+* Scheduler maturity was assumed unclear but multiple jobs are registered.
+* Notifications were assumed fragmented but a centralized gateway exists.
+* Access control was assumed scattered but a centralized role registry exists.
+
+For each correction, state the remaining limitation.
+
+Example:
+
+> A centralized access registry exists, but consistent backend and hierarchy enforcement remains to be verified.
+
+## 12.4 `04-WAVE-1-FOCUS.md`
+
+Define the refined Wave 1 audit scope.
+
+It must identify:
+
+* Capabilities that no longer need basic existence discovery
+* Capabilities requiring adoption and depth verification
+* Highest-risk technical paths
+* Required manual or code-level spot checks
+* Category A risks requiring immediate attention
+* Questions deferred to Wave 2 or Wave 3
+* Recommended order of Wave 1 inspection
+
+Wave 1 should be framed as confirmation and trust verification, not general feature discovery.
+
+---
+
+# 13. Phase 0 completion summary
+
+At the end of the task, provide a concise Replit chat summary containing:
+
+* Documentation reviewed
+* Code areas inspected
+* Number of capabilities assessed
+* Major assumptions corrected
+* Existing foundations likely reusable
+* Highest-risk unknowns
+* Recommended Wave 1 focus
+* Files created
+* Confirmation that no production code, schema, configuration or data was modified
+
+Do not claim that a capability is production-verified unless runtime or test evidence supports it.
+
+---
+
+# 14. CEO approval gate
+
+Phase 0 is not approved merely because the four documents were created.
+
+Simranjeet Sidana must review the outputs and issue one of the following explicit decisions:
+
+## `APPROVED_TO_PROCEED`
+
+Phase 0 accurately represents the system and Wave 1 may begin.
+
+## `APPROVED_WITH_CORRECTIONS`
+
+Wave 1 may begin only after the listed corrections are applied to the Phase 0 documents.
+
+## `REWORK_REQUIRED`
+
+The baseline contains material inaccuracies, unsupported assumptions or missing system areas. Correct Phase 0 and resubmit before Wave 1.
+
+## `HOLD`
+
+Do not proceed because additional business or technical information is required.
+
+The approval must be recorded at the end of:
+
+```text
+04-WAVE-1-FOCUS.md
+```
+
+Use this section:
+
+```text
+## CEO Phase 0 Gate Decision
+
+Decision:
+Date:
+Approved by: Simranjeet Sidana
+Required corrections:
+Conditions for Wave 1:
+Additional notes:
+```
+
+Only the exact decision `APPROVED_TO_PROCEED` authorizes the creation or execution of Wave 1.
+
+`APPROVED_WITH_CORRECTIONS` requires the corrections to be completed and acknowledged before Wave 1 begins.
+
+The executor cannot approve its own Phase 0 output.
+
+---
+
+# 15. What the CEO evaluates
+
+Simranjeet Sidana will evaluate:
+
+1. Whether the system’s intended operating model was understood correctly.
+2. Whether work orders were separated from completed implementation evidence.
+3. Whether existing foundations were recognized before gaps were declared.
+4. Whether CEIPAL’s current scope was represented accurately.
+5. Whether managers, employees and CEO responsibilities were represented correctly.
+6. Whether existing notifications and automations were described without overstating action completion.
+7. Whether PII and AI boundaries reflect approved company policy.
+8. Whether the refined Wave 1 scope addresses the real trust questions.
+9. Whether material assumptions were corrected.
+10. Whether any important system domain was overlooked.
+
+---
+
+# 16. Exit criteria
+
+Phase 0 is ready for CEO review when:
+
+* Existing documentation was inventoried and classified.
+* Work orders were separated from implementation evidence.
+* Relevant primary code foundations were inspected.
+* Existing capabilities were described before gaps were declared.
+* Material earlier assumptions were corrected.
+* CEIPAL’s implemented scope was described precisely.
+* Scheduler verification followed the defined safe steps.
+* Notification delivery was distinguished from action completion.
+* Access-registry presence was distinguished from complete backend enforcement.
+* Remaining questions were assigned to the correct audit wave.
+* Only four required documents were created.
+* Git status confirms no unauthorized changes.
+* No real employee PII or secrets were included.
+
+Stop after Phase 0 and wait for the CEO gate decision.
