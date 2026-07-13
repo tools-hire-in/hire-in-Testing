@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { StudioArticle, StudioAuthorProfile } from "@shared/schema";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import { getStudioContentType } from "@shared/studioContent";
+import { ForcePublishButton } from "./ForcePublishButton";
 
 type QueueItem = StudioArticle & {
   authorName: string | null;
@@ -280,6 +281,12 @@ export default function CMReview() {
                         Send Back to Draft
                       </Button>
                     </div>
+                    <ForcePublishButton
+                      articleId={active}
+                      articleTitle={activeItem.title}
+                      riskFlags={(activeItem as any).riskFlags}
+                      onDone={() => { setSelectedId(null); }}
+                    />
                   </CardContent>
                 </Card>
               </>

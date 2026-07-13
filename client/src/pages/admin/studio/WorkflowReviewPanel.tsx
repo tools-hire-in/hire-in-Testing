@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import { SocialKitPreview } from "./SocialKitPreview";
+import { ForcePublishButton } from "./ForcePublishButton";
 import type { StudioArticle, StudioReviewAssignment, StudioAuditEvent } from "@shared/schema";
 import type { CanonicalSocialKit } from "@shared/studioAi";
 
@@ -47,6 +48,7 @@ const AUDIT_LABELS: Record<string, string> = {
   article_unpublished: "Unpublished",
   article_archived: "Archived",
   status_changed: "Status changed",
+  force_published: "Force-published (Super Admin veto)",
 };
 
 const platformLabels: Record<string, string> = {
@@ -420,6 +422,12 @@ export function WorkflowReviewPanel({
                   <XCircle className="mr-2 h-4 w-4" />
                   Send back to draft
                 </Button>
+                <ForcePublishButton
+                  articleId={articleId}
+                  articleTitle={article.title}
+                  riskFlags={(article as any).riskFlags}
+                  onDone={onDone}
+                />
               </div>
             ) : (
               <div className="grid gap-2">
@@ -450,6 +458,12 @@ export function WorkflowReviewPanel({
                   <XCircle className="mr-2 h-4 w-4" />
                   Send back to draft
                 </Button>
+                <ForcePublishButton
+                  articleId={articleId}
+                  articleTitle={article.title}
+                  riskFlags={(article as any).riskFlags}
+                  onDone={onDone}
+                />
               </div>
             )}
           </CardContent>

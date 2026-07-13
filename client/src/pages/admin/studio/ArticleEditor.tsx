@@ -87,6 +87,7 @@ import {
   computeReadTime,
 } from "@shared/studioContent";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
+import { ForcePublishButton } from "./ForcePublishButton";
 import type { StudioArticle, StudioArticleVersion, StudioAuthorProfile } from "@shared/schema";
 import { cardVariantsForLayout, cardBudget, type CardBudget } from "@shared/socialCards";
 
@@ -886,6 +887,15 @@ function ArticleEditorInner({ id }: { id: string }) {
               {t.label}
             </Button>
           ))}
+          {!["published", "archived"].includes(article.status) && (
+            <ForcePublishButton
+              articleId={id}
+              articleTitle={article.title}
+              riskFlags={(article as any).riskFlags}
+              onDone={() => setLocation("/admin/studio/articles")}
+              compact
+            />
+          )}
         </div>
       </div>
 

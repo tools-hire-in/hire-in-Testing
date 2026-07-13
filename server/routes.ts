@@ -19752,6 +19752,52 @@ export async function registerRoutes(
     },
   );
 
+  // Force-publish: Super Admin veto. Bypasses all workflow gates (status checks,
+  // author byline, risk flags). Publishes immediately from any non-published state.
+  app.post(
+    "/api/admin/studio/articles/:id/force-publish",
+    requireAuth,
+    async (req: Request, res: Response) => {
+      if (!ensureSuperAdmin(req, res)) return;
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (article.status === "published") {
+          return res.status(409).json({ error: "Article is already published" });
+        }
+        if (article.status === "archived") {
+          return res.status(409).json({ error: "Cannot force-publish an archived article" });
+        }
+        const userId = req.session.userId!;
+        const previousStatus = article.status;
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          status: "published",
+          publishedAt: new Date(),
+          scheduledAt: null,
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "force_published",
+          metadata: { from: previousStatus, via: "super_admin_veto" },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: previousStatus, to: "published", via: "super_admin_veto" },
+        } as any);
+        // Best-effort subscriber notification + idea sync — never block the response.
+        try { void notifyNewContentSubscribers(req.params.id); } catch (_) {}
+        try { void syncIdeaDoneForPublishedArticle(req.params.id); } catch (_) {}
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Studio force-publish error:", error);
+        res.status(500).json({ error: error?.message || "Failed to force-publish article" });
+      }
+    },
+  );
+
   // Reschedule a scheduled (or live) article to a new future time. Super Admin only.
   app.post(
     "/api/admin/studio/articles/:id/reschedule",
