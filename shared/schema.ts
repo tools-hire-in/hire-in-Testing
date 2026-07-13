@@ -1273,10 +1273,10 @@ export const trackSections = pgTable("track_sections", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
-// Inline quiz question per section (one per section)
+// Quiz questions per section (multiple questions supported per section)
 export const sectionQuizQuestions = pgTable("section_quiz_questions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  sectionId: varchar("section_id").notNull().references(() => trackSections.id, { onDelete: "cascade" }).unique(),
+  sectionId: varchar("section_id").notNull().references(() => trackSections.id, { onDelete: "cascade" }),
   questionText: text("question_text").notNull(),
   explanation: text("explanation"), // shown after answering
   createdAt: timestamp("created_at").defaultNow(),
