@@ -1,0 +1,481 @@
+# Task #1014 — Governance MVP Trust Hardening
+
+## Objective
+
+Perform a narrowly scoped trust-hardening pass on the Governance Control Model delivered in Task #1013.
+
+Task #1013 is implemented but not yet merged. This task must inspect that implementation, verify the six approved concerns, apply only confirmed fixes, add focused tests, and produce an evidence-based merge-readiness report.
+
+Do not add new governance domains or redesign working infrastructure.
+
+---
+
+# 1. Execution principle
+
+Use this sequence for every scope item:
+
+```text
+Inspect
+→ Verify
+→ Classify
+→ Apply minimum patch if confirmed
+→ Test
+→ Document
+```
+
+Do not treat an architectural recommendation as evidence that a defect exists.
+
+Before modifying code, classify the item as:
+
+* `CONFIRMED`
+* `PARTIALLY_CONFIRMED`
+* `ALREADY_IMPLEMENTED`
+* `NOT_FOUND`
+* `UNABLE_TO_VERIFY`
+
+## Implementation rule
+
+* `CONFIRMED`: implement the smallest safe fix.
+* `PARTIALLY_CONFIRMED`: fix only the proven portion.
+* `ALREADY_IMPLEMENTED`: do not rewrite; add a test only if proof is insufficient.
+* `NOT_FOUND`: document the evidence and make no change.
+* `UNABLE_TO_VERIFY`: follow the handling rules in Section 3.
+
+---
+
+# 2. Approved scope
+
+This task is limited to:
+
+1. Governance GET-route row-level authorization
+2. Structured allowlisted payload for the CEO governance AI report
+3. Per-control-type escalation configuration using the existing mechanism
+4. Stable governance-control identity across ownership reassignment
+5. Minimum append-only governance event history
+6. Three CEO-report semantic corrections:
+
+   * Missing active goal versus missing governance control
+   * Overdue obligations versus explicit blockers
+   * Disputed versus confirmed findings
+
+No other feature is approved.
+
+---
+
+# 3. Handling `UNABLE_TO_VERIFY`
+
+A task agent cannot pause and wait for a mid-task response. Use the following deterministic rule.
+
+## Default behavior: skip and document
+
+For a normal `UNABLE_TO_VERIFY` item:
+
+* Do not implement a speculative change.
+* Record what was inspected.
+* Record why the behavior could not be verified.
+* Record the evidence or access still required.
+* Continue with other independent confirmed items.
+* Mark the item as requiring CEO or technical review.
+
+## Mandatory hard stop
+
+Stop implementation and return a partial report if the unresolved question affects:
+
+* Authentication or authorization architecture
+* Possible unauthorized employee-data exposure
+* External-AI PII exposure
+* Destructive or ambiguous schema migration
+* Existing uniqueness constraints or control identity
+* Potential loss, merging or duplication of governance records
+* Event-table foreign-key design
+* Payroll, compensation or employment-decision logic
+* A required sequencing dependency for another scope item
+
+When a hard stop occurs:
+
+1. Do not implement the uncertain item.
+2. Do not implement dependent items.
+3. Preserve all completed independent work.
+4. Produce the required evidence report.
+5. Clearly state the decision required before continuation.
+
+Do not resolve uncertainty through assumption.
+
+---
+
+# 4. Required execution order
+
+Follow this order because some items depend on earlier findings.
+
+## Step 1 — Inventory governance routes
+
+Before changing authorization:
+
+* Enumerate every governance API route.
+* Identify method, path, permission key and returned data.
+* Classify each route:
+
+  * Employee-self
+  * Manager/direct-report
+  * HR-sensitive
+  * CEO/Super Admin
+  * Aggregate/reporting
+  * Event history
+* Identify current backend scope enforcement.
+* Identify whether filtering occurs in SQL/query construction, service logic, route logic or frontend only.
+
+Produce the route inventory before patching.
+
+## Step 2 — Fix confirmed GET authorization gaps
+
+Inspect every governance read route, including:
+
+* Control lists
+* Control detail
+* Employee obligation views
+* Manager views
+* Evidence
+* Disputes
+* CEO reports
+* Aggregate endpoints
+* Event history after it is added
+
+Requirements:
+
+* Apply row-level scope on the server.
+* Prefer query-level filtering.
+* Never rely on frontend filtering.
+* Reuse existing access-control and hierarchy services.
+* Do not create a parallel authorization system.
+
+Add focused tests for:
+
+* Employee reads own control
+* Employee cannot read another employee’s control
+* Manager reads a direct report’s control
+* Manager cannot read an unrelated employee’s control
+* Unauthorized detail lookup is rejected safely
+* HR access follows approved permissions
+* CEO/Super Admin access follows approved permissions
+
+## Step 3 — Harden CEO-report AI payload
+
+Inspect the existing `aiPrivacyGuard` and CEO-report prompt construction.
+
+Extend the existing guard rather than creating a parallel privacy framework.
+
+Build the external-AI request from an explicit structured allowlist.
+
+Permitted fields may include only approved non-identifying operational values such as:
+
+* Pseudonymous control reference
+* Control type
+* Role category
+* Department category
+* Status
+* Severity
+* Days until due or overdue
+* Evidence status
+* Escalation level
+* Manager-action-pending flag
+* Dispute classification
+* Exception category
+
+Do not send:
+
+* Employee names
+* Emails or phones
+* Salary or payroll amounts
+* Medical data
+* Complaint or investigation narratives
+* Dispute text
+* Evidence free text
+* Manager notes
+* Employee responses
+* Candidate or client PII
+* Authentication or security information
+
+Requirements:
+
+* Construct payload through allowlisting, not redaction of a full object.
+* Retain existing redaction and prompt auditing as defense in depth.
+* Fail closed on unapproved fields.
+* Keep a deterministic non-AI CEO-report fallback.
+* Do not log sensitive prompt content.
+
+## Step 4 — Verify escalation extensibility
+
+Before adding configuration, inspect the existing escalation implementation.
+
+Confirm whether it can accept control-type-specific configuration without introducing a general rules engine.
+
+If extensible, add the smallest configuration structure supporting:
+
+* Control type
+* Grace period
+* First escalation timing
+* First escalation recipient level
+* Second escalation timing
+* Second escalation recipient level
+* CEO-report threshold
+* Dispute behavior
+* Approved-exception behavior
+* Active status
+
+Limit initial policies to:
+
+* Goal
+* Training
+* SOP
+* Weekly check-in
+* Probation
+* PIP
+
+If the current mechanism cannot support this cleanly without major redesign, classify it `UNABLE_TO_VERIFY` or `PARTIALLY_CONFIRMED`, document the structural limitation and stop this scope item.
+
+Do not build a general-purpose policy engine.
+
+## Step 5 — Verify stable control identity
+
+Complete this step before creating the event table.
+
+Inspect:
+
+* Current uniqueness constraints
+* `control_type`
+* `reference_id`
+* `owner_id`
+* Source-module identifiers
+* Obligation period or milestone representation
+* Existing controls created by Task #1013
+* Reassignment behavior
+* Potential duplicate records
+
+Determine whether ownership changes create a new control or update the existing obligation.
+
+Preferred principle:
+
+```text
+The source obligation defines identity.
+The current owner is mutable.
+```
+
+Do not assume the final key before inspecting the actual data model.
+
+Requirements if a gap is confirmed:
+
+* Preserve existing control IDs where possible.
+* Reassign ownership without creating a duplicate active control.
+* Preserve evidence and disputes.
+* Distinguish reassignment from a genuinely new obligation period or milestone.
+* Do not delete or merge ambiguous existing controls automatically.
+* Produce a reconciliation report for ambiguous records.
+
+If the required change creates destructive or ambiguous migration risk, hard stop and return the evidence report.
+
+## Step 6 — Add minimum append-only event history
+
+Begin only after stable control identity is confirmed.
+
+Create the minimum event model required to reconstruct governance transitions.
+
+Required fields:
+
+* Event ID
+* Control ID
+* Event type
+* Actor ID or system actor reference
+* Timestamp
+* Metadata JSONB
+* Source, such as user, sync, scheduler or API
+
+Add only the necessary transition hooks, including where applicable:
+
+* Control created
+* Assigned or reassigned
+* Status changed
+* Evidence submitted
+* Disputed
+* Escalated
+* Closed
+* Reopened
+* Exception or waiver recorded
+* Sync updated
+
+Do not implement:
+
+* Event sourcing
+* Replay
+* Projections
+* Event bus architecture
+* Historical state reconstruction engine
+
+The event table is an append-only audit trail, not a new application architecture.
+
+Apply the parent control’s authorization rules to event-history reads.
+
+## Step 7 — Correct only the three approved report semantics
+
+### A. Missing goal versus missing governance control
+
+Separate:
+
+* Employee without an applicable active source goal
+* Existing active source goal without a corresponding governance control
+
+Do not infer the first from the second.
+
+### B. Overdue obligations versus blockers
+
+Separate:
+
+* Employee obligations overdue
+* Manager actions overdue
+* Explicit employee-reported blockers
+* External dependencies
+* System failures
+* Unresolved concerns
+
+Do not derive “repeated blocker” solely from the number of overdue controls.
+
+### C. Disputed versus confirmed
+
+Ensure reports distinguish:
+
+* Confirmed
+* Disputed
+* Data incomplete
+* Approved exception
+* Resolved
+
+AI output must not describe disputed records as confirmed noncompliance.
+
+Do not refactor unrelated CEO-report logic.
+
+---
+
+# 5. Required named deliverables
+
+Create:
+
+```text
+docs/governance-mvp-hardening/
+├── 01-ROUTE-AUTHORIZATION-INVENTORY.md
+├── 02-HARDENING-EVIDENCE-REPORT.md
+└── 03-MERGE-AND-PILOT-READINESS.md
+```
+
+## `01-ROUTE-AUTHORIZATION-INVENTORY.md`
+
+For every governance route include:
+
+| Method | Route | Data returned or changed | Permission key | Required row scope | Current enforcement | Finding | Action |
+| ------ | ----- | ------------------------ | -------------- | ------------------ | ------------------- | ------- | ------ |
+
+## `02-HARDENING-EVIDENCE-REPORT.md`
+
+Include one row per approved scope item:
+
+| Item | Verification status | Evidence | Files changed | Behavior before | Behavior after | Tests added | Remaining limitation |
+| ---- | ------------------- | -------- | ------------- | --------------- | -------------- | ----------- | -------------------- |
+
+This report is mandatory and is the primary CEO merge-review artifact.
+
+Also include:
+
+* Items skipped
+* Items hard-stopped
+* Assumptions avoided
+* Schema changes
+* Migration risks
+* Known limitations
+* Test summary
+
+## `03-MERGE-AND-PILOT-READINESS.md`
+
+State clearly:
+
+* Whether Task #1013 plus #1014 is safe to merge
+* Whether any authorization exposure remains
+* Whether external-AI payloads are allowlist-only
+* Whether reassignment can create duplicate controls
+* Whether event history is operational
+* Whether CEO report semantics are corrected
+* Whether a Healthcare shadow pilot is recommended
+* Any blockers to merge
+* Any blockers to shadow mode
+* Explicit recommendation:
+
+  * `READY_TO_MERGE`
+  * `READY_TO_MERGE_WITH_LIMITATIONS`
+  * `NOT_READY_TO_MERGE`
+  * `READY_FOR_SHADOW_PILOT`
+  * `NOT_READY_FOR_SHADOW_PILOT`
+
+---
+
+# 6. Explicitly out of scope
+
+Do not add or redesign:
+
+* CEIPAL integration
+* Staffing governance
+* Sales or marketing governance
+* Payroll governance
+* Structured evidence platform
+* Full dispute-case management
+* New notification framework
+* New scheduler framework
+* New access-control framework
+* New AI provider abstraction
+* Multi-agent architecture
+* Predictive scoring
+* Sentiment analysis
+* Automated employment decisions
+* Broad schema cleanup
+* Broad route refactoring
+* Startup migration redesign
+* Multi-instance scheduler locking
+* New dashboards
+* Shadow pilot execution
+* Company-wide enforcement
+
+---
+
+# 7. Minimal-change rules
+
+* Reuse existing services and patterns.
+* Make the smallest safe patch.
+* Do not refactor code for style.
+* Do not rename unrelated files, routes or fields.
+* Do not modify unrelated modules.
+* Preserve existing API contracts unless a security requirement makes that impossible.
+* Add focused tests for every changed behavior.
+* Do not claim a fix without a passing test or direct end-to-end code trace.
+
+---
+
+# 8. Acceptance criteria
+
+Task #1014 is complete only when:
+
+* Every governance route is inventoried.
+* Every governance GET endpoint has a documented row-level authorization decision.
+* Confirmed read-scope gaps are fixed server-side.
+* Authorization tests cover employee, manager, unrelated manager, HR and CEO/Super Admin.
+* CEO-report external-AI input is built from an explicit allowlist.
+* Unrestricted governance free text is not sent externally.
+* Privacy checks fail closed.
+* A deterministic CEO-report fallback remains.
+* The current escalation mechanism was inspected before extension.
+* Per-control-type escalation behavior is added only if the current design supports it cleanly.
+* Stable control identity is verified before event-history creation.
+* Ownership reassignment does not create duplicate active controls where a fix was confirmed and safely implementable.
+* Event history remains minimal and append-only.
+* Event-history access follows parent-control authorization.
+* The three approved CEO-report semantic corrections are implemented.
+* The hardening evidence table is complete.
+* Existing tests pass.
+* New focused tests pass.
+* No unrelated scope was added.
+* No shadow pilot or enforcement was activated.

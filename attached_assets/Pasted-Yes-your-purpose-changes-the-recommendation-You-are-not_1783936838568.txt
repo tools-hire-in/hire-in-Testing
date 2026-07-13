@@ -1,0 +1,477 @@
+Yes—your purpose changes the recommendation.
+
+You are not creating documents merely for governance. You need:
+
+Reliable engineering reference material for future developers, QA engineers, product managers, and technical hires.
+Role-based training content so employees can learn how to use the system correctly.
+A repeatable onboarding system that does not depend on you explaining everything personally.
+
+For that purpose, the eight documents were not unreasonable. The better approach is to organize them into two connected layers rather than either creating one massive document or reducing everything to four audit files.
+
+Recommended documentation model
+Layer 1: Technical Source-of-Truth Documentation
+
+This is written for engineering, QA, product, technical support, and future technical hires.
+
+1. System Overview and Architecture Guide
+
+This should be the first document every technical hire reads.
+
+Include:
+
+What the platform does.
+Products, portals, and major modules.
+Primary user types.
+Technology stack.
+Frontend, backend, database, storage, jobs and external services.
+High-level system context diagram.
+Major data flows.
+Folder and code organization.
+Environments and domains.
+Where configuration and secrets are managed.
+Links to all deeper technical documents.
+
+This replaces scattered architecture introductions and becomes the entry point into the platform.
+
+2. Product and Feature Catalogue
+
+Document each functional area separately:
+
+Employee Portal.
+HR Portal.
+TA or recruiter functions.
+Attendance and leave.
+Payroll inputs.
+Ticketing.
+Growth and Training System.
+Content Studio.
+BD Agent.
+Secure Vault.
+ProKred integrations or connected functionality.
+Klerhire/KleriQ integrations.
+Governance and approval features.
+
+For every module:
+
+Business purpose.
+Users.
+User-visible functionality.
+Product owner.
+Main pages.
+Backend routes.
+Tables.
+Permissions.
+Dependencies.
+Known limitations.
+Current implementation status.
+
+This helps a new engineer understand not just what the code does, but why the feature exists.
+
+3. Workflow, State Machine and Business Rules Catalogue
+
+This is valuable for engineering, QA, product and training.
+
+Include critical workflows such as:
+
+Employee onboarding.
+Attendance and regularization.
+Leave application and approval.
+Payroll processing inputs.
+Ticket creation and resolution.
+Policy publication and acknowledgment.
+Training assignment and completion.
+Content creation and approval.
+Capability deck approval.
+BD research and external communication.
+Candidate submission workflow.
+Secure Vault access.
+User access provisioning and deactivation.
+
+For each workflow:
+
+Trigger.
+Roles involved.
+Preconditions.
+Status values.
+Valid status transitions.
+Required approvals.
+Business rules.
+Exceptions.
+Notifications.
+Audit evidence.
+Error and recovery paths.
+
+Use diagrams only for workflows that are complex or financially, operationally or legally important.
+
+This document will become one of the strongest sources for creating training scenarios.
+
+4. Data Dictionary and Database Relationship Guide
+
+Include:
+
+Table names.
+Business meaning.
+Important columns.
+Allowed values.
+Relationships.
+Foreign-key behavior.
+Cascade and deletion behavior.
+Sensitive fields.
+Encryption.
+Calculated fields.
+Source-of-truth designation.
+Data retention requirements.
+Which workflows read or update each table.
+
+Provide an ERD, but also explain important relationships in plain English. A diagram alone is rarely enough for a new engineer.
+
+5. API Contract Reference
+
+For every maintained endpoint:
+
+Method and path.
+Purpose.
+Authentication.
+Required permission.
+Request body.
+Query parameters.
+Response.
+Validation rules.
+Error codes.
+Tables affected.
+Audit event generated.
+External side effects.
+Example request and response.
+
+Where possible, generate this from route definitions or OpenAPI rather than manually maintaining it.
+
+6. Authentication, RBAC, Security and Privacy Guide
+
+Include:
+
+Login and session flow.
+Password behavior.
+2FA.
+User roles.
+Feature permissions.
+Backend permission enforcement.
+PII handling.
+Credential and secret handling.
+Encryption.
+Upload and download controls.
+Audit logging.
+IP or device tracking.
+Employee exit and access termination.
+AI agent data restrictions.
+Security incident escalation.
+
+Also include a clear role-permission matrix.
+
+This is essential for new developers because access-control mistakes are often introduced when engineers understand the screen but not the authorization model.
+
+7. Integration and Dependency Guide
+
+For every external system or shared internal service:
+
+Purpose.
+Data exchanged.
+Authentication method.
+Trigger.
+Failure behavior.
+Retry behavior.
+Timeout.
+Monitoring.
+Owner.
+Test or sandbox availability.
+Data sensitivity.
+What happens when the integration is unavailable.
+
+Examples may include:
+
+CEIPAL.
+SendGrid.
+Database and storage.
+ProKred.
+Klerhire/KleriQ.
+Rayo Academy.
+Scheduled jobs.
+Email services.
+File or document generation.
+AI model providers.
+8. Engineering Runbook
+
+I would now include this, even though the earlier response suggested skipping a deployment guide.
+
+For new engineering hires, a lightweight runbook is necessary.
+
+Include:
+
+Local or Replit setup.
+Environment variables.
+Development commands.
+Database migration process.
+Test commands.
+Build and deployment process.
+Rollback steps.
+Logs and monitoring.
+Common failures.
+Data recovery and backup process.
+How to safely change roles, enums or schemas.
+Production-change checklist.
+Escalation contacts or ownership areas.
+
+Do not make it a complicated DevOps manual. Make it practical enough that a technical hire can operate safely.
+
+9. Technical Debt and Known Limitations Register
+
+This should be reference material, not training content.
+
+Include:
+
+Known issue.
+Affected feature.
+Impact.
+Workaround.
+Severity.
+Proposed resolution.
+Owner.
+Status.
+Related code.
+Decision to fix, accept, monitor or retire.
+
+This prevents a new engineer from wasting time rediscovering known problems or accidentally treating a workaround as intended architecture.
+
+Layer 2: Role-Based Training System
+
+Employees should not be asked to read the full technical documentation.
+
+Training should be generated from the source documents, but written for the employee’s role and daily work.
+
+Recommended training paths
+A. All Employees
+
+Modules:
+
+System overview.
+Login, account security and 2FA.
+Navigation and dashboards.
+Teams, email and documentation expectations.
+Data privacy and acceptable use.
+Tickets and internal support.
+Policies and acknowledgment.
+How to report an issue.
+B. Recruiters and Delivery Team
+
+Modules:
+
+Requisition intake.
+Candidate sourcing and documentation.
+Candidate screening.
+Submission-readiness standards.
+CEIPAL usage and source-of-truth expectations.
+Client submission workflow.
+Interview, offer and start tracking.
+Credential and candidate-data handling.
+Escalations and aging management.
+Common submission-quality mistakes.
+C. HR and Managers
+
+Modules:
+
+Employee onboarding.
+Attendance review.
+Leave and regularization.
+Payroll input responsibilities.
+Tickets and employee requests.
+Performance goals and check-ins.
+Policy and training assignment.
+Approval and evidence requirements.
+Employee access and offboarding.
+Exceptions and escalation.
+D. Content and Marketing Team
+
+Modules:
+
+Content Studio workflow.
+Audience and channel selection.
+Brand standards.
+Claims and evidence controls.
+Draft, review and approval.
+Repurposing content.
+External publishing authorization.
+Feedback and performance signals.
+Prohibited or unverified claims.
+Capability deck standards.
+E. Business Development Team
+
+Modules:
+
+BD Agent purpose and limitations.
+Research-input standards.
+Client and opportunity evaluation.
+Where Hire’in wins.
+Proof-point governance.
+Recommendations versus approved decisions.
+External communication approval.
+CRM or opportunity documentation.
+Feedback capture.
+Escalation to leadership.
+F. Engineering and QA New Hires
+
+Modules:
+
+Platform and business overview.
+Architecture walkthrough.
+Local development and environments.
+Authentication and RBAC.
+Core data model.
+Critical workflows.
+API and integration structure.
+Security and sensitive-data handling.
+Testing expectations.
+Deployment and production-change process.
+Known risks and technical debt.
+First supervised contribution.
+Training module format
+
+Each training lesson should follow one standard structure:
+
+Module name
+
+Purpose
+Why this matters
+
+Who must complete it
+Applicable roles
+
+Learning objectives
+What the employee should be able to do
+
+System workflow
+Step-by-step instructions
+
+Business rules
+What must and must not happen
+
+Scenario
+A realistic example
+
+Common mistakes
+What normally goes wrong
+
+Knowledge check
+5–10 questions
+
+Practical task
+A system activity to complete
+
+Completion evidence
+Quiz score, acknowledgment, uploaded result or manager verification
+
+Review cycle
+When the training must be refreshed
+
+This converts documentation into actual learning and implementation evidence.
+
+What the audit can generate with very little extra effort
+
+The audit can produce the technical foundation for:
+
+Architecture diagrams.
+Feature catalogue.
+Database dictionary.
+API inventory.
+Role-permission matrix.
+Integration map.
+Workflow status definitions.
+Business-rule catalogue.
+Known-issue register.
+Security model.
+Engineering glossary.
+Initial knowledge-check questions.
+Scenario ideas.
+New-engineer onboarding checklist.
+What still requires human effort
+
+These items cannot be reliably produced from code alone:
+
+Screenshots reflecting the actual employee experience.
+Correct company policy interpretation.
+Which steps managers expect employees to follow.
+Approved escalation paths.
+Real-world examples and common mistakes.
+Whether a feature is actually adopted.
+Training tone and difficulty.
+Final quiz validation.
+Role-specific UAT exercises.
+Confirmation that documented behavior is the intended behavior.
+
+The audit agent can draft these, but the product owner or operational owner must approve them.
+
+Better repository structure
+
+I recommend maintaining the documentation like this:
+
+/docs
+
+  /01-platform-overview
+    SYSTEM_OVERVIEW.md
+    PRODUCT_FEATURE_CATALOGUE.md
+    GLOSSARY.md
+
+  /02-engineering
+    ARCHITECTURE.md
+    DATABASE_DATA_DICTIONARY.md
+    API_REFERENCE.md
+    AUTH_RBAC_SECURITY.md
+    INTEGRATIONS_DEPENDENCIES.md
+    ENGINEERING_RUNBOOK.md
+    TECHNICAL_DEBT_REGISTER.md
+
+  /03-workflows
+    BUSINESS_RULES_CATALOGUE.md
+    WORKFLOW_STATE_MACHINES.md
+    APPROVAL_CONTROL_MATRIX.md
+
+  /04-training-source
+    ALL_EMPLOYEES_TRAINING_SOURCE.md
+    RECRUITER_TRAINING_SOURCE.md
+    HR_MANAGER_TRAINING_SOURCE.md
+    BD_TRAINING_SOURCE.md
+    CONTENT_TRAINING_SOURCE.md
+    ENGINEERING_QA_TRAINING_SOURCE.md
+
+  /05-generated-training
+    employee-facing lessons, quizzes and job aids
+
+  /06-archive
+    old, replaced and deprecated documents
+My final recommendation
+
+For your goal, I would not reduce the audit output to only four files.
+
+I would ask the audit agent to create:
+
+Core engineering reference
+System Overview and Architecture.
+Product and Feature Catalogue.
+Workflow and Business Rules Catalogue.
+Data Dictionary and ERD.
+API Reference.
+Authentication, RBAC, Security and Privacy Guide.
+Integration and Dependency Guide.
+Engineering Runbook.
+Technical Debt and Known Limitations Register.
+Training-ready output
+Role-to-feature training matrix.
+Role-based onboarding paths.
+Training-source content for each role.
+Scenario and knowledge-question bank.
+Practical exercises and completion-evidence checklist.
+Documentation and training review schedule.
+
+The most important design rule is:
+
+Engineering documentation explains how the system works. Training explains how a particular employee should use it correctly.
+
+They should share one source of truth, but they should not be the same document. This gives your new hires practical training without weakening the technical depth future engineers will need.

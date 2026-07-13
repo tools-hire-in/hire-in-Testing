@@ -1,0 +1,134 @@
+# Strict Scope and Evidence Guardrails
+
+This task is a targeted hardening task for the Governance Control Model delivered in Task #1013.
+
+Do not treat architectural suggestions as proof that a defect exists.
+
+Before changing code for any item:
+
+1. Inspect the current implementation.
+2. Identify the exact file, function, route, table or query involved.
+3. Confirm the gap with code evidence or a failing test.
+4. Record whether the gap is:
+
+   * `CONFIRMED`
+   * `PARTIALLY_CONFIRMED`
+   * `NOT_FOUND`
+   * `ALREADY_IMPLEMENTED`
+5. Implement only confirmed gaps within the approved scope.
+
+If the current implementation already satisfies a requirement:
+
+* Do not rewrite it.
+* Do not refactor it for style.
+* Document the evidence.
+* Add or improve a test only when needed to prove the behavior.
+
+If the gap cannot be verified:
+
+* Do not guess.
+* Do not implement speculative architecture.
+* Mark it `UNABLE_TO_VERIFY`.
+* Report it for CEO review.
+
+## Approved implementation scope
+
+This task is limited to:
+
+1. Server-side row-level authorization for governance GET endpoints
+2. Structured allowlisted payloads for CEO-report external AI calls
+3. Per-control-type escalation policies
+4. Stable control identity across ownership reassignment
+5. Append-only governance control events
+6. The three specifically identified CEO-report semantic corrections:
+
+   * Missing active goal versus missing governance control
+   * Overdue obligations versus explicit blockers
+   * Disputed versus confirmed findings
+
+No other feature may be added without explicit CEO approval.
+
+## Explicitly prohibited scope
+
+Do not add or redesign:
+
+* CEIPAL integration
+* Staffing-delivery governance
+* Sales governance
+* Marketing governance
+* Payroll governance
+* Employee scoring
+* Predictive risk scoring
+* Sentiment analysis
+* Automated PIP or probation decisions
+* New dashboards unrelated to the approved hardening
+* A complete evidence-management platform
+* A full dispute-case-management platform
+* A new notification framework
+* A new scheduler framework
+* A new access-control framework
+* A new AI provider abstraction
+* Multi-agent architecture
+* Broad schema cleanup
+* Broad route refactoring
+* Legacy module cleanup
+* Startup migration redesign
+* Multi-instance scheduler locking
+* Company-wide enforcement
+* Healthcare shadow pilot execution
+
+## Existing-system reuse rule
+
+Reuse the current:
+
+* Governance service
+* Access registry
+* Hierarchy logic
+* Notification gateway
+* Scheduler
+* AI privacy guard
+* CEO report service
+* Governance controls table
+* Existing goals, training, SOP, check-in, probation and PIP modules
+
+Extend an existing component only where a confirmed hardening requirement cannot be met through the current implementation.
+
+Do not create parallel services or duplicate workflows.
+
+## Minimal-change rule
+
+For every change:
+
+* Prefer the smallest safe patch.
+* Preserve existing API contracts unless a security issue requires a change.
+* Preserve existing UI behavior unless needed for the approved hardening.
+* Avoid unrelated formatting, renaming or cleanup.
+* Do not change files that are not required for the approved outcome.
+* Add focused tests for each changed behavior.
+
+## Evidence required in the final report
+
+For each approved scope item, report:
+
+* Initial finding
+* Verification status
+* Evidence
+* Files changed
+* Behavior before
+* Behavior after
+* Tests added
+* Remaining limitation
+
+Do not claim a gap was fixed unless a test or direct code trace proves the resulting behavior.
+
+## Stop condition
+
+Stop and request CEO review if any required change would involve:
+
+* Broad authentication redesign
+* Payroll or compensation logic
+* Production PII migration
+* Destructive schema changes
+* Changes to employment decision rules
+* Replacement of a major existing subsystem
+* Work outside the approved scope

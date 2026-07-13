@@ -1,0 +1,632 @@
+The correct scope
+
+The audit should document four connected areas:
+
+Hire-in.com public website
+Current internal application
+Underlying technical and database architecture
+Existing onboarding and training material
+
+The documentation should describe what is currently present and how it works, not what someone thinks the system should become.
+
+Your older architecture material already contains useful historical information about the database, authentication, portals and proposed workflows, but it should not be treated as the current truth unless the present code confirms it. For example, one earlier architecture snapshot listed 27 tables, while the multi-portal document included many proposed tables and roles that may since have changed.
+
+Recommended current-state documentation pack
+1. System Landscape and Product Overview
+
+Primary audience: Product team, new engineering hires, QA, leadership.
+
+Document the complete current ecosystem:
+
+Hire-in.com public website.
+Employee Portal.
+HR and administration features.
+Recruiter or TA functionality.
+Growth and Training System.
+Governance controls.
+Content Studio.
+BD-related modules.
+Other modules confirmed in the current codebase.
+Shared authentication and common services.
+Public versus internal system boundaries.
+Domains and subdomains.
+Current environments.
+Confirmed external services.
+
+For each product or module:
+
+Purpose.
+Primary users.
+Business problem solved.
+Current status: live, partial, experimental, inactive or deprecated.
+Main features.
+Main routes and screens.
+Database domain.
+Dependencies.
+Known limitations.
+
+This should be the Product Team’s main starting document.
+
+2. Product Capability and Feature Catalogue
+
+This should explain the platform in product language.
+
+For every current feature:
+
+Field	Description
+Capability area	Attendance, leave, training, governance, content, etc.
+Feature	Specific user-facing capability
+User roles	Who uses it
+Business purpose	Why it exists
+Entry point	Screen or route
+Main actions	What the user can do
+Workflow	How it operates
+Data involved	Main records or tables
+Status	Live, partial, hidden, deprecated
+Current guide	Existing onboarding or help document
+Known gap	Current limitation
+
+This becomes the foundation for:
+
+Product onboarding.
+Feature prioritization.
+New-hire education.
+Release planning.
+Support.
+Training assignment.
+3. Website Sitemap and Public Experience Inventory
+
+The Hire-in.com website should be documented separately from the employee application but included in the same system landscape.
+
+The auditor should read:
+
+Existing sitemap.
+sitemap.xml, when available.
+Website router or page configuration.
+Navigation menus.
+Footer links.
+Forms.
+Calls to action.
+Redirects.
+External links.
+Login or application entry points.
+
+For every website page, capture:
+
+Page name.
+URL.
+Navigation location.
+Page purpose.
+Intended audience.
+Main content or capability represented.
+Main call to action.
+Forms or data captured.
+Destination of submitted information.
+Related product or service.
+Current status.
+Broken or orphaned links.
+Duplicate or overlapping pages.
+Required website diagrams
+Public website sitemap.
+Website-to-application entry flow.
+Lead/contact form data flow.
+Candidate or client journey, where implemented.
+Public-versus-authenticated system boundary.
+
+This will be valuable for Product, Marketing, Content and Engineering teams.
+
+4. Database Architecture
+
+This should be a dedicated document:
+
+/docs/architecture/DATABASE_ARCHITECTURE.md
+
+It should contain logical, physical and operational database architecture.
+
+A. Database platform and environment
+
+Document:
+
+Database technology.
+ORM.
+Migration system.
+Connection approach.
+Environment separation.
+Schema organization.
+Connection pooling.
+Backup behavior.
+Production and development differences.
+B. Domain model
+
+Group tables by business domain rather than listing them alphabetically.
+
+Example:
+
+Identity and Access
+├── users
+├── sessions
+├── roles or permissions
+└── authentication audit records
+
+Employee Management
+├── employees
+├── employment records
+├── managers
+└── organizational structures
+
+Attendance and Leave
+├── attendance
+├── regularizations
+├── leave requests
+├── leave balances
+└── holidays
+
+Training and Growth
+├── courses
+├── modules
+├── assignments
+├── completion records
+└── assessments
+
+Governance
+├── governance controls
+├── evidence
+├── disputes
+├── escalations
+└── exceptions
+
+Only use domains and tables actually confirmed in the current schema.
+
+C. Entity relationship diagram
+
+Generate:
+
+Full current ERD.
+Simplified product-domain ERD.
+Critical relationship diagrams for complex modules.
+
+The full ERD is useful for Engineering. The simplified ERD is more useful for Product and QA.
+
+D. Table reference
+
+For each active table:
+
+Business purpose.
+Module owner.
+Primary key.
+Important columns.
+Foreign keys.
+Unique constraints.
+Indexes.
+Enum values.
+Defaults.
+Nullability.
+Cascade behavior.
+Sensitive fields.
+Encryption or hashing.
+Created/updated timestamps.
+Soft delete or hard delete.
+Routes or services writing to the table.
+Reports reading from it.
+E. Data lifecycle
+
+Document how important records move through their lifecycle:
+
+Creation
+→ validation
+→ approval or status transition
+→ update
+→ audit
+→ archival
+→ deletion or retention
+
+Prioritize:
+
+Employee records.
+Attendance.
+Leave.
+Payroll-related inputs.
+Training completion.
+Policy acknowledgment.
+Governance evidence.
+Uploaded documents.
+Credentials.
+AI-generated records.
+Candidate or client data, where applicable.
+F. System-of-record map
+
+For each major business concept, identify where the authoritative record currently lives.
+
+Example:
+
+Business concept	Current source of truth
+Employee identity	Employee Portal database
+Attendance	Attendance tables
+Leave approval	Leave workflow records
+Training completion	Growth and Training System
+Policy acknowledgment	Policy acknowledgment records
+Recruiting activity	Current confirmed ATS or application module
+Website lead	Website form destination or CRM
+
+Do not assume CEIPAL, ProKred or another system is the source of truth unless the code or configuration confirms it.
+
+G. Database risks and technical debt
+
+Identify:
+
+Missing foreign keys.
+Nullable references.
+Duplicate data.
+Orphan records.
+Overlapping status fields.
+Unused tables.
+Legacy tables.
+Missing indexes.
+Inconsistent timestamps.
+Incomplete audit records.
+Encryption inconsistencies.
+Hard-coded enums.
+Migration risks.
+Tables that are written but not read.
+Tables that are read but no longer written.
+Business rules duplicated in different services.
+5. Information Architecture and Screen Inventory
+
+This should cover the authenticated application.
+
+Information architecture
+
+Document:
+
+Portal hierarchy.
+Navigation hierarchy.
+Module grouping.
+Routes.
+Role-specific visibility.
+Cross-module navigation.
+Hidden routes.
+Deprecated pages.
+Duplicate pages.
+
+Example:
+
+Employee Portal
+├── Dashboard
+├── Attendance
+│   ├── Daily Attendance
+│   ├── Calendar
+│   └── Regularization
+├── Leave
+│   ├── Apply
+│   ├── History
+│   └── Balance
+├── Training
+│   ├── Assigned
+│   ├── In Progress
+│   └── Completed
+├── Policies
+├── Support
+└── Profile
+Screen inventory
+
+For every current page:
+
+Page name.
+Route.
+Applicable roles.
+Purpose.
+Primary actions.
+Data displayed.
+Data edited.
+APIs called.
+Loading state.
+Empty state.
+Error state.
+Permission behavior.
+Related guide.
+Known UX issue.
+Status: active, hidden, incomplete or deprecated.
+
+This is particularly useful for Product and QA.
+
+6. Current Feature Build Reference
+
+Instead of writing a full product requirement document for every feature, create a practical as-built feature reference.
+
+For each main feature:
+
+Feature purpose
+Current users
+Entry screen
+Frontend components
+Backend services and routes
+Database tables
+Permissions
+Current workflow
+Business rules
+Notifications
+Audit events
+Error behavior
+Known limitations
+Existing guide or onboarding material
+Related tests
+
+Prioritize only main current features such as:
+
+Authentication.
+Employee onboarding.
+Attendance.
+Leave.
+Tickets.
+Policies.
+Training.
+Governance controls.
+User and role administration.
+Content or BD modules that are confirmed live.
+Any other features currently used by employees.
+
+This explains both what the feature does and how it is built.
+
+7. Current Workflow and Flow Diagram Pack
+
+Create diagrams only for current workflows.
+
+Product-facing diagrams
+User journeys.
+Swimlane diagrams.
+Information architecture.
+Screen flow.
+Decision trees.
+Engineering-facing diagrams
+Sequence diagrams.
+State machines.
+Data flow diagrams.
+Component diagrams.
+Authentication flow.
+Integration flow.
+Priority current flows
+Login and session validation.
+New employee onboarding.
+Employee access provisioning.
+Attendance submission and correction.
+Leave submission and approval.
+Ticket creation and resolution.
+Training assignment and completion.
+Policy acknowledgment.
+Governance control creation, escalation, evidence and dispute.
+User-role updates.
+External website contact or lead submission.
+Any active content approval flow.
+Employee offboarding and access removal.
+8. Authentication, Roles and Security Reference
+
+Document the actual current behavior:
+
+Login.
+Session management.
+2FA.
+Password change.
+Account status.
+Role model.
+Central permission registry.
+Page-level access.
+Route-level backend enforcement.
+Self-service restrictions.
+Manager access.
+Admin access.
+Super Admin access.
+PII handling.
+AI privacy controls.
+Audit logging.
+File and export controls.
+Employee deactivation.
+Known authorization gaps.
+
+Create two views:
+
+Product role-capability matrix
+Engineering permission-enforcement matrix
+
+The first tells Product what each role can do.
+The second tells Engineering where that rule is enforced.
+
+9. Existing Documentation and Training Index
+
+Since you already have onboarding guides and feature instructions, the audit should not rewrite everything.
+
+Instead, create:
+
+/docs/training/EXISTING_GUIDES_INDEX.md
+
+For every existing guide:
+
+Document name.
+Location.
+Intended role.
+Feature covered.
+Current or outdated.
+Matches current UI: yes/no/partial.
+Matches current workflow: yes/no/partial.
+Duplicate document.
+Missing topic.
+Recommended action:
+Keep as-is.
+Update.
+Merge.
+Archive.
+Replace.
+Use in onboarding.
+
+This gives you a documentation audit without creating duplicate training.
+
+Training gap map
+
+Create a matrix:
+
+Role	Main feature	Existing guide	Training available	Gap
+Employee	Attendance	Yes	Complete	None
+Employee	Leave	Yes	Partial	Approval statuses unclear
+Manager	Regularization	No	Missing	New module needed
+HR	Governance	Partial	Incomplete	Escalation training needed
+Admin	Permissions	No	Missing	Admin onboarding needed
+
+Only create new training where an actual gap exists.
+
+10. Current-feature training only
+
+The training scope should be limited to:
+
+Features currently live.
+Features currently used.
+Features required for the user’s role.
+Workflows with an existing guide or a confirmed gap.
+Current system behavior.
+
+Do not create training for:
+
+Planned modules.
+Incomplete experiments.
+Speculative integrations.
+Future workflows.
+Features hidden from normal users.
+Deprecated behavior.
+Simplified training format
+
+For normal features:
+
+Purpose
+Who uses it
+Where to find it
+How to use it
+Important rules
+Knowledge check
+Where to get help
+
+For higher-risk features such as HR approvals, payroll, governance and access administration, add:
+
+Scenario.
+Common mistake.
+Practical exercise.
+Completion evidence.
+Recommended folder structure
+/docs
+
+  /current-state
+    CURRENT_SYSTEM_SNAPSHOT.md
+    SYSTEM_LANDSCAPE.md
+    CURRENT_PRODUCT_STATUS.md
+
+  /product
+    PRODUCT_CAPABILITY_MAP.md
+    FEATURE_CATALOGUE.md
+    PERSONA_ROLE_MAP.md
+
+  /website
+    HIRE_IN_WEBSITE_SITEMAP.md
+    WEBSITE_PAGE_INVENTORY.md
+    WEBSITE_USER_FLOWS.md
+    WEBSITE_DATA_CAPTURE_MAP.md
+
+  /architecture
+    SYSTEM_ARCHITECTURE.md
+    DATABASE_ARCHITECTURE.md
+    DATABASE_DATA_DICTIONARY.md
+    AUTH_RBAC_SECURITY.md
+    INTEGRATIONS_AND_DEPENDENCIES.md
+
+  /features
+    CURRENT_FEATURE_BUILD_REFERENCE.md
+    /main-features
+
+  /workflows
+    CURRENT_BUSINESS_RULES.md
+    CURRENT_STATE_MACHINES.md
+    CURRENT_USER_JOURNEYS.md
+    CURRENT_SWIMLANE_FLOWS.md
+    CURRENT_DECISION_TREES.md
+
+  /design
+    CURRENT_INFORMATION_ARCHITECTURE.md
+    CURRENT_SCREEN_INVENTORY.md
+    CURRENT_COMPONENT_INVENTORY.md
+    CURRENT_UX_STATES.md
+    DESIGN_AND_UX_DEBT.md
+
+  /diagrams
+    /system
+    /database
+    /website
+    /user-flows
+    /state-machines
+    /sequences
+    /data-flows
+
+  /training
+    EXISTING_GUIDES_INDEX.md
+    TRAINING_GAP_MAP.md
+    /all-employees
+    /recruiting
+    /hr-managers
+    /administrators
+    /engineering-qa
+
+  /onboarding
+    existing onboarding documents
+
+  /audit
+    dated audit outputs
+No human intervention requirement
+
+The agent can produce this without pausing for business-owner review.
+
+Use these evidence labels:
+
+CONFIRMED_IN_CODE
+CONFIRMED_IN_SCHEMA
+CONFIRMED_IN_ROUTE
+CONFIRMED_IN_UI
+CONFIRMED_IN_EXISTING_GUIDE
+INCONSISTENT_ACROSS_SOURCES
+CURRENT_BUT_INCOMPLETE
+LEGACY_OR_UNUSED
+UNABLE_TO_CONFIRM
+
+The agent should not ask questions while creating the initial version. Where something cannot be resolved, it should document the uncertainty rather than block the work.
+
+Each document can be marked:
+
+Status: Current-state automated system reference
+Generated from: code, schema, routes, configuration and existing documents
+Human approval required: No
+Unresolved items: listed within document
+
+This gives you a usable current-state reference immediately while still being honest about areas the code cannot confirm.
+
+Final execution order
+Phase 1 — Complete current-state snapshot
+
+Produce:
+
+System Landscape.
+Hire-in.com Website Sitemap and Page Inventory.
+Product Capability Map.
+Application Information Architecture and Screen Inventory.
+Database Architecture and ERD.
+Current Feature Build Reference.
+Current Workflows and Flow Diagrams.
+Authentication, RBAC and Security Reference.
+Integration Map.
+Existing Guides and Training Index.
+Phase 2 — Training consolidation
+
+Using Phase 1:
+
+Map existing guides to features and roles.
+Identify only real training gaps.
+Update outdated instructions.
+Archive duplicate guides.
+Create missing training for main live features.
+Build role-based onboarding paths.
+Reuse existing quizzes or add short knowledge checks.
+
+This approach captures the entire present system, including the website and database, while avoiding duplicate guides and unnecessary human review.
