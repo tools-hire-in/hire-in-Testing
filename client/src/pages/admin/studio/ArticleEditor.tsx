@@ -52,6 +52,8 @@ import {
   Clock3,
   ChevronRight,
   ChevronLeft,
+  ChevronDown,
+  ChevronUp,
   Sparkles,
   Wand2,
   Share2,
@@ -104,6 +106,66 @@ const FORMAT_OPTIONS = [
   { value: "instagram", label: "Instagram", contentType: "instagram", contentGoal: "BRAND_PERSPECTIVE", platform: "INSTAGRAM" },
   { value: "x_post", label: "X / Twitter", contentType: "x_post", contentGoal: "THOUGHT_LEADERSHIP", platform: "X" },
 ] as const;
+
+// ---------------------------------------------------------------------------
+// Psychological Brief constants (Task #1060)
+// ---------------------------------------------------------------------------
+const PLATFORM_OPTIONS = [
+  { value: "ARTICLE", label: "Article" },
+  { value: "LINKEDIN", label: "LinkedIn" },
+  { value: "INSTAGRAM", label: "Instagram" },
+  { value: "X", label: "X / Twitter" },
+];
+
+const PLATFORM_CONTENT_INTENTS: Record<string, { value: string; label: string; contentGoal: string; contentType: string }[]> = {
+  ARTICLE: [
+    { value: "thought_leadership", label: "Thought Leadership", contentGoal: "THOUGHT_LEADERSHIP", contentType: "thought_leadership" },
+    { value: "educational", label: "Educational / How-To", contentGoal: "EDUCATIONAL", contentType: "how_to" },
+    { value: "job_marketing", label: "Job Marketing", contentGoal: "JOB_MARKETING", contentType: "job_marketing" },
+    { value: "brand_perspective", label: "Brand Perspective", contentGoal: "BRAND_PERSPECTIVE", contentType: "brand_perspective" },
+    { value: "insights", label: "Hire'in Insights", contentGoal: "THOUGHT_LEADERSHIP", contentType: "insights" },
+  ],
+  LINKEDIN: [
+    { value: "thought_leadership", label: "Thought Leadership", contentGoal: "THOUGHT_LEADERSHIP", contentType: "linkedin_post" },
+    { value: "job_marketing", label: "Job Marketing", contentGoal: "JOB_MARKETING", contentType: "job_marketing" },
+    { value: "brand_perspective", label: "Brand Perspective", contentGoal: "BRAND_PERSPECTIVE", contentType: "brand_perspective" },
+  ],
+  INSTAGRAM: [
+    { value: "thought_leadership", label: "Thought Leadership", contentGoal: "THOUGHT_LEADERSHIP", contentType: "instagram" },
+    { value: "job_marketing", label: "Job Marketing", contentGoal: "JOB_MARKETING", contentType: "job_marketing" },
+    { value: "brand_perspective", label: "Brand Perspective", contentGoal: "BRAND_PERSPECTIVE", contentType: "instagram" },
+  ],
+  X: [
+    { value: "thought_leadership", label: "Thought Leadership", contentGoal: "THOUGHT_LEADERSHIP", contentType: "x_post" },
+    { value: "job_marketing", label: "Job Marketing", contentGoal: "JOB_MARKETING", contentType: "x_post" },
+    { value: "brand_perspective", label: "Brand Perspective", contentGoal: "BRAND_PERSPECTIVE", contentType: "x_post" },
+  ],
+};
+
+const HOOK_PATTERNS = [
+  { value: "curiosity_gap", label: "Curiosity Gap", description: "\"I need to know why\"" },
+  { value: "loss_aversion", label: "Loss Aversion", description: "The costly mistake they're making" },
+  { value: "insider_contrast", label: "Insider Contrast", description: "Great vs. average behaviour" },
+  { value: "unasked_question", label: "Unasked Question", description: "The critical thing they're not asking" },
+  { value: "counter_intuitive_number", label: "Counter-intuitive Number", description: "Pattern-from-experience that surprises" },
+  { value: "reader_inner_monologue", label: "Reader's Inner Monologue", description: "Validate before instruct" },
+  { value: "stakes_flip", label: "Stakes Flip", description: "Reframe who bears the risk" },
+  { value: "specific_scene", label: "Specific Scene", description: "Drop the reader into a moment" },
+];
+
+const CONTENT_STRUCTURES = [
+  { value: "rule_of_three", label: "Rule of Three", description: "Hook + 3 proof points + CTA. Best for LinkedIn and authority content." },
+  { value: "pas", label: "PAS (Problem → Agitate → Solution)", description: "Name the pain, make it visceral, then resolve. Best for awareness content." },
+  { value: "the_reveal", label: "The Reveal", description: "Setup → Tension → Payoff. Scene-based storytelling. Best for narrative articles." },
+  { value: "contrast", label: "Contrast (Before / After)", description: "Wrong way vs. right way. Best for transformation stories and case studies." },
+  { value: "the_framework", label: "The Framework", description: "Name a concept, explain mechanics, show application. Best for thought leadership." },
+  { value: "listicle", label: "Listicle", description: "Numbered breakdown for scannability. Best for educational posts and carousels." },
+];
+
+const DESIRED_EMOTIONS = ["Validated", "Challenged", "Warned", "Curious", "Surprised", "Inspired"];
+const ENGAGEMENT_GOALS = ["Save it", "Share it", "Comment their take", "Follow for more", "DM / reach out", "Apply / enquire"];
+
+const HOOK_PATTERN_LABELS: Record<string, string> = Object.fromEntries(HOOK_PATTERNS.map((h) => [h.value, h.label]));
 
 const AUDIENCE_LABELS: Record<string, string> = {
   EMPLOYER_CLIENT: "Employer Client",
@@ -205,6 +267,13 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [requiredEdits, setRequiredEdits] = useState<string[]>([]);
   // CMO Copilot v2.1 — simplified generation state
   const [genFormat, setGenFormat] = useState("thought_leadership");
+  // Psychological Brief state (Task #1060)
+  const [genPlatform, setGenPlatform] = useState("ARTICLE");
+  const [genDesiredEmotion, setGenDesiredEmotion] = useState("");
+  const [genHookPattern, setGenHookPattern] = useState("");
+  const [genContentStructure, setGenContentStructure] = useState("");
+  const [genEngagementGoal, setGenEngagementGoal] = useState("");
+  const [genCreativeDirectionOpen, setGenCreativeDirectionOpen] = useState(false);
   const [genStrategySummary, setGenStrategySummary] = useState<{
     audience: string;
     domain: string;
@@ -212,6 +281,10 @@ function ArticleEditorInner({ id }: { id: string }) {
     hookArchetype: string;
     safetyResult: string;
     safetyFailureCount: number;
+    platform?: string;
+    desiredEmotion?: string;
+    hookPatternLabel?: string;
+    contentStructureLabel?: string;
   } | null>(null);
   const [safetyFailures, setSafetyFailures] = useState<Array<{
     code: string;
@@ -305,6 +378,9 @@ function ArticleEditorInner({ id }: { id: string }) {
       hookArchetype: art.selectedHookArchetype ?? "",
       safetyResult: art.safetyReviewResult ?? "PASS",
       safetyFailureCount: (art.safetyFailuresJsonb as any[] | null)?.length ?? 0,
+      desiredEmotion: art.desiredEmotion ?? undefined,
+      hookPatternLabel: art.hookPattern ? (HOOK_PATTERN_LABELS[art.hookPattern] ?? art.hookPattern) : undefined,
+      contentStructureLabel: art.contentStructure ? (CONTENT_STRUCTURES.find((s) => s.value === art.contentStructure)?.label ?? art.contentStructure) : undefined,
     });
     if (Array.isArray(art.safetyFailuresJsonb) && art.safetyFailuresJsonb.length > 0) {
       setSafetyFailures(art.safetyFailuresJsonb as any[]);
@@ -328,6 +404,34 @@ function ArticleEditorInner({ id }: { id: string }) {
         } else if (["how_to", "insights", "guide", "educational"].some((s) => lower === s || lower.includes(s))) {
           setGenContentGoal("EDUCATIONAL");
         }
+      }
+      // Task #1060 — auto-fill topic from article title when topic is blank.
+      if (!genTopic && art.title?.trim()) {
+        setGenTopic(art.title.trim());
+      }
+      // Restore persisted brief fields if the article has them.
+      if (art.desiredEmotion && !genDesiredEmotion) setGenDesiredEmotion(art.desiredEmotion);
+      if (art.hookPattern && !genHookPattern) setGenHookPattern(art.hookPattern);
+      if (art.contentStructure && !genContentStructure) setGenContentStructure(art.contentStructure);
+      if (art.engagementGoal && !genEngagementGoal) setGenEngagementGoal(art.engagementGoal);
+
+      // Restore platform from article contentType so the chip group reflects the
+      // article's actual platform rather than always showing the ARTICLE default.
+      const inferredPlatform = ((): string => {
+        const ct = (art.contentType ?? "").toLowerCase();
+        if (ct === "linkedin_post") return "LINKEDIN";
+        if (ct === "instagram") return "INSTAGRAM";
+        if (ct === "x_post") return "X";
+        return "ARTICLE";
+      })();
+      setGenPlatform(inferredPlatform);
+
+      // Restore content intent by matching the article's contentGoal against
+      // the intents available for the inferred platform.
+      if (art.contentGoal) {
+        const platformIntents = PLATFORM_CONTENT_INTENTS[inferredPlatform] ?? PLATFORM_CONTENT_INTENTS.ARTICLE;
+        const matchedIntent = platformIntents.find((i) => i.contentGoal === art.contentGoal);
+        if (matchedIntent) setGenFormat(matchedIntent.value);
       }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -505,16 +609,23 @@ function ArticleEditorInner({ id }: { id: string }) {
 
   const generateArticleMutation = useMutation({
     mutationFn: async () => {
-      // Derive content type, goal, and platform from the selected format.
-      const fmt = FORMAT_OPTIONS.find((f) => f.value === genFormat) ?? FORMAT_OPTIONS[0];
+      // Derive content type and goal from the selected intent for the chosen platform.
+      const intents = PLATFORM_CONTENT_INTENTS[genPlatform] ?? PLATFORM_CONTENT_INTENTS.ARTICLE;
+      const intent = intents.find((i) => i.value === genFormat) ?? intents[0];
       const payload: Record<string, any> = {
         mode: "topic",
-        contentType: fmt.contentType,
-        contentGoal: fmt.contentGoal,
+        contentType: intent.contentType,
+        contentGoal: intent.contentGoal,
+        platform: genPlatform,
         audience: genAudience || undefined,
         userSuppliedFacts: genUserFacts || undefined,
         topic: genTopic,
         complianceMode: "normal",
+        // Psychological brief fields
+        desiredEmotion: genDesiredEmotion || undefined,
+        hookPattern: genHookPattern || undefined,
+        contentStructure: genContentStructure || undefined,
+        engagementGoal: genEngagementGoal || undefined,
       };
       const res = await apiRequest(
         "POST",
@@ -544,25 +655,37 @@ function ArticleEditorInner({ id }: { id: string }) {
       setGenOpen(false);
       setAiError(null);
 
-      // Build the strategy summary from backend-resolved values (source of truth).
-      const fmt = FORMAT_OPTIONS.find((f) => f.value === genFormat) ?? FORMAT_OPTIONS[0];
+      // Build the strategy summary — use backend-resolved creative direction as the
+      // source of truth so values are always shown even when user left them blank.
+      const intents = PLATFORM_CONTENT_INTENTS[genPlatform] ?? PLATFORM_CONTENT_INTENTS.ARTICLE;
+      const intent = intents.find((i) => i.value === genFormat) ?? intents[0];
       const resolvedAud = data.resolvedAudience;
       const resolvedDom = data.resolvedDomain;
       const resolvedGoal = data.resolvedContentGoal;
+      const rcd = data.resolvedCreativeDirection ?? {};
       setGenStrategySummary({
         audience: resolvedAud ? (AUDIENCE_LABELS[resolvedAud] ?? resolvedAud) : "Auto-detected",
         domain: resolvedDom ? (DOMAIN_LABELS[resolvedDom] ?? resolvedDom) : "General Staffing",
-        contentGoal: resolvedGoal ? (GOAL_LABELS[resolvedGoal] ?? resolvedGoal) : (GOAL_LABELS[fmt.contentGoal] ?? fmt.label),
+        contentGoal: resolvedGoal ? (GOAL_LABELS[resolvedGoal] ?? resolvedGoal) : (GOAL_LABELS[intent.contentGoal] ?? intent.label),
         hookArchetype: draft.hook_archetype_used || "",
         safetyResult: data.safetyReviewResult ?? "PASS",
         safetyFailureCount: (data.safetyFailures ?? []).length,
+        platform: genPlatform !== "ARTICLE" ? genPlatform : undefined,
+        desiredEmotion: rcd.desiredEmotion || undefined,
+        hookPatternLabel: rcd.hookPattern ? (HOOK_PATTERN_LABELS[rcd.hookPattern] ?? rcd.hookPattern) : undefined,
+        contentStructureLabel: rcd.contentStructure ? (CONTENT_STRUCTURES.find((s: any) => s.value === rcd.contentStructure)?.label ?? rcd.contentStructure) : undefined,
       });
       setSafetyFailures(data.safetyFailures ?? []);
 
-      // Persist audience and contentGoal back to the article for next open.
+      // Persist audience, contentGoal, and resolved creative brief back to the article.
+      // Use backend-resolved values so even auto-selected fields are saved with source tracking.
       apiRequest("PATCH", `/api/admin/studio/articles/${id}`, {
         ...(genAudience ? { audience: [genAudience] } : {}),
-        contentGoal: fmt.contentGoal,
+        contentGoal: intent.contentGoal,
+        ...(rcd.desiredEmotion ? { desiredEmotion: rcd.desiredEmotion } : {}),
+        ...(rcd.hookPattern ? { hookPattern: rcd.hookPattern } : {}),
+        ...(rcd.contentStructure ? { contentStructure: rcd.contentStructure } : {}),
+        ...(rcd.engagementGoal ? { engagementGoal: rcd.engagementGoal } : {}),
       }).catch(() => {/* non-fatal */});
 
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
@@ -997,8 +1120,16 @@ function ArticleEditorInner({ id }: { id: string }) {
                       {genStrategySummary.audience}
                       {genStrategySummary.domain && <>{" · "}{genStrategySummary.domain}</>}
                       {genStrategySummary.contentGoal && <>{" · "}{genStrategySummary.contentGoal}</>}
-                      {genStrategySummary.hookArchetype && (
+                      {genStrategySummary.platform && <>{" · "}<span className="font-medium text-foreground">{genStrategySummary.platform}</span></>}
+                      {genStrategySummary.desiredEmotion && <>{" · "}Emotion: <span className="font-medium text-foreground">{genStrategySummary.desiredEmotion}</span></>}
+                      {genStrategySummary.hookPatternLabel && (
+                        <> · Hook: <span className="font-medium text-foreground">{genStrategySummary.hookPatternLabel}</span></>
+                      )}
+                      {!genStrategySummary.hookPatternLabel && genStrategySummary.hookArchetype && (
                         <> · Hook: <span className="font-medium text-foreground">{genStrategySummary.hookArchetype}</span></>
+                      )}
+                      {genStrategySummary.contentStructureLabel && (
+                        <> · Structure: <span className="font-medium text-foreground">{genStrategySummary.contentStructureLabel}</span></>
                       )}
                     </span>
                     {/* Safety badge */}
@@ -1711,19 +1842,19 @@ function ArticleEditorInner({ id }: { id: string }) {
         </DialogContent>
       </Dialog>
 
-      {/* AI Generate Draft modal — two input modes. */}
+      {/* AI Generate Draft modal — Psychological Brief (Task #1060) */}
       <Dialog open={genOpen} onOpenChange={(open) => {
         setGenOpen(open);
         if (!open) { setGenStep("input"); setResolvedBrief(null); }
       }}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Sparkles className="h-5 w-5" />
               Generate draft
             </DialogTitle>
             <DialogDescription>
-              The intelligence engine resolves strategy and selects the best hook automatically. You review and approve before anything publishes.
+              Tell the AI what you want to write and where it will live. The AI selects hook, structure and tone automatically — or open Creative direction to override.
             </DialogDescription>
           </DialogHeader>
 
@@ -1737,12 +1868,49 @@ function ArticleEditorInner({ id }: { id: string }) {
           )}
 
           <div className="space-y-4">
-            {/* Field 1: Topic or instruction */}
+            {/* 1. Platform */}
             <div className="space-y-2">
-              <Label htmlFor="gen-topic">Topic or instruction</Label>
+              <Label>Platform <span className="text-destructive">*</span></Label>
+              <div className="flex flex-wrap gap-2">
+                {PLATFORM_OPTIONS.map((p) => (
+                  <button
+                    key={p.value}
+                    type="button"
+                    onClick={() => {
+                      setGenPlatform(p.value);
+                      const validIntents = (PLATFORM_CONTENT_INTENTS[p.value] ?? PLATFORM_CONTENT_INTENTS.ARTICLE).map((i) => i.value);
+                      if (!validIntents.includes(genFormat)) setGenFormat(validIntents[0] ?? "thought_leadership");
+                    }}
+                    className={`rounded-md border px-3 py-1.5 text-sm transition-colors${genPlatform === p.value ? " border-primary bg-primary text-primary-foreground" : " border-input bg-background hover:bg-muted"}`}
+                    data-testid={`button-platform-${p.value.toLowerCase()}`}
+                  >
+                    {p.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* 2. Content intent */}
+            <div className="space-y-2">
+              <Label>Content intent <span className="text-destructive">*</span></Label>
+              <Select value={genFormat} onValueChange={setGenFormat}>
+                <SelectTrigger data-testid="select-gen-intent">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {(PLATFORM_CONTENT_INTENTS[genPlatform] ?? PLATFORM_CONTENT_INTENTS.ARTICLE).map((i) => (
+                    <SelectItem key={i.value} value={i.value}>{i.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* 3. Topic — required */}
+            <div className="space-y-2">
+              <Label htmlFor="gen-topic">Topic or instruction <span className="text-destructive">*</span></Label>
               <Textarea
                 id="gen-topic"
-                rows={3}
+                rows={2}
                 value={genTopic}
                 onChange={(e) => setGenTopic(e.target.value)}
                 placeholder="e.g. Why IT hiring managers reject technically qualified candidates — and what recruiters miss in the intake call"
@@ -1751,15 +1919,18 @@ function ArticleEditorInner({ id }: { id: string }) {
               />
             </div>
 
-            {/* Field 2: Audience */}
+            {/* 4. Audience — optional */}
             <div className="space-y-2">
-              <Label>Audience</Label>
+              <Label>
+                Who is this for?
+                <span className="ml-1 font-normal text-muted-foreground">(optional)</span>
+              </Label>
               <Select value={genAudience || "AUTO_DETECT"} onValueChange={(v) => setGenAudience(v === "AUTO_DETECT" ? "" : v)}>
                 <SelectTrigger data-testid="select-gen-audience">
-                  <SelectValue placeholder="Auto-detect from topic" />
+                  <SelectValue placeholder="Let AI decide" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="AUTO_DETECT">Auto-detect from topic</SelectItem>
+                  <SelectItem value="AUTO_DETECT">Let AI decide</SelectItem>
                   <SelectItem value="EMPLOYER_CLIENT">Employer / Client</SelectItem>
                   <SelectItem value="CANDIDATE_PROFESSIONAL">Candidate / Professional</SelectItem>
                   <SelectItem value="MSP_STAFFING_PARTNER">MSP / Staffing Partner</SelectItem>
@@ -1768,22 +1939,7 @@ function ArticleEditorInner({ id }: { id: string }) {
               </Select>
             </div>
 
-            {/* Field 3: Format */}
-            <div className="space-y-2">
-              <Label>Format</Label>
-              <Select value={genFormat} onValueChange={setGenFormat}>
-                <SelectTrigger data-testid="select-gen-format">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {FORMAT_OPTIONS.map((f) => (
-                    <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Field 4: Facts or context (optional) */}
+            {/* 5. Facts — optional */}
             <div className="space-y-2">
               <Label htmlFor="gen-facts">
                 Facts or context
@@ -1794,14 +1950,143 @@ function ArticleEditorInner({ id }: { id: string }) {
                 rows={2}
                 value={genUserFacts}
                 onChange={(e) => setGenUserFacts(e.target.value)}
-                placeholder="Job details, recruiter notes, a leadership POV, or any specific facts to include. Only add what you are authorized to publish."
+                placeholder="Job details, recruiter notes, a leadership POV, or any specific facts to include."
                 data-testid="input-gen-facts"
               />
             </div>
 
-            <p className="rounded-md bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              The intelligence engine selects staffing domain, hook archetype, and content structure automatically. Safety checks run after generation. You review everything before saving.
-            </p>
+            {/* Creative direction — collapsible advanced section */}
+            <div className="rounded-md border">
+              <button
+                type="button"
+                onClick={() => setGenCreativeDirectionOpen((o) => !o)}
+                className="flex w-full items-center justify-between px-3 py-2.5 text-sm transition-colors hover:bg-muted/50"
+                data-testid="button-toggle-creative-direction"
+              >
+                <span className="flex items-center gap-1.5">
+                  <Wand2 className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="font-medium">Creative direction</span>
+                  <span className="text-xs text-muted-foreground">— optional, AI decides if left blank</span>
+                </span>
+                {genCreativeDirectionOpen
+                  ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" />
+                  : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
+                }
+              </button>
+
+              {genCreativeDirectionOpen && (
+                <div className="space-y-4 border-t px-3 pb-3 pt-3">
+                  {/* Desired emotion */}
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-1.5">
+                      <Label className="text-sm">Desired reader emotion</Label>
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <span className="cursor-default text-xs text-muted-foreground underline decoration-dotted">What's this?</span>
+                          </TooltipTrigger>
+                          <TooltipContent className="max-w-[220px] text-xs">
+                            What should they feel in the first 3 seconds? This shapes the hook and the opening line.
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setGenDesiredEmotion("")}
+                        className={`rounded-md border px-3 py-1.5 text-xs transition-colors${!genDesiredEmotion ? " border-primary bg-primary text-primary-foreground" : " border-input bg-background hover:bg-muted"}`}
+                        data-testid="button-emotion-auto"
+                      >
+                        Let AI decide
+                      </button>
+                      {DESIRED_EMOTIONS.map((e) => (
+                        <button
+                          key={e}
+                          type="button"
+                          onClick={() => setGenDesiredEmotion(genDesiredEmotion === e ? "" : e)}
+                          className={`rounded-md border px-3 py-1.5 text-xs transition-colors${genDesiredEmotion === e ? " border-primary bg-primary text-primary-foreground" : " border-input bg-background hover:bg-muted"}`}
+                          data-testid={`button-emotion-${e.toLowerCase().replace(/\s/g, "-")}`}
+                        >
+                          {e}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Hook pattern */}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Hook pattern</Label>
+                    <Select
+                      value={genHookPattern || "__auto__"}
+                      onValueChange={(v) => setGenHookPattern(v === "__auto__" ? "" : v)}
+                    >
+                      <SelectTrigger data-testid="select-gen-hook">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__auto__">Let AI decide</SelectItem>
+                        {HOOK_PATTERNS.map((h) => (
+                          <SelectItem key={h.value} value={h.value}>
+                            {h.label} — {h.description}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  {/* Content structure */}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Content structure</Label>
+                    <Select
+                      value={genContentStructure || "__auto__"}
+                      onValueChange={(v) => setGenContentStructure(v === "__auto__" ? "" : v)}
+                    >
+                      <SelectTrigger data-testid="select-gen-structure">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="__auto__">Let AI decide</SelectItem>
+                        {CONTENT_STRUCTURES.map((s) => (
+                          <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {genContentStructure && (
+                      <p className="text-xs text-muted-foreground">
+                        {CONTENT_STRUCTURES.find((s) => s.value === genContentStructure)?.description}
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Engagement goal */}
+                  <div className="space-y-2">
+                    <Label className="text-sm">Engagement goal</Label>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setGenEngagementGoal("")}
+                        className={`rounded-md border px-3 py-1.5 text-xs transition-colors${!genEngagementGoal ? " border-primary bg-primary text-primary-foreground" : " border-input bg-background hover:bg-muted"}`}
+                        data-testid="button-goal-auto"
+                      >
+                        Let AI decide
+                      </button>
+                      {ENGAGEMENT_GOALS.map((g) => (
+                        <button
+                          key={g}
+                          type="button"
+                          onClick={() => setGenEngagementGoal(genEngagementGoal === g ? "" : g)}
+                          className={`rounded-md border px-3 py-1.5 text-xs transition-colors${genEngagementGoal === g ? " border-primary bg-primary text-primary-foreground" : " border-input bg-background hover:bg-muted"}`}
+                          data-testid={`button-goal-${g.toLowerCase().replace(/[^a-z]/g, "-")}`}
+                        >
+                          {g}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
 
           <DialogFooter>

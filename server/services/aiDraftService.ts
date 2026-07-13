@@ -126,6 +126,57 @@ function resolvePlatformKey(platform?: string): string {
   return "ARTICLE";
 }
 
+// ---------------------------------------------------------------------------
+// Psychological Contract Block (Task #1060)
+// ---------------------------------------------------------------------------
+const HOOK_PATTERN_DESCRIPTIONS: Record<string, string> = {
+  curiosity_gap: "Curiosity Gap — name the hidden cause of a familiar pain to create a specific open question the reader cannot ignore. The hook earns its place by making the reader say 'I need to know why.'",
+  loss_aversion: "Loss Aversion — expose a specific, costed error the reader is probably making right now. Make the consequence real and imminent, not abstract.",
+  insider_contrast: "Insider Contrast — show what operators do versus what amateurs do. Reveal the gap without lecturing. The contrast must be concrete enough that the reader recognises which side they're on.",
+  unasked_question: "Unasked Question — surface the question the reader should be asking but isn't. The hook works because recognising the gap is itself the insight.",
+  counter_intuitive_number: "Counter-intuitive Number — use a pattern-from-experience observation that surprises. Frame it explicitly as pattern-from-experience, never as an invented stat. The surprise must be supportable.",
+  reader_inner_monologue: "Reader's Inner Monologue — say what they're privately thinking. Validate before you instruct. The reader should feel seen, not sold to.",
+  stakes_flip: "Stakes Flip — reframe who actually bears the risk. The reader realises the cost lands on them, not the vendor or agency. Make the transfer of stakes undeniable.",
+  specific_scene: "Specific Scene — drop the reader into a concrete moment. Make it so specific (day, action, silence, detail) that they can place themselves in it immediately.",
+};
+
+const CONTENT_STRUCTURE_EXECUTION: Record<string, string> = {
+  rule_of_three: `Rule of Three structure:
+Open with the hook. Build exactly three parallel proof points of equal weight — each one is a standalone truth that reinforces the single takeaway. The three points must not repeat each other; they triangulate the argument from different angles. Close with a CTA that mirrors the opening emotion, not a generic 'let me know your thoughts.'`,
+  pas: `PAS (Problem → Agitate → Solution) structure:
+Name the problem clearly and specifically in the first section — no warm-up. Agitate: make the pain visceral by raising the real stakes, naming the exact cost (time, money, trust, opportunity), and showing why the usual fix fails. Solution: resolve with a concrete mechanism, not a vague improvement. The solution section must be shorter than the agitation section.`,
+  the_reveal: `The Reveal (Setup → Tension → Payoff) structure:
+Open in a scene — place the reader in a specific moment, not a generalisation. Build tension by showing what is at stake and what the reader doesn't yet understand. The payoff must answer the tension directly with something the reader did not see coming. Avoid explaining the payoff — let it land.`,
+  contrast: `Contrast (Before / After) structure:
+Show the wrong way first, in enough detail that the reader recognises it. Then show the right way with the same level of specificity. The contrast must be concrete enough that the reader can identify which version they currently live in. Do not editorialize between the two halves — let the contrast speak.`,
+  the_framework: `The Framework structure:
+Name the concept with a short, memorable label. Explain its mechanics — how it works, not just what it is called. Show it applied in a real or realistic situation with named actors, concrete stakes, and a clear outcome. End with the single implication for the reader's practice.`,
+  listicle: `Listicle structure:
+Number the items. Each item is a complete, standalone truth — it must make sense if the reader screenshots just that item. No filler sentences between items. Save the most memorable or surprising item for last. The list title must promise a specific number and deliver it exactly.`,
+};
+
+function buildPsychologicalContractBlock(params: AiGenerationParams): string {
+  const { desiredEmotion, hookPattern, contentStructure, engagementGoal } = params;
+  if (!desiredEmotion && !hookPattern && !contentStructure && !engagementGoal) return "";
+
+  const hookDesc = hookPattern ? (HOOK_PATTERN_DESCRIPTIONS[hookPattern] ?? hookPattern) : null;
+  const structureDesc = contentStructure ? (CONTENT_STRUCTURE_EXECUTION[contentStructure] ?? contentStructure) : null;
+
+  const lines: string[] = ["PSYCHOLOGICAL CONTRACT"];
+  if (desiredEmotion) lines.push(`Desired opening emotion: ${desiredEmotion} — the first 3 seconds of reading must trigger this feeling.`);
+  if (hookDesc) lines.push(`Hook pattern: ${hookDesc}`);
+  if (structureDesc) lines.push(`Body structure:\n${structureDesc}`);
+  if (engagementGoal) lines.push(`Engagement goal: ${engagementGoal} — close with a single, natural prompt designed to produce this action. No generic 'let me know your thoughts.'`);
+
+  lines.push(`\nExecution rules:
+- Write the opening line to trigger the desired emotion using the specified hook pattern.
+- Build the body using the specified content structure architecture — do not deviate or blend structures.
+- Close with a single, natural prompt designed to produce the engagement goal.
+- Every section must serve the psychological contract above. Cut anything that doesn't.`);
+
+  return lines.join("\n");
+}
+
 function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationParams): string {
   const compliance = getComplianceMode(params.compliance_mode);
 
@@ -162,14 +213,12 @@ function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationP
       CONTENT_ARCHETYPES_BLOCK,
       // 8. Banned slop
       BANNED_SLOP_BLOCK,
-      // 9. Platform craft
-      PLATFORM_CRAFT_BLOCKS[platformKey] ?? PLATFORM_CRAFT_BLOCKS.ARTICLE,
-      // 10. Exemplar (quality anchor — composite lookup: goal+domain+audience first, goal-only fallback)
+      // 9. Exemplar (quality anchor — composite lookup: goal+domain+audience first, goal-only fallback)
       (() => {
         const ex = selectExemplar(contentGoalKey, audienceKey ?? undefined, domainKey);
         return ex ? `Quality anchor exemplar — reproduce the PATTERN not the wording:\n\n${ex}` : "";
       })(),
-      // 10b. Selected hook from brief resolution (CMO Copilot v2.1)
+      // 9b. Selected hook from brief resolution (CMO Copilot v2.1)
       params.selectedHookText
         ? [
             `SELECTED HOOK (chosen by the content author — open the piece with this exact hook, then develop the piece):`,
@@ -178,6 +227,12 @@ function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationP
             params.selectedContentStructure ? `Recommended content structure: ${params.selectedContentStructure}` : "",
           ].filter(Boolean).join("\n")
         : "",
+      // 10. Psychological Contract (Task #1060) — placed just before platform craft so
+      // the craft rules apply on top of the author's chosen brief. Takes precedence over
+      // generic hook guidance when provided.
+      buildPsychologicalContractBlock(params),
+      // 11. Platform craft
+      PLATFORM_CRAFT_BLOCKS[platformKey] ?? PLATFORM_CRAFT_BLOCKS.ARTICLE,
       // Compliance block + length/platform limits (before self-edit)
       COMPLIANCE_BLOCKS[compliance.value] ?? COMPLIANCE_BLOCKS.normal,
     ];
@@ -190,7 +245,7 @@ function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationP
       blocks.push(`Target body length: ${range.min}-${range.max} words. Use Markdown with ## section headings.`);
     }
 
-    // 11. Self-edit pass — immediately before user-supplied facts
+    // Self-edit pass — immediately before user-supplied facts
     blocks.push(SELF_EDIT_BLOCK);
 
     // 12. User-supplied facts (always last)

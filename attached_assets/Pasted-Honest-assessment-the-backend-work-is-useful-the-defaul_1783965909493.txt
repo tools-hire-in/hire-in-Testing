@@ -1,0 +1,240 @@
+Honest assessment: the backend work is useful; the default 9-field dialog is overcomplicated and conflicts with the release direction we already agreed on.
+
+You are trying to launch a productive staffing content creator, not train every user to behave like a senior creative strategist before they can generate a post.
+
+Keep what was built
+
+These parts are valuable and should remain:
+
+New persisted fields:
+desired emotion
+hook pattern
+content structure
+engagement goal
+Prompt injection through buildPsychologicalContractBlock()
+Platform passed correctly into generation
+Platform craft duplicate bug fix
+Database migration and idempotent ensure block
+Corrected Instagram and X content intents
+Topic prefill fix
+Strategy metadata restored after page reload
+Strategy strip showing the creative direction
+Article-list hook badge, provided it remains small and unobtrusive
+
+This work makes the intelligence more consistent and prevents the strategy from disappearing after refresh.
+
+Change the default dialog
+
+The current dialog asks the user to make too many strategic decisions:
+
+Platform
+Content intent
+Emotion
+Hook pattern
+Content structure
+Engagement goal
+Topic
+Audience
+Facts
+
+And six are mandatory.
+
+That is not a quick content creator. It is a detailed campaign brief form.
+
+The biggest problem is not the number nine. It is that several fields require expert judgment:
+
+Which emotion should this create?
+Which hook archetype best suits the audience?
+Which structure should support that hook?
+Which engagement goal fits the platform and content intent?
+
+Your AI is supposed to help make those decisions.
+
+Recommended default form
+
+Show only:
+
+Required
+Platform
+Content intent
+Topic or instruction
+Optional
+Who is this for?
+Facts or context to include
+
+That is five visible fields, with only three required.
+
+The AI should resolve these automatically:
+
+Desired emotion
+Hook pattern
+Content structure
+Engagement goal
+Add optional advanced controls
+
+Put the four creative fields inside a collapsed section:
+
+Creative direction — optional
+
+Inside:
+
+Desired emotion
+Hook pattern
+Content structure
+Engagement goal
+
+Each should default to:
+
+Let AI decide
+
+Experienced content creators can override them. New and occasional users do not have to understand them.
+
+This preserves all the backend work without forcing it into every user’s workflow.
+
+Correct workflow
+Platform + intent + topic
+→ optional audience and facts
+→ AI selects emotion, hook, structure and engagement goal
+→ draft generated
+→ strategy strip shows what was selected
+→ user reviews and edits
+
+For an advanced user:
+
+Platform + intent + topic
+→ open Creative direction
+→ override emotion, hook, structure or engagement goal
+→ generate
+Strategy strip
+
+The strategy strip is useful and should remain.
+
+Show:
+
+LinkedIn · Thought Leadership · Employer Client · Curiosity · Mechanism Reveal · Problem–Insight–Action
+
+Include a small:
+
+Edit direction
+
+That opens the advanced fields and allows regeneration.
+
+Do not require the user to make all those selections before the first draft.
+
+Generate-button rules
+
+Do not disable Generate until six strategic fields are populated.
+
+Generate should require only:
+
+Topic
+Platform
+Content intent
+
+Audience may default to AI resolution.
+
+Facts remain optional.
+
+Creative-direction fields should always have an internal value:
+
+Explicit user selection, or
+AUTO
+One important architecture rule
+
+The prompt should distinguish between:
+
+User-selected creative direction
+AI-resolved creative direction
+
+Persist the source of each value where practical:
+
+hookPatternSource: USER | AI
+emotionSource: USER | AI
+structureSource: USER | AI
+engagementGoalSource: USER | AI
+
+This is useful later when evaluating whether users prefer their own selections or the agent’s recommendations.
+
+It is not necessary to expose these source fields in the UI.
+
+Potential prompt conflict to check
+
+The psychological contract must not override:
+
+Safety and factual restrictions
+Audience and content intent
+Brand Voice Hub
+Platform craft rules
+
+Recommended precedence:
+
+Safety and facts
+→ audience and intent
+→ Brand Voice Hub
+→ platform rules
+→ creative direction
+→ exemplar guidance
+
+Emotion and engagement instructions must not make the draft exaggerated, manipulative, or inconsistent with Hire’in’s professional voice.
+
+For example, selecting “urgency” must not cause invented urgency around a job or market condition.
+
+What I would release tomorrow
+
+Release:
+
+All backend and persistence improvements
+Simple five-field default dialog
+Three required inputs only
+AI-resolved creative direction
+Optional Advanced Creative Direction section
+Persistent strategy strip
+Manual review and approval
+
+Do not release the nine-field mandatory form as the default experience.
+
+Rename the task
+
+The current title suggests the large dialog is the success criterion:
+
+Studio AI psychological brief — full dialog redesign
+
+A better title is:
+
+Task #1060: Studio AI Creative Direction Intelligence — Persistence, Prompt Integration and Optional Controls
+
+That better reflects the product you actually need.
+
+Exact instruction for Replit
+
+Preserve the backend, schema, migration, prompt-injection, persistence, platform-craft fix, strategy-strip restoration and article-list metadata completed in Task #1060.
+
+Simplify the default generation dialog before release.
+
+The default dialog should visibly contain:
+
+Platform — required
+Content intent — required
+Topic or instruction — required
+Audience — optional, with Let AI decide
+Facts or context — optional
+
+Move Desired Emotion, Hook Pattern, Content Structure and Engagement Goal into a collapsed “Creative direction — optional” section. Each field must support “Let AI decide.”
+
+Generate must not require users to select emotion, hook pattern, structure or engagement goal. When left on automatic, resolve those values in the backend, inject them into generation, persist them on the article and display them in the post-generation strategy strip.
+
+Preserve the ability for advanced users to override any creative-direction field and regenerate.
+
+Ensure creative direction cannot override factual safety, audience, content intent, Brand Voice Hub or platform-craft requirements.
+
+Do not add additional brief steps, confirmation screens or mandatory hook selection.
+
+Final verdict
+
+Do not discard Task #1060. Optimize its UX.
+
+The intelligence and persistence are good. The forced nine-field interaction is the wrong default.
+
+Your strongest release is:
+
+Simple input for the team, sophisticated strategy behind the scenes, visible creative direction after generation, and optional expert control when needed.

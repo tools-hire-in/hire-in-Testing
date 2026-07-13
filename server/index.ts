@@ -621,6 +621,16 @@ async function ensureContentStudioTables() {
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS safety_review_result varchar`);
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS safety_failures_jsonb jsonb`);
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS generation_v1_markdown text`);
+    // Psychological brief columns (Task #1060)
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS desired_emotion text`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS hook_pattern text`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS content_structure text`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS engagement_goal text`);
+    // Creative direction source tracking (USER | AI)
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS emotion_source varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS hook_pattern_source varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS structure_source varchar`);
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS engagement_goal_source varchar`);
     // Newsletter deliverability suppression columns (analytics subscriber counts).
     await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS suppressed_at timestamp`);
     await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS bounce_count integer DEFAULT 0 NOT NULL`);

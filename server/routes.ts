@@ -17196,6 +17196,64 @@ export async function registerRoutes(
       selectedHookText: body?.selectedHookText || undefined,
       selectedHookArchetype: body?.selectedHookArchetype || undefined,
       selectedContentStructure: body?.selectedContentStructure || undefined,
+      // Psychological brief (Task #1060)
+      platform: body?.platform || undefined,
+      desiredEmotion: body?.desiredEmotion || undefined,
+      hookPattern: body?.hookPattern || undefined,
+      contentStructure: body?.contentStructure || undefined,
+      engagementGoal: body?.engagementGoal || undefined,
+    };
+  }
+
+  /**
+   * When the user leaves creative direction fields blank, auto-select sensible
+   * defaults based on platform and content goal so the Psychological Contract
+   * block is always present and the strategy strip always has values to show.
+   */
+  function resolveCreativeDefaults(
+    platform: string | undefined,
+    contentGoal: string | undefined,
+    existing: { desiredEmotion?: string; hookPattern?: string; contentStructure?: string; engagementGoal?: string; },
+  ): { desiredEmotion: string; hookPattern: string; contentStructure: string; engagementGoal: string; autoResolved: boolean } {
+    const hasAll = !!(existing.desiredEmotion && existing.hookPattern && existing.contentStructure && existing.engagementGoal);
+    if (hasAll) {
+      return { ...existing as any, autoResolved: false };
+    }
+
+    type PlatformGoalMap = Record<string, { desiredEmotion: string; hookPattern: string; contentStructure: string; engagementGoal: string }>;
+    const TABLE: Record<string, PlatformGoalMap> = {
+      LINKEDIN: {
+        THOUGHT_LEADERSHIP:  { desiredEmotion: "Challenged",  hookPattern: "insider_contrast",           contentStructure: "rule_of_three",   engagementGoal: "Share it" },
+        JOB_MARKETING:       { desiredEmotion: "Curious",     hookPattern: "curiosity_gap",              contentStructure: "rule_of_three",   engagementGoal: "DM / reach out" },
+        BRAND_PERSPECTIVE:   { desiredEmotion: "Validated",   hookPattern: "reader_inner_monologue",     contentStructure: "contrast",        engagementGoal: "Follow for more" },
+        EDUCATIONAL:         { desiredEmotion: "Curious",     hookPattern: "unasked_question",           contentStructure: "the_framework",   engagementGoal: "Save it" },
+        _default:            { desiredEmotion: "Challenged",  hookPattern: "insider_contrast",           contentStructure: "rule_of_three",   engagementGoal: "Share it" },
+      },
+      INSTAGRAM: {
+        _default:            { desiredEmotion: "Inspired",    hookPattern: "specific_scene",             contentStructure: "listicle",        engagementGoal: "Save it" },
+      },
+      X: {
+        _default:            { desiredEmotion: "Surprised",   hookPattern: "counter_intuitive_number",   contentStructure: "contrast",        engagementGoal: "Share it" },
+      },
+      ARTICLE: {
+        THOUGHT_LEADERSHIP:  { desiredEmotion: "Challenged",  hookPattern: "insider_contrast",           contentStructure: "the_framework",   engagementGoal: "Follow for more" },
+        EDUCATIONAL:         { desiredEmotion: "Curious",     hookPattern: "unasked_question",           contentStructure: "the_framework",   engagementGoal: "Save it" },
+        JOB_MARKETING:       { desiredEmotion: "Curious",     hookPattern: "curiosity_gap",              contentStructure: "rule_of_three",   engagementGoal: "Apply / enquire" },
+        BRAND_PERSPECTIVE:   { desiredEmotion: "Validated",   hookPattern: "reader_inner_monologue",     contentStructure: "contrast",        engagementGoal: "Share it" },
+        _default:            { desiredEmotion: "Challenged",  hookPattern: "insider_contrast",           contentStructure: "the_framework",   engagementGoal: "Follow for more" },
+      },
+    };
+
+    const platformMap = TABLE[platform ?? "ARTICLE"] ?? TABLE.ARTICLE;
+    const goalKey = contentGoal?.toUpperCase() ?? "_default";
+    const defaults = platformMap[goalKey] ?? platformMap._default ?? TABLE.ARTICLE._default;
+
+    return {
+      desiredEmotion:    existing.desiredEmotion    || defaults.desiredEmotion,
+      hookPattern:       existing.hookPattern       || defaults.hookPattern,
+      contentStructure:  existing.contentStructure  || defaults.contentStructure,
+      engagementGoal:    existing.engagementGoal    || defaults.engagementGoal,
+      autoResolved: !hasAll,
     };
   }
 
@@ -17360,9 +17418,45 @@ export async function registerRoutes(
 
         // Brand Voice Hub (T2): articles are long-form/website copy — resolve
         // the project default voice (no platform override) into the params.
-        const params: AiGenerationParams = {
+        const rawParams: AiGenerationParams = {
           ...buildArticleParams(article, req.body),
           ...(await resolveBrandVoiceParams(article.projectId)),
+        };
+        // Server-side allowlist validation — reject unknown values before injecting
+        // into the prompt. Invalid input is treated as blank (→ AUTO resolution).
+        const ALLOWED_PLATFORMS    = new Set(["ARTICLE", "LINKEDIN", "INSTAGRAM", "X"]);
+        const ALLOWED_EMOTIONS     = new Set(["Validated", "Challenged", "Warned", "Curious", "Surprised", "Inspired"]);
+        const ALLOWED_HOOKS        = new Set(["curiosity_gap", "loss_aversion", "insider_contrast", "unasked_question", "counter_intuitive_number", "reader_inner_monologue", "stakes_flip", "specific_scene"]);
+        const ALLOWED_STRUCTURES   = new Set(["rule_of_three", "pas", "the_reveal", "contrast", "the_framework", "listicle"]);
+        const ALLOWED_GOALS        = new Set(["Save it", "Share it", "Comment their take", "Follow for more", "DM / reach out", "Apply / enquire"]);
+        const ALLOWED_CONTENT_GOALS = new Set(["THOUGHT_LEADERSHIP", "EDUCATIONAL", "JOB_MARKETING", "BRAND_PERSPECTIVE"]);
+
+        const validatedPlatform      = ALLOWED_PLATFORMS.has(rawParams.platform ?? "")       ? rawParams.platform      : "ARTICLE";
+        const validatedEmotion       = rawParams.desiredEmotion   && ALLOWED_EMOTIONS.has(rawParams.desiredEmotion)     ? rawParams.desiredEmotion    : undefined;
+        const validatedHook          = rawParams.hookPattern       && ALLOWED_HOOKS.has(rawParams.hookPattern)           ? rawParams.hookPattern       : undefined;
+        const validatedStructure     = rawParams.contentStructure  && ALLOWED_STRUCTURES.has(rawParams.contentStructure) ? rawParams.contentStructure  : undefined;
+        const validatedGoal          = rawParams.engagementGoal    && ALLOWED_GOALS.has(rawParams.engagementGoal)        ? rawParams.engagementGoal    : undefined;
+        const validatedContentGoal   = ALLOWED_CONTENT_GOALS.has(resolvedContentGoalForPath ?? "") ? resolvedContentGoalForPath : rawParams.contentGoal;
+
+        // Auto-resolve creative direction — pick sensible defaults when user left
+        // fields blank (or supplied an invalid value) so the Creative Direction
+        // block is always injected with controlled, canonical values.
+        const resolvedCreative = resolveCreativeDefaults(
+          validatedPlatform,
+          validatedContentGoal ?? rawParams.contentGoal,
+          {
+            desiredEmotion:   validatedEmotion,
+            hookPattern:      validatedHook,
+            contentStructure: validatedStructure,
+            engagementGoal:   validatedGoal,
+          },
+        );
+        const params: AiGenerationParams = {
+          ...rawParams,
+          desiredEmotion:   resolvedCreative.desiredEmotion,
+          hookPattern:      resolvedCreative.hookPattern,
+          contentStructure: resolvedCreative.contentStructure,
+          engagementGoal:   resolvedCreative.engagementGoal,
         };
         const compliance = getComplianceMode(params.compliance_mode);
 
@@ -17477,6 +17571,17 @@ export async function registerRoutes(
             : { generationV1Markdown: result.draft.body_markdown }),
           ...(params.selectedHookText ? { selectedHookText: params.selectedHookText } : {}),
           ...(params.selectedContentStructure ? { selectedContentStructure: params.selectedContentStructure } : {}),
+          // Psychological brief fields — always persist resolved values (auto or user).
+          desiredEmotion: resolvedCreative.desiredEmotion,
+          hookPattern: resolvedCreative.hookPattern,
+          contentStructure: resolvedCreative.contentStructure,
+          engagementGoal: resolvedCreative.engagementGoal,
+          // Source tracking — USER if the submitted value was valid and kept,
+          // AUTO if it was blank or invalid (system-resolved via lookup table).
+          emotionSource: validatedEmotion ? "USER" : "AUTO",
+          hookPatternSource: validatedHook ? "USER" : "AUTO",
+          structureSource: validatedStructure ? "USER" : "AUTO",
+          engagementGoalSource: validatedGoal ? "USER" : "AUTO",
         } as any);
 
         await storage.createStudioAuditEvent({
@@ -17522,6 +17627,14 @@ export async function registerRoutes(
           resolvedAudience: resolvedAudience ?? null,
           resolvedDomain,
           resolvedContentGoal,
+          // Psychological brief — resolved values (USER choice or AI auto-selected).
+          resolvedCreativeDirection: {
+            desiredEmotion:   resolvedCreative.desiredEmotion,
+            hookPattern:      resolvedCreative.hookPattern,
+            contentStructure: resolvedCreative.contentStructure,
+            engagementGoal:   resolvedCreative.engagementGoal,
+            autoResolved:     resolvedCreative.autoResolved,
+          },
         });
       } catch (error: any) {
         handleAiError(error, res);

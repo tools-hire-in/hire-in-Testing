@@ -1,0 +1,222 @@
+It keeps the intelligence, removes the user friction, avoids a second AI call, persists the actual strategy used, and allows advanced creators to override it. I would approve this design for release tomorrow after a few targeted corrections.
+
+What is now right
+
+The default experience is appropriate:
+
+Platform + Content intent + Topic
+→ optional audience and facts
+→ automatic creative direction
+→ generation
+→ visible strategy summary
+→ human review
+
+The four advanced fields remain available without burdening every user:
+
+Desired reader response
+Hook pattern
+Content structure
+Engagement goal
+
+The backend now owns the final resolved values, which is also correct. The frontend should display and persist what the server actually used, not what happened to remain in temporary React state.
+
+The source tracking is useful because it will later show whether the user deliberately selected a direction or allowed the system to recommend it.
+
+Important correction: AI is the wrong source label
+
+Your defaults are chosen through a deterministic lookup table, not through an AI model.
+
+Therefore:
+
+USER
+AI
+
+should become:
+
+USER
+SYSTEM
+
+or:
+
+USER
+AUTO
+
+Recommended:
+
+emotionSource = USER | AUTO
+hookPatternSource = USER | AUTO
+structureSource = USER | AUTO
+engagementGoalSource = USER | AUTO
+
+Calling these values AI would make future analytics misleading because the AI model did not resolve them.
+
+Migration concern
+
+This is the most important engineering issue.
+
+You wrote:
+
+migrations/0022_studio_brief_columns.sql updated with all 8 columns
+
+If migration 0022 has already been applied in any environment, do not modify it in place.
+
+Create a new migration for the four source columns:
+
+0023_studio_creative_direction_sources.sql
+
+It should add:
+
+emotion_source
+hook_pattern_source
+structure_source
+engagement_goal_source
+
+Changing an already-applied migration creates environment drift:
+
+One database records 0022 as completed with four columns
+A fresh database executes 0022 with eight columns
+Both environments now claim to have run the same migration but have different schemas
+
+The idempotent ensure blocks may hide the problem temporarily, but the migration history would still be inaccurate.
+
+If 0022 has never been deployed or applied anywhere, updating it is acceptable. Based on the prior implementation notes, I would assume it may already have been applied and create 0023.
+
+Validate everything server-side
+
+Do not trust values sent by the UI.
+
+The route should normalize and validate:
+
+Platform
+Content goal
+Desired emotion
+Hook pattern
+Content structure
+Engagement goal
+
+Unknown values should not be injected directly into the prompt.
+
+Use canonical allowlists and a deterministic fallback:
+
+Invalid or missing value
+→ canonical default selected
+→ source marked AUTO
+
+Also verify the lookup table has a fallback for every case, including:
+
+Legacy content goals
+Empty platform
+Unknown platform
+Existing articles with null creative-direction fields
+Default platform and intent need to be visible
+
+Requiring only Topic is fine because Platform and Content Intent already have defaults.
+
+But the defaults must be visibly selected in the form. The user should not unknowingly generate a LinkedIn post using an invisible Article default.
+
+For example:
+
+Platform: Article
+Intent: Thought Leadership
+
+should appear selected when the dialog opens.
+
+Also confirm that existing articles restore their saved platform and content goal instead of always resetting to the global defaults.
+
+Prompt precedence must remain controlled
+
+The creative direction block should not override the agent’s factual and brand controls.
+
+Use this effective priority:
+
+1. Supplied facts and staffing safety
+2. Claim-free and compliance restrictions
+3. Audience, domain and content intent
+4. Brand Voice Hub
+5. Platform craft requirements
+6. Creative direction
+7. Exemplar guidance
+
+The following must remain prohibited even when the creative direction asks for urgency, surprise, warning, or loss aversion:
+
+Invented numbers
+Invented urgency
+Unsupported compensation
+Fabricated buyer pain
+False scarcity
+Unsupported company outcomes
+Exaggerated clinical or employment claims
+Manipulative engagement bait
+Keep the backend block, but rename it when practical
+
+The behavior is useful, but buildPsychologicalContractBlock() still sounds heavier and more manipulative than the actual feature.
+
+Recommended later rename:
+
+buildCreativeDirectionBlock()
+
+and:
+
+CREATIVE DIRECTION
+
+instead of:
+
+PSYCHOLOGICAL CONTRACT
+
+This rename is not a release blocker if it creates unnecessary churn today. The product-facing UI should continue using Creative direction, not Psychological Brief.
+
+One improvement to autoResolved
+
+Currently:
+
+autoResolved: true when any field was auto-filled
+
+That is fine for a general indicator, but the four source fields are the real authority.
+
+For example:
+
+{
+  "autoResolved": true,
+  "emotionSource": "USER",
+  "hookPatternSource": "AUTO",
+  "structureSource": "AUTO",
+  "engagementGoalSource": "USER"
+}
+
+Do not use the overall autoResolved flag later to infer that every field was selected automatically.
+
+Release acceptance checks
+
+Before approving, verify these cases:
+
+User enters only a topic and generates successfully.
+Platform and content-intent defaults are visible.
+Automatic creative direction produces all four values.
+All automatic values are persisted with source AUTO.
+A manually selected hook is persisted with source USER.
+A mixed selection correctly stores different source values per field.
+The generated response returns the exact resolved values used in the prompt.
+Refreshing the editor restores the same strategy strip.
+Regenerating without changing direction reuses the persisted direction.
+Changing the platform causes appropriate defaults to be recalculated only for fields still set to automatic.
+A user-selected field is not silently overwritten after changing platform or goal.
+Invalid API values are rejected or safely normalized.
+Healthcare, job, compensation, client and company safety rules still win over creative-direction instructions.
+LinkedIn, Instagram and X produce platform-native content rather than Article prose.
+Legacy articles with null source fields still open without errors.
+The migration works on both an existing database and a clean database.
+Final release judgment
+
+This is no longer overcomplicated.
+
+It is the right balance:
+
+Simple for normal users
+More control for experienced creators
+No mandatory strategy workshop
+No extra model call
+Stronger and more structured content
+Persisted and transparent direction
+Manual approval remains in place
+
+I would approve Task #1060 after correcting the source label from AI to AUTO or SYSTEM, confirming migration immutability, and completing the focused regression tests above.

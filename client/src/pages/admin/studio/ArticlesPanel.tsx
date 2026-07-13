@@ -379,7 +379,16 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                       </TableCell>
                     )}
                     <TableCell className="font-medium" data-testid={`text-article-title-${a.id}`} onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
-                      {a.title}
+                      <span className="flex flex-col gap-0.5">
+                        <span>{a.title}</span>
+                        {(a as any).hookPattern && (
+                          <span className="flex items-center gap-1">
+                            <Badge variant="outline" className="h-4 rounded px-1 py-0 text-[10px] font-normal text-muted-foreground" data-testid={`badge-hook-${a.id}`}>
+                              {((a as any).hookPattern as string).replace(/_/g, " ")}
+                            </Badge>
+                          </span>
+                        )}
+                      </span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       {getStudioContentType(a.contentType)?.label ?? a.contentType}

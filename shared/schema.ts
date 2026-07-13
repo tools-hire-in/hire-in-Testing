@@ -2824,6 +2824,17 @@ export const studioArticles = pgTable("studio_articles", {
   selectedHookText: text("selected_hook_text"),
   selectedHookArchetype: varchar("selected_hook_archetype"),
   selectedContentStructure: varchar("selected_content_structure"),
+  // Psychological brief fields (Task #1060) — persisted after generation so the
+  // full brief is recoverable and the article is re-generatable from same inputs.
+  desiredEmotion: text("desired_emotion"),    // curiosity | validated | challenged | warned | surprised | inspired
+  hookPattern: text("hook_pattern"),           // curiosity_gap | loss_aversion | insider_contrast | ... (8 archetypes)
+  contentStructure: text("content_structure"), // rule_of_three | pas | the_reveal | contrast | the_framework | listicle
+  engagementGoal: text("engagement_goal"),     // save_it | share_it | comment | follow | dm | apply
+  // Source tracking — USER if explicitly chosen, AI if auto-resolved (not shown in UI; used for future analytics)
+  emotionSource: varchar("emotion_source"),            // USER | AI
+  hookPatternSource: varchar("hook_pattern_source"),   // USER | AI
+  structureSource: varchar("structure_source"),        // USER | AI
+  engagementGoalSource: varchar("engagement_goal_source"), // USER | AI
   safetyReviewResult: varchar("safety_review_result"), // PASS | REVISE | BLOCK
   safetyFailuresJsonb: jsonb("safety_failures_jsonb"),  // [{code, sentence, reason, missingSource, recommendedCorrection, autoCorrectSafe}]
   generationV1Markdown: text("generation_v1_markdown"), // initial accepted version for editing-effort tracking

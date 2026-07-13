@@ -219,6 +219,11 @@ export interface AiGenerationParams {
   selectedHookText?: string;
   selectedHookArchetype?: string;
   selectedContentStructure?: string;
+  // Psychological brief (Task #1060) — author-chosen brief fields
+  desiredEmotion?: string;
+  hookPattern?: string;
+  contentStructure?: string;
+  engagementGoal?: string;
 }
 
 // ---------------------------------------------------------------------------
