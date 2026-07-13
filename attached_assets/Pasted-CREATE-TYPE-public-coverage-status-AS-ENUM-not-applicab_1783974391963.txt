@@ -1,0 +1,549 @@
+CREATE TYPE "public"."coverage_status" AS ENUM('not_applicable', 'voluntary', 'mandatory');
+CREATE TYPE "public"."governance_control_status" AS ENUM('pending', 'in_progress', 'completed', 'overdue', 'escalated', 'closed', 'disputed');
+CREATE TYPE "public"."governance_control_type" AS ENUM('goal', 'check_in', 'training', 'sop', 'probation', 'pip');
+CREATE TYPE "public"."governance_event_source" AS ENUM('user', 'sync', 'scheduler', 'api');
+CREATE TYPE "public"."governance_event_type" AS ENUM('created', 'assigned', 'reassigned', 'status_changed', 'evidence_submitted', 'disputed', 'escalated', 'closed', 'reopened', 'exception_recorded', 'sync_updated');
+CREATE TYPE "public"."lop_mode" AS ENUM('proportional', 'fixed');
+CREATE TYPE "public"."pf_mode" AS ENUM('restricted', 'unrestricted');
+CREATE TYPE "public"."rounding_mode" AS ENUM('nearest', 'up');
+CREATE TYPE "public"."rule_type" AS ENUM('percent_of_gross', 'percent_of_component', 'fixed', 'residual');
+ALTER TYPE "public"."internal_request_type" ADD VALUE 'salary_advance';
+ALTER TYPE "public"."user_role" ADD VALUE 'executive';
+CREATE TABLE "studio_campaigns" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"project_id" varchar NOT NULL,
+	"name" varchar NOT NULL,
+	"brief" text,
+	"icp" varchar,
+	"goal" varchar,
+	"funnel_stage" varchar,
+	"primary_cta" varchar,
+	"channels" jsonb,
+	"start_date" date,
+	"end_date" date,
+	"status" varchar DEFAULT 'draft' NOT NULL,
+	"contributor_user_ids" jsonb,
+	"created_by_user_id" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "studio_outreach_sequences" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"project_id" varchar NOT NULL,
+	"campaign_id" varchar,
+	"name" varchar NOT NULL,
+	"sequence_type" varchar DEFAULT 'linkedin' NOT NULL,
+	"audience_type" varchar,
+	"steps_jsonb" jsonb,
+	"status" varchar DEFAULT 'draft' NOT NULL,
+	"created_by_user_id" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "studio_engagement_events" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"article_id" varchar NOT NULL,
+	"campaign_id" varchar,
+	"content_idea_id" varchar,
+	"event_name" varchar NOT NULL,
+	"cta_label" varchar,
+	"source_channel" varchar,
+	"referrer" varchar,
+	"session_hash" varchar,
+	"metadata" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "studio_occasions" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" varchar NOT NULL,
+	"date" date NOT NULL,
+	"region" varchar NOT NULL,
+	"category" varchar NOT NULL,
+	"content_angle" text,
+	"project_id" varchar,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "salary_run_payments" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"run_id" varchar NOT NULL,
+	"email" varchar NOT NULL,
+	"user_id" varchar,
+	"status" varchar DEFAULT 'pending' NOT NULL,
+	"note" text,
+	"marked_by" varchar,
+	"marked_at" timestamp,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "notification_preferences" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" varchar NOT NULL,
+	"notification_type" varchar NOT NULL,
+	"in_app_enabled" boolean DEFAULT true NOT NULL,
+	"email_enabled" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	CONSTRAINT "notification_preferences_user_type_unique" UNIQUE("user_id","notification_type")
+);
+CREATE TABLE "studio_content_ideas" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"project_id" varchar NOT NULL,
+	"campaign_id" varchar,
+	"group_id" varchar,
+	"parent_idea_id" varchar,
+	"import_batch_id" varchar,
+	"origin" varchar DEFAULT 'manual' NOT NULL,
+	"content_type" varchar DEFAULT 'social_post' NOT NULL,
+	"channels" jsonb,
+	"pillar" varchar,
+	"topic" varchar NOT NULL,
+	"brief" text,
+	"generation_brief" text,
+	"reference_link" varchar,
+	"caption_copy" text,
+	"requirement" text,
+	"creative_link" varchar,
+	"story_content" text,
+	"story_reference" varchar,
+	"story_creative_link" varchar,
+	"scheduled_date" date,
+	"due_date" date,
+	"assigned_to_user_id" varchar,
+	"status" varchar DEFAULT 'idea' NOT NULL,
+	"linked_article_id" varchar,
+	"social_cards_jsonb" jsonb,
+	"created_by_user_id" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"archived_at" timestamp,
+	"creative_done" boolean DEFAULT false NOT NULL,
+	"story_creative_done" boolean DEFAULT false NOT NULL,
+	"story_publish_date" date,
+	"bd_intel_metadata" jsonb
+);
+CREATE TABLE "establishment_coverage" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"scheme" varchar(10) NOT NULL,
+	"status" "coverage_status" DEFAULT 'not_applicable' NOT NULL,
+	"threshold" integer NOT NULL,
+	"applicable_from" date,
+	"is_latched" boolean DEFAULT false NOT NULL,
+	"trigger_reason" text,
+	"registration_number" varchar,
+	"effective_from" date,
+	"jurisdiction" varchar(10) DEFAULT 'IN' NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "studio_import_batches" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"project_id" varchar NOT NULL,
+	"file_name" varchar,
+	"row_count_valid" integer DEFAULT 0 NOT NULL,
+	"row_count_invalid" integer DEFAULT 0 NOT NULL,
+	"created_by_user_id" varchar,
+	"rolled_back_at" timestamp,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "headcount_history" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"period" date NOT NULL,
+	"total_count" integer NOT NULL,
+	"breakdown" jsonb,
+	"recorded_at" timestamp DEFAULT now(),
+	"recorded_by" varchar,
+	CONSTRAINT "headcount_history_period_unique" UNIQUE("period")
+);
+CREATE TABLE "state_deductions" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"state" varchar(50) NOT NULL,
+	"levy_type" varchar(20) NOT NULL,
+	"condition_type" varchar(40),
+	"threshold_paise" integer,
+	"amount_paise" integer DEFAULT 0 NOT NULL,
+	"feb_amount_paise" integer,
+	"is_flat" boolean DEFAULT true NOT NULL,
+	"cadence" varchar(20) DEFAULT 'monthly' NOT NULL,
+	"deduction_months" jsonb,
+	"is_registered" boolean DEFAULT false NOT NULL,
+	"registration_number" varchar,
+	"basis" varchar(20) DEFAULT 'gross',
+	"psdt_annual_threshold_paise" integer,
+	"jurisdiction" varchar(10) DEFAULT 'IN' NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "salary_advance_attachments" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"advance_id" varchar NOT NULL,
+	"uploaded_by_id" varchar NOT NULL,
+	"file_name" varchar NOT NULL,
+	"object_path" text NOT NULL,
+	"content_type" varchar,
+	"size_bytes" integer,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "vault_audit_logs" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"actor_id" varchar NOT NULL,
+	"secret_id" varchar,
+	"vault_id" varchar,
+	"action" varchar(60) NOT NULL,
+	"ip_hash" varchar(64),
+	"ua_hash" varchar(64),
+	"reason" text,
+	"meta" text,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "salary_structures" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" varchar(100) NOT NULL,
+	"description" text,
+	"effective_date" date DEFAULT CURRENT_DATE NOT NULL,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"pf_mode" "pf_mode" DEFAULT 'restricted' NOT NULL,
+	"jurisdiction" varchar(10) DEFAULT 'IN' NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	CONSTRAINT "salary_structures_name_unique" UNIQUE("name")
+);
+CREATE TABLE "studio_idea_comments" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"idea_id" varchar NOT NULL,
+	"user_id" varchar NOT NULL,
+	"message" text NOT NULL,
+	"resolved_at" timestamp,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "vault_access_requests" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"requester_id" varchar NOT NULL,
+	"secret_id" varchar NOT NULL,
+	"reason" text,
+	"status" varchar(20) DEFAULT 'pending' NOT NULL,
+	"reviewed_by" varchar,
+	"reviewed_at" timestamp,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "salary_slip_revisions" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"original_slip_id" varchar NOT NULL,
+	"snapshot" jsonb NOT NULL,
+	"replaced_at" timestamp DEFAULT now(),
+	"replaced_by" varchar
+);
+CREATE TABLE "statutory_rates" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"jurisdiction" varchar(10) DEFAULT 'IN' NOT NULL,
+	"levy" varchar(30) NOT NULL,
+	"key" varchar(40) NOT NULL,
+	"value_bps" integer NOT NULL,
+	"minimum_paise" integer,
+	"maximum_paise" integer,
+	"rounding" "rounding_mode" DEFAULT 'nearest' NOT NULL,
+	"effective_from" date NOT NULL,
+	"effective_to" date,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "salary_structure_history" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" varchar NOT NULL,
+	"structure_id" varchar,
+	"effective_from" date NOT NULL,
+	"assigned_by" varchar,
+	"assigned_at" timestamp DEFAULT now()
+);
+CREATE TABLE "governance_controls" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"control_type" "governance_control_type" NOT NULL,
+	"reference_id" varchar,
+	"owner_id" varchar NOT NULL,
+	"manager_id" varchar,
+	"due_date" date NOT NULL,
+	"required_action" text NOT NULL,
+	"evidence_required" boolean DEFAULT false NOT NULL,
+	"status" "governance_control_status" DEFAULT 'pending' NOT NULL,
+	"evidence_record" text,
+	"exception_reason" text,
+	"escalation_level" integer DEFAULT 0 NOT NULL,
+	"resolution" text,
+	"closure_date" date,
+	"closed_by_id" varchar,
+	"dispute_note" text,
+	"disputed_at" timestamp,
+	"flagged_for_hr_review" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "studio_idea_watchers" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"idea_id" varchar NOT NULL,
+	"user_id" varchar NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "vaults" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"name" varchar(120) NOT NULL,
+	"description" text,
+	"category" varchar(80),
+	"created_by" varchar NOT NULL,
+	"archived_at" timestamp,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "bd_decks" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"title" varchar(300) NOT NULL,
+	"domain" varchar(50) DEFAULT 'healthcare' NOT NULL,
+	"deck_type" varchar(20) DEFAULT 'master' NOT NULL,
+	"parent_id" varchar,
+	"version" varchar(20) DEFAULT 'v1' NOT NULL,
+	"client_name" varchar(200),
+	"status" varchar(30) DEFAULT 'draft' NOT NULL,
+	"description" text,
+	"changes_summary" text,
+	"slides" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"created_by" varchar,
+	"approved_by" varchar,
+	"approved_at" timestamp,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "salary_structure_rules" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"structure_id" varchar NOT NULL,
+	"component_name" varchar(80) NOT NULL,
+	"rule_type" "rule_type" NOT NULL,
+	"value_pct" integer,
+	"value_fixed" integer,
+	"reference_component" varchar(80),
+	"lop_mode" "lop_mode" DEFAULT 'proportional' NOT NULL,
+	"sort_order" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "vault_secrets" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"vault_id" varchar NOT NULL,
+	"system_name" varchar(120) NOT NULL,
+	"login_url" varchar(512),
+	"username_enc" text,
+	"password_enc" text,
+	"notes_enc" text,
+	"sensitivity" varchar(20) DEFAULT 'medium' NOT NULL,
+	"rotation_due_at" timestamp,
+	"rotation_required" boolean DEFAULT false NOT NULL,
+	"archived_at" timestamp,
+	"created_by" varchar NOT NULL,
+	"updated_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "bd_messages" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"conversation_id" varchar NOT NULL,
+	"role" varchar(20) NOT NULL,
+	"content" text NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "bd_conversations" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" varchar NOT NULL,
+	"title" varchar(200) DEFAULT 'New conversation' NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"domain" varchar(50) DEFAULT 'general'
+);
+CREATE TABLE "vault_secret_grants" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"secret_id" varchar NOT NULL,
+	"user_id" varchar,
+	"role_name" varchar(60),
+	"can_copy_password" boolean DEFAULT true NOT NULL,
+	"can_reveal_password" boolean DEFAULT true NOT NULL,
+	"expires_at" timestamp,
+	"granted_by" varchar NOT NULL,
+	"revoked_at" timestamp,
+	"revoked_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "payroll_settings" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"jurisdiction" varchar(10) DEFAULT 'IN' NOT NULL,
+	"lop_basis" varchar(30) DEFAULT 'actual_working_days' NOT NULL,
+	"show_employer_contribution_on_slip" boolean DEFAULT true NOT NULL,
+	"default_jurisdiction" varchar(10) DEFAULT 'IN' NOT NULL,
+	"updated_at" timestamp DEFAULT now(),
+	"updated_by" varchar
+);
+CREATE TABLE "agent_feedback_events" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"agent_type" varchar(50) NOT NULL,
+	"source_record_type" varchar(50) NOT NULL,
+	"source_record_id" varchar(100) NOT NULL,
+	"user_id" varchar(100) NOT NULL,
+	"event_type" varchar(50) NOT NULL,
+	"reason_code" varchar(50),
+	"generation_id" varchar(100),
+	"conversation_id" varchar(100),
+	"domain" varchar(50),
+	"audience" varchar(50),
+	"content_goal" varchar(100),
+	"bd_mode" varchar(100),
+	"icp_id" varchar(100),
+	"buyer_stage" varchar(50),
+	"pain_point_theme" varchar(100),
+	"prompt_version" integer,
+	"model_version" varchar(50),
+	"metadata" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "governance_events" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"control_id" varchar NOT NULL,
+	"event_type" "governance_event_type" NOT NULL,
+	"actor_id" varchar,
+	"actor_ref" varchar,
+	"source" "governance_event_source" DEFAULT 'user' NOT NULL,
+	"metadata" jsonb,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "bd_deck_audit_log" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"deck_id" varchar NOT NULL,
+	"action" varchar(50) NOT NULL,
+	"actor_id" varchar,
+	"actor_email" varchar(200),
+	"note" text,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+ALTER TABLE "section_quiz_questions" DROP CONSTRAINT "section_quiz_questions_section_id_unique";
+ALTER TABLE "hr_letters" DROP CONSTRAINT "hr_letters_reference_number_unique";
+ALTER TABLE "offer_letter_addendums" DROP CONSTRAINT "offer_letter_addendums_reference_number_key";
+ALTER TABLE "offer_letters" DROP CONSTRAINT "offer_letters_reference_number_key";
+ALTER TABLE "attendance_report_runs" DROP CONSTRAINT "attendance_report_runs_regenerated_by_fkey";
+ALTER TABLE "salary_advance_requests" ALTER COLUMN "status" SET DATA TYPE text;
+ALTER TABLE "salary_advance_requests" ALTER COLUMN "status" SET DEFAULT 'pending_manager'::text;
+DROP TYPE "public"."salary_advance_status";
+CREATE TYPE "public"."salary_advance_status" AS ENUM('pending_manager', 'pending_final', 'pending_ceo', 'pending_review', 'approved', 'disbursed', 'repaying', 'applied', 'closed', 'rejected', 'cancelled', 'returned');
+ALTER TABLE "salary_advance_requests" ALTER COLUMN "status" SET DEFAULT 'pending_manager'::"public"."salary_advance_status";
+ALTER TABLE "salary_advance_requests" ALTER COLUMN "status" SET DATA TYPE "public"."salary_advance_status" USING "status"::"public"."salary_advance_status";
+ALTER TABLE "performance_goals" ADD COLUMN "last_progress_updated_at" timestamp;
+ALTER TABLE "performance_goals" ADD COLUMN "employee_nudged_at" timestamp;
+ALTER TABLE "performance_goals" ADD COLUMN "last_escalated_at" timestamp;
+ALTER TABLE "performance_goals" ADD COLUMN "skip_escalated_at" timestamp;
+ALTER TABLE "salary_slips" ADD COLUMN "components" jsonb;
+ALTER TABLE "salary_slips" ADD COLUMN "computation_snapshot" jsonb;
+ALTER TABLE "salary_slips" ADD COLUMN "jurisdiction" varchar DEFAULT 'IN' NOT NULL;
+ALTER TABLE "admin_users" ADD COLUMN "salary_structure_id" varchar;
+ALTER TABLE "admin_users" ADD COLUMN "pf_exempt" boolean DEFAULT false NOT NULL;
+ALTER TABLE "admin_users" ADD COLUMN "pt_state" varchar;
+ALTER TABLE "admin_users" ADD COLUMN "work_city" varchar;
+ALTER TABLE "admin_users" ADD COLUMN "esi_disability" boolean DEFAULT false NOT NULL;
+ALTER TABLE "admin_users" ADD COLUMN "esi_applicable" boolean DEFAULT true NOT NULL;
+ALTER TABLE "admin_users" ADD COLUMN "esi_covered_until" date;
+ALTER TABLE "admin_users" ADD COLUMN "esi_daily_wage_exempt" boolean DEFAULT false NOT NULL;
+ALTER TABLE "internal_requests" ADD COLUMN "metadata" jsonb;
+ALTER TABLE "internal_requests" ADD COLUMN "linked_advance_id" varchar;
+ALTER TABLE "employee_plans" ADD COLUMN "manager_goal_escalated_at" timestamp;
+ALTER TABLE "sop_employee_progress" ADD COLUMN "overdue_nudge_sent_date" date;
+ALTER TABLE "studio_projects" ADD COLUMN "occasion_preferences" jsonb;
+ALTER TABLE "studio_projects" ADD COLUMN "brand_voice_config" jsonb;
+ALTER TABLE "studio_articles" ADD COLUMN "generation_brief" text;
+ALTER TABLE "studio_articles" ADD COLUMN "tone_voice" varchar;
+ALTER TABLE "studio_articles" ADD COLUMN "content_goal" varchar;
+ALTER TABLE "studio_articles" ADD COLUMN "audience_question" text;
+ALTER TABLE "studio_articles" ADD COLUMN "audience_resolved" varchar;
+ALTER TABLE "studio_articles" ADD COLUMN "domain_resolved" varchar;
+ALTER TABLE "studio_articles" ADD COLUMN "market_context_resolved" varchar;
+ALTER TABLE "studio_articles" ADD COLUMN "source_type" varchar;
+ALTER TABLE "studio_articles" ADD COLUMN "reader_action" text;
+ALTER TABLE "studio_articles" ADD COLUMN "business_objective" text;
+ALTER TABLE "studio_articles" ADD COLUMN "single_takeaway" text;
+ALTER TABLE "studio_articles" ADD COLUMN "hook_options_jsonb" jsonb;
+ALTER TABLE "studio_articles" ADD COLUMN "selected_hook_text" text;
+ALTER TABLE "studio_articles" ADD COLUMN "selected_hook_archetype" varchar;
+ALTER TABLE "studio_articles" ADD COLUMN "selected_content_structure" varchar;
+ALTER TABLE "studio_articles" ADD COLUMN "safety_review_result" varchar;
+ALTER TABLE "studio_articles" ADD COLUMN "safety_failures_jsonb" jsonb;
+ALTER TABLE "studio_articles" ADD COLUMN "generation_v1_markdown" text;
+ALTER TABLE "studio_campaigns" ADD CONSTRAINT "studio_campaigns_project_id_studio_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."studio_projects"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_outreach_sequences" ADD CONSTRAINT "studio_outreach_sequences_project_id_studio_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."studio_projects"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_engagement_events" ADD CONSTRAINT "studio_engagement_events_article_id_studio_articles_id_fk" FOREIGN KEY ("article_id") REFERENCES "public"."studio_articles"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_occasions" ADD CONSTRAINT "studio_occasions_project_id_studio_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."studio_projects"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_run_payments" ADD CONSTRAINT "salary_run_payments_marked_by_admin_users_id_fk" FOREIGN KEY ("marked_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_run_payments" ADD CONSTRAINT "salary_run_payments_run_id_salary_report_runs_id_fk" FOREIGN KEY ("run_id") REFERENCES "public"."salary_report_runs"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_run_payments" ADD CONSTRAINT "salary_run_payments_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "notification_preferences" ADD CONSTRAINT "notification_preferences_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_content_ideas" ADD CONSTRAINT "studio_content_ideas_project_id_studio_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."studio_projects"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_import_batches" ADD CONSTRAINT "studio_import_batches_project_id_studio_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."studio_projects"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_attachments" ADD CONSTRAINT "salary_advance_attachments_advance_id_salary_advance_requests_i" FOREIGN KEY ("advance_id") REFERENCES "public"."salary_advance_requests"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_advance_attachments" ADD CONSTRAINT "salary_advance_attachments_uploaded_by_id_admin_users_id_fk" FOREIGN KEY ("uploaded_by_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_idea_comments" ADD CONSTRAINT "studio_idea_comments_idea_id_studio_content_ideas_id_fk" FOREIGN KEY ("idea_id") REFERENCES "public"."studio_content_ideas"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "vault_access_requests" ADD CONSTRAINT "vault_access_requests_requester_id_admin_users_id_fk" FOREIGN KEY ("requester_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "vault_access_requests" ADD CONSTRAINT "vault_access_requests_secret_id_vault_secrets_id_fk" FOREIGN KEY ("secret_id") REFERENCES "public"."vault_secrets"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_slip_revisions" ADD CONSTRAINT "salary_slip_revisions_original_slip_id_salary_slips_id_fk" FOREIGN KEY ("original_slip_id") REFERENCES "public"."salary_slips"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_slip_revisions" ADD CONSTRAINT "salary_slip_revisions_replaced_by_admin_users_id_fk" FOREIGN KEY ("replaced_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_structure_history" ADD CONSTRAINT "salary_structure_history_structure_id_salary_structures_id_fk" FOREIGN KEY ("structure_id") REFERENCES "public"."salary_structures"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "salary_structure_history" ADD CONSTRAINT "salary_structure_history_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "governance_controls" ADD CONSTRAINT "governance_controls_closed_by_id_admin_users_id_fk" FOREIGN KEY ("closed_by_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "governance_controls" ADD CONSTRAINT "governance_controls_manager_id_admin_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "governance_controls" ADD CONSTRAINT "governance_controls_owner_id_admin_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_idea_watchers" ADD CONSTRAINT "studio_idea_watchers_idea_id_studio_content_ideas_id_fk" FOREIGN KEY ("idea_id") REFERENCES "public"."studio_content_ideas"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "studio_idea_watchers" ADD CONSTRAINT "studio_idea_watchers_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "vaults" ADD CONSTRAINT "vaults_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "salary_structure_rules" ADD CONSTRAINT "salary_structure_rules_structure_id_salary_structures_id_fk" FOREIGN KEY ("structure_id") REFERENCES "public"."salary_structures"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "vault_secrets" ADD CONSTRAINT "vault_secrets_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "vault_secrets" ADD CONSTRAINT "vault_secrets_vault_id_vaults_id_fk" FOREIGN KEY ("vault_id") REFERENCES "public"."vaults"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "bd_messages" ADD CONSTRAINT "bd_messages_conversation_id_bd_conversations_id_fk" FOREIGN KEY ("conversation_id") REFERENCES "public"."bd_conversations"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "bd_conversations" ADD CONSTRAINT "bd_conversations_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "vault_secret_grants" ADD CONSTRAINT "vault_secret_grants_granted_by_admin_users_id_fk" FOREIGN KEY ("granted_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "vault_secret_grants" ADD CONSTRAINT "vault_secret_grants_secret_id_vault_secrets_id_fk" FOREIGN KEY ("secret_id") REFERENCES "public"."vault_secrets"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "vault_secret_grants" ADD CONSTRAINT "vault_secret_grants_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "governance_events" ADD CONSTRAINT "governance_events_control_id_governance_controls_id_fk" FOREIGN KEY ("control_id") REFERENCES "public"."governance_controls"("id") ON DELETE no action ON UPDATE no action;
+CREATE INDEX "studio_engagement_events_article_event_idx" ON "studio_engagement_events" USING btree ("article_id","event_name","created_at");
+CREATE INDEX "studio_engagement_events_campaign_idx" ON "studio_engagement_events" USING btree ("campaign_id","created_at");
+CREATE UNIQUE INDEX "studio_occasions_global_name_date_idx" ON "studio_occasions" USING btree ("name","date") WHERE (project_id IS NULL);
+CREATE UNIQUE INDEX "salary_run_payments_run_email_unique" ON "salary_run_payments" USING btree ("run_id","email");
+CREATE UNIQUE INDEX "establishment_coverage_scheme_jur_idx" ON "establishment_coverage" USING btree ("scheme","jurisdiction");
+CREATE INDEX "state_deductions_state_levy_idx" ON "state_deductions" USING btree ("state","levy_type");
+CREATE UNIQUE INDEX "state_deductions_state_levy_jurisdiction_unique" ON "state_deductions" USING btree ("state","levy_type","jurisdiction");
+CREATE INDEX "vault_audit_action_idx" ON "vault_audit_logs" USING btree ("action");
+CREATE INDEX "vault_audit_actor_idx" ON "vault_audit_logs" USING btree ("actor_id");
+CREATE INDEX "vault_audit_created_at_idx" ON "vault_audit_logs" USING btree ("created_at");
+CREATE INDEX "vault_audit_secret_idx" ON "vault_audit_logs" USING btree ("secret_id");
+CREATE INDEX "vault_access_requests_requester_idx" ON "vault_access_requests" USING btree ("requester_id");
+CREATE INDEX "vault_access_requests_secret_idx" ON "vault_access_requests" USING btree ("secret_id");
+CREATE INDEX "vault_access_requests_status_idx" ON "vault_access_requests" USING btree ("status");
+CREATE UNIQUE INDEX "statutory_rates_jurisdiction_levy_key_effective_from_unique" ON "statutory_rates" USING btree ("jurisdiction","levy","key","effective_from");
+CREATE INDEX "statutory_rates_levy_key_idx" ON "statutory_rates" USING btree ("jurisdiction","levy","key");
+CREATE INDEX "salary_structure_history_user_date_idx" ON "salary_structure_history" USING btree ("user_id","effective_from");
+CREATE INDEX "salary_structure_history_user_idx" ON "salary_structure_history" USING btree ("user_id");
+CREATE UNIQUE INDEX "uq_studio_idea_watcher_idea_user" ON "studio_idea_watchers" USING btree ("idea_id","user_id");
+CREATE INDEX "vaults_name_idx" ON "vaults" USING btree ("name");
+CREATE INDEX "bd_decks_deck_type_idx" ON "bd_decks" USING btree ("deck_type");
+CREATE INDEX "bd_decks_domain_idx" ON "bd_decks" USING btree ("domain");
+CREATE INDEX "bd_decks_parent_id_idx" ON "bd_decks" USING btree ("parent_id");
+CREATE INDEX "bd_decks_status_idx" ON "bd_decks" USING btree ("status");
+CREATE INDEX "vault_secrets_rotation_idx" ON "vault_secrets" USING btree ("rotation_required");
+CREATE INDEX "vault_secrets_sensitivity_idx" ON "vault_secrets" USING btree ("sensitivity");
+CREATE INDEX "vault_secrets_vault_idx" ON "vault_secrets" USING btree ("vault_id");
+CREATE INDEX "bd_messages_conversation_idx" ON "bd_messages" USING btree ("conversation_id");
+CREATE INDEX "bd_messages_created_at_idx" ON "bd_messages" USING btree ("created_at");
+CREATE INDEX "bd_conversations_created_at_idx" ON "bd_conversations" USING btree ("created_at");
+CREATE INDEX "bd_conversations_user_idx" ON "bd_conversations" USING btree ("user_id");
+CREATE INDEX "vault_grants_role_idx" ON "vault_secret_grants" USING btree ("role_name");
+CREATE INDEX "vault_grants_secret_idx" ON "vault_secret_grants" USING btree ("secret_id");
+CREATE INDEX "vault_grants_user_idx" ON "vault_secret_grants" USING btree ("user_id");
+CREATE UNIQUE INDEX "payroll_settings_jurisdiction_unique" ON "payroll_settings" USING btree ("jurisdiction");
+CREATE INDEX "afe_agent_type_idx" ON "agent_feedback_events" USING btree ("agent_type","event_type","created_at");
+CREATE INDEX "afe_domain_idx" ON "agent_feedback_events" USING btree ("domain","created_at");
+CREATE INDEX "afe_event_type_idx" ON "agent_feedback_events" USING btree ("event_type","created_at");
+CREATE INDEX "afe_user_source_idx" ON "agent_feedback_events" USING btree ("user_id","source_record_type","source_record_id");
+CREATE INDEX "bd_deck_audit_deck_idx" ON "bd_deck_audit_log" USING btree ("deck_id","created_at");
+ALTER TABLE "admin_users" ADD CONSTRAINT "admin_users_salary_structure_id_salary_structures_id_fk" FOREIGN KEY ("salary_structure_id") REFERENCES "public"."salary_structures"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "internal_requests" ADD CONSTRAINT "internal_requests_linked_advance_id_salary_advance_requests_id_" FOREIGN KEY ("linked_advance_id") REFERENCES "public"."salary_advance_requests"("id") ON DELETE set null ON UPDATE no action;
+ALTER TABLE "attendance_report_runs" ADD CONSTRAINT "attendance_report_runs_regenerated_by_admin_users_id_fk" FOREIGN KEY ("regenerated_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+CREATE UNIQUE INDEX "salary_slips_user_year_month_run_unique" ON "salary_slips" USING btree ("user_id","year","month","salary_run_id");
+ALTER TABLE "offer_letter_addendums" ADD CONSTRAINT "offer_letter_addendums_reference_number_unique" UNIQUE("reference_number");
+ALTER TABLE "offer_letters" ADD CONSTRAINT "offer_letters_reference_number_unique" UNIQUE("reference_number");
