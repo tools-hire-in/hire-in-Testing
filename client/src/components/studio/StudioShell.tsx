@@ -39,6 +39,7 @@ import {
   Plus,
   Send,
   Settings,
+  BarChart3,
   Users,
 } from "lucide-react";
 
@@ -124,6 +125,16 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
             label: "BD Guide",
             icon: BookOpen,
             active: location.startsWith(studioPath("/bd-guide")) && !location.startsWith(studioPath("/guide")),
+          },
+        ]
+      : []),
+    ...(["super_admin", "admin", "hr"].includes(user?.role ?? "")
+      ? [
+          {
+            href: studioPath("/feedback-insights"),
+            label: "Feedback Insights",
+            icon: BarChart3,
+            active: location.startsWith(studioPath("/feedback-insights")),
           },
         ]
       : []),
