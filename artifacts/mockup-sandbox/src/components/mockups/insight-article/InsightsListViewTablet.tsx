@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 const NAVY = "#1F3A6E";
 const NAVY_DARK = "#162d56";
 const ORANGE = "#F47C20";
@@ -12,12 +14,23 @@ const TYPE_COLORS: Record<string, { bg:string; text:string; border:string }> = {
 };
 
 const ARTICLES = [
-  { id:1, type:"Executive Insight", title:"Why Healthcare Systems Are Losing Top Clinical Talent — And the Three Shifts That Will Stop the Bleeding", deck:"Burnout alone doesn't explain the exodus. A deeper structural misalignment is quietly accelerating a workforce crisis.", author:{name:"Kavita Sharma",initials:"KS",color:NAVY}, date:"Jul 11, 2025", readMin:8, impressions:4820, hot:true, accentColor:`linear-gradient(140deg,${NAVY_DARK} 0%,${NAVY} 60%)` },
-  { id:2, type:"Analysis", title:"AI-Augmented Screening: What 18 Months of Data Actually Shows About Quality-of-Hire", deck:"Firms that adopted structured AI screening saw 31% improvement in 90-day retention.", author:{name:"Ravi Mehta",initials:"RM",color:"#4B7BEC"}, date:"Jul 8, 2025", readMin:11, impressions:3210, hot:false, accentColor:"linear-gradient(135deg,#1d4ed8 0%,#3b82f6 100%)" },
-  { id:3, type:"Field Report", title:"Inside Three Rural Health Systems That Cracked the Nursing Retention Puzzle", deck:"A 14-month field study across Missouri, Montana, and Kentucky reveals counterintuitive findings.", author:{name:"Priya Nair",initials:"PN",color:"#059669"}, date:"Jul 5, 2025", readMin:9, impressions:2840, hot:false, accentColor:"linear-gradient(135deg,#065f46 0%,#10b981 100%)" },
-  { id:4, type:"Case Study", title:"From 42% to 78%: How Memorial Health Rebuilt Its Travel Nurse Pipeline in 11 Months", deck:"A strategic partnership redesign and internal mobility program produced surprising results.", author:{name:"James Okafor",initials:"JO",color:"#7c3aed"}, date:"Jun 30, 2025", readMin:7, impressions:2190, hot:false, accentColor:"linear-gradient(135deg,#4c1d95 0%,#8b5cf6 100%)" },
-  { id:5, type:"Market Brief", title:"Q2 2025 Healthcare Staffing Index: Demand Surges in Radiology and Respiratory Therapy", deck:"RT vacancies up 47% YoY with no supply-side relief in sight.", author:{name:"Kavita Sharma",initials:"KS",color:NAVY}, date:"Jun 24, 2025", readMin:4, impressions:5670, hot:true, accentColor:"linear-gradient(135deg,#374151 0%,#6b7280 100%)" },
-  { id:6, type:"Opinion", title:"The 'Culture Fit' Trap Is Costing Healthcare Organizations Their Most Effective Clinicians", deck:"When 'culture fit' becomes a proxy for familiarity, it systematically filters out experienced candidates.", author:{name:"Aisha Patel",initials:"AP",color:"#db2777"}, date:"Jun 19, 2025", readMin:6, impressions:1980, hot:false, accentColor:"linear-gradient(135deg,#831843 0%,#ec4899 100%)" },
+  { id:1, type:"Executive Insight", title:"Why Healthcare Systems Are Losing Top Clinical Talent — And the Three Shifts That Will Stop the Bleeding", deck:"Burnout alone doesn't explain the exodus. A deeper structural misalignment is quietly accelerating a workforce crisis.", author:{name:"Kavita Sharma",initials:"KS",color:NAVY}, date:"Jul 11, 2025", readMin:8, impressions:4820, comments:38, reactions:124, hot:true, accentColor:`linear-gradient(140deg,${NAVY_DARK} 0%,${NAVY} 60%)` },
+  { id:2, type:"Analysis", title:"AI-Augmented Screening: What 18 Months of Data Actually Shows About Quality-of-Hire", deck:"Firms that adopted structured AI screening saw 31% improvement in 90-day retention.", author:{name:"Ravi Mehta",initials:"RM",color:"#4B7BEC"}, date:"Jul 8, 2025", readMin:11, impressions:3210, comments:21, reactions:89, hot:false, accentColor:"linear-gradient(135deg,#1d4ed8 0%,#3b82f6 100%)" },
+  { id:3, type:"Field Report", title:"Inside Three Rural Health Systems That Cracked the Nursing Retention Puzzle", deck:"A 14-month field study across Missouri, Montana, and Kentucky reveals counterintuitive findings.", author:{name:"Priya Nair",initials:"PN",color:"#059669"}, date:"Jul 5, 2025", readMin:9, impressions:2840, comments:61, reactions:203, hot:false, accentColor:"linear-gradient(135deg,#065f46 0%,#10b981 100%)" },
+  { id:4, type:"Case Study", title:"From 42% to 78%: How Memorial Health Rebuilt Its Travel Nurse Pipeline in 11 Months", deck:"A strategic partnership redesign and internal mobility program produced surprising results.", author:{name:"James Okafor",initials:"JO",color:"#7c3aed"}, date:"Jun 30, 2025", readMin:7, impressions:2190, comments:14, reactions:47, hot:false, accentColor:"linear-gradient(135deg,#4c1d95 0%,#8b5cf6 100%)" },
+  { id:5, type:"Market Brief", title:"Q2 2025 Healthcare Staffing Index: Demand Surges in Radiology and Respiratory Therapy", deck:"RT vacancies up 47% YoY with no supply-side relief in sight.", author:{name:"Kavita Sharma",initials:"KS",color:NAVY}, date:"Jun 24, 2025", readMin:4, impressions:5670, comments:9, reactions:31, hot:true, accentColor:"linear-gradient(135deg,#374151 0%,#6b7280 100%)" },
+  { id:6, type:"Opinion", title:"The 'Culture Fit' Trap Is Costing Healthcare Organizations Their Most Effective Clinicians", deck:"When 'culture fit' becomes a proxy for familiarity, it systematically filters out experienced candidates.", author:{name:"Aisha Patel",initials:"AP",color:"#db2777"}, date:"Jun 19, 2025", readMin:6, impressions:1980, comments:77, reactions:256, hot:false, accentColor:"linear-gradient(135deg,#831843 0%,#ec4899 100%)" },
+];
+
+// Auto-derive the 3 carousel slots from data
+const latestArticle     = [...ARTICLES].sort((a,b)=> new Date(b.date).getTime() - new Date(a.date).getTime())[0];
+const mostReadArticle   = [...ARTICLES].sort((a,b)=> b.impressions - a.impressions)[0];
+const mostInsightfulArticle = [...ARTICLES].sort((a,b)=> (b.comments + b.reactions) - (a.comments + a.reactions))[0];
+
+const CAROUSEL_SLOTS = [
+  { slot:"Latest",         badge:"🗓 New",        badgeColor:NAVY,     article: latestArticle },
+  { slot:"Most Read",      badge:"📈 Trending",   badgeColor:ORANGE,   article: mostReadArticle },
+  { slot:"Most Insightful",badge:"💬 Engaged",    badgeColor:"#059669",article: mostInsightfulArticle },
 ];
 
 function TabletHeader() {
@@ -26,14 +39,7 @@ function TabletHeader() {
     <header style={{ background:"white", borderBottom:"1px solid #f3f4f6", position:"sticky", top:0, zIndex:50 }}>
       <div style={{ padding:"0 24px", height:56, display:"flex", alignItems:"center", gap:20 }}>
         <div style={{ display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
-          <div style={{ background:NAVY, borderRadius:7, width:34, height:34, display:"flex", alignItems:"center", justifyContent:"center" }}>
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="3" width="7" height="7" rx="1" fill="white" opacity="0.9"/>
-              <rect x="14" y="3" width="7" height="7" rx="1" fill="white" opacity="0.5"/>
-              <rect x="3" y="14" width="7" height="7" rx="1" fill="white" opacity="0.5"/>
-              <rect x="14" y="14" width="7" height="7" rx="1" fill={ORANGE} opacity="0.9"/>
-            </svg>
-          </div>
+          <img src={`${import.meta.env.BASE_URL}hirein-logo.svg`} alt="Hire'in Solutions" style={{ width:34, height:34, borderRadius:7, flexShrink:0, display:"block" }}/>
           <div>
             <div style={{ fontFamily:"'Inter',sans-serif", color:NAVY, fontWeight:700, fontSize:15 }}>Hire<span style={{ color:ORANGE }}>'in</span> Solutions</div>
             <div style={{ fontFamily:"'Inter',sans-serif", color:"#9ca3af", fontSize:8, letterSpacing:"0.06em", textTransform:"uppercase", marginTop:2 }}>A Rayomind Company | Est. 2014</div>
@@ -68,37 +74,115 @@ function TypeBadge({ type }: { type:string }) {
   return <span style={{ background:c.bg, color:c.text, border:`1px solid ${c.border}`, fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, textTransform:"uppercase", letterSpacing:"0.06em", padding:"2px 7px", borderRadius:4 }}>{type}</span>;
 }
 
-function FeaturedTablet({ article }: { article: typeof ARTICLES[0] }) {
+/* ─── Editorial 3-slot carousel ─────────────────────────────────────────── */
+function FeaturedCarouselTablet() {
+  const [active, setActive] = useState(0);
+  const { slot, badge, badgeColor, article } = CAROUSEL_SLOTS[active];
+
+  const prev = () => setActive(i => (i + 2) % 3);
+  const next = () => setActive(i => (i + 1) % 3);
+
   return (
-    <div style={{ display:"flex", borderRadius:16, overflow:"hidden", border:"1px solid #f3f4f6", marginBottom:20, cursor:"pointer" }}>
-      <div style={{ width:220, flexShrink:0, background:article.accentColor, position:"relative", minHeight:200, display:"flex", alignItems:"center", justifyContent:"center" }}>
-        <div style={{ position:"absolute", inset:0, backgroundImage:"radial-gradient(circle,white 1px,transparent 1px)", backgroundSize:"24px 24px", opacity:0.07 }}/>
-        <p style={{ fontFamily:"'Playfair Display',Georgia,serif", color:"white", fontSize:16, fontWeight:600, textAlign:"center", lineHeight:1.4, padding:"0 20px", position:"relative", zIndex:1 }}>Featured</p>
-        <div style={{ position:"absolute", top:10, left:10 }}>
-          <span style={{ background:"rgba(0,0,0,0.3)", color:"white", fontFamily:"'Inter',sans-serif", fontSize:8, fontWeight:700, padding:"2px 6px", borderRadius:3, textTransform:"uppercase", letterSpacing:"0.05em" }}>Pinned</span>
-        </div>
+    <div style={{ marginBottom:24 }}>
+      {/* Tab strip */}
+      <div style={{ display:"flex", gap:0, marginBottom:0, borderBottom:"2px solid #f3f4f6" }}>
+        {CAROUSEL_SLOTS.map((s,i) => (
+          <button key={s.slot} onClick={() => setActive(i)}
+            style={{ flex:1, fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:i===active?700:500,
+              color:i===active ? s.badgeColor : "#9ca3af",
+              background:"transparent", border:"none", cursor:"pointer",
+              padding:"10px 0 9px",
+              borderBottom: i===active ? `2.5px solid ${s.badgeColor}` : "2.5px solid transparent",
+              marginBottom:"-2px", transition:"all 0.18s", display:"flex", alignItems:"center", justifyContent:"center", gap:5 }}>
+            {i===0 && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
+            {i===1 && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>}
+            {i===2 && <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
+            {s.slot}
+          </button>
+        ))}
       </div>
-      <div style={{ flex:1, padding:"20px", background:"white", display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
-        <div>
-          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:10 }}>
-            <TypeBadge type={article.type}/>
-            <span style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:"#9ca3af" }}>{article.date}</span>
-            {article.hot && <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:ORANGE }}>🔥 Trending</span>}
+
+      {/* Card */}
+      <div style={{ display:"flex", borderRadius:"0 0 16px 16px", overflow:"hidden", border:"1px solid #f3f4f6", borderTop:"none", cursor:"pointer", position:"relative" }}>
+        {/* Left gradient panel */}
+        <div style={{ width:190, flexShrink:0, background:article.accentColor, position:"relative", minHeight:210, display:"flex", flexDirection:"column", justifyContent:"space-between", padding:16 }}>
+          <div style={{ position:"absolute", inset:0, backgroundImage:"radial-gradient(circle,white 1px,transparent 1px)", backgroundSize:"22px 22px", opacity:0.07 }}/>
+          {/* Slot badge */}
+          <div style={{ position:"relative", zIndex:1 }}>
+            <span style={{ background:badgeColor, color:"white", fontFamily:"'Inter',sans-serif", fontSize:9, fontWeight:700, padding:"3px 8px", borderRadius:4, textTransform:"uppercase", letterSpacing:"0.05em" }}>
+              {badge}
+            </span>
           </div>
-          <h2 style={{ fontFamily:"'Playfair Display',Georgia,serif", color:NAVY, fontSize:18, fontWeight:700, lineHeight:1.3, marginBottom:8 }}>{article.title}</h2>
-          <p style={{ fontFamily:"'Inter',sans-serif", fontSize:12, color:"#6b7280", lineHeight:1.6, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>{article.deck}</p>
+          {/* Metric callout */}
+          <div style={{ position:"relative", zIndex:1, textAlign:"center" }}>
+            {active===0 && (
+              <div>
+                <p style={{ fontFamily:"'Inter',sans-serif", color:"rgba(255,255,255,0.5)", fontSize:9, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Published</p>
+                <p style={{ fontFamily:"'Playfair Display',Georgia,serif", color:"white", fontSize:15, fontWeight:700, lineHeight:1.3 }}>{article.date}</p>
+              </div>
+            )}
+            {active===1 && (
+              <div>
+                <p style={{ fontFamily:"'Inter',sans-serif", color:"rgba(255,255,255,0.5)", fontSize:9, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:4 }}>Total Views</p>
+                <p style={{ fontFamily:"'Playfair Display',Georgia,serif", color:ORANGE, fontSize:26, fontWeight:800, lineHeight:1 }}>{(article.impressions/1000).toFixed(1)}k</p>
+              </div>
+            )}
+            {active===2 && (
+              <div>
+                <p style={{ fontFamily:"'Inter',sans-serif", color:"rgba(255,255,255,0.5)", fontSize:9, textTransform:"uppercase", letterSpacing:"0.08em", marginBottom:6 }}>Engagement</p>
+                <div style={{ display:"flex", justifyContent:"center", gap:12 }}>
+                  <div style={{ textAlign:"center" }}>
+                    <p style={{ fontFamily:"'Playfair Display',Georgia,serif", color:ORANGE, fontSize:20, fontWeight:800, lineHeight:1 }}>{article.comments}</p>
+                    <p style={{ fontFamily:"'Inter',sans-serif", color:"rgba(255,255,255,0.4)", fontSize:9, marginTop:3 }}>comments</p>
+                  </div>
+                  <div style={{ width:1, background:"rgba(255,255,255,0.15)" }}/>
+                  <div style={{ textAlign:"center" }}>
+                    <p style={{ fontFamily:"'Playfair Display',Georgia,serif", color:"white", fontSize:20, fontWeight:800, lineHeight:1 }}>{article.reactions}</p>
+                    <p style={{ fontFamily:"'Inter',sans-serif", color:"rgba(255,255,255,0.4)", fontSize:9, marginTop:3 }}>reactions</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-        <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingTop:12, borderTop:"1px solid #f9fafb", marginTop:12 }}>
-          <div style={{ display:"flex", alignItems:"center", gap:8 }}>
-            <div style={{ width:28, height:28, borderRadius:"50%", background:article.author.color, display:"flex", alignItems:"center", justifyContent:"center" }}>
-              <span style={{ fontFamily:"'Inter',sans-serif", color:"white", fontSize:9, fontWeight:700 }}>{article.author.initials}</span>
+
+        {/* Right content */}
+        <div style={{ flex:1, padding:"16px 18px", background:"white", display:"flex", flexDirection:"column", justifyContent:"space-between" }}>
+          <div>
+            <div style={{ display:"flex", alignItems:"center", gap:7, marginBottom:9 }}>
+              <TypeBadge type={article.type}/>
+              <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:"#9ca3af" }}>{article.date}</span>
             </div>
-            <div>
-              <p style={{ fontFamily:"'Inter',sans-serif", color:NAVY, fontSize:11, fontWeight:600, lineHeight:1.1 }}>{article.author.name}</p>
-              <p style={{ fontFamily:"'Inter',sans-serif", color:"#9ca3af", fontSize:9 }}>{article.readMin} min · {(article.impressions/1000).toFixed(1)}k views</p>
+            <h2 style={{ fontFamily:"'Playfair Display',Georgia,serif", color:NAVY, fontSize:16, fontWeight:700, lineHeight:1.35, marginBottom:7, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:3, WebkitBoxOrient:"vertical" }}>{article.title}</h2>
+            <p style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:"#6b7280", lineHeight:1.6, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:2, WebkitBoxOrient:"vertical" }}>{article.deck}</p>
+          </div>
+          <div style={{ display:"flex", alignItems:"center", justifyContent:"space-between", paddingTop:11, borderTop:"1px solid #f9fafb", marginTop:11 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:7 }}>
+              <div style={{ width:26, height:26, borderRadius:"50%", background:article.author.color, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
+                <span style={{ fontFamily:"'Inter',sans-serif", color:"white", fontSize:8, fontWeight:700 }}>{article.author.initials}</span>
+              </div>
+              <div>
+                <p style={{ fontFamily:"'Inter',sans-serif", color:NAVY, fontSize:10, fontWeight:600, lineHeight:1.15 }}>{article.author.name}</p>
+                <p style={{ fontFamily:"'Inter',sans-serif", color:"#9ca3af", fontSize:9 }}>{article.readMin} min read</p>
+              </div>
+            </div>
+            <div style={{ display:"flex", alignItems:"center", gap:8 }}>
+              {/* Dot nav */}
+              <div style={{ display:"flex", gap:4 }}>
+                {[0,1,2].map(i=>(
+                  <button key={i} onClick={e=>{e.stopPropagation();setActive(i);}}
+                    style={{ width: i===active?16:6, height:6, borderRadius:3, background: i===active ? badgeColor : "#e5e7eb", border:"none", cursor:"pointer", transition:"all 0.2s" }}/>
+                ))}
+              </div>
+              {/* Arrows */}
+              <button onClick={e=>{e.stopPropagation();prev();}} style={{ width:24, height:24, borderRadius:"50%", border:"1px solid #e5e7eb", background:"white", display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"#6b7280" }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6"/></svg>
+              </button>
+              <button onClick={e=>{e.stopPropagation();next();}} style={{ width:24, height:24, borderRadius:"50%", border:"none", background:NAVY, display:"flex", alignItems:"center", justifyContent:"center", cursor:"pointer", color:"white" }}>
+                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+              </button>
             </div>
           </div>
-          <button style={{ background:NAVY, color:"white", fontFamily:"'Inter',sans-serif", fontSize:11, fontWeight:600, padding:"6px 14px", borderRadius:999, border:"none" }}>Read →</button>
         </div>
       </div>
     </div>
@@ -117,12 +201,12 @@ function ArticleRowTablet({ article, rank }: { article:typeof ARTICLES[0]; rank:
         <p style={{ fontFamily:"'Playfair Display',Georgia,serif", color:NAVY, fontSize:14, fontWeight:700, lineHeight:1.35, marginBottom:6 }}>{article.title}</p>
         <p style={{ fontFamily:"'Inter',sans-serif", fontSize:11, color:"#9ca3af", lineHeight:1.4, marginBottom:0, overflow:"hidden", display:"-webkit-box", WebkitLineClamp:1, WebkitBoxOrient:"vertical" }}>{article.deck}</p>
       </div>
-      <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, minWidth:100 }}>
+      <div style={{ flexShrink:0, display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, minWidth:116 }}>
         <div style={{ display:"flex", alignItems:"center", gap:6 }}>
-          <div style={{ width:22, height:22, borderRadius:"50%", background:article.author.color, display:"flex", alignItems:"center", justifyContent:"center" }}>
+          <div style={{ width:22, height:22, borderRadius:"50%", background:article.author.color, display:"flex", alignItems:"center", justifyContent:"center", flexShrink:0 }}>
             <span style={{ fontFamily:"'Inter',sans-serif", color:"white", fontSize:7, fontWeight:700 }}>{article.author.initials}</span>
           </div>
-          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:NAVY, fontWeight:500 }}>{article.author.name.split(" ")[0]}</span>
+          <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:NAVY, fontWeight:600, lineHeight:1.3 }}>{article.author.name}</span>
         </div>
         <div style={{ display:"flex", gap:8 }}>
           <span style={{ fontFamily:"'Inter',sans-serif", fontSize:10, color:"#9ca3af" }}>{article.readMin} min</span>
@@ -165,7 +249,7 @@ export function InsightsListViewTablet() {
           </div>
         </div>
 
-        <FeaturedTablet article={featured}/>
+        <FeaturedCarouselTablet/>
 
         {/* List header */}
         <div style={{ display:"flex", gap:12, padding:"6px 0 8px", borderBottom:"1px solid #f3f4f6" }}>
