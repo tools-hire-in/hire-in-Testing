@@ -445,42 +445,29 @@ export function InsightsListView() {
       <main>
         <div className="max-w-7xl mx-auto px-8 pt-10 pb-16">
 
-          {/* Page title + inline topic filters — single content block, no second header */}
-          <div className="mb-8">
-            <div className="flex items-end justify-between mb-4">
-              <div>
-                <h1 style={{ color: NAVY, fontFamily: "'Playfair Display',Georgia,serif" }} className="text-3xl font-bold leading-tight">Insights</h1>
-                <p style={{ fontFamily: "'Inter',sans-serif" }} className="text-sm text-gray-400 mt-1">{ARTICLES.length} articles</p>
-              </div>
-            </div>
-            {/* Filter chips — inline, part of content, not a header */}
-            <div className="flex items-center gap-2 flex-wrap">
-              <span style={{ fontFamily: "'Inter',sans-serif", color: "#9ca3af", fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginRight: 4, flexShrink: 0 }}>Topic</span>
-              {TOPIC_FILTERS.map((f) => (
-                <button key={f.label}
-                  style={{
-                    fontFamily: "'Inter',sans-serif",
-                    fontSize: 12,
-                    fontWeight: f.active ? 600 : 500,
-                    color: f.active ? NAVY : "#6b7280",
-                    background: f.active ? NAVY + "0d" : "transparent",
-                    border: f.active ? `1.5px solid ${NAVY}40` : "1.5px solid #e5e7eb",
-                    borderRadius: 20,
-                    padding: "4px 12px",
-                    cursor: "pointer",
-                    whiteSpace: "nowrap",
-                    transition: "all 0.15s",
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 5,
-                  }}>
-                  {f.active && (
-                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={NAVY} strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
-                  )}
-                  {f.label}
-                </button>
-              ))}
-            </div>
+          {/* Topic filter chips — no page title */}
+          <div className="flex items-center gap-2 flex-wrap mb-8">
+            {TOPIC_FILTERS.map((f) => (
+              <button key={f.label}
+                style={{
+                  fontFamily: "'Inter',sans-serif",
+                  fontSize: 12,
+                  fontWeight: f.active ? 700 : 500,
+                  color: f.active ? "white" : "#6b7280",
+                  background: f.active ? NAVY : "white",
+                  border: f.active ? `1.5px solid ${NAVY}` : "1.5px solid #e5e7eb",
+                  borderRadius: 20,
+                  padding: "5px 14px",
+                  cursor: "pointer",
+                  whiteSpace: "nowrap",
+                  transition: "all 0.15s",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: 5,
+                }}>
+                {f.label}
+              </button>
+            ))}
           </div>
 
           {/* Featured carousel */}
