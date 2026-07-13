@@ -80,7 +80,6 @@ import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizatio
 import { formatLocalDate } from "@/lib/dateUtils";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { usePermissions } from "@/hooks/use-permissions";
 import RegularizationsPanel from "./RegularizationsPanel";
 import GovernanceControlsTab from "@/components/admin/governance/GovernanceControlsTab";
 
