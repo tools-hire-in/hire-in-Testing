@@ -159,44 +159,40 @@ function AppHeader() {
   );
 }
 
-/* ─── Industry Filter Strip ──────────────────────────────────────────────── */
-const FILTERS = [
-  { label: "All Insights", active: false }, { label: "Healthcare", active: true },
-  { label: "Technology", active: false }, { label: "Engineering", active: false },
-  { label: "Professional Services", active: false }, { label: "Talent Strategy", active: false }, { label: "Leadership", active: false },
-];
-
-function IndustryFilterStrip() {
-  return (
-    <div className="w-full bg-white border-b border-gray-100">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="flex items-center gap-1 py-2.5">
-          {FILTERS.map((f) => (
-            <button key={f.label} style={{ fontFamily: "'Inter',sans-serif", background: f.active ? NAVY : "transparent", color: f.active ? "white" : "#6b7280", border: f.active ? `1px solid ${NAVY}` : "1px solid transparent", fontSize: 12, fontWeight: 500 }}
-              className="flex-shrink-0 px-3.5 py-1 rounded-full transition-all hover:bg-gray-50 whitespace-nowrap">{f.label}</button>
-          ))}
-          <div className="ml-auto flex-shrink-0 pl-4 border-l border-gray-100">
-            <span style={{ color: "#9ca3af", fontFamily: "'Inter',sans-serif", fontSize: 12 }} className="flex items-center gap-1.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M11 18h2" /></svg>Filter
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 /* ─── Article Header ─────────────────────────────────────────────────────── */
 function ArticleHeader() {
   const [shareOpen, setShareOpen] = useState(false);
 
   return (
-    <div className="pt-10 pb-8 border-b border-gray-100">
-      <div className="flex items-center gap-2.5 mb-5">
-        <span style={{ color: ORANGE, fontFamily: "'Inter',sans-serif", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }}>Healthcare · Talent Strategy</span>
-        <span style={{ color: "#e5e7eb" }}>—</span>
-        <span style={{ background: ORANGE + "14", color: ORANGE, border: `1px solid ${ORANGE}30`, fontFamily: "'Inter',sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }} className="px-2.5 py-0.5 rounded">Executive Insight</span>
-        <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 11 }} className="px-2.5 py-0.5 rounded bg-gray-50 text-gray-400 border border-gray-100">8 min read</span>
+    <div className="pt-8 pb-8 border-b border-gray-100">
+
+      {/* Breadcrumb — replaces the second header bar */}
+      <nav className="flex items-center gap-1.5 mb-6" aria-label="breadcrumb">
+        <a href="#" style={{ fontFamily: "'Inter',sans-serif", color: "#9ca3af", fontSize: 12, textDecoration: "none" }}
+          className="hover:text-gray-600 transition-colors flex items-center gap-1">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+          Insights
+        </a>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        <a href="#" style={{ fontFamily: "'Inter',sans-serif", color: "#9ca3af", fontSize: 12, textDecoration: "none" }}
+          className="hover:text-gray-600 transition-colors">Healthcare</a>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        <a href="#" style={{ fontFamily: "'Inter',sans-serif", color: "#9ca3af", fontSize: 12, textDecoration: "none" }}
+          className="hover:text-gray-600 transition-colors">Talent Strategy</a>
+        <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#d1d5db" strokeWidth="2.5"><polyline points="9 18 15 12 9 6"/></svg>
+        <span style={{ fontFamily: "'Inter',sans-serif", color: "#4b5563", fontSize: 12, fontWeight: 500 }}>Article</span>
+      </nav>
+
+      {/* Article meta pills row */}
+      <div className="flex items-center gap-2 mb-5">
+        <span style={{ background: ORANGE + "14", color: ORANGE, border: `1px solid ${ORANGE}30`, fontFamily: "'Inter',sans-serif", fontSize: 10, fontWeight: 700, letterSpacing: "0.08em", textTransform: "uppercase" }} className="px-2.5 py-1 rounded-full">Executive Insight</span>
+        <span style={{ background: "#f3f4f6", color: "#6b7280", fontFamily: "'Inter',sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }} className="px-2.5 py-1 rounded-full">Healthcare</span>
+        <span style={{ background: "#f3f4f6", color: "#6b7280", fontFamily: "'Inter',sans-serif", fontSize: 10, fontWeight: 600, letterSpacing: "0.06em", textTransform: "uppercase" }} className="px-2.5 py-1 rounded-full">Talent Strategy</span>
+        <div className="w-px h-4 bg-gray-200 mx-1" />
+        <span style={{ fontFamily: "'Inter',sans-serif", fontSize: 12, color: "#9ca3af" }} className="flex items-center gap-1">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          8 min read
+        </span>
       </div>
       <h1 style={{ color: NAVY, fontFamily: "'Playfair Display', Georgia, serif", lineHeight: 1.12, letterSpacing: "-0.02em" }} className="text-5xl font-bold mb-5 max-w-3xl">
         Why Healthcare Systems Are Losing Top Clinical Talent — And the Three Shifts That Will Stop the Bleeding
@@ -568,7 +564,6 @@ export function ArticlePreview() {
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Inter:wght@300;400;500;600;700&display=swap" />
 
       <AppHeader />
-      <IndustryFilterStrip />
 
       {/* Page content — flex-1 so footer sits flush */}
       <main className="flex-1">

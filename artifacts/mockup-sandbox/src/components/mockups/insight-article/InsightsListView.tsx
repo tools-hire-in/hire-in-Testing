@@ -53,31 +53,11 @@ function AppHeader() {
   );
 }
 
-/* ─── Industry Filter Strip ─────────────────────────────────────────────── */
-const FILTERS = [
+const TOPIC_FILTERS = [
   { label: "All Insights", active: false }, { label: "Healthcare", active: true },
   { label: "Technology", active: false }, { label: "Engineering", active: false },
   { label: "Professional Services", active: false }, { label: "Talent Strategy", active: false }, { label: "Leadership", active: false },
 ];
-function IndustryFilterStrip() {
-  return (
-    <div className="w-full bg-white border-b border-gray-100">
-      <div className="max-w-7xl mx-auto px-6">
-        <div className="flex items-center gap-1 py-2.5">
-          {FILTERS.map((f) => (
-            <button key={f.label} style={{ fontFamily: "'Inter', sans-serif", background: f.active ? NAVY : "transparent", color: f.active ? "white" : "#6b7280", border: f.active ? `1px solid ${NAVY}` : "1px solid transparent", fontSize: 12, fontWeight: 500 }}
-              className="flex-shrink-0 px-3.5 py-1 rounded-full transition-all whitespace-nowrap">{f.label}</button>
-          ))}
-          <div className="ml-auto flex-shrink-0 pl-4 border-l border-gray-100">
-            <span style={{ color: "#9ca3af", fontFamily: "'Inter', sans-serif", fontSize: 12 }} className="flex items-center gap-1.5">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M7 12h10M11 18h2" /></svg>Filter
-            </span>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 /* ─── Data ───────────────────────────────────────────────────────────────── */
 const TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
@@ -475,16 +455,45 @@ export function InsightsListView() {
         href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;0,800;1,400&family=Inter:wght@300;400;500;600;700&display=swap" />
 
       <AppHeader />
-      <IndustryFilterStrip />
 
       <main className="flex-1">
         <div className="max-w-7xl mx-auto px-8 pt-10 pb-16">
 
-          {/* Page title row — no relevance dropdown, no tile/grid toggle */}
-          <div className="flex items-center justify-between mb-8">
-            <div>
-              <h1 style={{ color: NAVY, fontFamily: "'Playfair Display',Georgia,serif" }} className="text-3xl font-bold leading-tight">Healthcare Insights</h1>
-              <p style={{ fontFamily: "'Inter',sans-serif" }} className="text-sm text-gray-400 mt-1">{ARTICLES.length} articles</p>
+          {/* Page title + inline topic filters — single content block, no second header */}
+          <div className="mb-8">
+            <div className="flex items-end justify-between mb-4">
+              <div>
+                <h1 style={{ color: NAVY, fontFamily: "'Playfair Display',Georgia,serif" }} className="text-3xl font-bold leading-tight">Insights</h1>
+                <p style={{ fontFamily: "'Inter',sans-serif" }} className="text-sm text-gray-400 mt-1">{ARTICLES.length} articles</p>
+              </div>
+            </div>
+            {/* Filter chips — inline, part of content, not a header */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <span style={{ fontFamily: "'Inter',sans-serif", color: "#9ca3af", fontSize: 11, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", marginRight: 4, flexShrink: 0 }}>Topic</span>
+              {TOPIC_FILTERS.map((f) => (
+                <button key={f.label}
+                  style={{
+                    fontFamily: "'Inter',sans-serif",
+                    fontSize: 12,
+                    fontWeight: f.active ? 600 : 500,
+                    color: f.active ? NAVY : "#6b7280",
+                    background: f.active ? NAVY + "0d" : "transparent",
+                    border: f.active ? `1.5px solid ${NAVY}40` : "1.5px solid #e5e7eb",
+                    borderRadius: 20,
+                    padding: "4px 12px",
+                    cursor: "pointer",
+                    whiteSpace: "nowrap",
+                    transition: "all 0.15s",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 5,
+                  }}>
+                  {f.active && (
+                    <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke={NAVY} strokeWidth="3"><polyline points="20 6 9 17 4 12"/></svg>
+                  )}
+                  {f.label}
+                </button>
+              ))}
             </div>
           </div>
 
