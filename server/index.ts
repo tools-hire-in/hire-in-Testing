@@ -4186,9 +4186,50 @@ async function runStartupTasks() {
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_gc_owner_status ON governance_controls(owner_id, status)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_gc_manager_status ON governance_controls(manager_id, status)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_gc_due_date ON governance_controls(due_date) WHERE status NOT IN ('closed','completed')`);
+    // Stable identity: one active control per source obligation (reference_id-keyed).
+    // Does not cover manually-created controls (reference_id IS NULL).
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_gc_ref_identity
+        ON governance_controls(control_type, reference_id)
+        WHERE reference_id IS NOT NULL AND status NOT IN ('closed','completed')
+    `);
     log("Governance controls table ensured");
   } catch (err) {
     console.error("[startup] Governance controls table ensure error:", err);
+  }
+
+  // ── Governance event history ──────────────────────────────────────────────
+  try {
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'governance_event_source') THEN
+          CREATE TYPE governance_event_source AS ENUM ('user','sync','scheduler','api');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'governance_event_type') THEN
+          CREATE TYPE governance_event_type AS ENUM (
+            'created','assigned','reassigned','status_changed','evidence_submitted',
+            'disputed','escalated','closed','reopened','exception_recorded','sync_updated'
+          );
+        END IF;
+      END $$
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS governance_events (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        control_id VARCHAR NOT NULL REFERENCES governance_controls(id),
+        event_type governance_event_type NOT NULL,
+        actor_id VARCHAR,
+        actor_ref VARCHAR,
+        source governance_event_source NOT NULL DEFAULT 'user',
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_ge_control_id ON governance_events(control_id, created_at DESC)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_ge_actor ON governance_events(actor_id) WHERE actor_id IS NOT NULL`);
+    log("Governance events table ensured");
+  } catch (err) {
+    console.error("[startup] Governance events table ensure error:", err);
   }
 
   // Cron/scheduled jobs start only after schema is ensured so they query

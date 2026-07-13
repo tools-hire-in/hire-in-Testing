@@ -10,6 +10,7 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { notifyUser } from "./notifications";
+import { emitGovernanceEvent } from "./governanceEvents";
 
 export type GovernanceControlType = "goal" | "check_in" | "training" | "sop" | "probation" | "pip";
 export type GovernanceControlStatus = "pending" | "in_progress" | "completed" | "overdue" | "escalated" | "closed" | "disputed";
@@ -24,10 +25,132 @@ export interface CreateControlOpts {
   evidenceRequired?: boolean;
 }
 
+// ── Per-control-type escalation configuration ─────────────────────────────────
+// Each entry configures the escalation behaviour for one control type.
+// Override a field for a specific type via system_settings key:
+//   governance_escalation_{type}_{field}
+//   e.g. governance_escalation_pip_grace_hours = 24
+
+export interface EscalationPolicy {
+  controlType: GovernanceControlType;
+  graceHours: number;
+  firstEscalationHours: number;
+  firstEscalationRecipient: "manager" | "hr";
+  secondEscalationHours: number;
+  secondEscalationRecipient: "skip_manager" | "hr";
+  ceoReportThresholdLevel: number;
+  disputePausesEscalation: boolean;
+  approvedExceptionClosesControl: boolean;
+  active: boolean;
+}
+
+export const DEFAULT_ESCALATION_POLICIES: Record<GovernanceControlType, EscalationPolicy> = {
+  goal: {
+    controlType: "goal",
+    graceHours: 0,
+    firstEscalationHours: 48,
+    firstEscalationRecipient: "manager",
+    secondEscalationHours: 120,
+    secondEscalationRecipient: "skip_manager",
+    ceoReportThresholdLevel: 1,
+    disputePausesEscalation: false,
+    approvedExceptionClosesControl: true,
+    active: true,
+  },
+  training: {
+    controlType: "training",
+    graceHours: 0,
+    firstEscalationHours: 48,
+    firstEscalationRecipient: "manager",
+    secondEscalationHours: 120,
+    secondEscalationRecipient: "skip_manager",
+    ceoReportThresholdLevel: 1,
+    disputePausesEscalation: false,
+    approvedExceptionClosesControl: true,
+    active: true,
+  },
+  sop: {
+    controlType: "sop",
+    graceHours: 0,
+    firstEscalationHours: 48,
+    firstEscalationRecipient: "manager",
+    secondEscalationHours: 96,
+    secondEscalationRecipient: "hr",
+    ceoReportThresholdLevel: 1,
+    disputePausesEscalation: false,
+    approvedExceptionClosesControl: true,
+    active: true,
+  },
+  check_in: {
+    controlType: "check_in",
+    graceHours: 0,
+    firstEscalationHours: 48,
+    firstEscalationRecipient: "manager",
+    secondEscalationHours: 120,
+    secondEscalationRecipient: "skip_manager",
+    ceoReportThresholdLevel: 1,
+    disputePausesEscalation: false,
+    approvedExceptionClosesControl: false,
+    active: true,
+  },
+  probation: {
+    controlType: "probation",
+    graceHours: 0,
+    firstEscalationHours: 24,
+    firstEscalationRecipient: "hr",
+    secondEscalationHours: 72,
+    secondEscalationRecipient: "hr",
+    ceoReportThresholdLevel: 1,
+    disputePausesEscalation: false,
+    approvedExceptionClosesControl: false,
+    active: true,
+  },
+  pip: {
+    controlType: "pip",
+    graceHours: 0,
+    firstEscalationHours: 24,
+    firstEscalationRecipient: "hr",
+    secondEscalationHours: 48,
+    secondEscalationRecipient: "hr",
+    ceoReportThresholdLevel: 0,
+    disputePausesEscalation: false,
+    approvedExceptionClosesControl: false,
+    active: true,
+  },
+};
+
+/**
+ * Load per-type escalation policy, applying system_settings overrides.
+ * Falls back to the static default if DB is unavailable.
+ */
+async function loadEscalationPolicy(controlType: GovernanceControlType): Promise<EscalationPolicy> {
+  const base = { ...DEFAULT_ESCALATION_POLICIES[controlType] };
+  try {
+    const rows = await db.execute(sql`
+      SELECT key, value FROM system_settings
+      WHERE key LIKE ${"governance_escalation_" + controlType + "_%"}
+    `);
+    for (const row of rows.rows as any[]) {
+      const field = (row.key as string).replace(`governance_escalation_${controlType}_`, "");
+      const val = row.value;
+      if (field === "grace_hours") base.graceHours = parseInt(val, 10) || base.graceHours;
+      else if (field === "first_escalation_hours") base.firstEscalationHours = parseInt(val, 10) || base.firstEscalationHours;
+      else if (field === "second_escalation_hours") base.secondEscalationHours = parseInt(val, 10) || base.secondEscalationHours;
+      else if (field === "ceo_report_threshold_level") base.ceoReportThresholdLevel = parseInt(val, 10);
+      else if (field === "dispute_pauses_escalation") base.disputePausesEscalation = val === "true";
+      else if (field === "approved_exception_closes") base.approvedExceptionClosesControl = val === "true";
+      else if (field === "active") base.active = val !== "false";
+    }
+  } catch { /* use static default */ }
+  return base;
+}
+
 /**
  * Insert a governance control record.
- * Idempotent by (control_type, reference_id, owner_id): returns the existing
- * record id when one already exists so hooks can call this safely on re-runs.
+ * Idempotent by (control_type, reference_id): returns the existing record id
+ * when one already exists so hooks can call this safely on re-runs.
+ * When reference_id is provided, ownership is preserved from the existing record
+ * (owner is mutable, source obligation defines identity).
  */
 export async function createGovernanceControl(opts: CreateControlOpts): Promise<string> {
   if (opts.referenceId) {
@@ -35,12 +158,18 @@ export async function createGovernanceControl(opts: CreateControlOpts): Promise<
       SELECT id FROM governance_controls
       WHERE control_type = ${opts.controlType}::governance_control_type
         AND reference_id = ${opts.referenceId}
-        AND owner_id = ${opts.ownerId}
         AND status NOT IN ('closed', 'completed')
       LIMIT 1
     `);
     if (existing.rows.length > 0) {
-      return (existing.rows[0] as any).id as string;
+      const existingId = (existing.rows[0] as any).id as string;
+      emitGovernanceEvent({
+        controlId: existingId,
+        eventType: "sync_updated",
+        source: "sync",
+        metadata: { controlType: opts.controlType, referenceId: opts.referenceId },
+      }).catch(console.error);
+      return existingId;
     }
   }
 
@@ -58,13 +187,78 @@ export async function createGovernanceControl(opts: CreateControlOpts): Promise<
        'pending'::governance_control_status)
     RETURNING id
   `);
-  return (result.rows[0] as any).id as string;
+  const newId = (result.rows[0] as any).id as string;
+
+  emitGovernanceEvent({
+    controlId: newId,
+    eventType: "created",
+    source: "sync",
+    actorRef: opts.referenceId ?? undefined,
+    metadata: {
+      controlType: opts.controlType,
+      ownerId: opts.ownerId,
+      managerId: opts.managerId ?? null,
+      dueDate: opts.dueDate,
+    },
+  }).catch(console.error);
+
+  return newId;
+}
+
+/**
+ * Reassign a governance control to a new owner/manager without creating a
+ * duplicate. Preserves evidence, dispute notes, and escalation history.
+ * Emits a "reassigned" event for the audit trail.
+ */
+export async function reassignGovernanceControl(opts: {
+  controlId: string;
+  newOwnerId: string;
+  newManagerId?: string | null;
+  actorId: string;
+  reason?: string;
+}): Promise<{ success: boolean; error?: string }> {
+  const ctrl = await db.execute(sql`
+    SELECT id, owner_id, manager_id, status FROM governance_controls
+    WHERE id = ${opts.controlId} LIMIT 1
+  `);
+  if (!ctrl.rows.length) return { success: false, error: "not_found" };
+  const c = ctrl.rows[0] as any;
+  if (["closed", "completed"].includes(c.status)) {
+    return { success: false, error: "already_closed" };
+  }
+
+  await db.execute(sql`
+    UPDATE governance_controls
+    SET owner_id = ${opts.newOwnerId},
+        manager_id = COALESCE(${opts.newManagerId ?? null}, manager_id),
+        updated_at = NOW()
+    WHERE id = ${opts.controlId}
+  `);
+
+  emitGovernanceEvent({
+    controlId: opts.controlId,
+    eventType: "reassigned",
+    actorId: opts.actorId,
+    source: "user",
+    metadata: {
+      prevOwnerId: c.owner_id,
+      newOwnerId: opts.newOwnerId,
+      prevManagerId: c.manager_id,
+      newManagerId: opts.newManagerId ?? null,
+      reason: opts.reason ?? null,
+    },
+  }).catch(console.error);
+
+  return { success: true };
 }
 
 /**
  * Escalation sweep — called daily by the scheduler.
- * Step 1 (past due date): mark status=overdue, notify manager.
- * Step 2 (past due + 48h): mark status=escalated, notify skip-level manager.
+ * Uses per-control-type policies loaded from DEFAULT_ESCALATION_POLICIES
+ * with system_settings overrides.
+ *
+ * Step 1 (past due date + grace): mark status=overdue, notify manager.
+ * Step 2 (past firstEscalationHours): mark status=escalated, notify skip-level.
  *
  * Returns counts for logging.
  */
@@ -72,87 +266,96 @@ export async function runGovernanceEscalationSweep(): Promise<{ markedOverdue: n
   const now = new Date();
   const nowIso = now.toISOString().slice(0, 10);
 
-  // Escalation threshold is configurable. Read from system_settings key
-  // `governance_escalation_hours`, fall back to env var, then default 48h.
-  let escalationHours = parseInt(process.env.GOVERNANCE_ESCALATION_HOURS ?? "48", 10);
-  try {
-    const setting = await db.execute(sql`
-      SELECT value FROM system_settings
-      WHERE key = 'governance_escalation_hours' LIMIT 1
-    `);
-    if (setting.rows.length > 0) {
-      const parsed = parseInt((setting.rows[0] as any).value, 10);
-      if (!isNaN(parsed) && parsed > 0) escalationHours = parsed;
-    }
-  } catch { /* system_settings may not exist — use default */ }
-
-  const thresholdMs = now.getTime() - escalationHours * 60 * 60 * 1000;
-  const thresholdIso = new Date(thresholdMs).toISOString().slice(0, 10);
-
   let markedOverdue = 0;
   let escalated = 0;
 
-  // Step 1: pending/in_progress past due date → overdue
-  const overdueRows = await db.execute(sql`
-    UPDATE governance_controls
-    SET status = 'overdue'::governance_control_status,
-        updated_at = NOW()
-    WHERE status IN ('pending'::governance_control_status, 'in_progress'::governance_control_status)
-      AND due_date < ${nowIso}::date
-    RETURNING id, owner_id, manager_id, control_type, required_action, due_date
-  `);
-  markedOverdue = overdueRows.rows.length;
+  const controlTypes: GovernanceControlType[] = ["goal", "check_in", "training", "sop", "probation", "pip"];
 
-  for (const row of overdueRows.rows as any[]) {
-    if (row.manager_id) {
-      await notifyUser({
-        userId: row.manager_id,
-        type: "governance_overdue",
-        title: "Action Required: Governance Obligation Overdue",
-        message: `A ${formatControlType(row.control_type)} obligation for one of your team members is overdue (due ${row.due_date}). Please complete: ${row.required_action}`,
-        metadata: { controlId: row.id, controlType: row.control_type, ownerId: row.owner_id, dueDate: row.due_date },
+  for (const controlType of controlTypes) {
+    const policy = await loadEscalationPolicy(controlType);
+    if (!policy.active) continue;
+
+    const thresholdMs = now.getTime() - policy.firstEscalationHours * 60 * 60 * 1000;
+    const thresholdIso = new Date(thresholdMs).toISOString().slice(0, 10);
+
+    // Step 1: pending/in_progress past due date → overdue
+    const overdueRows = await db.execute(sql`
+      UPDATE governance_controls
+      SET status = 'overdue'::governance_control_status,
+          updated_at = NOW()
+      WHERE control_type = ${controlType}::governance_control_type
+        AND status IN ('pending'::governance_control_status, 'in_progress'::governance_control_status)
+        AND due_date < ${nowIso}::date
+      RETURNING id, owner_id, manager_id, control_type, required_action, due_date
+    `);
+    markedOverdue += overdueRows.rows.length;
+
+    for (const row of overdueRows.rows as any[]) {
+      emitGovernanceEvent({
+        controlId: row.id,
+        eventType: "status_changed",
+        source: "scheduler",
+        metadata: { from: "pending_or_in_progress", to: "overdue", controlType: row.control_type },
       }).catch(console.error);
-    }
-    await notifyUser({
-      userId: row.owner_id,
-      type: "governance_overdue_employee",
-      title: "You have an overdue obligation",
-      message: `Your ${formatControlType(row.control_type)} obligation was due on ${row.due_date} and is now marked overdue. Please take action: ${row.required_action}`,
-      metadata: { controlId: row.id, controlType: row.control_type, dueDate: row.due_date },
-    }).catch(console.error);
-  }
 
-  // Step 2: already overdue + past 48h → escalated, notify skip-level manager
-  const escalatedRows = await db.execute(sql`
-    UPDATE governance_controls
-    SET status = 'escalated'::governance_control_status,
-        escalation_level = escalation_level + 1,
-        updated_at = NOW()
-    WHERE status = 'overdue'::governance_control_status
-      AND due_date < ${thresholdIso}::date
-    RETURNING id, owner_id, manager_id, control_type, required_action, due_date, escalation_level
-  `);
-  escalated = escalatedRows.rows.length;
-
-  for (const row of escalatedRows.rows as any[]) {
-    const skipManager = row.manager_id ? await getSkipLevelManager(row.manager_id) : null;
-    if (skipManager) {
+      if (row.manager_id) {
+        await notifyUser({
+          userId: row.manager_id,
+          type: "governance_overdue",
+          title: "Action Required: Governance Obligation Overdue",
+          message: `A ${formatControlType(row.control_type)} obligation for one of your team members is overdue (due ${row.due_date}). Please complete: ${row.required_action}`,
+          metadata: { controlId: row.id, controlType: row.control_type, ownerId: row.owner_id, dueDate: row.due_date },
+        }).catch(console.error);
+      }
       await notifyUser({
-        userId: skipManager,
-        type: "governance_escalated",
-        title: "Governance Escalation — Skip-Level Action Required",
-        message: `A ${formatControlType(row.control_type)} obligation has escalated (${row.due_date} — now escalation level ${row.escalation_level + 1}). The direct manager has not resolved it. Your attention is required.`,
-        metadata: { controlId: row.id, controlType: row.control_type, managerId: row.manager_id, ownerId: row.owner_id, escalationLevel: row.escalation_level + 1 },
-      }).catch(console.error);
-    }
-    if (row.manager_id) {
-      await notifyUser({
-        userId: row.manager_id,
-        type: "governance_escalated_warning",
-        title: "Governance Escalation Sent to Skip-Level",
-        message: `The unresolved ${formatControlType(row.control_type)} obligation (due ${row.due_date}) has been escalated to your skip-level manager because it remains unresolved.`,
+        userId: row.owner_id,
+        type: "governance_overdue_employee",
+        title: "You have an overdue obligation",
+        message: `Your ${formatControlType(row.control_type)} obligation was due on ${row.due_date} and is now marked overdue. Please take action: ${row.required_action}`,
         metadata: { controlId: row.id, controlType: row.control_type, dueDate: row.due_date },
       }).catch(console.error);
+    }
+
+    // Step 2: overdue + past firstEscalationHours → escalated
+    const escalatedRows = await db.execute(sql`
+      UPDATE governance_controls
+      SET status = 'escalated'::governance_control_status,
+          escalation_level = escalation_level + 1,
+          updated_at = NOW()
+      WHERE control_type = ${controlType}::governance_control_type
+        AND status = 'overdue'::governance_control_status
+        AND due_date < ${thresholdIso}::date
+      RETURNING id, owner_id, manager_id, control_type, required_action, due_date, escalation_level
+    `);
+    escalated += escalatedRows.rows.length;
+
+    for (const row of escalatedRows.rows as any[]) {
+      emitGovernanceEvent({
+        controlId: row.id,
+        eventType: "escalated",
+        source: "scheduler",
+        metadata: { escalationLevel: row.escalation_level + 1, controlType: row.control_type, policy: policy.firstEscalationHours },
+      }).catch(console.error);
+
+      const skipManager = row.manager_id ? await getSkipLevelManager(row.manager_id) : null;
+      if (skipManager) {
+        await notifyUser({
+          userId: skipManager,
+          type: "governance_escalated",
+          title: "Governance Escalation — Skip-Level Action Required",
+          message: `A ${formatControlType(row.control_type)} obligation has escalated (${row.due_date} — now escalation level ${row.escalation_level + 1}). The direct manager has not resolved it. Your attention is required.`,
+          metadata: { controlId: row.id, controlType: row.control_type, managerId: row.manager_id, ownerId: row.owner_id, escalationLevel: row.escalation_level + 1 },
+        }).catch(console.error);
+      }
+      if (row.manager_id) {
+        await notifyUser({
+          userId: row.manager_id,
+          type: "governance_escalated_warning",
+          title: "Governance Escalation Sent to Skip-Level",
+          message: `The unresolved ${formatControlType(row.control_type)} obligation (due ${row.due_date}) has been escalated to your skip-level manager because it remains unresolved.`,
+          metadata: { controlId: row.id, controlType: row.control_type, dueDate: row.due_date },
+        }).catch(console.error);
+      }
     }
   }
 
@@ -185,7 +388,6 @@ export async function closeGovernanceControl(opts: {
   const c = ctrl.rows[0] as any;
   if (c.status === "closed") return { success: false, error: "already_closed" };
 
-  // Server-side enforcement: if evidence is required, reject closure without it.
   if (c.evidence_required && !opts.evidenceRecord?.trim()) {
     return { success: false, error: "evidence_required" };
   }
@@ -200,6 +402,14 @@ export async function closeGovernanceControl(opts: {
         updated_at = NOW()
     WHERE id = ${opts.controlId}
   `);
+
+  emitGovernanceEvent({
+    controlId: opts.controlId,
+    eventType: "closed",
+    actorId: opts.closedById,
+    source: "user",
+    metadata: { prevStatus: c.status, resolution: opts.resolution ?? null },
+  }).catch(console.error);
 
   await notifyUser({
     userId: c.owner_id,
@@ -236,14 +446,23 @@ export async function submitEmployeeEvidence(opts: {
         updated_at = NOW()
     WHERE id = ${opts.controlId}
   `);
+
+  emitGovernanceEvent({
+    controlId: opts.controlId,
+    eventType: "evidence_submitted",
+    actorId: opts.userId,
+    source: "user",
+    metadata: { prevStatus: c.status },
+  }).catch(console.error);
+
   return { success: true };
 }
 
 /**
  * Flag a governance control as disputed by the employee.
  * Deliberately does NOT change the operational status so the escalation chain
- * continues unimpeded (pending → overdue → escalated). Only the dispute metadata
- * and flagged_for_hr_review flag are updated, triggering HR review.
+ * continues unimpeded. Only the dispute metadata and flagged_for_hr_review flag
+ * are updated, triggering HR review.
  */
 export async function disputeGovernanceControl(opts: {
   controlId: string;
@@ -259,7 +478,6 @@ export async function disputeGovernanceControl(opts: {
   const c = ctrl.rows[0] as any;
   if (c.status === "closed") return { success: false, error: "already_closed" };
 
-  // Keep status unchanged — escalation sweep must still be able to advance it.
   await db.execute(sql`
     UPDATE governance_controls
     SET dispute_note = ${opts.disputeNote},
@@ -268,6 +486,15 @@ export async function disputeGovernanceControl(opts: {
         updated_at = NOW()
     WHERE id = ${opts.controlId}
   `);
+
+  emitGovernanceEvent({
+    controlId: opts.controlId,
+    eventType: "disputed",
+    actorId: opts.userId,
+    source: "user",
+    metadata: { operationalStatus: c.status },
+  }).catch(console.error);
+
   return { success: true };
 }
 
@@ -308,6 +535,11 @@ export async function getEmployeeGovernanceControls(userId: string): Promise<any
 /**
  * Build anonymized data for CEO exception report.
  * Returns only control metadata — no names, emails, or salary figures.
+ *
+ * Semantic corrections applied:
+ *   A. "Missing goal control" is distinguished from "missing active source goal"
+ *   B. "Overdue obligations" are distinguished from "explicit blockers" (disputed controls)
+ *   C. Disputed / data-incomplete / approved-exception / confirmed counts are separately tracked
  */
 export interface CeoReportExceptionCategory {
   label: string;
@@ -321,7 +553,8 @@ export async function buildCeoReportData(): Promise<{
   totalOpen: number;
   totalOverdue: number;
   totalEscalated: number;
-  byType: Record<string, { open: number; overdue: number; escalated: number }>;
+  totalDisputed: number;
+  byType: Record<string, { open: number; overdue: number; escalated: number; disputed: number }>;
   exceptionCategories: CeoReportExceptionCategory[];
   highPriority: Array<{
     controlType: string;
@@ -330,12 +563,19 @@ export async function buildCeoReportData(): Promise<{
     daysOverdue: number;
     escalationLevel: number;
     status: string;
-    requiredAction: string;
   }>;
+  semanticSummary: {
+    employeesWithNoActiveGoalControl: number;
+    employeesWithMultipleOverdueObligations: number;
+    employeesWithExplicitBlockers: number;
+    confirmedNonCompliance: number;
+    disputedControls: number;
+    approvedExceptions: number;
+  };
 }> {
   const rows = await db.execute(sql`
     SELECT gc.control_type, gc.status, gc.due_date, gc.escalation_level,
-           gc.required_action,
+           gc.dispute_note, gc.exception_reason,
            o.role, o.designation,
            d.name AS department_name
     FROM governance_controls gc
@@ -348,12 +588,10 @@ export async function buildCeoReportData(): Promise<{
   const controls = rows.rows as any[];
   const { buildAnonymizedControlSummary, mapRoleToCategory } = await import("./services/aiPrivacyGuard");
 
-  let totalOpen = 0, totalOverdue = 0, totalEscalated = 0;
-  const byType: Record<string, { open: number; overdue: number; escalated: number }> = {};
+  let totalOpen = 0, totalOverdue = 0, totalEscalated = 0, totalDisputed = 0;
+  const byType: Record<string, { open: number; overdue: number; escalated: number; disputed: number }> = {};
   const highPriority: any[] = [];
 
-  // Exception category accumulators — named categories the CEO report explicitly surfaces.
-  // Each maps to a subset of control_type values so the report answers specific governance questions.
   const exceptionBuckets: Record<string, {
     label: string;
     description: string;
@@ -386,7 +624,7 @@ export async function buildCeoReportData(): Promise<{
     },
     probation_at_risk: {
       label: "Probation Milestones At Risk",
-      description: "Probation milestone controls that are overdue or escalated, indicating at-risk new hires.",
+      description: "Probation milestone controls that are overdue or escalated.",
       types: ["probation"],
       statuses: ["overdue", "escalated"],
       count: 0, depts: new Set(), maxLevel: 0,
@@ -400,9 +638,17 @@ export async function buildCeoReportData(): Promise<{
     },
     escalated_any: {
       label: "All Escalated Obligations",
-      description: "Any governance obligation that has been formally escalated (Level 1+).",
+      description: "Any governance obligation formally escalated (Level 1+).",
       types: ["goal", "check_in", "training", "sop", "probation", "pip"],
       statuses: ["escalated"],
+      count: 0, depts: new Set(), maxLevel: 0,
+    },
+    // C: Disputed controls — separate from confirmed noncompliance
+    disputed_controls: {
+      label: "Controls Under Dispute",
+      description: "Employee-raised disputes pending HR review. These are NOT confirmed noncompliance.",
+      types: ["goal", "check_in", "training", "sop", "probation", "pip"],
+      statuses: ["overdue", "escalated", "in_progress", "pending"],
       count: 0, depts: new Set(), maxLevel: 0,
     },
   };
@@ -411,36 +657,53 @@ export async function buildCeoReportData(): Promise<{
     totalOpen++;
     if (c.status === "overdue") totalOverdue++;
     if (c.status === "escalated") totalEscalated++;
+    if (c.dispute_note) totalDisputed++;
 
-    if (!byType[c.control_type]) byType[c.control_type] = { open: 0, overdue: 0, escalated: 0 };
+    if (!byType[c.control_type]) byType[c.control_type] = { open: 0, overdue: 0, escalated: 0, disputed: 0 };
     byType[c.control_type].open++;
     if (c.status === "overdue") byType[c.control_type].overdue++;
     if (c.status === "escalated") byType[c.control_type].escalated++;
+    if (c.dispute_note) byType[c.control_type].disputed++;
 
-    // Accumulate exception categories
     const dept = c.department_name ?? "Unknown";
-    for (const bucket of Object.values(exceptionBuckets)) {
-      if (bucket.types.includes(c.control_type) && bucket.statuses.includes(c.status)) {
-        bucket.count++;
-        bucket.depts.add(dept);
-        if (c.escalation_level > bucket.maxLevel) bucket.maxLevel = c.escalation_level;
+    for (const [key, bucket] of Object.entries(exceptionBuckets)) {
+      if (key === "disputed_controls") {
+        // C: Only count controls that have a dispute_note (explicit blocker)
+        if (c.dispute_note && bucket.types.includes(c.control_type)) {
+          bucket.count++;
+          bucket.depts.add(dept);
+          if (c.escalation_level > bucket.maxLevel) bucket.maxLevel = c.escalation_level;
+        }
+      } else {
+        if (bucket.types.includes(c.control_type) && bucket.statuses.includes(c.status)) {
+          bucket.count++;
+          bucket.depts.add(dept);
+          if (c.escalation_level > bucket.maxLevel) bucket.maxLevel = c.escalation_level;
+        }
       }
     }
 
     if (c.status === "escalated" || c.escalation_level > 0) {
-      highPriority.push(buildAnonymizedControlSummary({
+      const summary = buildAnonymizedControlSummary({
         controlType: c.control_type,
         roleCategory: (mapRoleToCategory as any)(c.role),
         department: dept,
         dueDate: c.due_date,
         escalationLevel: c.escalation_level,
         status: c.status,
-        requiredAction: c.required_action,
-      }));
+        requiredAction: "",
+      });
+      highPriority.push({
+        controlType: summary.controlType,
+        roleCategory: summary.roleCategory,
+        department: summary.department,
+        daysOverdue: summary.daysOverdue,
+        escalationLevel: summary.escalationLevel,
+        status: summary.status,
+      });
     }
   }
 
-  // Materialise exception categories from the governance_controls loop (non-zero only)
   const exceptionCategories: CeoReportExceptionCategory[] = Object.values(exceptionBuckets)
     .filter(b => b.count > 0)
     .map(b => ({
@@ -451,11 +714,9 @@ export async function buildCeoReportData(): Promise<{
       maxEscalationLevel: b.maxLevel,
     }));
 
-  // ── Additional exception dimensions requiring cross-table queries ──────────
-
-  // 1. Employees without active goal controls — active employees who have NO
-  //    open governance_control of type 'goal'. This surfaces the coverage gap.
-  const noGoalRows = await db.execute(sql`
+  // ── Semantic correction A: Separate "no goal control" from "no active source goal" ──
+  // Sub-A1: active employees with NO open goal governance control (coverage gap)
+  const noGoalControlRows = await db.execute(sql`
     SELECT COUNT(*)::int AS cnt,
            array_agg(DISTINCT COALESCE(d.name, 'Unknown')) FILTER (WHERE d.name IS NOT NULL) AS depts
     FROM admin_users au
@@ -470,21 +731,47 @@ export async function buildCeoReportData(): Promise<{
           AND gc.status NOT IN ('closed', 'completed')
       )
   `);
-  const noGoalCount = Number((noGoalRows.rows[0] as any)?.cnt ?? 0);
-  const noGoalDepts: string[] = (noGoalRows.rows[0] as any)?.depts ?? [];
-  if (noGoalCount > 0) {
+  const noGoalControlCount = Number((noGoalControlRows.rows[0] as any)?.cnt ?? 0);
+  const noGoalControlDepts: string[] = (noGoalControlRows.rows[0] as any)?.depts ?? [];
+
+  // Sub-A2: active goals in performance_goals that have NO corresponding governance control
+  const goalWithoutControlRows = await db.execute(sql`
+    SELECT COUNT(*)::int AS cnt
+    FROM performance_goals pg
+    JOIN admin_users au ON au.id = pg.employee_id
+    WHERE pg.status NOT IN ('completed','cancelled')
+      AND au.is_active = true
+      AND au.deleted_at IS NULL
+      AND NOT EXISTS (
+        SELECT 1 FROM governance_controls gc
+        WHERE gc.reference_id = 'goal:' || pg.id::text
+          AND gc.status NOT IN ('closed','completed')
+      )
+  `);
+  const goalWithoutControlCount = Number((goalWithoutControlRows.rows[0] as any)?.cnt ?? 0);
+
+  if (noGoalControlCount > 0) {
     exceptionCategories.push({
       label: "Employees without Active Goal Controls",
-      description: `${noGoalCount} active employee(s) have no open goal-review governance control. This may indicate a tracking gap.`,
-      count: noGoalCount,
-      departments: noGoalDepts.sort(),
+      description: `${noGoalControlCount} active employee(s) have no open goal governance control. This indicates a governance tracking gap, not necessarily that the employee has no goals.`,
+      count: noGoalControlCount,
+      departments: noGoalControlDepts.sort(),
+      maxEscalationLevel: 0,
+    });
+  }
+  if (goalWithoutControlCount > 0) {
+    exceptionCategories.push({
+      label: "Active Goals Missing Governance Controls",
+      description: `${goalWithoutControlCount} active performance goal(s) have no corresponding governance control record. The obligation exists but is not being tracked.`,
+      count: goalWithoutControlCount,
+      departments: [],
       maxEscalationLevel: 0,
     });
   }
 
-  // 2. Repeated unresolved blockers — employees with 2 or more overdue/escalated
-  //    controls, indicating systemic non-compliance rather than a one-off miss.
-  const repeatRows = await db.execute(sql`
+  // ── Semantic correction B: Overdue obligations vs explicit blockers ───────────
+  // B1: employees with 2+ overdue/escalated obligations (pattern of non-completion)
+  const multipleOverdueRows = await db.execute(sql`
     SELECT COUNT(*) AS employee_count,
            array_agg(DISTINCT COALESCE(d.name, 'Unknown')) FILTER (WHERE d.name IS NOT NULL) AS depts,
            MAX(gc.escalation_level) AS max_level
@@ -492,26 +779,65 @@ export async function buildCeoReportData(): Promise<{
       SELECT gc.owner_id, MAX(gc.escalation_level) AS escalation_level
       FROM governance_controls gc
       WHERE gc.status IN ('overdue', 'escalated')
+        AND gc.dispute_note IS NULL
       GROUP BY gc.owner_id
       HAVING COUNT(*) >= 2
     ) gc
     JOIN admin_users au ON au.id = gc.owner_id
     LEFT JOIN departments d ON d.id = au.department_id
   `);
-  const repeatCount = Number((repeatRows.rows[0] as any)?.employee_count ?? 0);
-  const repeatDepts: string[] = (repeatRows.rows[0] as any)?.depts ?? [];
-  const repeatMaxLevel = Number((repeatRows.rows[0] as any)?.max_level ?? 0);
-  if (repeatCount > 0) {
+  const multipleOverdueCount = Number((multipleOverdueRows.rows[0] as any)?.employee_count ?? 0);
+  const multipleOverdueDepts: string[] = (multipleOverdueRows.rows[0] as any)?.depts ?? [];
+  const multipleOverdueMaxLevel = Number((multipleOverdueRows.rows[0] as any)?.max_level ?? 0);
+
+  // B2: employees with explicit blockers (dispute_note set)
+  const explicitBlockerRows = await db.execute(sql`
+    SELECT COUNT(DISTINCT gc.owner_id)::int AS cnt
+    FROM governance_controls gc
+    WHERE gc.dispute_note IS NOT NULL
+      AND gc.status NOT IN ('closed','completed')
+  `);
+  const explicitBlockerCount = Number((explicitBlockerRows.rows[0] as any)?.cnt ?? 0);
+
+  if (multipleOverdueCount > 0) {
     exceptionCategories.push({
-      label: "Repeated Unresolved Blockers",
-      description: `${repeatCount} employee(s) have 2 or more overdue or escalated obligations — indicating a pattern of non-completion requiring escalation.`,
-      count: repeatCount,
-      departments: repeatDepts.sort(),
-      maxEscalationLevel: repeatMaxLevel,
+      label: "Multiple Overdue Obligations (Pattern)",
+      description: `${multipleOverdueCount} employee(s) have 2 or more overdue or escalated obligations with no dispute raised — indicating a pattern of non-completion. Distinct from employee-reported blockers.`,
+      count: multipleOverdueCount,
+      departments: multipleOverdueDepts.sort(),
+      maxEscalationLevel: multipleOverdueMaxLevel,
     });
   }
 
-  return { totalOpen, totalOverdue, totalEscalated, byType, exceptionCategories, highPriority };
+  // B3: approved exceptions
+  const approvedExceptionRows = await db.execute(sql`
+    SELECT COUNT(*)::int AS cnt
+    FROM governance_controls gc
+    WHERE gc.exception_reason IS NOT NULL
+      AND gc.status NOT IN ('closed','completed')
+  `);
+  const approvedExceptionCount = Number((approvedExceptionRows.rows[0] as any)?.cnt ?? 0);
+
+  // ── Semantic summary (C: confirmed vs disputed) ───────────────────────────
+  const confirmedNonCompliance = totalOverdue + totalEscalated - totalDisputed;
+
+  return {
+    totalOpen,
+    totalOverdue,
+    totalEscalated,
+    totalDisputed,
+    byType,
+    exceptionCategories,
+    highPriority,
+    semanticSummary: {
+      employeesWithNoActiveGoalControl: noGoalControlCount,
+      employeesWithMultipleOverdueObligations: multipleOverdueCount,
+      employeesWithExplicitBlockers: explicitBlockerCount,
+      confirmedNonCompliance: Math.max(0, confirmedNonCompliance),
+      disputedControls: totalDisputed,
+      approvedExceptions: approvedExceptionCount,
+    },
+  };
 }
 
 /**
@@ -519,8 +845,7 @@ export async function buildCeoReportData(): Promise<{
  *
  * Uses a proactive 7-day lookahead window so controls exist BEFORE obligations
  * breach, giving owners and managers time to act. `createGovernanceControl`
- * is idempotent (ON CONFLICT by control_type + reference_id + owner_id) so
- * running this daily is safe.
+ * is idempotent (by control_type + reference_id) so running this daily is safe.
  *
  * Sources (all 6 required categories):
  *   training   ← track_assignments due within 7 days or overdue (not completed/excepted)
@@ -539,12 +864,10 @@ export async function syncGovernanceObligations(): Promise<{
   goal: number;
 }> {
   const today = new Date().toISOString().slice(0, 10);
-  // Proactive 7-day lookahead: create controls when obligations are UPCOMING,
-  // not just after they have breached. This gives owners time to act.
   const lookahead7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
   const counters = { training: 0, sop: 0, checkIn: 0, probation: 0, pip: 0, goal: 0 };
 
-  // ── 1. Training: track_assignments due within 7 days or overdue ───────────
+  // ── 1. Training ───────────────────────────────────────────────────────────
   const trainingRows = await db.execute(sql`
     SELECT ta.id AS ref_id,
            ta.user_id AS owner_id,
@@ -572,7 +895,7 @@ export async function syncGovernanceObligations(): Promise<{
     counters.training++;
   }
 
-  // ── 2. SOP acknowledgements: unacknowledged SOPs with deadline within 7 days ─
+  // ── 2. SOP acknowledgements ───────────────────────────────────────────────
   const sopRows = await db.execute(sql`
     SELECT sep.id AS ref_id,
            sep.user_id AS owner_id,
@@ -600,7 +923,7 @@ export async function syncGovernanceObligations(): Promise<{
     counters.sop++;
   }
 
-  // ── 3. Weekly / PIP-review check-ins: scheduled within 7 days ────────────
+  // ── 3. Weekly / PIP-review check-ins ─────────────────────────────────────
   const weeklyRows = await db.execute(sql`
     SELECT ci.id AS ref_id,
            ci.employee_id AS owner_id,
@@ -626,7 +949,7 @@ export async function syncGovernanceObligations(): Promise<{
     counters.checkIn++;
   }
 
-  // ── 4a. Probation milestone check-ins: due within 7 days ─────────────────
+  // ── 4a. Probation milestone check-ins ────────────────────────────────────
   const milestoneRows = await db.execute(sql`
     SELECT ci.id AS ref_id,
            ci.employee_id AS owner_id,
@@ -652,7 +975,7 @@ export async function syncGovernanceObligations(): Promise<{
     counters.probation++;
   }
 
-  // ── 4b. Probation plans: one control per active probation plan ────────────
+  // ── 4b. Probation plans ───────────────────────────────────────────────────
   const probationPlanRows = await db.execute(sql`
     SELECT ep.id AS ref_id,
            ep.employee_id AS owner_id,
@@ -677,7 +1000,7 @@ export async function syncGovernanceObligations(): Promise<{
     counters.probation++;
   }
 
-  // ── 5. PIP plans: one control per active PIP plan ────────────────────────
+  // ── 5. PIP plans ──────────────────────────────────────────────────────────
   const pipRows = await db.execute(sql`
     SELECT ep.id AS ref_id,
            ep.employee_id AS owner_id,
@@ -702,7 +1025,7 @@ export async function syncGovernanceObligations(): Promise<{
     counters.pip++;
   }
 
-  // ── 6. Goals: performance goals due within 7 days or overdue ─────────────
+  // ── 6. Goals ──────────────────────────────────────────────────────────────
   const goalRows = await db.execute(sql`
     SELECT pg.id AS ref_id,
            pg.employee_id AS owner_id,

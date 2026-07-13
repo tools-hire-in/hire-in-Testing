@@ -190,3 +190,124 @@ export function buildAnonymizedControlSummary(opts: {
     requiredAction: redactFreeTextForAI(opts.requiredAction).substring(0, 120),
   };
 }
+
+/**
+ * Allowlisted CEO-report payload for external AI.
+ * Only approved non-identifying operational values are included.
+ * Constructed by explicit field picking — not by redacting a full object.
+ * Any field not in this interface is silently excluded (fail-closed).
+ */
+export interface CeoAiPayload {
+  generatedAt: string;
+  totalOpen: number;
+  totalOverdue: number;
+  totalEscalated: number;
+  totalDisputed: number;
+  byType: Record<string, { open: number; overdue: number; escalated: number; disputed: number }>;
+  exceptionCategories: Array<{
+    label: string;
+    count: number;
+    departments: string[];
+    maxEscalationLevel: number;
+  }>;
+  highPriorityItems: Array<{
+    controlType: string;
+    roleCategory: string;
+    department: string;
+    daysOverdue: number;
+    escalationLevel: number;
+    status: string;
+  }>;
+  semanticSummary: {
+    employeesWithNoActiveGoalControl: number;
+    employeesWithMultipleOverdueObligations: number;
+    employeesWithExplicitBlockers: number;
+    confirmedNonCompliance: number;
+    disputedControls: number;
+    approvedExceptions: number;
+  };
+}
+
+/**
+ * Build the external-AI CEO-report payload from an explicit allowlist.
+ * Only fields approved for external AI are included.
+ * Call auditPromptForPII() on the result before sending to the AI.
+ */
+export function buildAllowlistedCeoPayload(opts: {
+  generatedAt: string;
+  totalOpen: number;
+  totalOverdue: number;
+  totalEscalated: number;
+  totalDisputed: number;
+  byType: Record<string, { open: number; overdue: number; escalated: number; disputed?: number }>;
+  exceptionCategories: Array<{
+    label: string;
+    description?: string;
+    count: number;
+    departments: string[];
+    maxEscalationLevel: number;
+  }>;
+  highPriority: Array<{
+    controlType: string;
+    roleCategory: string;
+    department: string;
+    daysOverdue: number;
+    escalationLevel: number;
+    status: string;
+    requiredAction?: string;
+  }>;
+  semanticSummary: {
+    employeesWithNoActiveGoalControl: number;
+    employeesWithMultipleOverdueObligations: number;
+    employeesWithExplicitBlockers: number;
+    confirmedNonCompliance: number;
+    disputedControls: number;
+    approvedExceptions: number;
+  };
+}): CeoAiPayload {
+  const byType: CeoAiPayload["byType"] = {};
+  for (const [type, stats] of Object.entries(opts.byType)) {
+    const safeType = String(type).substring(0, 30);
+    byType[safeType] = {
+      open: Number(stats.open) || 0,
+      overdue: Number(stats.overdue) || 0,
+      escalated: Number(stats.escalated) || 0,
+      disputed: Number(stats.disputed ?? 0) || 0,
+    };
+  }
+
+  const exceptionCategories: CeoAiPayload["exceptionCategories"] = opts.exceptionCategories.map(cat => ({
+    label: String(cat.label).substring(0, 100),
+    count: Number(cat.count) || 0,
+    departments: (cat.departments ?? []).map(d => String(d).substring(0, 50)),
+    maxEscalationLevel: Number(cat.maxEscalationLevel) || 0,
+  }));
+
+  const highPriorityItems: CeoAiPayload["highPriorityItems"] = opts.highPriority.slice(0, 20).map(item => ({
+    controlType: String(item.controlType).substring(0, 30),
+    roleCategory: String(item.roleCategory).substring(0, 30),
+    department: String(item.department).substring(0, 50),
+    daysOverdue: Number(item.daysOverdue) || 0,
+    escalationLevel: Number(item.escalationLevel) || 0,
+    status: String(item.status).substring(0, 30),
+  }));
+
+  return {
+    generatedAt: String(opts.generatedAt).substring(0, 30),
+    totalOpen: Number(opts.totalOpen) || 0,
+    totalOverdue: Number(opts.totalOverdue) || 0,
+    totalEscalated: Number(opts.totalEscalated) || 0,
+    totalDisputed: Number(opts.totalDisputed) || 0,
+    byType,
+    exceptionCategories,
+    highPriorityItems,
+    semanticSummary: {
+      employeesWithNoActiveGoalControl: Number(opts.semanticSummary.employeesWithNoActiveGoalControl) || 0,
+      employeesWithMultipleOverdueObligations: Number(opts.semanticSummary.employeesWithMultipleOverdueObligations) || 0,
+      employeesWithExplicitBlockers: Number(opts.semanticSummary.employeesWithExplicitBlockers) || 0,
+      confirmedNonCompliance: Number(opts.semanticSummary.confirmedNonCompliance) || 0,
+      disputedControls: Number(opts.semanticSummary.disputedControls) || 0,
+      approvedExceptions: Number(opts.semanticSummary.approvedExceptions) || 0,
+    },
+  };
+}

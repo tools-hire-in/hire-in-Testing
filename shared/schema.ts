@@ -4562,3 +4562,26 @@ export const agentFeedbackEvents = pgTable("agent_feedback_events", {
 export const insertAgentFeedbackEventSchema = createInsertSchema(agentFeedbackEvents).omit({ id: true, createdAt: true, updatedAt: true });
 export type AgentFeedbackEvent = typeof agentFeedbackEvents.$inferSelect;
 export type InsertAgentFeedbackEvent = z.infer<typeof insertAgentFeedbackEventSchema>;
+
+// ── Governance Events ─────────────────────────────────────────────────────────
+export const governanceEventSourceEnum = pgEnum("governance_event_source", [
+  "user", "sync", "scheduler", "api",
+]);
+
+export const governanceEventTypeEnum = pgEnum("governance_event_type", [
+  "created", "assigned", "reassigned", "status_changed", "evidence_submitted",
+  "disputed", "escalated", "closed", "reopened", "exception_recorded", "sync_updated",
+]);
+
+export const governanceEvents = pgTable("governance_events", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  controlId: varchar("control_id").notNull().references(() => governanceControls.id),
+  eventType: governanceEventTypeEnum("event_type").notNull(),
+  actorId: varchar("actor_id"),
+  actorRef: varchar("actor_ref"),
+  source: governanceEventSourceEnum("source").notNull().default("user"),
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type GovernanceEvent = typeof governanceEvents.$inferSelect;

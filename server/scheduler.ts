@@ -1588,27 +1588,40 @@ export function startScheduler() {
         return;
       }
 
-      // Build anonymized AI prompt — no PII
-      const { auditPromptForPII } = await import("./services/aiPrivacyGuard");
-      const anonymizedSummary = {
+      // Build allowlisted AI payload — explicit field picking, not redaction of a full object.
+      // Only approved non-identifying operational values are included.
+      const { auditPromptForPII, buildAllowlistedCeoPayload } = await import("./services/aiPrivacyGuard");
+      const allowlistedPayload = buildAllowlistedCeoPayload({
         generatedAt: new Date().toISOString().slice(0, 10),
         totalOpen: reportData.totalOpen,
         totalOverdue: reportData.totalOverdue,
         totalEscalated: reportData.totalEscalated,
+        totalDisputed: reportData.totalDisputed,
         byType: reportData.byType,
         exceptionCategories: reportData.exceptionCategories,
-        highPriorityItems: reportData.highPriority.slice(0, 20),
-      };
+        highPriority: reportData.highPriority,
+        semanticSummary: reportData.semanticSummary,
+      });
 
-      const promptText = JSON.stringify(anonymizedSummary, null, 2);
+      const promptText = JSON.stringify(allowlistedPayload, null, 2);
       const piiCheck = auditPromptForPII(promptText);
       if (piiCheck.length > 0) {
-        console.error(`[scheduler] CEO report: PII detected in prompt (${piiCheck.join(", ")}) — aborting AI call`);
+        console.error(`[scheduler] CEO report: PII detected in allowlisted payload (${piiCheck.join(", ")}) — aborting AI call`);
         return;
       }
 
-      // AI narrative (anonymized data only)
-      let narrative = "";
+      // Deterministic fallback narrative (no AI dependency)
+      const deterministicNarrative = [
+        `Total open obligations: ${reportData.totalOpen}`,
+        `Overdue: ${reportData.totalOverdue} | Escalated: ${reportData.totalEscalated} | Disputed: ${reportData.totalDisputed}`,
+        `Confirmed non-compliance (overdue/escalated minus disputed): ${reportData.semanticSummary.confirmedNonCompliance}`,
+        `Employees with multiple overdue obligations: ${reportData.semanticSummary.employeesWithMultipleOverdueObligations}`,
+        `Employees with explicit blockers (disputes): ${reportData.semanticSummary.employeesWithExplicitBlockers}`,
+        `Approved exceptions: ${reportData.semanticSummary.approvedExceptions}`,
+      ].join("\n");
+
+      // AI narrative (allowlisted anonymized data only)
+      let narrative = deterministicNarrative;
       try {
         const OpenAI = (await import("openai")).default;
         const openai = new OpenAI({
@@ -1621,18 +1634,26 @@ export function startScheduler() {
           messages: [
             {
               role: "system",
-              content: `You are a governance analyst. Summarize the weekly exception report in 3-5 concise bullet points for the CEO. Focus on escalated items and patterns. Use only the anonymized data provided. Never mention specific names or personal details.`,
+              content: [
+                "You are a governance analyst producing a weekly exception summary for the CEO.",
+                "Summarize in 3-5 concise bullet points. Focus on escalated items and patterns.",
+                "Use only the anonymized operational data provided.",
+                "CRITICAL: Never mention specific names, email addresses, or personal details.",
+                "CRITICAL: Disputed controls are NOT confirmed noncompliance — clearly distinguish them.",
+                "CRITICAL: Employees with explicit blockers (dispute_note set) are raising concerns, not confirmed violators.",
+                "CRITICAL: 'Multiple overdue obligations' means a pattern of non-completion, separate from employees who have raised disputes.",
+              ].join(" "),
             },
             {
               role: "user",
-              content: `Here is this week's governance control summary (all data is anonymized):\n\n${promptText}\n\nProvide a concise executive summary.`,
+              content: `Here is this week's governance control summary (all data is anonymized and allowlisted):\n\n${promptText}\n\nProvide a concise executive summary distinguishing confirmed noncompliance from disputed controls.`,
             },
           ],
         });
-        narrative = completion.choices[0]?.message?.content ?? "";
+        narrative = completion.choices[0]?.message?.content ?? deterministicNarrative;
       } catch (aiErr) {
-        console.error("[scheduler] CEO report AI draft failed (non-fatal):", aiErr);
-        narrative = `${reportData.totalOpen} open controls, ${reportData.totalOverdue} overdue, ${reportData.totalEscalated} escalated.`;
+        console.error("[scheduler] CEO report AI draft failed — using deterministic fallback:", aiErr);
+        // narrative already set to deterministicNarrative above
       }
 
       // Save report to audit store

@@ -9,6 +9,21 @@
  *
  * Object-level checks are enforced on every manager mutation:
  *   - The control must belong to a direct report of the acting manager (or the manager is HR/admin).
+ *
+ * Row-level enforcement summary:
+ *   GET /my               — SQL WHERE owner_id = session.userId                          ✓ server
+ *   GET /manager          — SQL WHERE manager_id = session.userId (HR bypasses to all)   ✓ server
+ *   GET /manager/:empId   — resolveManagerScopeForEmployee() + SQL WHERE owner_id        ✓ server
+ *   GET /admin            — governance.hr permission required (all controls returned)    ✓ server
+ *   GET /:id              — owner OR manager OR HR — resolveReadScopeForControl()        ✓ server
+ *   GET /:id/events       — same scope as GET /:id                                       ✓ server
+ *   GET /ceo-report       — governance.ceo permission, aggregate only                    ✓ server
+ *   POST /                — governance.hr permission                                     ✓ server
+ *   POST /:id/close       — governance.manager + resolveManagerScopeForControl()         ✓ server
+ *   POST /:id/escalate    — governance.manager + resolveManagerScopeForControl()         ✓ server
+ *   POST /:id/evidence    — owner_id enforced in submitEmployeeEvidence()                ✓ server
+ *   POST /:id/dispute     — owner_id enforced in disputeGovernanceControl()              ✓ server
+ *   POST /:id/review-dispute — governance.hr permission                                  ✓ server
  */
 
 import type { Express, Request, Response } from "express";
@@ -22,12 +37,12 @@ import {
   getManagerGovernanceControls,
   getEmployeeGovernanceControls,
   buildCeoReportData,
+  reassignGovernanceControl,
 } from "./governanceService";
+import { emitGovernanceEvent, getControlEventHistory } from "./governanceEvents";
 import { resolveRoles } from "@shared/accessControl";
 
 // ── camelCase normalizer ──────────────────────────────────────────────────────
-// DB returns snake_case; frontend interfaces use camelCase. All rows are
-// normalised before being sent to the client so the UI contract is stable.
 function snakeToCamel(s: string): string {
   return s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 }
@@ -88,8 +103,6 @@ async function resolveManagerScopeForControl(
 /**
  * Resolve whether the acting user has manager-scope access to view an employee's controls.
  * HR/admin/super_admin bypass the scope check.
- * Managers must be the direct manager_id on at least one control for that employee, OR
- * the employee's manager_id field in admin_users must match.
  */
 async function resolveManagerScopeForEmployee(
   employeeId: string,
@@ -105,9 +118,54 @@ async function resolveManagerScopeForEmployee(
   return row.rows.length > 0;
 }
 
+/**
+ * Resolve read-scope for a single control:
+ *   - Owner (employee) can read their own.
+ *   - Manager whose manager_id matches can read.
+ *   - HR/admin/executive can read any.
+ */
+async function resolveReadScopeForControl(
+  controlId: string,
+  userId: string,
+  role: string,
+): Promise<{ allowed: boolean; reason?: string }> {
+  const hrRoles = resolveRoles("governance.hr", ["super_admin"]);
+  if (hrRoles.includes(role)) return { allowed: true };
+
+  const row = await db.execute(sql`
+    SELECT owner_id, manager_id FROM governance_controls WHERE id = ${controlId} LIMIT 1
+  `);
+  if (!row.rows.length) return { allowed: false, reason: "Control not found" };
+  const { owner_id, manager_id } = row.rows[0] as any;
+  if (owner_id === userId || manager_id === userId) return { allowed: true };
+  return { allowed: false, reason: "Access denied" };
+}
+
 // ── Routes ───────────────────────────────────────────────────────────────────
 
 export function registerGovernanceRoutes(app: Express): void {
+
+  // ── Employee: view own open obligations ───────────────────────────────────
+  app.get("/api/governance/my", async (req: Request, res: Response) => {
+    const session = getSession(req, res);
+    if (!session) return;
+    try {
+      const rawControls = await getEmployeeGovernanceControls(session.userId);
+      const controls = rowsToCamel(rawControls);
+      const summary = {
+        total: rawControls.length,
+        pending: rawControls.filter((c: any) => c.status === "pending").length,
+        overdue: rawControls.filter((c: any) => c.status === "overdue").length,
+        escalated: rawControls.filter((c: any) => c.status === "escalated").length,
+        completed: rawControls.filter((c: any) => ["completed", "closed"].includes(c.status)).length,
+        disputed: rawControls.filter((c: any) => c.dispute_note).length,
+      };
+      res.json({ controls, summary });
+    } catch (err) {
+      console.error("[governance] GET /my failed:", err);
+      res.status(500).json({ error: "Failed to fetch governance obligations" });
+    }
+  });
 
   // ── Manager: view open governance controls for their full team ────────────
   app.get("/api/governance/manager", async (req: Request, res: Response) => {
@@ -162,133 +220,12 @@ export function registerGovernanceRoutes(app: Express): void {
         overdue: rawControls.filter((c) => c.status === "overdue").length,
         escalated: rawControls.filter((c) => c.status === "escalated").length,
         completed: rawControls.filter((c) => ["completed", "closed"].includes(c.status)).length,
+        disputed: rawControls.filter((c) => c.dispute_note).length,
       };
       res.json({ controls, summary });
     } catch (err) {
       console.error("[governance] GET /manager/:employeeId failed:", err);
       res.status(500).json({ error: "Failed to fetch employee governance controls" });
-    }
-  });
-
-  // ── Manager: close a control ──────────────────────────────────────────────
-  // Object-level: manager must manage the employee who owns the control.
-  app.post("/api/governance/:id/close", async (req: Request, res: Response) => {
-    const session = checkPermission(req, res, "governance.manager");
-    if (!session) return;
-    const { id } = req.params as { id: string };
-
-    const scope = await resolveManagerScopeForControl(id, session.userId, session.role);
-    if (!scope.allowed) {
-      return res.status(403).json({ error: scope.reason ?? "Forbidden" });
-    }
-
-    const { evidenceRecord, resolution } = req.body as { evidenceRecord?: string; resolution?: string };
-    try {
-      const result = await closeGovernanceControl({
-        controlId: id,
-        closedById: session.userId,
-        evidenceRecord,
-        resolution,
-      });
-      if (!result.success) {
-        return res.status(400).json({ error: result.error });
-      }
-      res.json({ success: true });
-    } catch (err) {
-      console.error("[governance] POST /:id/close failed:", err);
-      res.status(500).json({ error: "Failed to close governance control" });
-    }
-  });
-
-  // ── Manager: escalate / flag a control for HR review ─────────────────────
-  // Object-level: manager must manage the employee who owns the control.
-  app.post("/api/governance/:id/escalate", async (req: Request, res: Response) => {
-    const session = checkPermission(req, res, "governance.manager");
-    if (!session) return;
-    const { id } = req.params as { id: string };
-
-    const scope = await resolveManagerScopeForControl(id, session.userId, session.role);
-    if (!scope.allowed) {
-      return res.status(403).json({ error: scope.reason ?? "Forbidden" });
-    }
-
-    const { reason } = req.body as { reason?: string };
-    try {
-      await db.execute(sql`
-        UPDATE governance_controls
-        SET flagged_for_hr_review = true,
-            status = CASE WHEN status NOT IN ('closed','completed','disputed') THEN 'escalated'::governance_control_status ELSE status END,
-            exception_reason = COALESCE(exception_reason, ${reason ?? null}),
-            escalation_level = GREATEST(escalation_level, 1),
-            updated_at = NOW()
-        WHERE id = ${id}
-      `);
-      res.json({ success: true });
-    } catch (err) {
-      console.error("[governance] POST /:id/escalate failed:", err);
-      res.status(500).json({ error: "Failed to escalate control" });
-    }
-  });
-
-  // ── Employee: view own open obligations ───────────────────────────────────
-  // Returns { controls, summary } — the shape the frontend expects.
-  app.get("/api/governance/my", async (req: Request, res: Response) => {
-    const session = getSession(req, res);
-    if (!session) return;
-    try {
-      const rawControls = await getEmployeeGovernanceControls(session.userId);
-      const controls = rowsToCamel(rawControls);
-      const summary = {
-        total: rawControls.length,
-        pending: rawControls.filter((c: any) => c.status === "pending").length,
-        overdue: rawControls.filter((c: any) => c.status === "overdue").length,
-        escalated: rawControls.filter((c: any) => c.status === "escalated").length,
-        completed: rawControls.filter((c: any) => ["completed", "closed"].includes(c.status)).length,
-      };
-      res.json({ controls, summary });
-    } catch (err) {
-      console.error("[governance] GET /my failed:", err);
-      res.status(500).json({ error: "Failed to fetch governance obligations" });
-    }
-  });
-
-  // ── Employee: submit evidence for their own control ───────────────────────
-  // Object-level: employee can only submit evidence for controls they own.
-  app.post("/api/governance/:id/evidence", async (req: Request, res: Response) => {
-    const session = getSession(req, res);
-    if (!session) return;
-    const { id } = req.params as { id: string };
-    const { evidenceRecord } = req.body as { evidenceRecord: string };
-    if (!evidenceRecord?.trim()) {
-      return res.status(400).json({ error: "evidenceRecord is required" });
-    }
-    try {
-      const result = await submitEmployeeEvidence({ controlId: id, userId: session.userId, evidenceRecord });
-      if (!result.success) return res.status(400).json({ error: result.error });
-      res.json({ success: true });
-    } catch (err) {
-      console.error("[governance] POST /:id/evidence failed:", err);
-      res.status(500).json({ error: "Failed to submit evidence" });
-    }
-  });
-
-  // ── Employee: raise a dispute / clarification ─────────────────────────────
-  // Object-level: employee can only dispute controls they own.
-  app.post("/api/governance/:id/dispute", async (req: Request, res: Response) => {
-    const session = getSession(req, res);
-    if (!session) return;
-    const { id } = req.params as { id: string };
-    const { disputeNote } = req.body as { disputeNote: string };
-    if (!disputeNote?.trim()) {
-      return res.status(400).json({ error: "disputeNote is required" });
-    }
-    try {
-      const result = await disputeGovernanceControl({ controlId: id, userId: session.userId, disputeNote });
-      if (!result.success) return res.status(400).json({ error: result.error });
-      res.json({ success: true });
-    } catch (err) {
-      console.error("[governance] POST /:id/dispute failed:", err);
-      res.status(500).json({ error: "Failed to raise dispute" });
     }
   });
 
@@ -325,6 +262,66 @@ export function registerGovernanceRoutes(app: Express): void {
     }
   });
 
+  // ── Single control detail (owner, manager, or HR) ─────────────────────────
+  // Row-level: owner can read their own; manager can read their team member's;
+  // HR/admin/executive can read any.
+  app.get("/api/governance/:id", async (req: Request, res: Response) => {
+    const session = getSession(req, res);
+    if (!session) return;
+    const { id } = req.params as { id: string };
+
+    const scope = await resolveReadScopeForControl(id, session.userId, session.role);
+    if (!scope.allowed) {
+      return res.status(403).json({ error: scope.reason ?? "Access denied" });
+    }
+
+    try {
+      const rows = await db.execute(sql`
+        SELECT gc.id, gc.control_type, gc.reference_id, gc.due_date, gc.required_action,
+               gc.status, gc.evidence_required, gc.evidence_record, gc.exception_reason,
+               gc.escalation_level, gc.resolution, gc.closure_date, gc.dispute_note,
+               gc.disputed_at, gc.flagged_for_hr_review, gc.created_at, gc.updated_at,
+               o.first_name || ' ' || o.last_name AS owner_name,
+               o.role AS owner_role,
+               m.first_name || ' ' || m.last_name AS manager_name,
+               d.name AS department_name
+        FROM governance_controls gc
+        JOIN admin_users o ON o.id = gc.owner_id
+        LEFT JOIN admin_users m ON m.id = gc.manager_id
+        LEFT JOIN departments d ON d.id = o.department_id
+        WHERE gc.id = ${id}
+        LIMIT 1
+      `);
+      if (!rows.rows.length) {
+        return res.status(404).json({ error: "Control not found" });
+      }
+      res.json(rowToCamel(rows.rows[0] as Record<string, unknown>));
+    } catch (err) {
+      console.error("[governance] GET /:id failed:", err);
+      res.status(500).json({ error: "Failed to fetch governance control" });
+    }
+  });
+
+  // ── Single control event history (same scope as detail read) ─────────────
+  app.get("/api/governance/:id/events", async (req: Request, res: Response) => {
+    const session = getSession(req, res);
+    if (!session) return;
+    const { id } = req.params as { id: string };
+
+    const scope = await resolveReadScopeForControl(id, session.userId, session.role);
+    if (!scope.allowed) {
+      return res.status(403).json({ error: scope.reason ?? "Access denied" });
+    }
+
+    try {
+      const events = await getControlEventHistory(id);
+      res.json(events);
+    } catch (err) {
+      console.error("[governance] GET /:id/events failed:", err);
+      res.status(500).json({ error: "Failed to fetch event history" });
+    }
+  });
+
   // ── HR/Admin: manually create a governance control ────────────────────────
   app.post("/api/governance", async (req: Request, res: Response) => {
     const session = checkPermission(req, res, "governance.hr");
@@ -337,6 +334,13 @@ export function registerGovernanceRoutes(app: Express): void {
       const id = await createGovernanceControl({
         controlType, referenceId, ownerId, managerId, dueDate, requiredAction, evidenceRequired: !!evidenceRequired,
       });
+      emitGovernanceEvent({
+        controlId: id,
+        eventType: "created",
+        actorId: session.userId,
+        source: "user",
+        metadata: { controlType, ownerId, managerId: managerId ?? null, dueDate },
+      }).catch(console.error);
       res.status(201).json({ id });
     } catch (err) {
       console.error("[governance] POST / failed:", err);
@@ -344,16 +348,106 @@ export function registerGovernanceRoutes(app: Express): void {
     }
   });
 
-  // ── CEO exception report data (anonymized) ────────────────────────────────
-  app.get("/api/governance/ceo-report", async (req: Request, res: Response) => {
-    const session = checkPermission(req, res, "governance.ceo");
+  // ── Manager: close a control ──────────────────────────────────────────────
+  app.post("/api/governance/:id/close", async (req: Request, res: Response) => {
+    const session = checkPermission(req, res, "governance.manager");
     if (!session) return;
+    const { id } = req.params as { id: string };
+
+    const scope = await resolveManagerScopeForControl(id, session.userId, session.role);
+    if (!scope.allowed) {
+      return res.status(403).json({ error: scope.reason ?? "Forbidden" });
+    }
+
+    const { evidenceRecord, resolution } = req.body as { evidenceRecord?: string; resolution?: string };
     try {
-      const reportData = await buildCeoReportData();
-      res.json(reportData);
+      const result = await closeGovernanceControl({
+        controlId: id,
+        closedById: session.userId,
+        evidenceRecord,
+        resolution,
+      });
+      if (!result.success) {
+        return res.status(400).json({ error: result.error });
+      }
+      res.json({ success: true });
     } catch (err) {
-      console.error("[governance] GET /ceo-report failed:", err);
-      res.status(500).json({ error: "Failed to build CEO report" });
+      console.error("[governance] POST /:id/close failed:", err);
+      res.status(500).json({ error: "Failed to close governance control" });
+    }
+  });
+
+  // ── Manager: escalate / flag a control for HR review ─────────────────────
+  app.post("/api/governance/:id/escalate", async (req: Request, res: Response) => {
+    const session = checkPermission(req, res, "governance.manager");
+    if (!session) return;
+    const { id } = req.params as { id: string };
+
+    const scope = await resolveManagerScopeForControl(id, session.userId, session.role);
+    if (!scope.allowed) {
+      return res.status(403).json({ error: scope.reason ?? "Forbidden" });
+    }
+
+    const { reason } = req.body as { reason?: string };
+    try {
+      await db.execute(sql`
+        UPDATE governance_controls
+        SET flagged_for_hr_review = true,
+            status = CASE WHEN status NOT IN ('closed','completed','disputed') THEN 'escalated'::governance_control_status ELSE status END,
+            exception_reason = COALESCE(exception_reason, ${reason ?? null}),
+            escalation_level = GREATEST(escalation_level, 1),
+            updated_at = NOW()
+        WHERE id = ${id}
+      `);
+      emitGovernanceEvent({
+        controlId: id,
+        eventType: "escalated",
+        actorId: session.userId,
+        source: "user",
+        metadata: { reason: reason ?? null, manualEscalation: true },
+      }).catch(console.error);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[governance] POST /:id/escalate failed:", err);
+      res.status(500).json({ error: "Failed to escalate control" });
+    }
+  });
+
+  // ── Employee: submit evidence for their own control ───────────────────────
+  app.post("/api/governance/:id/evidence", async (req: Request, res: Response) => {
+    const session = getSession(req, res);
+    if (!session) return;
+    const { id } = req.params as { id: string };
+    const { evidenceRecord } = req.body as { evidenceRecord: string };
+    if (!evidenceRecord?.trim()) {
+      return res.status(400).json({ error: "evidenceRecord is required" });
+    }
+    try {
+      const result = await submitEmployeeEvidence({ controlId: id, userId: session.userId, evidenceRecord });
+      if (!result.success) return res.status(400).json({ error: result.error });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[governance] POST /:id/evidence failed:", err);
+      res.status(500).json({ error: "Failed to submit evidence" });
+    }
+  });
+
+  // ── Employee: raise a dispute / clarification ─────────────────────────────
+  app.post("/api/governance/:id/dispute", async (req: Request, res: Response) => {
+    const session = getSession(req, res);
+    if (!session) return;
+    const { id } = req.params as { id: string };
+    const { disputeNote } = req.body as { disputeNote: string };
+    if (!disputeNote?.trim()) {
+      return res.status(400).json({ error: "disputeNote is required" });
+    }
+    try {
+      const result = await disputeGovernanceControl({ controlId: id, userId: session.userId, disputeNote });
+      if (!result.success) return res.status(400).json({ error: result.error });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[governance] POST /:id/dispute failed:", err);
+      res.status(500).json({ error: "Failed to raise dispute" });
     }
   });
 
@@ -371,10 +465,59 @@ export function registerGovernanceRoutes(app: Express): void {
             updated_at = NOW()
         WHERE id = ${id}
       `);
+      emitGovernanceEvent({
+        controlId: id,
+        eventType: "status_changed",
+        actorId: session.userId,
+        source: "user",
+        metadata: { action: "dispute_reviewed", resolution: resolution ?? null },
+      }).catch(console.error);
       res.json({ success: true });
     } catch (err) {
       console.error("[governance] POST /:id/review-dispute failed:", err);
       res.status(500).json({ error: "Failed to review dispute" });
+    }
+  });
+
+  // ── HR: reassign a control to a new owner ─────────────────────────────────
+  app.post("/api/governance/:id/reassign", async (req: Request, res: Response) => {
+    const session = checkPermission(req, res, "governance.hr");
+    if (!session) return;
+    const { id } = req.params as { id: string };
+    const { newOwnerId, newManagerId, reason } = req.body as {
+      newOwnerId: string;
+      newManagerId?: string;
+      reason?: string;
+    };
+    if (!newOwnerId) {
+      return res.status(400).json({ error: "newOwnerId is required" });
+    }
+    try {
+      const result = await reassignGovernanceControl({
+        controlId: id,
+        newOwnerId,
+        newManagerId,
+        actorId: session.userId,
+        reason,
+      });
+      if (!result.success) return res.status(400).json({ error: result.error });
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[governance] POST /:id/reassign failed:", err);
+      res.status(500).json({ error: "Failed to reassign control" });
+    }
+  });
+
+  // ── CEO exception report data (anonymized) ────────────────────────────────
+  app.get("/api/governance/ceo-report", async (req: Request, res: Response) => {
+    const session = checkPermission(req, res, "governance.ceo");
+    if (!session) return;
+    try {
+      const reportData = await buildCeoReportData();
+      res.json(reportData);
+    } catch (err) {
+      console.error("[governance] GET /ceo-report failed:", err);
+      res.status(500).json({ error: "Failed to build CEO report" });
     }
   });
 }
