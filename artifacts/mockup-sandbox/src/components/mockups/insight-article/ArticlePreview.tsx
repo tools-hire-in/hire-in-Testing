@@ -6,17 +6,14 @@ const NAVY_LIGHT = "#2a4d8f";
 const ORANGE = "#F47C20";
 const ORANGE_LIGHT = "#F96D3E";
 
-/* ─── Logo icon (reused across header, hero, footer) ─────────────────────── */
+/* ─── Real logo image ────────────────────────────────────────────────────── */
 function LogoIcon({ size = 40 }: { size?: number }) {
   return (
-    <div style={{ background: NAVY, borderRadius: Math.round(size * 0.2), width: size, height: size, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-      <svg width={size * 0.6} height={size * 0.6} viewBox="0 0 24 24" fill="none">
-        <rect x="3" y="3" width="7" height="7" rx="1" fill="white" opacity="0.9" />
-        <rect x="14" y="3" width="7" height="7" rx="1" fill="white" opacity="0.5" />
-        <rect x="3" y="14" width="7" height="7" rx="1" fill="white" opacity="0.5" />
-        <rect x="14" y="14" width="7" height="7" rx="1" fill={ORANGE} opacity="0.9" />
-      </svg>
-    </div>
+    <img
+      src={`${import.meta.env.BASE_URL}hirein-logo.svg`}
+      alt="Hire'in Solutions"
+      style={{ width: size, height: size, borderRadius: Math.round(size * 0.2), flexShrink: 0, display: "block" }}
+    />
   );
 }
 
@@ -249,14 +246,7 @@ function HeroImage() {
       {/* Hire'in logo — top left */}
       <div className="absolute top-5 left-5 flex items-center gap-2.5">
         <div style={{ background: "rgba(255,255,255,0.15)", backdropFilter: "blur(8px)", borderRadius: 8, padding: "5px 10px 5px 6px", border: "1px solid rgba(255,255,255,0.2)", display: "flex", alignItems: "center", gap: 8 }}>
-          <div style={{ background: "rgba(255,255,255,0.9)", borderRadius: 5, width: 26, height: 26, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="3" width="7" height="7" rx="1" fill={NAVY} opacity="0.9" />
-              <rect x="14" y="3" width="7" height="7" rx="1" fill={NAVY} opacity="0.5" />
-              <rect x="3" y="14" width="7" height="7" rx="1" fill={NAVY} opacity="0.5" />
-              <rect x="14" y="14" width="7" height="7" rx="1" fill={ORANGE} opacity="0.9" />
-            </svg>
-          </div>
+          <img src={`${import.meta.env.BASE_URL}hirein-logo.svg`} alt="Hire'in Solutions" style={{ width: 26, height: 26, borderRadius: 5, flexShrink: 0, display: "block" }} />
           <span style={{ fontFamily: "'Inter',sans-serif", color: "white", fontWeight: 700, fontSize: 12, lineHeight: 1 }}>
             Hire<span style={{ color: ORANGE }}>'in</span> Insights
           </span>
@@ -503,14 +493,7 @@ function SiteFooter() {
           {/* Brand column */}
           <div className="col-span-2">
             <div className="flex items-center gap-2.5 mb-4">
-              <div style={{ background: "rgba(255,255,255,0.12)", borderRadius: 8, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <rect x="3" y="3" width="7" height="7" rx="1" fill="white" opacity="0.9" />
-                  <rect x="14" y="3" width="7" height="7" rx="1" fill="white" opacity="0.4" />
-                  <rect x="3" y="14" width="7" height="7" rx="1" fill="white" opacity="0.4" />
-                  <rect x="14" y="14" width="7" height="7" rx="1" fill={ORANGE} opacity="0.9" />
-                </svg>
-              </div>
+              <img src={`${import.meta.env.BASE_URL}hirein-logo.svg`} alt="Hire'in Solutions" style={{ width: 38, height: 38, borderRadius: 8, flexShrink: 0, display: "block" }} />
               <div>
                 <p style={{ fontFamily: "'Inter',sans-serif", color: "white", fontWeight: 700, fontSize: 16 }}>Hire<span style={{ color: ORANGE }}>'in</span> Solutions</p>
                 <p style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.4)", fontSize: 8, letterSpacing: "0.07em", textTransform: "uppercase", marginTop: 1 }}>A Rayomind Company | Est. 2014</p>

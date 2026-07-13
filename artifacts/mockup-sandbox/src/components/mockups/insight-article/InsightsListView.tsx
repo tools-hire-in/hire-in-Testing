@@ -17,14 +17,7 @@ function AppHeader() {
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center gap-8">
         {/* Logo */}
         <div className="flex items-center gap-2.5 flex-shrink-0">
-          <div style={{ background: NAVY, borderRadius: 8, width: 40, height: 40, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-              <rect x="3" y="3" width="7" height="7" rx="1" fill="white" opacity="0.9" />
-              <rect x="14" y="3" width="7" height="7" rx="1" fill="white" opacity="0.5" />
-              <rect x="3" y="14" width="7" height="7" rx="1" fill="white" opacity="0.5" />
-              <rect x="14" y="14" width="7" height="7" rx="1" fill={ORANGE} opacity="0.9" />
-            </svg>
-          </div>
+          <img src={`${import.meta.env.BASE_URL}hirein-logo.svg`} alt="Hire'in Solutions" style={{ width: 40, height: 40, borderRadius: 8, flexShrink: 0, display: "block" }} />
           <div>
             <div style={{ fontFamily: "'Inter', sans-serif", color: NAVY, fontWeight: 700, fontSize: 17, lineHeight: 1.1, letterSpacing: "-0.01em" }}>
               Hire<span style={{ color: ORANGE }}>'in</span> Solutions
@@ -389,14 +382,7 @@ function SiteFooter() {
         <div className="grid grid-cols-5 gap-10">
           <div className="col-span-2">
             <div className="flex items-center gap-2.5 mb-4">
-              <div style={{ background: "rgba(255,255,255,0.12)", borderRadius: 8, width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-                  <rect x="3" y="3" width="7" height="7" rx="1" fill="white" opacity="0.9" />
-                  <rect x="14" y="3" width="7" height="7" rx="1" fill="white" opacity="0.4" />
-                  <rect x="3" y="14" width="7" height="7" rx="1" fill="white" opacity="0.4" />
-                  <rect x="14" y="14" width="7" height="7" rx="1" fill={ORANGE} opacity="0.9" />
-                </svg>
-              </div>
+              <img src={`${import.meta.env.BASE_URL}hirein-logo.svg`} alt="Hire'in Solutions" style={{ width: 38, height: 38, borderRadius: 8, flexShrink: 0, display: "block" }} />
               <div>
                 <p style={{ fontFamily: "'Inter',sans-serif", color: "white", fontWeight: 700, fontSize: 16 }}>Hire<span style={{ color: ORANGE }}>'in</span> Solutions</p>
                 <p style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.4)", fontSize: 8, letterSpacing: "0.07em", textTransform: "uppercase", marginTop: 1 }}>A Rayomind Company | Est. 2014</p>
