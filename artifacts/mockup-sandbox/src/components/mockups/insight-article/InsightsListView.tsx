@@ -442,7 +442,7 @@ export function InsightsListView() {
 
       <AppHeader />
 
-      <main className="flex-1">
+      <main>
         <div className="max-w-7xl mx-auto px-8 pt-10 pb-16">
 
           {/* Page title + inline topic filters — single content block, no second header */}
