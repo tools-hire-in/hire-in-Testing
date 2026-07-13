@@ -1,0 +1,325 @@
+
+8:22:22 PM [express] serving on port 5000
+8:22:22 PM [express] Ensured deleted_at column exists on admin_users
+8:22:22 PM [express] Ensured gender column exists on admin_users
+8:22:22 PM [express] Ensured employment_status column exists on admin_users
+8:22:23 PM [express] Ensured studio_add_on column on admin_users
+8:22:23 PM [express] Ensured attendance correction columns exist
+8:22:23 PM [express] Ensured 'short_day' attendance status exists
+Browserslist: browsers data (caniuse-lite) is 9 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+warn - The class `duration-[2000ms]` is ambiguous and matches multiple utilities.
+warn - If this is content and not a class, replace it with `duration-&lsqb;2000ms&rsqb;` to silence this warning.
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+8:22:29 PM [express] Ensured leave_types extra columns exist
+8:22:29 PM [express] Ensured Maternity/Paternity are configured as non-accruing block entitlements
+8:22:29 PM [express] EL monthly accrual rate ensured at 1.0/month (bonus months Jan/May/Sep credit 2.0 days)
+8:22:30 PM [express] Ensured leave_accruals extra columns exist
+8:22:30 PM [express] Ensured leave_requests extra columns exist
+8:22:30 PM [express] Ensured break_records table and indexes exist
+8:22:30 PM [express] Ensured learning_tracks extra columns exist
+8:22:30 PM [express] WARNING: auto-migrations are DISABLED. Committed migration files in migrations/ are NOT being applied. The idempotent ensure blocks below still create/patch core schema, but any seed/backfill data inside migration files (e.g. template/letter seeds) will NOT run. To apply migration files, restart with RUN_MIGRATIONS=true.
+8:22:30 PM [express] Ensured salary_structures table and admin_users.salary_structure_id column
+8:22:30 PM [express] signed_version columns ensured on track_assignments, track_completions, section_acknowledgements
+8:22:30 PM [express] Ensured rayo_academy_track_id column exists on performance_goals
+8:22:30 PM [express] Ensured source_ref column exists on performance_goals
+8:22:30 PM [express] Ensured notes column exists on performance_goals
+8:22:30 PM [express] Ensured last_progress_updated_at column exists on performance_goals
+8:22:30 PM [express] Ensured goal_milestones table, check_ins.goal_id, and performance_goals.auto_progress_from_milestones
+8:22:30 PM [express] Ensuring HR letters enum types, table, and indexes...
+8:22:30 PM [express] HR letters enum types, table, and indexes ensured successfully
+8:22:30 PM [express] HR letter amendment types and columns ensured
+8:22:30 PM [express] Salary run execution columns ensured
+8:22:30 PM [express] Ensured offer_letters approval columns exist
+8:22:30 PM [express] Ensured annexure_data columns exist on hr_letters and offer_letters
+8:22:30 PM [express] Ensured policy_annexures column exists on offer_letters
+8:22:30 PM [express] Ensured seed_probation_plan column exists on offer_letters
+8:22:30 PM [express] Ensured reminder_sent_at column exists on offer_letters
+8:22:30 PM [express] Ensured attached_plan_* columns exist on offer_letters
+8:22:30 PM [express] Ensured reference_number column exists on offer_letters
+8:22:30 PM [express] Ensured verify_auth_code column exists on offer_letters
+8:22:31 PM [express] Offer letter and addendum reference numbers backfilled
+8:22:31 PM [express] Ensured manager_id column exists on salary_advance_requests
+8:22:31 PM [express] Ensured exceeds_salary_cap column exists on salary_advance_requests
+8:22:31 PM [express] Ensuring Content Studio enum, tables, indexes, and seed project...
+8:22:31 PM [express] Content Studio tables, indexes, and seed project ensured
+8:22:31 PM [express] Card templates seeded (14 from disk)
+Studio occasions seeded (84 curated rows)
+8:22:32 PM [express] Content Studio prompt library: 0 new of 22 templates
+[insights-seed] project=hirein inserted=0 skipped=13 total=13
+[insights-routing] default(super_admin)=1 leadership:1 healthcare:1 it:2 recruiting:1 candidate:1 employer:2 employer:2 ai:1
+8:22:32 PM [express] Hire'in Insights launch: 0 seeded, 13 existing (drafts only — no routing on startup)
+8:22:32 PM [express] Applied Ayushi Tiwari zero-out correction
+8:22:32 PM [express] One-time leave corrections applied
+8:22:32 PM [express] Shift tables ensured
+8:22:32 PM [express] night_shift_consents table ensured
+8:22:32 PM [express] Shift seed data ensured
+8:22:32 PM [express] Universal policy tracks already present (4 existing, 0 new assignment(s))
+8:22:32 PM [express] Ensured attendance_exempt column on admin_users
+8:22:32 PM [express] Ensured employee_category column on admin_users
+8:22:32 PM [express] Probation policy settings ensured (probation_months=3, probation_policy_date=2026-07-13)
+8:22:32 PM [express] Ensured is_active column on contract_clients
+8:22:32 PM [express] Ensured ein column on contract_clients
+8:22:32 PM [express] Contract dispatch schema columns ensured
+8:22:32 PM [express] Content Studio article_status enum values ensured
+8:22:32 PM [express] Attendance regularization tables ensured
+8:22:32 PM [express] App announcement system settings seeded
+8:22:32 PM [express] Feature flag defaults ensured
+8:22:32 PM [express] Addendum clause text patched: 'performance plan' → 'growth plan'
+8:22:32 PM [express] Policy signing tables ensured
+8:22:32 PM [express] Signature ledger table ensured
+8:22:32 PM [express] Attendance report approval tables ensured
+8:22:32 PM [express] Pending changes table ensured
+8:22:32 PM [express] Communications log table ensured
+8:22:32 PM [express] Release notes table ensured
+8:22:32 PM [express] sop_employee_progress.overdue_nudge_sent_date column ensured
+8:22:32 PM [express] Attendance exception columns and escalation log ensured
+8:22:32 PM [express] Healthcare plan tables and columns ensured
+8:22:32 PM [express] Ensuring plan_goal_templates seed (inserts missing rows only)...
+8:22:32 PM [express] Plan goal templates seed: 0 new rows inserted (116 already present)
+8:22:32 PM [express] Ensuring probation framework seed (universal goals, role library, scoring bands)...
+8:22:32 PM [express] Probation framework seed: 0 universal, 0 role-library, 0 scoring bands inserted (rest already present)
+8:22:32 PM [express] Ensuring Process Governance Center SOP library seed (21 SOPs)...
+8:22:33 PM [express] SOP library seed complete: 0 new SOP docs, 0 new role assignments.
+8:22:33 PM [express] Ensuring SOP wave rollout model (Wave 0-5) seed...
+8:22:33 PM [express] SOP wave seed complete: 0 new waves, 0 new memberships.
+8:22:33 PM [express] Travel pay calculator tables ensured
+8:22:33 PM [express] Access control matrix hydrated
+8:22:33 PM [express] Ensured default allowed_email_domains seed
+[payrollSeed] Payroll defaults seeded successfully.
+8:22:33 PM [express] Governance controls table ensured
+8:22:33 PM [express] Governance events table ensured
+[scheduler] All cron jobs scheduled:
+  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval
+  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending
+  - Monthly leave accrual: 1st of month at 00:00 IST (Jan: year-end for prior year runs first, then accrual)
+  - Attendance report generation: last day of month at 22:00 PST → generates run + notifies managers (safety net 1st of month 00:05 IST)
+  - Attendance deadline expiry: every 15 min (primary) + 1st of month 08:00 IST (belt-and-suspenders)
+  - Attendance T-2h reminder: every hour → emails pending managers approaching deadline
+  - Night shift consent expiry check: daily at 8 AM IST
+  - Absent sweep: daily at 08:00 IST (all shifts ended by then; targets yesterday's date)
+  - Regularization digest: 25th of month at 09:00 IST → emails managers with pending requests
+  - Signing reminder sweep: daily at 9 AM IST → reminds unsigned offer letters & addendums at day 2 of 7
+  - Compliance sweep: daily at 9 AM IST → runs all registered collectors (check-in overdue digest + future domain collectors)
+  - GSA rate refresh: daily at 02:00 EST → refreshes all ZIPs used in the last 90 days
+  - Salary change promotion: daily at 00:30 IST → applies future-dated salary changes that became effective
+  - Governance daily sweep (07:00 IST): sync obligations from training/PIP/probation/goals, then mark overdue + escalate 48h+
+  - CEO governance exception report: Mondays at 08:00 IST → anonymized AI summary emailed to super_admin/executive
+8:22:33 PM [express] Background startup tasks complete
+8:23:01 PM [express] GET /api/system/feature-flags 304 in 18ms
+8:23:01 PM [express] GET /api/system/feature-flags 304 in 109ms
+8:23:04 PM [express] GET /api/admin/studio/projects 304 in 27ms
+8:23:04 PM [express] GET /api/auth/me 304 in 10ms
+8:23:04 PM [express] GET /api/notifications 304 in 19ms
+8:23:04 PM [express] GET /api/me/permissions 304 in 16ms
+8:23:04 PM [express] GET /api/admin/studio/authors 304 in 23ms
+8:23:04 PM [express] GET /api/admin/studio/articles 200 in 25ms
+8:23:04 PM [express] GET /api/notifications 304 in 24ms
+8:23:04 PM [express] GET /api/admin/studio/projects 304 in 22ms
+8:23:04 PM [express] GET /api/me/permissions 304 in 25ms
+8:23:04 PM [express] GET /api/auth/me 304 in 26ms
+8:23:04 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91 304 in 19ms
+8:23:04 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91/versions 304 in 10ms
+8:23:04 PM [express] GET /api/studio/projects/dcd891ef-8b23-44f7-9768-c6fd7828ac75/brand-voice 304 in 9ms
+8:23:04 PM [express] GET /api/admin/studio/authors 304 in 13ms
+8:28:31 PM [express] GET /api/system/feature-flags 304 in 12ms
+8:28:32 PM [express] GET /api/notifications 304 in 10ms
+8:28:32 PM [express] GET /api/admin/studio/projects 304 in 9ms
+8:28:32 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91/versions 304 in 7ms
+8:28:32 PM [express] GET /api/me/permissions 304 in 9ms
+8:28:32 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91 304 in 8ms
+8:28:32 PM [express] GET /api/auth/me 304 in 8ms
+8:28:33 PM [express] GET /api/studio/projects/dcd891ef-8b23-44f7-9768-c6fd7828ac75/brand-voice 304 in 6ms
+8:28:33 PM [express] GET /api/admin/studio/authors 304 in 6ms
+8:31:52 PM [express] GET /api/system/feature-flags 304 in 9ms
+8:31:52 PM [express] GET /api/system/feature-flags 304 in 5ms
+8:43:35 PM [express] GET /api/admin/studio/projects 304 in 1971ms
+8:43:35 PM [express] GET /api/notifications 304 in 2000ms
+8:43:35 PM [express] GET /api/auth/me 304 in 1970ms
+8:43:35 PM [express] GET /api/system/feature-flags 304 in 2009ms
+8:43:35 PM [express] GET /api/me/permissions 304 in 1978ms
+8:44:02 PM [express] GET /api/system/feature-flags 304 in 10ms
+8:44:02 PM [express] GET /api/system/feature-flags 304 in 16ms
+8:44:04 PM [express] GET /api/me/permissions 304 in 12ms
+8:44:04 PM [express] GET /api/auth/me 304 in 19ms
+8:44:04 PM [express] GET /api/notifications 304 in 26ms
+8:44:04 PM [express] GET /api/admin/studio/projects 304 in 18ms
+8:44:04 PM [express] GET /api/admin/studio/authors 304 in 60ms
+8:44:04 PM [express] GET /api/admin/studio/articles 304 in 76ms
+8:44:04 PM [express] GET /api/notifications 304 in 11ms
+8:44:04 PM [express] GET /api/me/permissions 304 in 14ms
+8:44:04 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91 304 in 13ms
+8:44:04 PM [express] GET /api/admin/studio/projects 304 in 11ms
+8:44:04 PM [express] GET /api/auth/me 304 in 23ms
+8:44:04 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91/versions 304 in 25ms
+8:44:04 PM [express] GET /api/studio/projects/dcd891ef-8b23-44f7-9768-c6fd7828ac75/brand-voice 304 in 24ms
+8:44:04 PM [express] GET /api/admin/studio/authors 304 in 32ms
+8:46:31 PM [express] GET /api/system/feature-flags 304 in 5ms
+8:46:31 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91 304 in 18ms
+8:46:31 PM [express] GET /api/me/permissions 304 in 22ms
+8:46:31 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91/versions 304 in 23ms
+8:46:31 PM [express] GET /api/admin/studio/projects 304 in 37ms
+8:46:31 PM [express] GET /api/notifications 304 in 44ms
+8:46:31 PM [express] GET /api/auth/me 304 in 10ms
+8:46:31 PM [express] GET /api/studio/projects/dcd891ef-8b23-44f7-9768-c6fd7828ac75/brand-voice 304 in 9ms
+8:46:31 PM [express] GET /api/admin/studio/authors 304 in 9ms
+8:46:41 PM [express] GET /api/system/feature-flags 304 in 10ms
+8:47:02 PM [express] GET /api/auth/me 304 in 12ms
+8:47:02 PM [express] GET /api/admin/studio/projects 304 in 12ms
+8:47:02 PM [express] GET /api/me/permissions 304 in 11ms
+8:47:03 PM [express] GET /api/notifications 304 in 6ms
+8:47:05 PM [express] GET /api/admin/studio/authors 304 in 17ms
+8:47:05 PM [express] GET /api/admin/studio/articles 304 in 32ms
+8:53:20 PM [express] GET /api/system/feature-flags 304 in 5ms
+8:53:20 PM [express] GET /api/admin/studio/projects 304 in 14ms
+8:53:20 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91/versions 304 in 15ms
+8:53:20 PM [express] GET /api/notifications 304 in 26ms
+8:53:20 PM [express] GET /api/auth/me 304 in 28ms
+8:53:20 PM [express] GET /api/me/permissions 304 in 33ms
+8:53:20 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91 304 in 38ms
+8:53:20 PM [express] GET /api/admin/studio/authors 304 in 7ms
+8:53:20 PM [express] GET /api/studio/projects/dcd891ef-8b23-44f7-9768-c6fd7828ac75/brand-voice 304 in 6ms
+8:54:07 PM [express] GET /api/system/feature-flags 304 in 5ms
+8:54:09 PM [express] GET /api/admin/studio/projects 304 in 7ms
+8:54:09 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91 304 in 16ms
+8:54:09 PM [express] GET /api/me/permissions 304 in 7ms
+8:54:09 PM [express] GET /api/admin/studio/articles/e53d821c-b71e-4a05-98c6-f167dcd0ba91/versions 304 in 5ms
+8:54:09 PM [express] GET /api/studio/projects/dcd891ef-8b23-44f7-9768-c6fd7828ac75/brand-voice 304 in 5ms
+8:54:10 PM [express] GET /api/notifications 304 in 8ms
+8:54:10 PM [express] GET /api/auth/me 304 in 8ms
+8:54:10 PM [express] GET /api/admin/studio/authors 304 in 5ms
+9:14:12 PM [express] GET /api/auth/me 304 in 81ms
+9:14:14 PM [express] GET /api/system/feature-flags 304 in 7ms
+9:14:14 PM [express] GET /api/hr/leave-types 304 in 53ms
+9:14:14 PM [express] GET /api/hr/tools/addendums/my-pending 304 in 59ms
+9:14:14 PM [express] GET /api/hr/dashboard-stats 304 in 60ms
+9:14:14 PM [express] GET /api/onboarding/checklist 304 in 68ms
+9:14:14 PM [express] GET /api/my-vault-access 304 in 66ms
+9:14:14 PM [express] GET /api/sops/my-assignments 304 in 77ms
+9:14:14 PM [express] GET /api/hr/holidays 304 in 89ms
+9:14:14 PM [express] GET /api/onboarding/my-training-alerts 304 in 83ms
+9:14:14 PM [express] GET /api/hr/regional-holiday-selections 304 in 86ms
+9:14:14 PM [express] GET /api/sops/access 304 in 91ms
+9:14:14 PM [express] GET /api/hr/attendance/my-team 304 in 108ms
+9:14:14 PM [express] GET /api/hr/leave-requests/my-team 304 in 99ms
+9:14:14 PM [express] GET /api/rayo-academy/status 304 in 28ms
+9:14:14 PM [express] GET /api/system-settings/onboarding_training_enabled 304 in 25ms
+9:14:14 PM [express] GET /api/me/permissions 304 in 27ms
+9:14:14 PM [express] GET /api/performance/my-alerts 304 in 31ms
+9:14:14 PM [express] GET /api/system-settings/performance_management_enabled 304 in 57ms
+9:14:14 PM [express] GET /api/performance/check-ins 304 in 17ms
+9:14:14 PM [express] GET /api/onboarding/policy-gate-status 304 in 101ms
+9:14:14 PM [express] GET /api/service-desk/open-count 200 in 94ms
+9:14:14 PM [express] GET /api/onboarding/training-requests/count 304 in 136ms
+9:14:14 PM [express] GET /api/hr/tools/offer-letters 304 in 131ms
+9:14:14 PM [express] GET /api/hr/reports/salary/runs/pending-count 304 in 117ms
+9:14:14 PM [express] GET /api/admin/studio/cm-review/count 304 in 34ms
+9:14:14 PM [express] GET /api/hr/attendance/regularization/my 304 in 152ms
+9:14:14 PM [express] GET /api/hr/leave-requests/my 304 in 81ms
+9:14:15 PM [express] GET /api/notifications 304 in 16ms
+9:14:15 PM [express] GET /api/salary-advances/stats 304 in 23ms
+9:14:15 PM [express] GET /api/admin/communications/count 304 in 24ms
+9:14:15 PM [express] GET /api/help-desk/open-count 304 in 28ms
+9:14:15 PM [express] GET /api/hr/attendance/regularization 304 in 40ms
+9:14:15 PM [express] GET /api/hr/salary-changes/pending-count 304 in 33ms
+9:14:15 PM [express] GET /api/hr/my-shift 304 in 14ms
+9:14:15 PM [express] GET /api/performance/goals 304 in 24ms
+9:14:15 PM [express] GET /api/performance/reviews/my 304 in 24ms
+9:14:15 PM [express] GET /api/hr/my-documents 304 in 33ms
+9:14:15 PM [express] GET /api/onboarding/my-assignments 304 in 31ms
+9:14:15 PM [express] GET /api/hr/my-policy-requests 304 in 26ms
+9:14:15 PM [express] GET /api/praise/my-badges 304 in 6ms
+9:14:15 PM [express] GET /api/hr/leave-requests/my-team 304 in 15ms
+9:14:15 PM [express] GET /api/praise/board 304 in 22ms
+9:14:15 PM [express] GET /api/sops/my-reviews/count 304 in 8ms
+9:15:14 PM [express] GET /api/auth/me 401 in 2ms
+9:15:17 PM [express] POST /api/auth/login 200 in 372ms
+9:15:32 PM [express] POST /api/auth/login 200 in 397ms
+9:15:35 PM [express] GET /api/system/feature-flags 200 in 8ms
+9:15:35 PM [express] GET /api/hr/attendance/my-team 200 in 17ms
+9:15:35 PM [express] GET /api/sops/my-assignments 304 in 18ms
+9:15:35 PM [express] GET /api/my-vault-access 304 in 14ms
+9:15:35 PM [express] GET /api/hr/dashboard-stats 200 in 28ms
+9:15:35 PM [express] GET /api/onboarding/checklist 304 in 37ms
+9:15:35 PM [express] GET /api/hr/leave-types 304 in 10ms
+9:15:35 PM [express] GET /api/hr/tools/addendums/my-pending 304 in 11ms
+9:15:35 PM [express] GET /api/onboarding/my-training-alerts 200 in 20ms
+9:15:35 PM [express] GET /api/hr/holidays 304 in 15ms
+9:15:35 PM [express] GET /api/hr/regional-holiday-selections 304 in 7ms
+9:15:35 PM [express] GET /api/hr/leave-requests/my-team 200 in 7ms
+9:15:35 PM [express] GET /api/performance/check-ins 304 in 11ms
+9:15:35 PM [express] GET /api/sops/access 304 in 6ms
+9:15:35 PM [express] GET /api/me/permissions 200 in 8ms
+9:15:35 PM [express] GET /api/rayo-academy/status 200 in 12ms
+9:15:35 PM [express] GET /api/onboarding/policy-gate-status 304 in 16ms
+9:15:35 PM [express] GET /api/onboarding/extension-requests/to-endorse 200 in 9ms
+9:15:36 PM [express] GET /api/system-settings/onboarding_training_enabled 304 in 6ms
+9:15:36 PM [express] GET /api/system-settings/performance_management_enabled 304 in 10ms
+9:15:36 PM [express] GET /api/performance/my-alerts 200 in 14ms
+9:15:36 PM [express] GET /api/hr/leave-requests/my 200 in 6ms
+9:15:36 PM [express] GET /api/service-desk/open-count 200 in 24ms
+9:15:36 PM [express] GET /api/admin/studio/cm-review/count 200 in 22ms
+9:15:36 PM [express] GET /api/onboarding/training-requests/count 200 in 7ms
+9:15:36 PM [express] GET /api/hr/attendance/regularization 200 in 15ms
+9:15:36 PM [express] GET /api/hr/attendance/regularization/my 200 in 14ms
+9:15:36 PM [express] GET /api/hr/tools/offer-letters 200 in 18ms
+9:15:36 PM [express] GET /api/help-desk/open-count 200 in 6ms
+9:15:36 PM [express] GET /api/hr/reports/salary/runs/pending-count 200 in 5ms
+9:15:36 PM [express] GET /api/salary-advances/stats 200 in 13ms
+9:15:36 PM [express] GET /api/notifications 200 in 11ms
+9:15:36 PM [express] GET /api/hr/leave-requests/my-team 304 in 6ms
+9:15:36 PM [express] GET /api/sops/my-reviews/count 200 in 5ms
+[replit-cartographer] Error processing /home/runner/workspace/client/src/pages/admin/hr/MyTeam.tsx: SyntaxError: Identifier 'usePermissions' has already been declared. (83:9)
+    at toParseError (/home/runner/workspace/node_modules/@babel/parser/src/parse-error.ts:95:45)
+    at raise (/home/runner/workspace/node_modules/@babel/parser/src/tokenizer/index.ts:1503:19)
+    at declareName (/home/runner/workspace/node_modules/@babel/parser/src/plugins/typescript/scope.ts:72:21)
+    at declareNameFromIdentifier (/home/runner/workspace/node_modules/@babel/parser/src/parser/lval.ts:818:16)
+    at checkIdentifier (/home/runner/workspace/node_modules/@babel/parser/src/parser/lval.ts:813:12)
+    at checkLVal (/home/runner/workspace/node_modules/@babel/parser/src/parser/lval.ts:713:12)
+    at finishImportSpecifier (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:3223:10)
+    at parseImportSpecifier (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:3480:17)
+    at parseImportSpecifier (/home/runner/workspace/node_modules/@babel/parser/src/plugins/typescript/index.ts:4359:20)
+    at parseNamedImportSpecifiers (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:3441:36)
+    at parseImportSpecifiersAndAfter (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:3173:37)
+    at parseImport (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:3142:17)
+    at parseImport (/home/runner/workspace/node_modules/@babel/parser/src/plugins/typescript/index.ts:3011:28)
+    at parseStatementContent (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:642:25)
+    at parseStatementContent (/home/runner/workspace/node_modules/@babel/parser/src/plugins/typescript/index.ts:3185:20)
+    at parseStatementLike (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:477:17)
+    at parseModuleItem (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:414:17)
+    at parseBlockOrModuleBlockBody (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:1438:16)
+    at parseBlockBody (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:1412:10)
+    at parseProgram (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:229:10)
+    at parseTopLevel (/home/runner/workspace/node_modules/@babel/parser/src/parser/statement.ts:203:25)
+    at parse (/home/runner/workspace/node_modules/@babel/parser/src/parser/index.ts:93:10)
+    at parse (/home/runner/workspace/node_modules/@babel/parser/src/plugins/typescript/index.ts:4309:20)
+    at parse (/home/runner/workspace/node_modules/@babel/parser/src/index.ts:92:38)
+    at TransformPluginContext.handler (/home/runner/workspace/node_modules/@replit/vite-plugin-cartographer/dist/index.mjs:74:23)
+    at EnvironmentPluginContainer.transform (/home/runner/workspace/node_modules/vite/dist/node/chunks/config.js:28796:51)
+    at loadAndTransform (/home/runner/workspace/node_modules/vite/dist/node/chunks/config.js:22669:48) {
+  code: 'BABEL_PARSER_SYNTAX_ERROR',
+  reasonCode: 'VarRedeclaration',
+  loc: Position { line: 83, column: 9, index: 2014 },
+  pos: 2014,
+  syntaxPlugin: undefined
+}
+9:15:50 PM [vite] (client) Pre-transform error: /home/runner/workspace/client/src/pages/admin/hr/MyTeam.tsx: Identifier 'usePermissions' has already been declared. (83:9)
+
+  81 | import { Checkbox } from "@/components/ui/checkbox";
+  82 | import { Switch } from "@/components/ui/switch";
+> 83 | import { usePermissions } from "@/hooks/use-permissions";
+     |          ^
+  84 | import RegularizationsPanel from "./RegularizationsPanel";
+  85 | import GovernanceControlsTab from "@/components/admin/governance/GovernanceControlsTab";
+  86 |
+  Plugin: vite:react-babel
+  File: /home/runner/workspace/client/src/pages/admin/hr/MyTeam.tsx:83:9
+  81 |  import { Checkbox } from "@/components/ui/checkbox";
+  82 |  import { Switch } from "@/components/ui/switch";
+  83 |  import { usePermissions } from "@/hooks/use-permissions";
+     |           ^
+  84 |  import RegularizationsPanel from "./RegularizationsPanel";
+  85 |  import GovernanceControlsTab from "@/components/admin/governance/GovernanceControlsTab";
