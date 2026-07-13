@@ -1,0 +1,1432 @@
+# REPLIT WORK ORDER
+
+## Hire’in Current-System Audit for CEO Copilot and AI Governance Layer
+
+## 1. Role
+
+Act as a senior SaaS solution architect, business analyst, systems analyst, security architect, AI-governance architect and codebase auditor.
+
+You are reviewing the existing Hire’in operating platform before we design and implement a company-wide CEO Copilot and AI Governance Layer.
+
+This is a **discovery and audit assignment only**.
+
+Do not implement the CEO Copilot during this assignment.
+
+---
+
+# 2. Business context
+
+Hire’in already has a substantial internal employee and company-management platform.
+
+The system may already contain some or all of the following:
+
+* Employee profiles
+* Reporting hierarchy
+* Departments, roles and levels
+* Goals and KPIs
+* Training plans
+* Probation plans
+* Performance improvement plans
+* SOPs and policy acknowledgements
+* Weekly or periodic check-ins
+* Manager feedback
+* Employee feedback
+* Notifications and reminders
+* Escalations
+* Attendance
+* Leave
+* Payroll
+* Approvals
+* Employee concerns or tickets
+* Audit logs
+* Reports and dashboards
+* Tasks and follow-ups
+* Sales, staffing, recruiting or delivery modules
+* Marketing or content modules
+* Financial or operational reporting
+* AI or LLM integrations
+
+Some modules already contain their own mini-notifications and automations.
+
+The future CEO Copilot must **reuse and govern what already exists**, not rebuild working modules unnecessarily.
+
+The intended future system is a privacy-preserving governance and intelligence layer that:
+
+* Enforces management hierarchy
+* Monitors whether existing processes are followed
+* Audits goals, check-ins, SOPs, training, probation and PIPs
+* Audits managers as well as employees
+* Correlates facts across modules
+* Identifies missing actions and broken process chains
+* Supports employee questions and concerns
+* Produces fact-based findings
+* Provides recommendations and decision packets to the CEO
+* Keeps consequential employment and business decisions with humans
+* Prevents PII and restricted employee data from being sent to external AI systems
+* Uses deterministic rules wherever AI is unnecessary
+* Remains model-provider-agnostic and cost-efficient
+
+---
+
+# 3. Non-negotiable audit rules
+
+## 3.1 Source of truth
+
+Use this order of authority:
+
+1. Current running application code
+2. Current database schema and migrations
+3. Current runtime configuration
+4. Current API routes and services
+5. Current active jobs, schedulers and event handlers
+6. Current tests
+7. Current UI behavior
+8. Repository documentation
+9. Historical plans or archived documents
+
+Do not claim that a feature exists merely because a document says it exists.
+
+Verify that it exists in live code and, where safely possible, in the current schema.
+
+For every capability, classify it as:
+
+* `VERIFIED_ACTIVE`
+* `VERIFIED_PARTIAL`
+* `PRESENT_BUT_NOT_CONNECTED`
+* `DOCUMENTED_ONLY`
+* `DEPRECATED`
+* `DUPLICATED`
+* `NOT_FOUND`
+* `UNABLE_TO_VERIFY`
+
+## 3.2 Read-only audit
+
+Do not:
+
+* Change production code
+* Refactor modules
+* Modify schemas
+* Run database migrations
+* Change environment variables
+* Enable or disable jobs
+* Send notifications
+* Create employee records
+* Update goals, PIPs or check-ins
+* Trigger payroll
+* Modify production data
+* Add AI integrations
+* Expose secrets
+* Print raw PII
+* Commit implementation changes
+
+The only permitted repository changes are audit documents placed under:
+
+```text
+docs/ceo-copilot-system-audit/
+```
+
+If a helper script is absolutely required, it must:
+
+* Be read-only
+* Be placed under `docs/ceo-copilot-system-audit/tools/`
+* Never print secrets or PII
+* Never perform INSERT, UPDATE, DELETE, ALTER, DROP or migration operations
+* Be documented in the audit report
+
+Record the Git status before and after the audit.
+
+## 3.3 Privacy
+
+Do not copy real employee PII into audit documents.
+
+Never include:
+
+* Names
+* Personal email addresses
+* Phone numbers
+* Home addresses
+* Dates of birth
+* Government identifiers
+* Tax identifiers
+* Bank information
+* Payroll documents
+* Medical information
+* Passwords
+* API keys
+* Tokens
+* Session cookies
+* Encryption keys
+* Private complaint text
+* Investigation records
+
+Use pseudonymous examples such as:
+
+```text
+EMP-001
+MGR-002
+DEPT-HEALTHCARE
+PLAN-PIP-003
+```
+
+Environment variable names may be documented, but their values must never be displayed.
+
+## 3.4 Evidence standard
+
+Every material audit statement must include at least one technical reference:
+
+* File path and line range
+* Database table and column
+* Migration name
+* API route
+* Service or function name
+* Scheduler or job name
+* UI route or component
+* Test reference
+* Runtime configuration reference
+
+Mark every statement as:
+
+* `VERIFIED`
+* `INFERRED`
+* `UNVERIFIED`
+
+Do not hide uncertainty.
+
+---
+
+# 4. Initial repository and runtime inspection
+
+Begin by documenting:
+
+* Repository structure
+* Application entry points
+* Frontend framework
+* Backend framework
+* Database and ORM
+* Authentication method
+* Authorization/RBAC method
+* Session management
+* Background-job framework
+* Scheduler or cron mechanism
+* Queue mechanism
+* Notification providers
+* Email provider
+* SMS provider, if any
+* Internal notification mechanism
+* File-storage mechanism
+* Audit-log mechanism
+* Reporting mechanism
+* AI/LLM providers
+* Analytics and monitoring
+* Testing frameworks
+* Deployment configuration
+* Environment names
+* Feature-flag mechanism
+* Current build and test status
+
+Inspect, where applicable:
+
+```text
+package.json
+replit.md
+README files
+client/
+server/
+shared/
+src/
+app/
+api/
+routes/
+services/
+workers/
+jobs/
+cron/
+queues/
+notifications/
+automations/
+workflows/
+emails/
+templates/
+middleware/
+auth/
+rbac/
+database/
+schema/
+migrations/
+tests/
+scripts/
+config/
+```
+
+Do not assume these folders exist. Find the actual structure.
+
+Run safe checks where available:
+
+* Install-state check
+* Type checking
+* Build
+* Existing unit tests
+* Existing integration tests
+* Lint
+
+Do not fix failures during this assignment. Record them.
+
+---
+
+# 5. Complete domain-module inventory
+
+Inspect the application and identify every active module.
+
+At minimum, search for the following domains:
+
+## People and HR
+
+* Employees
+* Departments
+* Positions
+* Levels
+* Reporting managers
+* Dotted-line or skip-level relationships
+* Employment status
+* Onboarding
+* Offboarding
+* Training
+* Goals
+* KPIs
+* Competencies
+* Probation
+* PIP
+* Corrective actions
+* Performance reviews
+* Check-ins
+* One-on-ones
+* Manager feedback
+* Employee feedback
+* Quarterly feedback
+* Employee concerns
+* Tickets
+* Policies
+* SOPs
+* Acknowledgements
+* Documents
+* Attendance
+* Timesheets
+* Leave
+* Holidays
+* Payroll
+* Compensation
+* Incentives
+* Deductions
+* Reimbursements
+* Approvals
+
+## Company operations
+
+* Tasks
+* Action items
+* Follow-ups
+* Escalations
+* Notifications
+* Reports
+* Dashboards
+* Audit logs
+* Announcements
+* Meetings
+* All-hands workflows
+* Decision records
+* Compliance controls
+
+## Staffing and business operations
+
+* Clients
+* Partners
+* Requirements or jobs
+* Recruiter assignments
+* Candidates
+* Submissions
+* Interviews
+* Offers
+* Starts
+* Falloffs
+* Retention
+* Credentials
+* Quality reviews
+* ATS integration
+* Sales pipeline
+* Opportunities
+* Business-development activities
+* Marketing campaigns
+* Content workflows
+* Revenue
+* Margin
+* Costs
+* Receivables
+* Tool subscriptions
+
+If a domain does not exist, mark it `NOT_FOUND`.
+
+For every module, document:
+
+| Field          | Required information                                |
+| -------------- | --------------------------------------------------- |
+| Module name    | User-facing and technical name                      |
+| Status         | Active, partial, disconnected, deprecated or absent |
+| Users          | Roles that use it                                   |
+| UI             | Routes and components                               |
+| APIs           | Endpoints                                           |
+| Services       | Relevant services and functions                     |
+| Database       | Tables and relationships                            |
+| Permissions    | Roles and access rules                              |
+| Events         | Events produced and consumed                        |
+| Notifications  | Connected notifications                             |
+| Automations    | Connected rules or workflows                        |
+| Audit trail    | What is logged                                      |
+| PII            | Data classification                                 |
+| Dependencies   | Other modules required                              |
+| Known gaps     | Missing or unreliable parts                         |
+| Reuse decision | Reuse, extend, repair, replace or retire            |
+
+---
+
+# 6. Organization hierarchy audit
+
+The future Copilot must follow the management hierarchy.
+
+Audit how the current application represents:
+
+* CEO
+* CEO direct reports
+* Department heads
+* Managers
+* Team leads
+* Employees
+* Temporary reporting relationships
+* Multiple managers
+* Skip-level managers
+* HR oversight
+* Super Admin oversight
+* Delegated approvers
+* Acting managers
+* Vacant manager positions
+
+Determine:
+
+1. Where `managerId` or equivalent is stored.
+2. Whether hierarchy is enforced in APIs or only displayed in UI.
+3. Whether a manager can access only direct reports or the entire department.
+4. Whether skip-level access exists.
+5. Whether HR can override hierarchy.
+6. Whether the CEO can view the full organization.
+7. Whether delegated check-in responsibility exists.
+8. What happens when an employee has no assigned manager.
+9. What happens when a manager is inactive or on leave.
+10. Whether historical manager relationships are retained.
+11. Whether circular manager relationships are prevented.
+12. Whether hierarchy changes affect existing goals, check-ins or plans.
+13. Whether hierarchy is used by notifications and escalations.
+14. Whether each plan has a distinct accountable manager.
+15. Whether the system differentiates the plan owner, reviewer and final approver.
+
+Produce an organization-control diagram using Mermaid.
+
+Do not include real employee names.
+
+---
+
+# 7. Goals audit
+
+Audit the complete goals system.
+
+Document:
+
+* Goal tables
+* Goal types
+* Goal templates
+* Company goals
+* Department goals
+* Role goals
+* Level-based goals
+* Individual goals
+* Goal weights
+* Baselines
+* Targets
+* Units
+* Measurement periods
+* Evidence sources
+* Progress calculations
+* Status calculations
+* Green/amber/red logic
+* Goal approval
+* Employee acknowledgement
+* Manager acknowledgement
+* Goal editing
+* Goal version history
+* Goal comments
+* Goal attachments
+* Goal reminders
+* Goal escalation
+* Goal completion
+* Goal reopening
+* Goal archival
+* Goal reporting
+* Existing AI use
+* Notifications and automations
+
+Determine whether goals can currently cascade:
+
+```text
+Company → Department → Team → Role/Level → Employee → Weekly Commitment
+```
+
+Identify exactly what is already supported and what is not.
+
+For every automated goal rule, include it in the Automation Catalog defined later.
+
+---
+
+# 8. Check-in and feedback audit
+
+Audit all check-in, one-on-one and feedback functionality.
+
+Determine:
+
+* Who creates a check-in
+* Who schedules it
+* Who participates
+* Whether immediate-manager ownership is enforced
+* Check-in frequency
+* Check-in duration fields
+* Agenda creation
+* Questions
+* Question templates
+* Role-specific questions
+* Goal-specific questions
+* Employee preparation forms
+* Manager preparation
+* Meeting notes
+* Evidence attachments
+* Employee blockers
+* Employee questions
+* Manager guidance
+* Employee commitments
+* Manager commitments
+* Follow-up actions
+* Acknowledgements
+* Corrections
+* Disputes
+* Confidential notes
+* Visibility rules
+* Overdue logic
+* Escalation logic
+* Notification logic
+* Reporting logic
+* Check-in quality validation
+* Quarterly feedback
+* Bottom-up feedback
+* Skip-level feedback
+* Confidential feedback
+* Employee concerns
+* Manager feedback scores
+* AI summarization, if present
+
+Determine whether the system merely records that a check-in occurred or verifies that it included:
+
+* Goal review
+* Evidence review
+* Guidance
+* Blocker discussion
+* Employee questions
+* Manager actions
+* Employee commitments
+* Follow-up date
+
+---
+
+# 9. Training, probation and PIP audit
+
+Audit each system separately.
+
+Do not merge probation and PIP.
+
+For each, document:
+
+* Plan templates
+* Plan creation
+* Eligibility
+* Owner
+* Manager
+* HR reviewer
+* Employee acknowledgement
+* Start date
+* End date
+* Milestones
+* Goals
+* Metrics
+* Evidence
+* Scheduled reviews
+* Weekly checkpoints
+* Coaching records
+* Training links
+* Support provided
+* Employee response
+* Manager response
+* Extensions
+* Amendments
+* Version history
+* Final review
+* Outcome options
+* Approval chain
+* Notifications
+* Escalations
+* Reports
+* Audit log
+* Access restrictions
+* Existing AI functions
+
+Identify whether the current system can prove that required management support was provided.
+
+Identify whether the current system can distinguish:
+
+* Employee failure
+* Manager support failure
+* Missing evidence
+* External dependency
+* Data-quality problem
+* Approved exception
+
+---
+
+# 10. SOP, policy and compliance audit
+
+Audit how SOPs and policies are:
+
+* Created
+* Versioned
+* Approved
+* Published
+* Assigned
+* Acknowledged
+* Tested
+* Reviewed
+* Updated
+* Retired
+* Connected to roles
+* Connected to departments
+* Connected to goals
+* Connected to training
+* Connected to PIP or probation
+* Connected to operational transactions
+* Connected to notifications
+* Connected to escalations
+* Audited
+
+Determine whether an SOP is currently:
+
+* A document only
+* A checklist
+* A workflow
+* A set of machine-checkable controls
+* A hybrid process
+
+For every SOP capable of automated checking, identify:
+
+* Trigger
+* Expected action
+* Responsible role
+* Required evidence
+* SLA
+* Approved exception
+* Escalation
+* Closure condition
+
+---
+
+# 11. Notification and automation catalog
+
+Create a complete inventory of every existing notification and automation.
+
+Search for:
+
+* In-app notifications
+* Email
+* SMS
+* Teams
+* Slack
+* Push notifications
+* Scheduled reminders
+* Cron jobs
+* Queued jobs
+* Event listeners
+* Database-triggered behavior
+* API-triggered behavior
+* Status-change behavior
+* Escalations
+* Digest reports
+* Approval reminders
+* Overdue reminders
+* Follow-up reminders
+* Goal reminders
+* Check-in reminders
+* Training reminders
+* Probation reminders
+* PIP reminders
+* Attendance reminders
+* Leave notifications
+* Payroll notifications
+* SOP acknowledgements
+* Employee-ticket notifications
+* Manager alerts
+* CEO alerts
+
+Create one row per automation with these fields:
+
+| Field               | Required detail                    |
+| ------------------- | ---------------------------------- |
+| Automation ID       | Stable technical identifier        |
+| Name                | Plain-language name                |
+| Domain              | Goal, PIP, SOP, etc.               |
+| Business purpose    | Why it exists                      |
+| Trigger             | Event, schedule or manual action   |
+| Conditions          | Exact eligibility logic            |
+| Source              | Table, endpoint, event or job      |
+| Recipient           | Employee, manager, HR, CEO, etc.   |
+| Hierarchy logic     | How recipient is determined        |
+| Channel             | In-app, email, SMS, etc.           |
+| Template            | Template/component reference       |
+| Variables           | Data inserted into message         |
+| PII exposure        | Fields used                        |
+| Timing              | Immediate, daily, weekly, etc.     |
+| Time zone           | How it is resolved                 |
+| Deduplication       | Duplicate-prevention logic         |
+| Retry               | Retry and failure behavior         |
+| Escalation          | Next action after non-response     |
+| Acknowledgement     | Whether opening/reading is tracked |
+| Completion tracking | Whether required action is tracked |
+| Audit logging       | What is recorded                   |
+| Active status       | Active, partial, disconnected      |
+| Owner               | Business or system owner           |
+| Code references     | Exact files/functions              |
+| Database references | Tables/columns                     |
+| Problems            | Known gaps or contradictions       |
+| Reuse decision      | Keep, improve, consolidate, retire |
+
+Important distinction:
+
+A notification being sent is not the same as the required action being completed.
+
+Audit the entire chain:
+
+```text
+Trigger
+→ Notification created
+→ Delivery attempted
+→ Delivered
+→ Read or acknowledged
+→ Required action completed
+→ Escalation triggered if missed
+→ Issue resolved
+→ Resolution verified
+```
+
+Identify where each existing automation chain stops.
+
+---
+
+# 12. Workflow and control matrix
+
+Create a cross-module control matrix.
+
+For every important business process, identify:
+
+* Process
+* Trigger
+* Required steps
+* Responsible employee
+* Immediate manager
+* Skip-level owner
+* HR or Ops owner
+* CEO decision owner
+* Evidence source
+* SLA
+* Current automation
+* Current notification
+* Escalation
+* Audit record
+* Current gap
+* Consequence of failure
+
+Include at minimum:
+
+* Employee onboarding
+* Goal assignment
+* Goal review
+* Weekly check-in
+* Training completion
+* Probation review
+* PIP review
+* SOP acknowledgement
+* Attendance exception
+* Leave approval
+* Payroll approval
+* Employee concern
+* Manager follow-up
+* Performance review
+* Offboarding
+
+Include staffing, sales, marketing and financial processes only where they currently exist.
+
+---
+
+# 13. Database and data-model audit
+
+Produce a current ERD using Mermaid.
+
+Document relevant tables and relationships for:
+
+* Users
+* Employees
+* Roles
+* Permissions
+* Departments
+* Managers
+* Goals
+* Goal measurements
+* Check-ins
+* Feedback
+* Training
+* Probation
+* PIP
+* SOPs
+* Policies
+* Notifications
+* Automations
+* Tasks
+* Escalations
+* Attendance
+* Leave
+* Payroll
+* Tickets
+* Audit logs
+* Reports
+* Decisions
+* Staffing operations
+* Sales
+* Marketing
+* Finance
+* AI logs
+
+For every table, document:
+
+* Purpose
+* Primary key
+* Important fields
+* Foreign keys
+* Status fields
+* Date fields
+* Owner fields
+* Approval fields
+* Audit fields
+* Soft-delete behavior
+* Versioning
+* Tenant/company scope
+* PII fields
+* Encryption
+* Retention
+* Relevant indexes
+* Data-integrity constraints
+
+Identify:
+
+* Duplicate concepts stored in multiple tables
+* Orphan-risk relationships
+* Missing foreign keys
+* Missing manager or owner fields
+* Missing audit fields
+* Missing version history
+* Missing company/tenant scoping
+* Free-text fields being used where structured data is needed
+* Status enums that do not support real workflows
+* Tables documented but unused
+* Tables used but undocumented
+
+Do not include real data values.
+
+Counts and aggregate statistics may be reported only when they do not expose PII.
+
+---
+
+# 14. PII, privacy and AI-boundary audit
+
+Create a complete data-classification map.
+
+Use these classifications:
+
+* `PUBLIC`
+* `INTERNAL`
+* `CONFIDENTIAL_BUSINESS`
+* `RESTRICTED_EMPLOYEE_PII`
+* `HIGHLY_SENSITIVE_EMPLOYEE`
+* `SECURITY_SECRET`
+
+Inspect:
+
+* Database schema
+* API payloads
+* Logs
+* Error handlers
+* Analytics
+* Notification templates
+* Email templates
+* File uploads
+* Reports
+* Exports
+* Existing AI integrations
+* Third-party providers
+* Debug statements
+* Client-side state
+* Browser storage
+
+For every sensitive field, identify:
+
+* Table and column
+* API exposure
+* UI exposure
+* Encryption at rest
+* Decryption point
+* Logging risk
+* Notification exposure
+* Export exposure
+* AI exposure
+* Access roles
+* Retention
+* Recommended protection
+
+Verify whether PII encryption is actually applied in active code, not merely documented.
+
+## Mandatory AI privacy principle
+
+The future architecture must ensure:
+
+> Restricted employee PII, payroll data, medical information, investigation records, authentication information and other highly sensitive employee information are never sent to an external AI provider.
+
+Determine what fields can safely be converted into structured pseudonymous context, for example:
+
+```json
+{
+  "employeeRef": "EMP-PSEUDO-001",
+  "department": "Healthcare Recruiting",
+  "level": "Senior",
+  "metric": "qualified_submissions",
+  "target": 6,
+  "actual": 4,
+  "evidenceGrade": "A",
+  "managerActionsOverdue": 1
+}
+```
+
+Design an initial allowed-field proposal for the future AI Privacy Gateway, but do not implement it.
+
+Create:
+
+* External-AI allowlist proposal
+* External-AI prohibited-field list
+* Redaction requirements
+* Pseudonymization requirements
+* Local-processing-only workflows
+* Human-only workflows
+
+---
+
+# 15. Existing AI and LLM audit
+
+Search the entire repository for:
+
+* OpenAI
+* Anthropic
+* Gemini
+* Groq
+* Perplexity
+* Together
+* Bedrock
+* Azure AI
+* Hugging Face
+* LangChain
+* LlamaIndex
+* Embedding providers
+* Vector databases
+* AI SDKs
+* Prompt files
+* System prompts
+* Model names
+* AI-related environment variables
+* AI-generated summaries
+* AI-generated recommendations
+
+For every existing AI use case, document:
+
+* Business purpose
+* Provider
+* Model
+* Prompt location
+* Input data
+* PII exposure
+* Output
+* Storage
+* Human review
+* Failure handling
+* Cost control
+* Token limits
+* Logging
+* Model configurability
+* Provider lock-in
+* Risk level
+
+Do not display API keys or secret values.
+
+Identify any instance where raw employee or payroll information could leave the Hire’in platform.
+
+---
+
+# 16. Audit logs and observability
+
+Audit whether the system can reconstruct:
+
+* Who performed an action
+* What changed
+* Previous value
+* New value
+* Time
+* IP or session, where appropriate
+* Business reason
+* Approval
+* Related employee
+* Related manager
+* Related plan
+* Related automation
+* Notification delivery
+* Escalation
+* AI analysis
+* Human correction
+* Final resolution
+
+Assess:
+
+* Application logs
+* Audit tables
+* Error logs
+* Notification delivery logs
+* Job-execution logs
+* Authentication logs
+* Data-change logs
+* Report-generation logs
+* AI-call logs
+* Cost logs
+
+Identify which important actions currently have no reliable audit trail.
+
+---
+
+# 17. Automation-effectiveness assessment
+
+For every major automation, determine whether the application can measure:
+
+* Number of triggers
+* Number of notifications generated
+* Delivery success
+* Delivery failure
+* Open or acknowledgement
+* Required action completion
+* Time to completion
+* Escalations
+* Resolution
+* Repeat misses
+* False or noisy alerts
+* Suppressed duplicates
+
+If current production-safe statistics are accessible, report only aggregates.
+
+Otherwise, report whether the required data exists to calculate these measures.
+
+Classify each automation as:
+
+* `EFFECTIVE_AND_MEASURABLE`
+* `ACTIVE_BUT_NOT_MEASURABLE`
+* `NOTIFICATION_ONLY`
+* `INCOMPLETE_CHAIN`
+* `BROKEN_OR_DISCONNECTED`
+* `DUPLICATED`
+* `UNKNOWN`
+
+---
+
+# 18. Cross-module intelligence readiness
+
+Assess whether the current platform can detect scenarios such as:
+
+## Scenario A: Employee goal versus manager support
+
+* Goal is below target
+* Check-ins were missed
+* Employee raised a blocker
+* Manager action is overdue
+
+## Scenario B: Probation process integrity
+
+* Probation milestone is due
+* Employee submitted evidence
+* Manager did not provide feedback
+* Final review is approaching
+
+## Scenario C: PIP process integrity
+
+* PIP is active
+* Weekly checkpoints exist
+* Required coaching is missing
+* Outcome decision is approaching
+
+## Scenario D: Attendance and payroll
+
+* Attendance exception exists
+* Leave is approved
+* Payroll deduction was applied
+* Employee raised a ticket
+
+## Scenario E: SOP compliance
+
+* SOP step is required
+* Transaction exists
+* Required approval or evidence is missing
+* Notification was sent but no correction occurred
+
+For each scenario, state:
+
+* Data already available
+* Data missing
+* Join keys
+* Rules already available
+* New rule required
+* AI required or not required
+* Privacy constraints
+* Decision owner
+
+---
+
+# 19. CEO Copilot reuse-and-gap assessment
+
+For every future CEO Copilot capability, classify the existing system as:
+
+* `REUSE_AS_IS`
+* `REUSE_WITH_EXTENSION`
+* `REPAIR_FIRST`
+* `CONSOLIDATE`
+* `NEW_CAPABILITY_REQUIRED`
+* `DO_NOT_BUILD`
+
+Assess:
+
+1. Company coverage auditing
+2. Hierarchy enforcement
+3. Manager accountability
+4. Employee AI Buddy
+5. Manager check-in assistant
+6. Goal monitoring
+7. Training monitoring
+8. Probation monitoring
+9. PIP monitoring
+10. SOP compliance auditing
+11. Attendance exceptions
+12. Payroll reconciliation alerts
+13. Employee concern routing
+14. Quarterly bottom-up feedback
+15. Notification effectiveness
+16. Cross-module fact finding
+17. Evidence packets
+18. CEO findings
+19. CEO decision queue
+20. Follow-up closure tracking
+21. Weekly CEO governance report
+22. AI Privacy Gateway
+23. Model-provider abstraction
+24. AI cost controls
+25. AI quality monitoring
+26. Staffing-delivery governance
+27. Sales/GTM governance
+28. Marketing governance
+29. Financial and margin governance
+
+Do not provide generic recommendations. Tie each conclusion to current code and data.
+
+---
+
+# 20. Required deliverables
+
+Create the following files:
+
+```text
+docs/ceo-copilot-system-audit/
+├── 00-README.md
+├── 01-EXECUTIVE-SUMMARY.md
+├── 02-CURRENT-ARCHITECTURE.md
+├── 03-MODULE-CAPABILITY-INVENTORY.md
+├── 04-ORGANIZATION-HIERARCHY-AND-RBAC.md
+├── 05-GOALS-CHECKINS-AND-FEEDBACK.md
+├── 06-TRAINING-PROBATION-AND-PIP.md
+├── 07-SOP-POLICY-AND-COMPLIANCE.md
+├── 08-AUTOMATION-AND-NOTIFICATION-CATALOG.md
+├── 09-WORKFLOW-CONTROL-MATRIX.md
+├── 10-DATABASE-AND-DATA-MODEL.md
+├── 11-PII-PRIVACY-AND-AI-BOUNDARY.md
+├── 12-AI-AND-LLM-USAGE-AUDIT.md
+├── 13-AUDIT-LOGGING-AND-OBSERVABILITY.md
+├── 14-AUTOMATION-EFFECTIVENESS.md
+├── 15-CROSS-MODULE-INTELLIGENCE-READINESS.md
+├── 16-CEO-COPILOT-REUSE-AND-GAP-MATRIX.md
+├── 17-RISKS-CONTRADICTIONS-AND-TECHNICAL-DEBT.md
+├── 18-OPEN-QUESTIONS-FOR-CEO.md
+├── 19-RECOMMENDED-DESIGN-INPUT-PACK.md
+├── system-inventory.json
+├── automation-catalog.json
+├── control-matrix.json
+├── data-classification.json
+└── evidence-index.json
+```
+
+---
+
+# 21. Executive-summary requirements
+
+`01-EXECUTIVE-SUMMARY.md` must clearly answer:
+
+1. What is actually built and active?
+2. What is partially built?
+3. What exists only in documentation?
+4. What is duplicated?
+5. Which automations work?
+6. Which automations only send notifications without ensuring action?
+7. Is the management hierarchy technically enforced?
+8. Can manager accountability be measured?
+9. Can check-in quality be measured?
+10. Can PIP and probation process integrity be verified?
+11. Can employee concerns safely bypass the immediate manager?
+12. Is bottom-up feedback currently supported?
+13. What PII could currently reach third parties or AI?
+14. What should be reused?
+15. What should be repaired?
+16. What must be newly built?
+17. What are the five highest risks?
+18. What information is still missing?
+19. Is the platform ready for the CEO Governance Layer?
+20. What must happen before implementation begins?
+
+Include a readiness score from 0–100, with separate scores for:
+
+* Data readiness
+* Workflow readiness
+* Hierarchy readiness
+* Automation readiness
+* Auditability
+* Privacy readiness
+* AI readiness
+* Manager-accountability readiness
+* CEO-reporting readiness
+
+Explain every score with evidence.
+
+---
+
+# 22. Required design-input pack
+
+`19-RECOMMENDED-DESIGN-INPUT-PACK.md` must provide the exact information needed for the next architecture phase.
+
+It must contain:
+
+## A. Reusable assets
+
+* Tables
+* APIs
+* services
+* components
+* notification services
+* schedulers
+* escalation logic
+* audit services
+* reporting services
+* permission middleware
+
+## B. Missing platform primitives
+
+Examples may include:
+
+* Unified event model
+* Control registry
+* Evidence registry
+* Manager-responsibility mapping
+* Finding lifecycle
+* Decision queue
+* Follow-up closure
+* AI privacy gateway
+* Model router
+* AI cost ledger
+
+Only include primitives actually missing.
+
+## C. Proposed integration points
+
+For every future governance capability, identify:
+
+* Existing event
+* Existing data source
+* Existing API
+* New adapter required
+* Privacy requirements
+* AI requirement
+* Rule-engine requirement
+* Human approval requirement
+
+## D. Minimum safe implementation sequence
+
+Provide a phased sequence based on actual gaps.
+
+Do not produce a broad product roadmap disconnected from the audit.
+
+## E. CEO decisions required
+
+List only decisions that cannot be resolved from code, such as:
+
+* Who owns a process
+* Who may see confidential feedback
+* Escalation thresholds
+* Approved AI providers
+* Approved external-AI fields
+* Check-in cadence
+* CEO visibility boundaries
+* Human approval requirements
+
+---
+
+# 23. Machine-readable JSON requirements
+
+## `system-inventory.json`
+
+Each item must contain:
+
+```json
+{
+  "id": "MODULE-001",
+  "domain": "goals",
+  "name": "Employee Goals",
+  "status": "VERIFIED_ACTIVE",
+  "uiReferences": [],
+  "apiReferences": [],
+  "serviceReferences": [],
+  "databaseReferences": [],
+  "roles": [],
+  "eventsProduced": [],
+  "eventsConsumed": [],
+  "notifications": [],
+  "automations": [],
+  "piiClasses": [],
+  "auditCoverage": "partial",
+  "reuseRecommendation": "REUSE_WITH_EXTENSION",
+  "evidence": [],
+  "unknowns": []
+}
+```
+
+## `automation-catalog.json`
+
+Each item must contain:
+
+```json
+{
+  "id": "AUTO-001",
+  "domain": "checkins",
+  "name": "Weekly manager check-in reminder",
+  "status": "VERIFIED_ACTIVE",
+  "trigger": {},
+  "conditions": [],
+  "recipients": [],
+  "hierarchyResolution": "",
+  "channels": [],
+  "templateReferences": [],
+  "piiFields": [],
+  "deduplication": "",
+  "retry": "",
+  "acknowledgementTracking": "",
+  "completionTracking": "",
+  "escalation": "",
+  "auditLogging": "",
+  "codeReferences": [],
+  "databaseReferences": [],
+  "effectivenessClassification": "NOTIFICATION_ONLY",
+  "reuseRecommendation": "REUSE_WITH_EXTENSION",
+  "unknowns": []
+}
+```
+
+## `evidence-index.json`
+
+Every material finding must link to evidence:
+
+```json
+{
+  "findingId": "FINDING-001",
+  "statement": "",
+  "classification": "VERIFIED",
+  "severity": "high",
+  "references": [
+    {
+      "type": "code",
+      "path": "server/example.ts",
+      "startLine": 10,
+      "endLine": 35,
+      "symbol": "exampleFunction"
+    }
+  ]
+}
+```
+
+---
+
+# 24. Final response in Replit chat
+
+After creating the audit files, return a concise response containing:
+
+1. Audit completed or partially completed.
+2. Repository areas inspected.
+3. Build/test status.
+4. Number of modules found.
+5. Number of automations found.
+6. Number of notification-only workflows.
+7. Number of incomplete automation chains.
+8. Number of PII or privacy risks.
+9. Overall CEO Copilot readiness score.
+10. Five most important findings.
+11. Documents created.
+12. Access limitations or unanswered questions.
+13. Confirmation that no production logic or data was modified.
+
+Do not claim completion if important repository areas could not be inspected.
+
+---
+
+# 25. Acceptance criteria
+
+The audit is complete only when:
+
+* The live codebase has been inspected.
+* The current schema has been inspected.
+* Active modules are separated from documented-only modules.
+* Every known automation is cataloged.
+* Notification delivery is separated from action completion.
+* Hierarchy and manager responsibility are mapped.
+* Goals, check-ins, training, probation, PIP and SOPs are separately audited.
+* Attendance, leave and payroll integration points are mapped.
+* PII fields and decryption points are identified.
+* Existing AI usage is documented.
+* Every material claim links to evidence.
+* Unknowns remain explicitly marked.
+* No production logic or data is changed.
+* The resulting documents contain sufficient information to design the CEO Governance Layer without guessing.
+
+Begin the audit now. Do not implement the CEO Copilot.
