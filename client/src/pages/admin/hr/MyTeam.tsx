@@ -38,6 +38,7 @@ import {
   ChevronUp,
   Clipboard,
   RefreshCw,
+  ShieldCheck,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -81,6 +82,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { usePermissions } from "@/hooks/use-permissions";
 import RegularizationsPanel from "./RegularizationsPanel";
+import GovernanceControlsTab from "@/components/admin/governance/GovernanceControlsTab";
 
 const INDIA_PT_STATES = [
   "Andhra Pradesh", "Gujarat", "Karnataka", "Kerala", "Madhya Pradesh",
@@ -651,6 +653,9 @@ function EmployeeDetailView({
           <TabsTrigger data-testid="tab-compliance" value="compliance" className="gap-1">
             <BadgeCheck className="h-4 w-4" /> Compliance
           </TabsTrigger>
+          <TabsTrigger data-testid="tab-governance" value="governance" className="gap-1">
+            <ShieldCheck className="h-4 w-4" /> Governance
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile">
@@ -696,6 +701,10 @@ function EmployeeDetailView({
         <TabsContent value="history">
           <ChangeHistoryTab auditQuery={auditQuery} />
         </TabsContent>
+        <TabsContent value="governance">
+          <GovernanceControlsTab employeeId={userId} canClose={true} />
+        </TabsContent>
+
         <TabsContent value="compliance">
           <Card>
             <CardHeader>

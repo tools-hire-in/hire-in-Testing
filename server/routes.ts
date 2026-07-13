@@ -135,6 +135,7 @@ import { registerAttendanceExceptionRoutes, createExceptionForShortDay, checkEsc
 import { registerTravelRoutes } from "./travelRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 import { registerTrainingCatalogRoutes } from "./trainingCatalogRoutes";
+import { registerGovernanceRoutes } from "./governanceRoutes";
 import { registerSalaryStructureRoutes, seedDefaultSalaryStructure, getPtCustomSlabs } from "./salaryStructureRoutes";
 import { computeComponentsFromGross, computeIndiaStatutory, type StructureRule } from "./salaryEngine";
 import { salaryStructures, salaryStructureRules, trainingSopLinks, roleTrainingRules, systemSettings } from "@shared/schema";
@@ -23344,6 +23345,7 @@ export async function registerRoutes(
   registerAttendanceExceptionRoutes(app);
   registerTravelRoutes(app);
   registerTrainingCatalogRoutes(app);
+  registerGovernanceRoutes(app);
   registerSalaryStructureRoutes(app, requirePermission);
 
   // ==========================================================================

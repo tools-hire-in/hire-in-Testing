@@ -312,6 +312,11 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   // Studio BD Agent (Task #942) — gated to super_admin / admin / hr only.
   "studio.bd_agent": ["super_admin", "admin", "hr"],
   "studio.bd_agent.templates": ["super_admin", "admin", "hr"],
+  // Governance Controls — obligation tracking, escalation, CEO reporting
+  "governance.view": ["super_admin", "admin", "hr", "operations", "manager", "employee", "finance", "recruiter", "executive"],
+  "governance.manager": ["super_admin", "admin", "hr", "operations", "manager"],
+  "governance.hr": ["super_admin", "admin", "hr", "executive"],
+  "governance.ceo": ["super_admin", "admin", "executive"],
 };
 
 // ============================================================================

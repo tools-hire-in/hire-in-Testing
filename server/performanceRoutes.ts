@@ -348,6 +348,27 @@ export async function ensurePlanFromDocument(opts: {
 
   await seedPlanGoals(plan.id, employeeId, managerId, startDate, endDate, goals);
 
+  // ── Governance hook: create a control for this plan at the moment of creation.
+  // This ensures the governance layer has visibility at due-time, not only post-overdue.
+  // Non-fatal — wrapped in try/catch so plan creation never fails due to governance errors.
+  try {
+    const controlType = planType === "pip" ? "pip" : "probation";
+    const { createGovernanceControl } = await import("./governanceService");
+    await createGovernanceControl({
+      controlType,
+      referenceId: `${controlType === "pip" ? "pip" : "prob"}:${plan.id}`,
+      ownerId: employeeId,
+      managerId: managerId ?? null,
+      dueDate: endDate,
+      requiredAction: planType === "pip"
+        ? "Meet all Performance Improvement Plan checkpoints by the end of the plan period."
+        : "Complete all probation milestones and pass the confirmation review.",
+      evidenceRequired: true,
+    });
+  } catch (govErr) {
+    console.error("[governance] Non-fatal: failed to create governance control for plan:", govErr);
+  }
+
   return { created: true, planId: plan.id };
 }
 

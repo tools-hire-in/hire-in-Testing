@@ -4158,6 +4158,50 @@ async function runStartupTasks() {
     console.error("[startup] BD domain masters seed error (non-fatal):", err);
   }
 
+  // Governance Controls table — obligation tracking + CEO exception reports
+  try {
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'governance_control_type') THEN
+          CREATE TYPE governance_control_type AS ENUM ('goal','check_in','training','sop','probation','pip');
+        END IF;
+        IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'governance_control_status') THEN
+          CREATE TYPE governance_control_status AS ENUM ('pending','in_progress','completed','overdue','escalated','closed','disputed');
+        END IF;
+      END $$
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS governance_controls (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        control_type governance_control_type NOT NULL,
+        reference_id VARCHAR,
+        owner_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        manager_id VARCHAR REFERENCES admin_users(id),
+        due_date DATE NOT NULL,
+        required_action TEXT NOT NULL,
+        evidence_required BOOLEAN NOT NULL DEFAULT false,
+        status governance_control_status NOT NULL DEFAULT 'pending',
+        evidence_record TEXT,
+        exception_reason TEXT,
+        escalation_level INTEGER NOT NULL DEFAULT 0,
+        resolution TEXT,
+        closure_date DATE,
+        closed_by_id VARCHAR REFERENCES admin_users(id),
+        dispute_note TEXT,
+        disputed_at TIMESTAMP,
+        flagged_for_hr_review BOOLEAN NOT NULL DEFAULT false,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_gc_owner_status ON governance_controls(owner_id, status)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_gc_manager_status ON governance_controls(manager_id, status)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_gc_due_date ON governance_controls(due_date) WHERE status NOT IN ('closed','completed')`);
+    log("Governance controls table ensured");
+  } catch (err) {
+    console.error("[startup] Governance controls table ensure error:", err);
+  }
+
   // Cron/scheduled jobs start only after schema is ensured so they query
   // tables that are guaranteed to exist.
   startScheduler();

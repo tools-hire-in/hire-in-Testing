@@ -34,6 +34,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { BreakWidget } from "@/components/admin/BreakWidget";
 import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
 import PendingSopAuditsCard from "@/components/admin/sops/PendingSopAuditsCard";
+import GovernanceObligationsCard from "@/components/admin/governance/GovernanceObligationsCard";
 
 interface DashboardStats {
   todayStatus: "not_punched" | "punched_in" | "completed";
@@ -443,6 +444,9 @@ export default function HRDashboard() {
 
         {/* Pending SOP Audits — managers/audit-owners only (gated server-side) */}
         {isManagerRole && <PendingSopAuditsCard enabled={isManagerRole} />}
+
+        {/* Governance Obligations — visible to all employees with active controls */}
+        <GovernanceObligationsCard />
 
         {/* My Shift card — employee only */}
         {isEmployeeOnly && myShift && (

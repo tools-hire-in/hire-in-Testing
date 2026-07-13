@@ -1,0 +1,394 @@
+What must be hardened before company-wide enforcement
+1. Do not keep schema creation inside server/index.ts permanently
+
+The idempotent raw SQL ensure block may be practical for the current Replit environment, but it should not become the long-term migration strategy.
+
+Risks include:
+
+Multiple application instances running the block simultaneously
+Partial schema creation
+Schema drift between environments
+Application startup requiring database DDL permissions
+Harder rollback and deployment auditing
+The Drizzle schema and actual database becoming inconsistent
+
+For the pilot, it may be acceptable.
+
+Before wider rollout, move it into a controlled, versioned migration process or a separately executed deployment migration.
+
+2. Regex redaction is not sufficient as the primary AI privacy boundary
+
+Removing email, phone and name patterns is useful, but it is not enough.
+
+Sensitive text may include:
+
+Candidate or employee names not recognized by the pattern
+Salary values
+Medical details
+Complaint information
+Client-sensitive data
+Government IDs
+Addresses
+Free-text investigation information
+
+The stronger pattern is:
+
+Internal records
+→ Structured allowlisted fields
+→ Pseudonymous employee reference
+→ PII/DLP inspection
+→ External AI
+
+External AI should receive structured data such as:
+
+{
+  "employeeRef": "EMP-PSEUDO-104",
+  "roleCategory": "healthcare_recruiting",
+  "controlType": "weekly_check_in",
+  "daysOverdue": 3,
+  "managerActionPending": true,
+  "evidenceStatus": "missing"
+}
+
+It should not normally receive requiredAction as unrestricted free text, even after regex redaction.
+
+3. Confirm row-level authorization on every GET endpoint
+
+The summary says:
+
+Object-level manager scope checks on all mutations.
+
+That is good, but reads are equally sensitive.
+
+Verify that:
+
+Employees see only their own obligations.
+Managers see only their permitted reporting scope.
+Skip-level access follows explicit rules.
+HR sees only the categories it is authorized to see.
+The CEO/Super Admin view is deliberate.
+No query returns all controls and relies on frontend filtering.
+
+A secure mutation path with an overbroad GET endpoint would still expose employee information.
+
+4. Evidence must become structured
+
+A required evidenceRecord field is a useful MVP, but free text does not necessarily prove completion.
+
+Add or confirm fields such as:
+
+evidenceType
+sourceModule
+sourceTable
+sourceRecordId
+submittedBy
+submittedAt
+validatedBy
+validatedAt
+validationStatus
+evidenceSummary
+attachmentReference, where permitted
+
+Example:
+
+Training control
+Evidence type: SYSTEM_RECORD
+Source: track_assignments
+Source record: TA-492
+Completion date: July 12, 2026
+Validated automatically: Yes
+
+System-generated evidence should be stronger than a manager writing “completed.”
+
+5. One global escalation threshold is too simple
+
+The fallback chain is thoughtfully designed:
+
+System setting → environment variable → 48 hours
+
+But different obligations need different thresholds.
+
+For example:
+
+Weekly check-in: perhaps 24–48 hours
+Mandatory SOP acknowledgement: based on published deadline
+Payroll approval: potentially same-day escalation
+Training: perhaps 48–72 hours
+PIP checkpoint: immediate manager and HR escalation
+Probation decision: escalation several days before deadline
+
+Add policy by control type and severity:
+
+Control type
+→ Due-date policy
+→ Grace period
+→ First escalation
+→ Second escalation
+→ CEO visibility threshold
+
+Do not notify the CEO for every 48-hour delay.
+
+6. Add scheduler locking and run records
+
+If more than one application instance starts the scheduler, the daily sync or escalation sweep could run twice.
+
+Confirm or add:
+
+Distributed lock or database advisory lock
+Unique run identifier
+Start and completion timestamp
+Records processed
+Controls created
+Controls updated
+Failures
+Retry state
+Run status
+Duplicate-run prevention
+
+The synchronization may be idempotent, but notifications and reports can still duplicate.
+
+7. Reconsider the idempotency key
+
+Current key:
+
+control_type + reference_id + owner_id
+
+Potential problem: when ownership changes, the system may create another active control rather than transferring the existing obligation.
+
+A more stable identity may be:
+
+source_type + source_record_id + obligation_type + obligation_period
+
+The current owner can then be updated while retaining history.
+
+Otherwise, manager reassignment, employee reassignment or plan ownership changes may produce duplicate controls.
+
+8. Separate “no goal” from “no goal control”
+
+The CEO category:
+
+Employees without Active Goal Controls
+
+may create a circular conclusion.
+
+The true question should be:
+
+Does the employee have an applicable approved active goal in the source goal system?
+
+Then separately:
+
+Does that goal have a corresponding governance control where one is required?
+
+These are different findings:
+
+MISSING_BUSINESS_GOAL
+MISSING_GOVERNANCE_CONTROL_FOR_EXISTING_GOAL
+
+Do not infer absence of a goal merely from absence of a control.
+
+9. “Repeated unresolved blockers” needs stronger semantics
+
+Two overdue or escalated controls do not necessarily equal two blockers.
+
+An overdue SOP acknowledgement and an overdue training assignment may represent missed obligations, not operational blockers.
+
+The report should distinguish:
+
+Employee obligations overdue
+Manager actions overdue
+Employee-reported blockers
+External dependencies
+System failures
+Repeated unresolved concerns
+
+Use a blocker record or explicit blocker classification rather than deriving blockers only from overdue-control counts.
+
+10. Disputes need an HR review lifecycle
+
+Keeping the operational status unchanged was the right fix. Add:
+
+disputeStatus
+disputedAt
+disputedBy
+assignedReviewer
+reviewDueAt
+reviewOutcome
+reviewedAt
+resolutionNote
+
+While disputed:
+
+The obligation may continue.
+Escalation may continue.
+Reports must identify it as disputed.
+AI must not describe the underlying issue as confirmed.
+Formal employment action must require human review.
+Important capabilities not mentioned in the summary
+
+Confirm whether these are already present.
+
+Append-only governance history
+
+Every control should retain events such as:
+
+Created
+Assigned
+Reminder sent
+Acknowledged
+Evidence submitted
+Manager reviewed
+Disputed
+Escalated
+Reassigned
+Closed
+Reopened
+Waived
+Cancelled
+
+A mutable current row alone is not enough for PIP, probation or compliance reconstruction.
+
+Exceptions and waivers
+
+There should be authorized ways to record:
+
+Approved extension
+Employee leave
+System outage
+Client dependency
+Manager reassignment
+Obligation no longer applicable
+Duplicate control
+Incorrect source record
+
+Do not force managers to close invalid controls with artificial evidence.
+
+Manager-to-skip-level escalation
+
+The hierarchy should be explicit:
+
+Employee obligation
+→ Immediate manager
+→ Skip-level/department head
+→ HR or Ops
+→ CEO only when material
+
+The CEO report should not become the first escalation layer.
+
+Notification-to-control linkage
+
+Every governance notification should reference:
+
+Control ID
+Recipient
+Delivery channel
+Delivery result
+Required action
+Due date
+Escalation level
+
+That allows the system to answer:
+
+Was the person notified, and did the notification lead to action?
+
+Testing still required
+
+Seven privacy tests are good, but the core governance service needs broader tests.
+
+At minimum:
+
+Synchronization tests
+Creates one control
+Does not duplicate controls
+Updates ownership correctly
+Handles missing due dates
+Handles cancelled source records
+Handles completed source records
+Handles lookahead boundaries
+Handles timezone boundaries
+Authorization tests
+Employee can read own control
+Employee cannot read another employee’s control
+Manager can act on direct report
+Manager cannot act on unrelated employee
+HR access follows approved scope
+CEO access works as designed
+Evidence tests
+Required evidence prevents closure
+Valid system evidence permits closure
+Invalid source reference is rejected
+Non-required evidence control can close
+Closed control can or cannot reopen according to policy
+Escalation tests
+No premature escalation
+Correct manager receives escalation
+Skip-level escalation occurs
+Duplicate notifications are prevented
+Disputed controls are labeled correctly
+Closed and waived controls do not escalate
+AI privacy tests
+
+Add adversarial cases for:
+
+Full names
+Partial names
+International phone formats
+Addresses
+Salary information
+Government identifiers
+Medical terms
+Complaint narratives
+Mixed structured and free-text content
+Recommended next step
+
+Do not add more major governance features immediately.
+
+Create the next task as:
+
+Governance MVP Hardening and Shadow Pilot
+Part 1: Hardening
+
+Address:
+
+Read-scope authorization
+Structured evidence
+Per-control escalation policies
+Scheduler locking and run logs
+Stable control identity and reassignment
+Dispute review lifecycle
+Append-only governance events
+Privacy allowlist before AI
+Correct CEO report semantics
+Notification-to-control linkage
+Part 2: Shadow-mode pilot
+
+Run it with one department—Healthcare is the strongest candidate—for two weekly cycles.
+
+During shadow mode:
+
+Controls and reports operate normally.
+Managers continue their existing process.
+No formal warning, PIP result, probation result or employment decision may rely solely on a governance finding.
+Findings are compared with manual manager and CEO review.
+False positives and missed obligations are corrected.
+
+Measure:
+
+Duplicate-control rate
+False exception rate
+Missed-obligation rate
+Manager-action completion
+Time to closure
+Employee disputes
+Unsupported findings
+PII requests blocked
+CEO report usefulness
+AI cost
+Final assessment
+
+Task #1013 delivered the right thing:
+
+A reusable obligation, evidence, escalation and CEO exception framework across the six highest-priority people-governance areas.
+
+The most important achievement is not the AI report. It is that Hire’in now has a common control object connecting obligations to owners, deadlines, evidence, escalation and closure.
+
+Do not call it finished yet. Harden the trust boundaries, run it in shadow mode, and then activate enforcement progressively.

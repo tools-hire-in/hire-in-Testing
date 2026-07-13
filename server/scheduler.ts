@@ -1529,6 +1529,161 @@ export function startScheduler() {
     }
   }, { timezone: "Asia/Kolkata" });
 
+  // ─── Governance escalation sweep — daily at 07:00 IST ───────────────────────
+  // Step 1: pending/in_progress past due → overdue (notify manager + employee).
+  // Step 2: overdue + 48h → escalated (notify skip-level manager).
+  cron.schedule("0 7 * * *", async () => {
+    // 1. Sync obligations from live data sources (training, PIP, probation, goals)
+    console.log("[scheduler] Running governance obligation sync...");
+    try {
+      const { syncGovernanceObligations } = await import("./governanceService");
+      const counts = await syncGovernanceObligations();
+      console.log(`[scheduler] Governance sync: training=${counts.training} sop=${counts.sop} checkIn=${counts.checkIn} probation=${counts.probation} pip=${counts.pip} goal=${counts.goal} controls created/ensured.`);
+    } catch (err) {
+      console.error("[scheduler] Governance obligation sync failed (non-fatal):", err);
+    }
+
+    // 2. Escalation sweep — mark overdue, escalate 48h+ overdue
+    console.log("[scheduler] Running governance escalation sweep...");
+    try {
+      const { runGovernanceEscalationSweep } = await import("./governanceService");
+      const { markedOverdue, escalated } = await runGovernanceEscalationSweep();
+      console.log(`[scheduler] Governance sweep: ${markedOverdue} marked overdue, ${escalated} escalated.`);
+    } catch (err) {
+      console.error("[scheduler] Governance escalation sweep failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
+  // ─── CEO weekly exception report — Monday 08:00 IST ─────────────────────────
+  // Queries all overdue/escalated governance controls, anonymises data through
+  // aiPrivacyGuard, uses AI to draft a narrative summary, and emails the CEO.
+  // Raw structured data is also stored in docs/ for audit.
+  cron.schedule("0 8 * * 1", async () => {
+    console.log("[scheduler] Generating weekly CEO governance exception report...");
+    try {
+      const { buildCeoReportData } = await import("./governanceService");
+      const reportData = await buildCeoReportData();
+
+      if (reportData.totalOpen === 0) {
+        console.log("[scheduler] CEO report: no open governance controls — skipping.");
+        return;
+      }
+
+      // Find CEO / super_admins to send to
+      const { adminUsers } = await import("@shared/schema");
+      const { eq, isNull, or } = await import("drizzle-orm");
+      const recipients = await db
+        .select({ id: adminUsers.id, email: adminUsers.email })
+        .from(adminUsers)
+        .where(
+          and(
+            eq(adminUsers.isActive, true),
+            isNull(adminUsers.deletedAt),
+            or(eq(adminUsers.role, "super_admin"), eq(adminUsers.role, "executive")),
+          ),
+        );
+
+      if (recipients.length === 0) {
+        console.log("[scheduler] CEO report: no super_admin/executive recipients found.");
+        return;
+      }
+
+      // Build anonymized AI prompt — no PII
+      const { auditPromptForPII } = await import("./services/aiPrivacyGuard");
+      const anonymizedSummary = {
+        generatedAt: new Date().toISOString().slice(0, 10),
+        totalOpen: reportData.totalOpen,
+        totalOverdue: reportData.totalOverdue,
+        totalEscalated: reportData.totalEscalated,
+        byType: reportData.byType,
+        exceptionCategories: reportData.exceptionCategories,
+        highPriorityItems: reportData.highPriority.slice(0, 20),
+      };
+
+      const promptText = JSON.stringify(anonymizedSummary, null, 2);
+      const piiCheck = auditPromptForPII(promptText);
+      if (piiCheck.length > 0) {
+        console.error(`[scheduler] CEO report: PII detected in prompt (${piiCheck.join(", ")}) — aborting AI call`);
+        return;
+      }
+
+      // AI narrative (anonymized data only)
+      let narrative = "";
+      try {
+        const OpenAI = (await import("openai")).default;
+        const openai = new OpenAI({
+          apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+          baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        });
+        const completion = await openai.chat.completions.create({
+          model: "gpt-5.4",
+          max_completion_tokens: 1024,
+          messages: [
+            {
+              role: "system",
+              content: `You are a governance analyst. Summarize the weekly exception report in 3-5 concise bullet points for the CEO. Focus on escalated items and patterns. Use only the anonymized data provided. Never mention specific names or personal details.`,
+            },
+            {
+              role: "user",
+              content: `Here is this week's governance control summary (all data is anonymized):\n\n${promptText}\n\nProvide a concise executive summary.`,
+            },
+          ],
+        });
+        narrative = completion.choices[0]?.message?.content ?? "";
+      } catch (aiErr) {
+        console.error("[scheduler] CEO report AI draft failed (non-fatal):", aiErr);
+        narrative = `${reportData.totalOpen} open controls, ${reportData.totalOverdue} overdue, ${reportData.totalEscalated} escalated.`;
+      }
+
+      // Save report to audit store
+      try {
+        const fs = await import("fs");
+        const path = await import("path");
+        const docsDir = path.join(process.cwd(), "docs", "governance-reports");
+        fs.mkdirSync(docsDir, { recursive: true });
+        const filename = path.join(docsDir, `ceo-report-${new Date().toISOString().slice(0, 10)}.json`);
+        fs.writeFileSync(filename, JSON.stringify({ narrative, data: anonymizedSummary }, null, 2));
+      } catch (fsErr) {
+        console.error("[scheduler] CEO report save to docs failed (non-fatal):", fsErr);
+      }
+
+      // Send email to recipients
+      const weekOf = new Date().toISOString().slice(0, 10);
+      const htmlBody = `
+        <h2>Weekly Governance Exception Report — ${weekOf}</h2>
+        <h3>Summary</h3>
+        <pre style="background:#f4f4f4;padding:12px;border-radius:4px;">${narrative}</pre>
+        <h3>Metrics</h3>
+        <ul>
+          <li>Total open obligations: <strong>${reportData.totalOpen}</strong></li>
+          <li>Overdue: <strong>${reportData.totalOverdue}</strong></li>
+          <li>Escalated: <strong>${reportData.totalEscalated}</strong></li>
+        </ul>
+        <h3>By Type</h3>
+        <table border="1" cellpadding="6" style="border-collapse:collapse;">
+          <tr><th>Type</th><th>Open</th><th>Overdue</th><th>Escalated</th></tr>
+          ${Object.entries(reportData.byType).map(([t, s]) =>
+            `<tr><td>${t}</td><td>${s.open}</td><td>${s.overdue}</td><td>${s.escalated}</td></tr>`
+          ).join("")}
+        </table>
+        <p style="color:#888;font-size:12px;">This report is generated from anonymized data. No personal information has been included.</p>
+      `;
+
+      const { dispatchAutomatedEmail } = await import("./email");
+      for (const r of recipients) {
+        if (!r.email) continue;
+        await dispatchAutomatedEmail("governance_ceo_report", "governance_scheduler", {
+          to: r.email,
+          subject: `Weekly Governance Exception Report — ${weekOf}`,
+          html: htmlBody,
+        }).catch(err => console.error(`[scheduler] CEO report email to ${r.email} failed:`, err));
+      }
+      console.log(`[scheduler] CEO governance report sent to ${recipients.length} recipient(s).`);
+    } catch (err) {
+      console.error("[scheduler] CEO governance exception report failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -1543,4 +1698,6 @@ export function startScheduler() {
   console.log("  - Compliance sweep: daily at 9 AM IST → runs all registered collectors (check-in overdue digest + future domain collectors)");
   console.log("  - GSA rate refresh: daily at 02:00 EST → refreshes all ZIPs used in the last 90 days");
   console.log("  - Salary change promotion: daily at 00:30 IST → applies future-dated salary changes that became effective");
+  console.log("  - Governance daily sweep (07:00 IST): sync obligations from training/PIP/probation/goals, then mark overdue + escalate 48h+");
+  console.log("  - CEO governance exception report: Mondays at 08:00 IST → anonymized AI summary emailed to super_admin/executive");
 }

@@ -4479,3 +4479,49 @@ export const bdDeckAuditLog = pgTable("bd_deck_audit_log", {
 ]);
 
 export type BdDeckAuditLog = typeof bdDeckAuditLog.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// Governance Controls
+// Shared obligation tracking table — every governed action (goal review,
+// check-in, training deadline, SOP ack, probation milestone, PIP checkpoint)
+// lands here so HR/CEO can see every obligation and its resolution status.
+// Applied via server/index.ts ensure block (no drizzle-kit push interaction).
+// ---------------------------------------------------------------------------
+
+export const governanceControlTypeEnum = pgEnum("governance_control_type", [
+  "goal", "check_in", "training", "sop", "probation", "pip",
+]);
+
+export const governanceControlStatusEnum = pgEnum("governance_control_status", [
+  "pending", "in_progress", "completed", "overdue", "escalated", "closed", "disputed",
+]);
+
+export const governanceControls = pgTable("governance_controls", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  controlType: governanceControlTypeEnum("control_type").notNull(),
+  referenceId: varchar("reference_id"),
+  ownerId: varchar("owner_id").notNull().references(() => adminUsers.id),
+  managerId: varchar("manager_id").references(() => adminUsers.id),
+  dueDate: date("due_date").notNull(),
+  requiredAction: text("required_action").notNull(),
+  evidenceRequired: boolean("evidence_required").notNull().default(false),
+  status: governanceControlStatusEnum("status").notNull().default("pending"),
+  evidenceRecord: text("evidence_record"),
+  exceptionReason: text("exception_reason"),
+  escalationLevel: integer("escalation_level").notNull().default(0),
+  resolution: text("resolution"),
+  closureDate: date("closure_date"),
+  closedById: varchar("closed_by_id").references(() => adminUsers.id),
+  disputeNote: text("dispute_note"),
+  disputedAt: timestamp("disputed_at"),
+  flaggedForHrReview: boolean("flagged_for_hr_review").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertGovernanceControlSchema = createInsertSchema(governanceControls).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+
+export type GovernanceControl = typeof governanceControls.$inferSelect;
+export type InsertGovernanceControl = z.infer<typeof insertGovernanceControlSchema>;
