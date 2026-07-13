@@ -24,3 +24,9 @@ id = "KLtr2d_YK_mYd2FrSwodz"
 uri = "file://attached_assets/hirein-logo-mark.svg"
 type = "image"
 title = "Hire'in Monogram — Transparent (SVG)"
+
+[[outputs]]
+id = "Dt_KtfuG50KHF13-ID8JY"
+uri = "file://docs/ai-governance-audit/GOVERNANCE-MVP-READINESS.md"
+type = "text"
+title = "Governance MVP — Readiness Scan"
