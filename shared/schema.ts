@@ -2896,7 +2896,12 @@ export const studioContentIdeas = pgTable("studio_content_ideas", {
   needsAttention: boolean("needs_attention").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("studio_content_ideas_project_idx").on(table.projectId),
+  index("studio_content_ideas_batch_idx").on(table.importBatchId),
+  index("studio_content_ideas_scheduled_idx").on(table.scheduledDate),
+  index("studio_content_ideas_status_idx").on(table.status),
+]);
 
 // ── Studio T2: campaigns — the unit of marketing intent (Task #907) ─────────
 export const studioCampaigns = pgTable("studio_campaigns", {
@@ -2942,7 +2947,9 @@ export const studioIdeaComments = pgTable("studio_idea_comments", {
   message: text("message").notNull(),
   resolvedAt: timestamp("resolved_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("studio_idea_comments_idea_idx").on(table.ideaId),
+]);
 
 export const studioIdeaWatchers = pgTable("studio_idea_watchers", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -4623,7 +4630,12 @@ export const governanceControls = pgTable("governance_controls", {
   flaggedForHrReview: boolean("flagged_for_hr_review").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_gc_due_date").on(table.dueDate),
+  index("idx_gc_manager_status").on(table.managerId, table.status),
+  index("idx_gc_owner_status").on(table.ownerId, table.status),
+  index("idx_gc_ref_identity").on(table.referenceId),
+]);
 
 export const insertGovernanceControlSchema = createInsertSchema(governanceControls).omit({
   id: true, createdAt: true, updatedAt: true,
@@ -4688,7 +4700,10 @@ export const governanceEvents = pgTable("governance_events", {
   source: governanceEventSourceEnum("source").notNull().default("user"),
   metadata: jsonb("metadata"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_ge_control_id").on(table.controlId),
+  index("idx_ge_actor").on(table.actorId),
+]);
 
 export type GovernanceEvent = typeof governanceEvents.$inferSelect;
 
@@ -4698,7 +4713,7 @@ export type GovernanceEvent = typeof governanceEvents.$inferSelect;
 // Applied via scripts/apply-studio-post-performance.ts (not drizzle-kit push).
 // Declared here so db:push does NOT treat the live table as a drift orphan.
 export const studioPostPlatformEnum = pgEnum("studio_post_platform", [
-  "linkedin", "instagram", "facebook", "x", "website",
+  "linkedin", "instagram", "facebook", "x", "website", "twitter", "other",
 ]);
 
 export const studioPostPerformance = pgTable("studio_post_performance", {
