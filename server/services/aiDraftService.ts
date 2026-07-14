@@ -115,6 +115,8 @@ function resolveStaffingDomain(industry?: string): string {
   const lower = industry.toLowerCase();
   if (lower === "it" || lower === "it_staffing") return "IT_STAFFING";
   if (lower === "healthcare" || lower === "healthcare_staffing") return "HEALTHCARE_STAFFING";
+  if (lower === "government" || lower === "gov" || lower === "govt") return "GOVERNMENT";
+  if (lower.includes("gov")) return "GOVERNMENT";
   return "GENERAL_STAFFING";
 }
 

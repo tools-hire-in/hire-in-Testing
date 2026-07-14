@@ -67,6 +67,8 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
   const [newAudience, setNewAudience] = useState("");
   const [newContentGoal, setNewContentGoal] = useState("");
   const [newBrief, setNewBrief] = useState("");
+  const [newDomain, setNewDomain] = useState("");
+  const [newPlannedDate, setNewPlannedDate] = useState("");
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const canBulkApprove = can("studio.marketing_approve");
@@ -170,6 +172,8 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
         ...(newAudience ? { audience: [newAudience] } : {}),
         ...(newContentGoal ? { contentGoal: newContentGoal } : {}),
         ...(newBrief.trim() ? { generationBrief: newBrief.trim() } : {}),
+        ...(newDomain ? { staffingDomain: newDomain } : {}),
+        ...(newPlannedDate ? { scheduledAt: newPlannedDate } : {}),
       });
       return res.json();
     },
@@ -182,6 +186,8 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
       setNewAudience("");
       setNewContentGoal("");
       setNewBrief("");
+      setNewDomain("");
+      setNewPlannedDate("");
       toast({ title: "Article created", description: "Opening the editor…" });
       setLocation(`/admin/studio/articles/${created.id}/edit`);
     },
@@ -535,6 +541,35 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                   <SelectItem value="BRAND_PERSPECTIVE">Brand Perspective</SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-2">
+                <Label htmlFor="new-article-domain">Staffing domain <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+                <Select value={newDomain || "auto"} onValueChange={(v) => setNewDomain(v === "auto" ? "" : v)}>
+                  <SelectTrigger id="new-article-domain" data-testid="select-new-article-domain">
+                    <SelectValue placeholder="Auto-detect" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="auto">Auto-detect</SelectItem>
+                    <SelectItem value="IT_STAFFING">IT Staffing</SelectItem>
+                    <SelectItem value="HEALTHCARE_STAFFING">Healthcare Staffing</SelectItem>
+                    <SelectItem value="GOVERNMENT">Government</SelectItem>
+                    <SelectItem value="GENERAL_STAFFING">General Staffing</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="new-article-planned-date">Planned publish date <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+                <input
+                  id="new-article-planned-date"
+                  type="date"
+                  value={newPlannedDate}
+                  onChange={(e) => setNewPlannedDate(e.target.value)}
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                  data-testid="input-new-article-planned-date"
+                />
+                <p className="text-xs text-muted-foreground">Sets your target on the editorial calendar. You can change this any time.</p>
+              </div>
             </div>
             <div className="space-y-2">
               <Label htmlFor="new-article-brief">Brief / angle <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>

@@ -139,6 +139,24 @@ Understand:
 Relevant role areas: nursing, allied health, clinical support, non-clinical healthcare support, imaging, diagnostics, laboratory, rehabilitation, administrative healthcare support.
 
 Healthcare candidate guidance should use healthcare-safe controls. Do not provide medical, legal, clinical, or licensing advice beyond approved general guidance.`,
+
+  GOVERNMENT: `STAFFING DOMAIN: Government Staffing
+Understand:
+- Security clearance levels and clearance processes matter (TS, TS/SCI, Secret, Public Trust)
+- Compliance documentation is mandatory and must be precise
+- Contract discipline is critical — SOW, CLIN, IDIQ, task order, and vehicle awareness
+- Public accountability requirements apply — do not make unsupported outcome claims
+- Candidate eligibility verification timelines can significantly affect placements
+- Agency and program-specific requirements vary widely
+- GovCon vehicle experience (GSA Schedule, SEWP, CIO-SP3, OASIS) matters for BD-facing content
+- No political advocacy — remain strictly neutral on policy, legislation, and political figures
+
+Relevant topic areas: federal civilian staffing, defense contracting, cleared staffing, state and local government, IT modernization programs, program management, proposal and capture support, compliance and audit readiness.
+
+Writing behavior:
+- Use precise, professional language aligned with government contracting norms
+- Highlight process discipline, documentation rigour, and compliance awareness
+- CTA should encourage a conversation, capability statement request, or white paper download — not a direct sales claim`,
 };
 
 // ---------------------------------------------------------------------------

@@ -69,6 +69,8 @@ interface ArticleRegenPanelProps {
   articleTitle: string;
   currentMarkdown: string;
   initialBrief?: Partial<BriefFields>;
+  /** Resolved staffing domain from the article — passed as `industry` in the regen payload. */
+  domainResolved?: string;
   onCommit: (newMarkdown: string, newTitle?: string, mode?: string) => void;
   /** When true, only renders the outdated-model badge (for article header); dialogs still work */
   badgeOnly?: boolean;
@@ -81,6 +83,7 @@ export function ArticleRegenPanel({
   articleTitle,
   currentMarkdown,
   initialBrief,
+  domainResolved,
   onCommit,
   badgeOnly = false,
 }: ArticleRegenPanelProps) {
@@ -174,6 +177,7 @@ export function ArticleRegenPanel({
         mode,
         feedbackNote,
         confirmedBrief: mode === "full" ? confirmedBrief : undefined,
+        industry: domainResolved || undefined,
       });
       if (!res.ok) {
         const body = await res.json();

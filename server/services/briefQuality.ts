@@ -22,10 +22,11 @@ interface ScoredField {
  *
  * Weighted checklist:
  *  - topic ≥ 8 words            20 pts
- *  - content goal set           20 pts
- *  - audience set               20 pts
+ *  - content goal set           15 pts
+ *  - audience set               15 pts
  *  - hook pattern set           15 pts
  *  - desired emotion set        15 pts
+ *  - staffing domain set        10 pts
  *  - user-supplied facts present 10 pts
  */
 export function scoreBrief(article: {
@@ -36,6 +37,7 @@ export function scoreBrief(article: {
   hookPattern?: string | null;
   desiredEmotion?: string | null;
   userSuppliedFacts?: string | null;
+  domainResolved?: string | null;
 }): BriefQualityResult {
   // Resolve audience — may be a JSON array string or a plain string
   let audienceVal = "";
@@ -69,13 +71,13 @@ export function scoreBrief(article: {
     {
       key: "contentGoal",
       label: "Content goal",
-      points: 20,
+      points: 15,
       satisfied: !!(article.contentGoal?.trim()),
     },
     {
       key: "audience",
       label: "Target audience",
-      points: 20,
+      points: 15,
       satisfied: !!audienceVal && audienceVal !== "AUTO_DETECT",
     },
     {
@@ -89,6 +91,12 @@ export function scoreBrief(article: {
       label: "Desired emotion",
       points: 15,
       satisfied: !!(article.desiredEmotion?.trim()),
+    },
+    {
+      key: "domainResolved",
+      label: "Staffing domain",
+      points: 10,
+      satisfied: !!(article.domainResolved?.trim()) && article.domainResolved !== "AUTO_DETECT",
     },
     {
       key: "userSuppliedFacts",

@@ -465,6 +465,8 @@ function ArticleEditorInner({ id }: { id: string }) {
       if (art.hookPattern && !genHookPattern) setGenHookPattern(art.hookPattern);
       if (art.contentStructure && !genContentStructure) setGenContentStructure(art.contentStructure);
       if (art.engagementGoal && !genEngagementGoal) setGenEngagementGoal(art.engagementGoal);
+      // Seed domain from article's resolved domain (set at creation or after last generation).
+      if (art.domainResolved && !genIndustry) setGenIndustry(art.domainResolved);
 
       // Restore platform from article contentType so the chip group reflects the
       // article's actual platform rather than always showing the ARTICLE default.
@@ -672,6 +674,7 @@ function ArticleEditorInner({ id }: { id: string }) {
         userSuppliedFacts: genUserFacts || undefined,
         topic: genTopic,
         complianceMode: "normal",
+        industry: genIndustry || undefined,
         // Psychological brief fields
         desiredEmotion: genDesiredEmotion || undefined,
         hookPattern: genHookPattern || undefined,
@@ -969,6 +972,7 @@ function ArticleEditorInner({ id }: { id: string }) {
             articleId={article.id}
             articleTitle={article.title ?? ""}
             currentMarkdown={article.bodyMarkdown ?? ""}
+            domainResolved={(article as any).domainResolved ?? ""}
             initialBrief={{
               hookPattern: (article as any).hookPattern ?? "",
               desiredEmotion: (article as any).desiredEmotion ?? "",
@@ -1891,6 +1895,7 @@ function ArticleEditorInner({ id }: { id: string }) {
               articleId={article.id}
               articleTitle={article.title ?? ""}
               currentMarkdown={article.bodyMarkdown ?? ""}
+              domainResolved={(article as any).domainResolved ?? ""}
               initialBrief={{
                 hookPattern: (article as any).hookPattern ?? "",
                 desiredEmotion: (article as any).desiredEmotion ?? "",

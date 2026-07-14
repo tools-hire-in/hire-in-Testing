@@ -17235,6 +17235,7 @@ export async function registerRoutes(
           });
         }
         const readTimeMinutes = computeReadTime(parsed.bodyMarkdown, contentType);
+        const staffingDomain: string | undefined = (req.body as any)?.staffingDomain || undefined;
         const created = await storage.createStudioArticle({
           ...parsed,
           projectId: parsed.projectId,
@@ -17243,6 +17244,7 @@ export async function registerRoutes(
           status: "draft",
           readTimeMinutes,
           createdBy: req.session.userId,
+          ...(staffingDomain ? { domainResolved: staffingDomain } : {}),
         } as any);
         await storage.createStudioAuditEvent({
           articleId: created.id,
@@ -17675,8 +17677,17 @@ export async function registerRoutes(
             engagementGoal:   validatedGoal,
           },
         );
+        // RC-Domain: resolve domain BEFORE calling generateArticleDraft so DOMAIN_BLOCK fires.
+        // When the client sends an explicit industry, use it; otherwise infer from topic/contentType.
+        // Fall back to the persisted domainResolved on the article (set at creation).
+        const preResolvedDomain: string =
+          (article as any).domainResolved
+          ?? inferDomainFromText(req.body?.topic ?? req.body?.rawInput, req.body?.contentType ?? article.contentType, rawParams.industry);
+
         const params: AiGenerationParams = {
           ...rawParams,
+          // Patch industry so resolveStaffingDomain() in aiDraftService picks the correct DOMAIN_BLOCK.
+          industry: rawParams.industry || preResolvedDomain,
           desiredEmotion:   resolvedCreative.desiredEmotion,
           hookPattern:      resolvedCreative.hookPattern,
           contentStructure: resolvedCreative.contentStructure,
@@ -18076,6 +18087,7 @@ export async function registerRoutes(
           hookPattern: (article as any).hookPattern,
           desiredEmotion: (article as any).desiredEmotion,
           userSuppliedFacts: (article as any).userSuppliedFacts,
+          domainResolved: (article as any).domainResolved,
         });
         res.json(result);
       } catch (err: any) {
@@ -18107,6 +18119,7 @@ export async function registerRoutes(
         const modelName = req.body?.modelName ?? (article as any).modelName;
         const contentType = req.body?.contentType ?? article.contentType;
 
+        const domainResolved = req.body?.domainResolved ?? (article as any).domainResolved;
         const briefQuality = scoreBrief({
           title: article.title,
           topic,
@@ -18115,6 +18128,7 @@ export async function registerRoutes(
           hookPattern,
           desiredEmotion,
           userSuppliedFacts,
+          domainResolved,
         });
 
         const inputTokens = estimateInputTokens({ topic, contentGoal, audience, hookPattern, desiredEmotion, userSuppliedFacts });
@@ -21406,7 +21420,9 @@ export async function registerRoutes(
           topic: (article as any).title ?? "Untitled",
           content_type: article.contentType ?? "article",
           contentGoal: (article as any).contentGoal ?? defaultContentGoal(article.contentType) ?? undefined,
-          industry: (article as any).industry ?? undefined,
+          // Prefer explicit industry from regen payload (sent by ArticleRegenPanel),
+          // then fall back to the article's persisted domainResolved.
+          industry: req.body?.industry || (article as any).domainResolved || undefined,
           audience: (article as any).audienceResolved ?? undefined,
           desiredEmotion: confirmedBrief.desiredEmotion ?? (article as any).desiredEmotion ?? undefined,
           hookPattern: confirmedBrief.hookPattern ?? (article as any).hookPattern ?? undefined,
