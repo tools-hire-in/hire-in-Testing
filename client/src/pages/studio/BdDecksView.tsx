@@ -17,6 +17,7 @@ import {
   CloudOff, Cloud, ShieldCheck, Clock, AlertCircle, History, ChevronDown,
   ChevronUp, Send, RotateCcw, Lock, Pencil,
 } from "lucide-react";
+import { FieldHelp } from "@/components/studio/FieldHelp";
 import { BrandedSlideShell } from "@/components/deck/BrandedSlideShell";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -986,7 +987,7 @@ function NewMasterModal({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label>Domain <span className="text-destructive">*</span></Label>
+              <Label className="flex items-center gap-1.5">Domain <span className="text-destructive">*</span> <FieldHelp id="bd-deck-domain" /></Label>
               <Select value={domain} onValueChange={setDomain}>
                 <SelectTrigger data-testid="select-master-domain"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -998,7 +999,7 @@ function NewMasterModal({
               </Select>
             </div>
             <div className="space-y-1.5">
-              <Label htmlFor="master-version">Version</Label>
+              <Label htmlFor="master-version" className="flex items-center gap-1.5">Version <FieldHelp id="bd-deck-version" /></Label>
               <Input id="master-version" value={version} onChange={(e) => setVersion(e.target.value)}
                 placeholder="v1" data-testid="input-master-version" />
             </div>

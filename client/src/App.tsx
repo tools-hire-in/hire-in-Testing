@@ -195,7 +195,7 @@ function LegacyStudio({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   if (isLoading) return <AdminFallback />;
   if (isEnabled("studio_v2_enabled")) {
-    return <Redirect to={legacyToStudioPath(location) + window.location.search} />;
+    return <Redirect to={legacyToStudioPath(location) + window.location.search + window.location.hash} />;
   }
   return <Suspense fallback={<AdminFallback />}>{children}</Suspense>;
 }
@@ -206,7 +206,7 @@ function StudioV2({ children }: { children: React.ReactNode }) {
   const [location] = useLocation();
   if (isLoading) return <AdminFallback />;
   if (!isEnabled("studio_v2_enabled")) {
-    return <Redirect to={location.replace(/^\/studio/, "/admin/studio") + window.location.search} />;
+    return <Redirect to={location.replace(/^\/studio/, "/admin/studio") + window.location.search + window.location.hash} />;
   }
   return <Suspense fallback={<AdminFallback />}>{children}</Suspense>;
 }

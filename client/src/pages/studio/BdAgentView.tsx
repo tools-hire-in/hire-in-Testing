@@ -38,6 +38,7 @@ import {
   FEEDBACK_REASON_LABELS,
   type FeedbackReasonCode,
 } from "@shared/agentIntelligenceContracts";
+import { FieldHelp } from "@/components/studio/FieldHelp";
 
 type BdAgentMode =
   | "account_discovery"
@@ -916,7 +917,7 @@ export default function BdAgentView() {
 
               {/* Domain */}
               <div className="space-y-1.5">
-                <Label>Industry / domain <span className="text-destructive">*</span></Label>
+                <Label className="flex items-center gap-1.5">Industry / domain <span className="text-destructive">*</span> <FieldHelp id="bd-domain" /></Label>
                 <Select value={deckDomain} onValueChange={setDeckDomain}>
                   <SelectTrigger data-testid="select-deck-domain"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -944,8 +945,8 @@ export default function BdAgentView() {
 
               {/* Positioning angle */}
               <div className="space-y-1.5">
-                <Label>
-                  How should we position Hire'in? <span className="text-destructive">*</span>
+                <Label className="flex items-center gap-1.5">
+                  How should we position Hire'in? <span className="text-destructive">*</span> <FieldHelp id="bd-positioning-angle" />
                 </Label>
                 <div className="grid grid-cols-2 gap-2">
                   {POSITIONING_OPTIONS.map((opt) => (
@@ -969,9 +970,9 @@ export default function BdAgentView() {
 
               {/* Context from conversation */}
               <div className="space-y-1.5">
-                <Label htmlFor="deck-context">
-                  Context from conversation
-                  <span className="ml-1 text-muted-foreground text-xs">(pre-filled from agent reply — trim or add to)</span>
+                <Label htmlFor="deck-context" className="flex items-center gap-1.5">
+                  Context from conversation <FieldHelp id="bd-context-summary" />
+                  <span className="ml-0 text-muted-foreground text-xs">(pre-filled from agent reply — trim or add to)</span>
                 </Label>
                 <Textarea
                   id="deck-context"

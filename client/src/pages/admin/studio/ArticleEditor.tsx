@@ -7,6 +7,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { AIErrorBanner } from "@/components/studio/AIErrorBanner";
 import { StudioTip } from "@/components/studio/StudioTip";
+import { FieldHelp } from "@/components/studio/FieldHelp";
 import { studioPath } from "@/lib/studioBase";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { ObjectUploader } from "@/components/ObjectUploader";
@@ -1166,10 +1167,13 @@ function ArticleEditorInner({ id }: { id: string }) {
                             <p className="text-muted-foreground">
                               <span className="font-medium text-foreground">Why: </span>{f.reason}
                             </p>
-                            {/* What to do */}
-                            <p className="mt-0.5 text-muted-foreground">
-                              <span className="font-medium text-foreground">Fix: </span>{f.recommendedCorrection}
-                            </p>
+                            {/* What to do + help icon */}
+                            <div className="mt-0.5 flex items-start gap-1">
+                              <p className="flex-1 text-muted-foreground">
+                                <span className="font-medium text-foreground">Fix: </span>{f.recommendedCorrection}
+                              </p>
+                              <FieldHelp id={`safety-${f.code}`} />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1622,7 +1626,7 @@ function ArticleEditorInner({ id }: { id: string }) {
                 </p>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="brief-compliance" className="text-xs">Compliance mode</Label>
+                <Label htmlFor="brief-compliance" className="flex items-center gap-1.5 text-xs">Compliance mode <FieldHelp id="article-compliance-mode" /></Label>
                 <Select
                   value={form.complianceMode || "normal"}
                   onValueChange={(v) => update({ complianceMode: v })}
@@ -1870,7 +1874,7 @@ function ArticleEditorInner({ id }: { id: string }) {
           <div className="space-y-4">
             {/* 1. Platform */}
             <div className="space-y-2">
-              <Label>Platform <span className="text-destructive">*</span></Label>
+              <Label className="flex items-center gap-1.5">Platform <span className="text-destructive">*</span> <FieldHelp id="article-platform" /></Label>
               <div className="flex flex-wrap gap-2">
                 {PLATFORM_OPTIONS.map((p) => (
                   <button
@@ -1921,9 +1925,10 @@ function ArticleEditorInner({ id }: { id: string }) {
 
             {/* 4. Audience — optional */}
             <div className="space-y-2">
-              <Label>
+              <Label className="flex items-center gap-1.5">
                 Who is this for?
-                <span className="ml-1 font-normal text-muted-foreground">(optional)</span>
+                <span className="font-normal text-muted-foreground">(optional)</span>
+                <FieldHelp id="article-audience" />
               </Label>
               <Select value={genAudience || "AUTO_DETECT"} onValueChange={(v) => setGenAudience(v === "AUTO_DETECT" ? "" : v)}>
                 <SelectTrigger data-testid="select-gen-audience">
@@ -1980,16 +1985,7 @@ function ArticleEditorInner({ id }: { id: string }) {
                   <div className="space-y-2">
                     <div className="flex items-center gap-1.5">
                       <Label className="text-sm">Desired reader emotion</Label>
-                      <TooltipProvider>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <span className="cursor-default text-xs text-muted-foreground underline decoration-dotted">What's this?</span>
-                          </TooltipTrigger>
-                          <TooltipContent className="max-w-[220px] text-xs">
-                            What should they feel in the first 3 seconds? This shapes the hook and the opening line.
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
+                      <FieldHelp id="article-desired-emotion" />
                     </div>
                     <div className="flex flex-wrap gap-2">
                       <button
@@ -2016,7 +2012,7 @@ function ArticleEditorInner({ id }: { id: string }) {
 
                   {/* Hook pattern */}
                   <div className="space-y-2">
-                    <Label className="text-sm">Hook pattern</Label>
+                    <Label className="flex items-center gap-1.5 text-sm">Hook pattern <FieldHelp id="article-hook-pattern" /></Label>
                     <Select
                       value={genHookPattern || "__auto__"}
                       onValueChange={(v) => setGenHookPattern(v === "__auto__" ? "" : v)}
@@ -2037,7 +2033,7 @@ function ArticleEditorInner({ id }: { id: string }) {
 
                   {/* Content structure */}
                   <div className="space-y-2">
-                    <Label className="text-sm">Content structure</Label>
+                    <Label className="flex items-center gap-1.5 text-sm">Content structure <FieldHelp id="article-content-structure" /></Label>
                     <Select
                       value={genContentStructure || "__auto__"}
                       onValueChange={(v) => setGenContentStructure(v === "__auto__" ? "" : v)}
@@ -2061,7 +2057,7 @@ function ArticleEditorInner({ id }: { id: string }) {
 
                   {/* Engagement goal */}
                   <div className="space-y-2">
-                    <Label className="text-sm">Engagement goal</Label>
+                    <Label className="flex items-center gap-1.5 text-sm">Engagement goal <FieldHelp id="article-engagement-goal" /></Label>
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"

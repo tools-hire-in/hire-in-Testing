@@ -19,6 +19,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Copy, Loader2, MailPlus, Plus, Save, Send, Sparkles, Trash2 } from "lucide-react";
+import { FieldHelp } from "@/components/studio/FieldHelp";
 
 interface OutreachRow {
   id: string;
@@ -117,7 +118,7 @@ function StepsEditor({
           {canEdit ? (
             <div className="space-y-2">
               <div>
-                <Label className="text-xs">Subject / hook</Label>
+                <Label className="flex items-center gap-1.5 text-xs">Subject / hook <FieldHelp id="outreach-subject-hook" /></Label>
                 <Input
                   className="mt-1"
                   value={step.subjectOrHook ?? ""}
@@ -375,7 +376,7 @@ export default function OutreachView() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <Label>Type</Label>
+                <Label className="flex items-center gap-1.5">Type <FieldHelp id="outreach-sequence-type" /></Label>
                 <Select value={form.sequenceType} onValueChange={(v) => setForm({ ...form, sequenceType: v })}>
                   <SelectTrigger data-testid="select-sequence-type"><SelectValue /></SelectTrigger>
                   <SelectContent>
@@ -385,7 +386,7 @@ export default function OutreachView() {
                 </Select>
               </div>
               <div>
-                <Label>Audience</Label>
+                <Label className="flex items-center gap-1.5">Audience <FieldHelp id="outreach-audience-type" /></Label>
                 <Input placeholder="e.g. IT hiring managers" value={form.audienceType} onChange={(e) => setForm({ ...form, audienceType: e.target.value })} data-testid="input-sequence-audience" />
               </div>
             </div>

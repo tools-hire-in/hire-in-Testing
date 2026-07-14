@@ -26,6 +26,7 @@ import {
   Sparkles,
   BookmarkPlus,
 } from "lucide-react";
+import { FieldHelp } from "@/components/studio/FieldHelp";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 
@@ -444,9 +445,13 @@ function TemplateForm({
     <form onSubmit={handleSubmit} className="space-y-4">
       {config.fields.map((field) => (
         <div key={field.key} className="space-y-1.5">
-          <Label htmlFor={`field-${field.key}`}>
+          <Label htmlFor={`field-${field.key}`} className="flex items-center gap-1.5">
             {field.label}
-            {field.optional && <span className="ml-1.5 text-xs text-muted-foreground">(optional)</span>}
+            {field.optional && <span className="ml-0 text-xs text-muted-foreground">(optional)</span>}
+            {field.key === "engagement_model" && <FieldHelp id="bd-engagement-model" />}
+            {field.key === "rate_info" && <FieldHelp id="bd-rate-info" />}
+            {field.key === "pain_point" && <FieldHelp id="bd-client-pain-points" />}
+            {field.key === "additional_context" && field.label.toLowerCase().includes("research") && <FieldHelp id="bd-research-notes" />}
           </Label>
           {field.type === "select" && field.options ? (
             <Select

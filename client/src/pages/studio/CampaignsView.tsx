@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ArrowLeft, Megaphone, Plus, Sparkles, Loader2, CalendarDays, Trash2, UserPlus, Users, Trophy, MousePointerClick, Heart, Recycle } from "lucide-react";
+import { FieldHelp } from "@/components/studio/FieldHelp";
 import { StudioShell } from "@/components/studio/StudioShell";
 
 const STATUS_BADGE: Record<string, string> = {
@@ -127,17 +128,17 @@ function CampaignFormDialog({
               <Input value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} data-testid="input-campaign-goal" />
             </div>
             <div>
-              <Label>Primary CTA</Label>
+              <Label className="flex items-center gap-1.5">Primary CTA <FieldHelp id="campaign-primary-cta" /></Label>
               <Input value={form.primaryCta} onChange={(e) => setForm({ ...form, primaryCta: e.target.value })} data-testid="input-campaign-cta" />
             </div>
           </div>
           <div>
-            <Label>Ideal customer profile (one line)</Label>
+            <Label className="flex items-center gap-1.5">Ideal customer profile (one line) <FieldHelp id="campaign-icp" /></Label>
             <Input value={form.icp} onChange={(e) => setForm({ ...form, icp: e.target.value })} data-testid="input-campaign-icp" />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label>Funnel stage</Label>
+              <Label className="flex items-center gap-1.5">Funnel stage <FieldHelp id="campaign-funnel-stage" /></Label>
               <Select value={form.funnelStage} onValueChange={(v) => setForm({ ...form, funnelStage: v })}>
                 <SelectTrigger data-testid="select-campaign-funnel"><SelectValue /></SelectTrigger>
                 <SelectContent>
