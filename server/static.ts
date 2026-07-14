@@ -403,7 +403,7 @@ export function serveStatic(app: Express) {
         if (staticBody) {
           html = html.replace(
             '<div id="root"></div>',
-            `<div id="root">${staticBody}</div>`,
+            `<div id="root"><div style="display:none;visibility:hidden">${staticBody}</div></div>`,
           );
         }
       }

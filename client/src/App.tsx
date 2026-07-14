@@ -162,7 +162,11 @@ function AdminHomeRedirect() {
   const { user, isLoading } = useAuth();
   useEffect(() => {
     if (isLoading) return;
-    if (user?.role === "executive") {
+    if (!user) {
+      setLocation("/admin/login");
+      return;
+    }
+    if (user.role === "executive") {
       setLocation("/admin/executive-cockpit");
     } else {
       setLocation("/admin/my-desk");
