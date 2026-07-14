@@ -1646,6 +1646,14 @@ export class DatabaseStorage implements IStorage {
       ? new Date(String(probationPolicyDateSetting.value))
       : null;
 
+    // enforce_probation_leave_gate flag — when ON, BOTH EL and SL are skipped for
+    // any employee whose probation end date has not passed AND whose probation plan
+    // has not been explicitly confirmed (outcome='confirmed' in employee_plans).
+    // This is ON by default; HR can toggle it off without a deploy via Feature Flags.
+    const featureFlagSetting = await this.getSystemSetting("feature_flags");
+    const featureFlags = (featureFlagSetting?.value as Record<string, boolean>) || {};
+    const enforceProbationGate = featureFlags.enforce_probation_leave_gate !== false;
+
     const activeUsers = await db.select().from(adminUsers).where(eq(adminUsers.isActive, true));
     const activeLeaveTypesList = await db.select().from(leaveTypes).where(eq(leaveTypes.isActive, true));
 
@@ -1681,6 +1689,28 @@ export class DatabaseStorage implements IStorage {
       let userAccrued = false;
       const userName = `${user.firstName} ${user.lastName || ""}`.trim();
 
+      // ── enforce_probation_leave_gate ──────────────────────────────────────
+      // Delegate entirely to isProbationActive() — the single authoritative source
+      // for probation decisions. It reads probation months from the employee's offer
+      // letter first (overriding the system default), so employees with non-standard
+      // probation periods are handled correctly. Gate is ON even for overdue+unconfirmed
+      // cases (calendar elapsed but HR hasn't formally confirmed).
+      let isOnProbationGate = false;
+      let probationGateReason = "";
+      if (enforceProbationGate && user.joiningDate) {
+        try {
+          const { isProbationActive } = await import("./probationService");
+          const probStatus = await isProbationActive(user.id);
+          if (probStatus.active) {
+            isOnProbationGate = true;
+            probationGateReason = probStatus.reason;
+          }
+        } catch (probErr) {
+          console.error(`[accrual] probation gate check failed for ${user.id}:`, probErr);
+          // Fail open — don't block accrual if the check throws
+        }
+      }
+
       for (const lt of activeLeaveTypesList) {
         // Non-accruing block entitlements (Maternity/Paternity) are never credited by the
         // monthly engine — they are granted on application/approval up to default_days.
@@ -1701,6 +1731,24 @@ export class DatabaseStorage implements IStorage {
           continue;
         }
 
+        // Probation gate: when enforce_probation_leave_gate is ON, skip EL and SL
+        // for employees still on active probation (calendar period running, OR period
+        // elapsed but not formally confirmed by HR). In the current schema the only
+        // accruing non-block leave types are EL (isConditional) and SL, so this gate
+        // is intentionally broad across all such types. Occurrence-based (EML) and
+        // block entitlements (Maternity/Paternity) are already excluded above by the
+        // blockEntitlement guard.
+        if (isOnProbationGate) {
+          skippedUsers.push({ name: userName, reason: probationGateReason, leaveTypeName: lt.name });
+          await db.insert(leaveAccruals).values({
+            userId: user.id, leaveTypeId: lt.id, year, month,
+            accruedDays: "0", hoursWorked: String(hoursWorked),
+            qualified: false, accrualType: "monthly",
+            skipReason: probationGateReason,
+          }).onConflictDoNothing();
+          continue;
+        }
+
         // Bonus months (Jan=1, May=5, Sep=9): EL credits 2× the base monthly rate.
         const BONUS_MONTHS = [1, 5, 9];
         const isBonusMonth = lt.isConditional && BONUS_MONTHS.includes(month);
@@ -1710,8 +1758,11 @@ export class DatabaseStorage implements IStorage {
         let accrualType = isBonusMonth ? "monthly+bonus" : "monthly";
 
         if (lt.isConditional) {
-          // EL: probation skip for new hires only (joining_date >= probationPolicyDate)
-          if (probationPolicyDate && joiningDate && joiningDate >= probationPolicyDate) {
+          // EL: legacy probation skip (calendar-based, for new hires only).
+          // Only runs when enforce_probation_leave_gate is OFF — when the flag is ON,
+          // the probation gate block above (isOnProbationGate) already handled the
+          // skip so we must not double-skip or override the flag intent.
+          if (!enforceProbationGate && probationPolicyDate && joiningDate && joiningDate >= probationPolicyDate) {
             const joiningYear = joiningDate.getFullYear();
             const joiningMonth = joiningDate.getMonth() + 1;
             const monthsSinceJoining = (year - joiningYear) * 12 + (month - joiningMonth);

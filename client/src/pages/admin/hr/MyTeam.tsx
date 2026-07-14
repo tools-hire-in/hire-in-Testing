@@ -871,6 +871,26 @@ function ShiftTab({ userId }: { userId: string }) {
 }
 
 function ProfileTab({ profile, onEdit, onEditPayroll }: { profile: EmployeeProfile; onEdit?: () => void; onEditPayroll?: () => void }) {
+  const { data: probationStatus } = useQuery<{
+    active: boolean;
+    reason: string;
+    probationEndDate: string | null;
+    confirmed: boolean;
+    confirmedAt?: string | null;
+    confirmedByName?: string | null;
+    overdue: boolean;
+    probationMonths: number;
+  }>({
+    queryKey: ["/api/hr/probation-status", profile.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/probation-status/${profile.id}`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+    retry: false,
+  });
+
   const fields = [
     { label: "Employee ID", value: profile.employeeId || "—" },
     { label: "Email", value: profile.email },
@@ -926,6 +946,64 @@ function ProfileTab({ profile, onEdit, onEditPayroll }: { profile: EmployeeProfi
           </span>
         </div>
       </div>
+      {probationStatus !== undefined && (
+        <div className="mt-4 border-t pt-4" data-testid="section-probation-status">
+          <div className="text-xs text-muted-foreground uppercase tracking-wide mb-2">Probation Status</div>
+          {!probationStatus ? null : probationStatus.confirmed ? (
+            <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400" data-testid="badge-probation-cleared">
+              <ShieldCheck className="h-4 w-4" />
+              <div>
+                <span className="font-medium">Probation confirmed — full leave accrual active.</span>
+                <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-0.5">
+                  {probationStatus.confirmedAt && (
+                    <span className="text-xs text-muted-foreground">
+                      Confirmed on {new Date(probationStatus.confirmedAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}
+                    </span>
+                  )}
+                  {probationStatus.confirmedByName && (
+                    <span className="text-xs text-muted-foreground">
+                      by {probationStatus.confirmedByName}
+                    </span>
+                  )}
+                </div>
+              </div>
+            </div>
+          ) : probationStatus.overdue ? (
+            <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 dark:border-red-700 px-4 py-3" data-testid="badge-probation-overdue">
+              <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-red-800 dark:text-red-300">Action Required — Probation Period Elapsed</p>
+                <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">
+                  The {probationStatus.probationMonths}-month probation period ended on{" "}
+                  {probationStatus.probationEndDate
+                    ? new Date(probationStatus.probationEndDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })
+                    : "—"}
+                  {" "}but has not been formally confirmed. EL & SL accrual remains paused until HR confirms the outcome.
+                </p>
+              </div>
+            </div>
+          ) : probationStatus.active ? (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 px-4 py-3" data-testid="badge-probation-active">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 shrink-0" />
+              <div className="min-w-0">
+                <p className="text-sm font-medium text-amber-800 dark:text-amber-300">Active Probation</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                  {probationStatus.probationMonths}-month probation period
+                  {probationStatus.probationEndDate
+                    ? `. Scheduled end: ${new Date(probationStatus.probationEndDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })}.`
+                    : "."}
+                  {" "}EL & SL accrual is paused until probation concludes or is confirmed by HR.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-sm text-green-700 dark:text-green-400" data-testid="badge-probation-cleared">
+              <ShieldCheck className="h-4 w-4" />
+              <span>Not on active probation.</span>
+            </div>
+          )}
+        </div>
+      )}
       </CardContent>
     </Card>
   );

@@ -3463,6 +3463,7 @@ async function runStartupTasks() {
         probation_framework_db: true,
         process_governance: true,
         studio_v2_enabled: true,
+        enforce_probation_leave_gate: true,
       })}::jsonb)
       ON CONFLICT (key) DO UPDATE
         SET value = ${JSON.stringify({
@@ -3473,6 +3474,7 @@ async function runStartupTasks() {
           probation_framework_db: true,
           process_governance: true,
           studio_v2_enabled: true,
+          enforce_probation_leave_gate: true,
         })}::jsonb || system_settings.value
     `);
     log("Feature flag defaults ensured");

@@ -338,7 +338,7 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           paras.push(bodyText(line));
         }
       }
-      paras.push(bodyText("Note: Salary will be credited by the 10th of the following month."));
+      paras.push(bodyText("Salary will be credited to your registered bank account by the 10th of the following calendar month."));
       return paras;
     }
 
@@ -355,13 +355,13 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
         subHeading("Post-Probation (subject to performance review)"),
         bodyText(`Monthly Compensation: ${postSalaryStr} per month`),
         bodyText("The above post-probation compensation is conditional upon satisfactory completion of the probationary period and achievement of agreed performance milestones. Any salary revision shall be confirmed separately in writing."),
-        bodyText("Note: Salary will be credited by the 10th of the following month."),
+        bodyText("Salary will be credited to your registered bank account by the 10th of the following calendar month."),
       ];
     }
 
     return [
       bodyText(`Your Annual Cost to Company (CTC) will be ${salaryStr}.`),
-      bodyText("Note: Salary will be credited by the 10th of the following month."),
+      bodyText("Salary will be credited to your registered bank account by the 10th of the following calendar month."),
     ];
   })();
 
@@ -449,27 +449,32 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
           heading("2. Probation Period, Leave Entitlement & Holiday Policy"),
           ...probationParagraphs,
 
-          subHeading("2b. Earned Leave (EL)"),
+          subHeading("2b. Leave Entitlements During the Probation Period"),
           bodyText(
-            "You are entitled to fifteen (15) days of Earned Leave per calendar year. EL accrues at the rate of 1.25 days per completed calendar month. Accrual commences from the first day of the month immediately following the successful completion of your probation period; no EL accrues during the probation period. EL cannot be taken during probation. Unused EL up to the Company's defined carry-forward cap may be carried over to the following calendar year; any balance in excess of the cap will lapse on 31 December each year."
+            "No leave accrual (Earned Leave or Sick Leave) shall commence, and no employment benefits dependent on confirmed service shall be activated, during the probation period. All leave entitlements and accrual cycles described in sections 2c–2e below take effect exclusively upon the successful completion and formal confirmation of the probation period. Any leave taken during the probation period will be treated as Leave Without Pay unless otherwise approved in writing by HR."
           ),
 
-          subHeading("2c. Sick Leave (SL)"),
+          subHeading("2c. Earned Leave (EL)"),
           bodyText(
-            "You are entitled to eight (8) days of Sick Leave per calendar year, accruing at approximately 0.67 days per completed calendar month post-probation. SL does not carry forward and any unused balance lapses at the end of each calendar year. A medical certificate from a registered medical practitioner may be required for any absence exceeding two (2) consecutive days."
+            "You are entitled to fifteen (15) days of Earned Leave per calendar year. EL accrues at the rate of 1.25 days per completed calendar month commencing from the first day of the month immediately following the successful completion and confirmation of your probation period; no EL accrues during the probation period. EL cannot be taken during probation. Unused EL up to the Company's defined carry-forward cap may be carried over to the following calendar year; any balance in excess of the cap will lapse on 31 December each year."
           ),
 
-          subHeading("2d. Emergency Leave"),
+          subHeading("2d. Sick Leave (SL)"),
+          bodyText(
+            "You are entitled to eight (8) days of Sick Leave per calendar year, accruing at approximately 0.67 days per completed calendar month. Accrual commences upon successful completion and confirmation of the probation period; no SL accrues during the probation period. SL does not carry forward and any unused balance lapses at the end of each calendar year. A medical certificate from a registered medical practitioner may be required for any absence exceeding two (2) consecutive days."
+          ),
+
+          subHeading("2e. Emergency Leave"),
           bodyText(
             "You are entitled to three (3) days of Emergency Leave per calendar year. This is a flat grant — not accrual-based — and becomes available upon confirmation (i.e., after successful completion of probation). Emergency Leave does not carry forward and any unused balance lapses at the end of the calendar year. It is subject to prior manager approval except in genuine emergencies, in which case you must notify your reporting manager at the earliest opportunity."
           ),
 
-          subHeading("2e. Leave Without Pay (LWP)"),
+          subHeading("2f. Leave Without Pay (LWP)"),
           bodyText(
             "Once all applicable leave balances (EL, SL, and Emergency Leave) have been exhausted, any further approved absence will be treated as Leave Without Pay. LWP days result in a proportional deduction from the monthly salary for the period of absence. LWP requires manager and HR approval and will be reflected in the payroll for the relevant month."
           ),
 
-          subHeading("2f. Holiday Calendar"),
+          subHeading("2g. Holiday Calendar"),
           bodyText(
             "HR will issue an annual holiday calendar at the commencement of each calendar year listing all declared national holidays and applicable state/regional holidays. Saturdays and Sundays, as well as all declared public holidays appearing on the Company's holiday calendar, are treated as non-working days and are therefore excluded from leave day counts. The holiday calendar may be updated during the year to reflect any Government notifications; employees will be informed of any changes promptly."
           ),

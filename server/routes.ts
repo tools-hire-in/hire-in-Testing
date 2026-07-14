@@ -4148,6 +4148,44 @@ export async function registerRoutes(
     }
   });
 
+  // --- Probation Status ---
+  // IMPORTANT: /my must be registered BEFORE /:userId so Express does not
+  // capture the literal string "my" as a userId parameter.
+
+  // Current user's own probation status
+  app.get("/api/hr/probation-status/my", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { isProbationActive } = await import("./probationService");
+      const status = await isProbationActive(req.session.userId!);
+      return res.json(status);
+    } catch (err) {
+      console.error("Probation status (my) error:", err);
+      return res.status(500).json({ error: "Failed to fetch probation status" });
+    }
+  });
+
+  // Returns probation status for any user. HR/admin/manager can query any userId;
+  // employees can only query their own.
+  app.get("/api/hr/probation-status/:userId", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { isProbationActive } = await import("./probationService");
+      const targetId = req.params.userId;
+      const requestorRole = req.session.role!;
+      const requestorId = req.session.userId!;
+
+      const canViewOthers = ["super_admin", "admin", "hr", "manager", "operations"].includes(requestorRole);
+      if (!canViewOthers && targetId !== requestorId) {
+        return res.status(403).json({ error: "Insufficient permissions" });
+      }
+
+      const status = await isProbationActive(targetId);
+      return res.json(status);
+    } catch (err) {
+      console.error("Probation status error:", err);
+      return res.status(500).json({ error: "Failed to fetch probation status" });
+    }
+  });
+
   // --- Leave Balances ---
   app.get("/api/hr/leave-balances/my", requireAuth, async (req, res) => {
     try {
@@ -14303,7 +14341,7 @@ export async function registerRoutes(
 
   app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
-      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance", "studio_v2_enabled"];
+      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance", "studio_v2_enabled", "enforce_probation_leave_gate"];
       const updates = req.body as Record<string, unknown>;
       const validated: Record<string, boolean> = {};
       for (const [key, value] of Object.entries(updates)) {

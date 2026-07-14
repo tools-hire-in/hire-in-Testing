@@ -185,6 +185,20 @@ export default function LeaveManagement({ view }: { view?: "balance" | "apply" |
     enabled: isAuthenticated,
   });
 
+  const { data: probationStatus } = useQuery<{
+    active: boolean;
+    reason: string;
+    probationEndDate: string | null;
+    confirmed: boolean;
+    overdue: boolean;
+    probationMonths: number;
+  }>({
+    queryKey: ["/api/hr/probation-status/my"],
+    enabled: isAuthenticated,
+    staleTime: 10 * 60 * 1000,
+    retry: false,
+  });
+
   const { data: nightShiftConsent } = useQuery<NightShiftConsent>({
     queryKey: ["/api/onboarding/night-shift-consent/status"],
     enabled: isAuthenticated,
@@ -482,6 +496,30 @@ export default function LeaveManagement({ view }: { view?: "balance" | "apply" |
                   </Card>
                 ) : (
                   <>
+                    {/* Probation notice banner */}
+                    {probationStatus?.active && (
+                      <Alert
+                        className={`mb-4 ${probationStatus.overdue ? "border-red-300 bg-red-50 dark:bg-red-900/20 dark:border-red-700" : "border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700"}`}
+                        data-testid="alert-probation-leave"
+                      >
+                        <AlertTriangle className={`h-4 w-4 ${probationStatus.overdue ? "text-red-600 dark:text-red-400" : "text-amber-600 dark:text-amber-400"}`} />
+                        <AlertDescription className={`text-sm ${probationStatus.overdue ? "text-red-800 dark:text-red-300" : "text-amber-800 dark:text-amber-300"}`}>
+                          {probationStatus.overdue ? (
+                            <>
+                              <span className="font-semibold">Your probation period has ended but has not been confirmed by HR.</span>
+                              {" "}Earned Leave (EL) and Sick Leave (SL) accrual remains paused until HR formally confirms your probation outcome. Please contact HR to resolve this.
+                            </>
+                          ) : (
+                            <>
+                              <span className="font-semibold">You are currently on probation.</span>
+                              {" "}Earned Leave (EL) and Sick Leave (SL) do not accrue during the probation period
+                              {probationStatus.probationEndDate ? ` (until ${new Date(probationStatus.probationEndDate).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" })})` : ""}.
+                              {" "}Leave may be applied as Loss of Pay (LWP) during this period. Contact HR if you have questions.
+                            </>
+                          )}
+                        </AlertDescription>
+                      </Alert>
+                    )}
                     <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
                       {activeLeaveTypes.map(lt => {
                         const balance = balances?.find(b => b.leaveTypeId === lt.id);

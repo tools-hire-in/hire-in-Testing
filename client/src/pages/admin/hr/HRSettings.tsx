@@ -618,6 +618,11 @@ export function FeatureFlagsSection() {
       label: "Content Studio v2 (standalone /studio shell)",
       description: "When ON, the Content Studio sidebar item becomes a single launcher button (\"Open Studio ↗\") that opens the new standalone /studio shell in a new tab — with the full planning pipeline, campaigns, brand voice, and BD agent. When OFF, the classic accordion sub-menu is shown instead. Toggle OFF as an instant kill-switch if anything looks wrong.",
     },
+    {
+      key: "enforce_probation_leave_gate",
+      label: "Probation Leave Accrual Gate",
+      description: "When ON (default), the monthly leave accrual engine skips EL and SL credits for any employee currently in an active probation period (probation end date not yet passed and probation not explicitly confirmed). Turn OFF to immediately allow accrual regardless of probation status — use this as an emergency kill-switch if needed.",
+    },
   ];
 
   return (
