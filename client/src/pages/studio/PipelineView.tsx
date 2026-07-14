@@ -285,6 +285,7 @@ function QuickCreateDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
       toast({ title: "Idea created", description: scheduledDate ? "Added to the plan." : "Added to the backlog." });
       onOpenChange(false);
     },
@@ -329,6 +330,11 @@ function QuickCreateDialog({
                 onChange={(e) => setScheduledDate(e.target.value)}
                 data-testid="input-idea-date"
               />
+              {!scheduledDate && (
+                <p className="mt-1 text-[11px] text-muted-foreground" data-testid="hint-no-date">
+                  No date set — this idea won't appear on the calendar until you add a scheduled date.
+                </p>
+              )}
             </div>
           </div>
           <div>
@@ -459,6 +465,7 @@ function ImportWizardDialog({
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/studio/import/batches"] });
       toast({
         title: "Import complete",
@@ -481,6 +488,7 @@ function ImportWizardDialog({
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/studio/import/batches"] });
       toast({ title: "Batch rolled back", description: `${data.archivedIdeas} idea(s) archived.` });
     },

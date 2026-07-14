@@ -246,6 +246,7 @@ function PlanPreviewDialog({
       const data = await res.json();
       queryClient.invalidateQueries({ queryKey: ["/api/studio/campaigns"] });
       queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
       onOpenChange(false);
       toast({
         title: `${data.created} idea(s) added to the plan`,

@@ -17173,7 +17173,7 @@ export async function registerRoutes(
           const costRows = await db.execute(sql`
             SELECT article_id, COALESCE(SUM(cost_usd), 0) AS total_cost_usd
             FROM studio_generations
-            WHERE article_id = ANY(${articleIds})
+            WHERE article_id = ANY(ARRAY[${sql.join(articleIds.map((id) => sql`${id}`), sql`, `)}])
             GROUP BY article_id
           `);
           const costMap = new Map<string, string>(

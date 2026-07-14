@@ -1237,13 +1237,18 @@ export default function Calendar() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!selectedProjectId,
   });
   const ideasByDay: Record<string, StudioContentIdea[]> = {};
   for (const idea of contentIdeas ?? []) {
     if (!idea.scheduledDate) continue;
     (ideasByDay[String(idea.scheduledDate)] ??= []).push(idea);
   }
+
+  const hasIdeasThisMonth = (contentIdeas ?? []).some((idea) => {
+    if (!idea.scheduledDate) return false;
+    const d = new Date(`${idea.scheduledDate}T00:00:00`);
+    return d >= monthStart && d <= monthEnd;
+  });
 
   // Members for @mention + assignee
   const { data: members = [] } = useQuery<{ id: string; name: string }[]>({
@@ -1325,6 +1330,14 @@ export default function Calendar() {
           </div>
           <Button variant="ghost" size="sm" onClick={() => { const n = new Date(); setCursor(new Date(n.getFullYear(), n.getMonth(), 1)); const day = n.getDay(); const diff = day === 0 ? -6 : 1 - day; const mon = new Date(n); mon.setDate(n.getDate() + diff); mon.setHours(0, 0, 0, 0); setWeekCursor(mon); }} data-testid="button-today">Today</Button>
         </div>
+
+        {!isLoading && visible.length === 0 && !hasIdeasThisMonth && (
+          <div className="flex flex-col items-center justify-center rounded-lg border border-dashed py-10 text-center text-muted-foreground" data-testid="calendar-empty-state">
+            <CalIcon className="mb-3 h-10 w-10 opacity-20" />
+            <p className="text-sm font-medium">Your calendar is empty</p>
+            <p className="mt-1 text-xs">Schedule an article or add a planned idea to get started.</p>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-24"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
