@@ -3148,6 +3148,8 @@ export const studioGenerations = pgTable("studio_generations", {
   // Attached gated quality-reviewer result (risk_flags/required_edits/scores).
   qualityReviewJson: jsonb("quality_review_json"),
   tokenEstimate: integer("token_estimate"),
+  // Computed cost in USD from tokens × per-model price at generation time.
+  costUsd: numeric("cost_usd"),
   generatedByUserId: varchar("generated_by_user_id"),
   // draft | reviewed | approved | rejected | archived
   status: varchar("status").default("draft").notNull(),
@@ -3158,6 +3160,7 @@ export const studioGenerations = pgTable("studio_generations", {
 }, (table) => [
   index("studio_generations_article_idx").on(table.articleId),
   index("studio_generations_user_idx").on(table.generatedByUserId),
+  index("studio_generations_cost_idx").on(table.createdAt, table.costUsd),
 ]);
 
 // Release Notes — AI-generated deployment changelog broadcaster

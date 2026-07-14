@@ -3168,6 +3168,48 @@ async function runStartupTasks() {
     console.error("salary_advance_requests exceeds_salary_cap column migration error:", err);
   }
   await ensureContentStudioTables();
+  // Add cost_usd column to studio_generations (Task #1086)
+  try {
+    await db.execute(sql`ALTER TABLE studio_generations ADD COLUMN IF NOT EXISTS cost_usd NUMERIC`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS studio_generations_cost_idx ON studio_generations(created_at, cost_usd)`);
+    log("Ensured studio_generations.cost_usd column and index");
+  } catch (err) {
+    console.error("studio_generations cost_usd column migration error:", err);
+  }
+  // Backfill cost_usd for existing rows (one-time, idempotent, non-blocking)
+  void (async () => {
+    const BACKFILL_KEY = "studio_cost_backfill_v1";
+    try {
+      const existing = await db.execute(sql`SELECT value FROM system_settings WHERE key = ${BACKFILL_KEY} LIMIT 1`);
+      if (existing.rows.length > 0) return;
+      const { computeCost } = await import("./config/aiPricing");
+      const rows = await db.execute(sql`
+        SELECT id, model_name, token_estimate
+        FROM studio_generations
+        WHERE cost_usd IS NULL AND token_estimate IS NOT NULL AND token_estimate > 0
+      `);
+      let backfilled = 0;
+      for (const row of rows.rows) {
+        try {
+          const { costUsd, pricingSnapshot } = computeCost(row.model_name as string, row.token_estimate as number);
+          await db.execute(sql`
+            UPDATE studio_generations
+            SET cost_usd = ${costUsd}
+            WHERE id = ${row.id as string}
+          `);
+          backfilled++;
+        } catch { /* non-fatal per row */ }
+      }
+      await db.execute(sql`
+        INSERT INTO system_settings (key, value)
+        VALUES (${BACKFILL_KEY}, ${JSON.stringify({ backfilledAt: new Date().toISOString(), rows: backfilled })}::jsonb)
+        ON CONFLICT (key) DO NOTHING
+      `);
+      log(`Studio cost backfill complete: ${backfilled} generation(s) updated`);
+    } catch (err) {
+      console.error("Studio cost backfill error (non-fatal):", err);
+    }
+  })();
   await ensureCardTemplatesAndBrand();
   await ensureStudioOccasionsAndIdeas();
   try {

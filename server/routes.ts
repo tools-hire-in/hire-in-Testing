@@ -17163,6 +17163,26 @@ export async function registerRoutes(
           page: q.page ? parseInt(q.page as string, 10) : undefined,
           pageSize: q.pageSize ? parseInt(q.pageSize as string, 10) : undefined,
         });
+
+        // Annotate all article rows with total AI cost (all studio roles can see aggregate cost per article;
+        // only detailed per-generation breakdown is restricted to super_admin via /articles/:id/cost).
+        if (result.items.length > 0) {
+          const articleIds = result.items.map((a) => a.id);
+          const costRows = await db.execute(sql`
+            SELECT article_id, COALESCE(SUM(cost_usd), 0) AS total_cost_usd
+            FROM studio_generations
+            WHERE article_id = ANY(${articleIds})
+            GROUP BY article_id
+          `);
+          const costMap = new Map<string, string>(
+            costRows.rows.map((r) => [r.article_id as string, r.total_cost_usd as string]),
+          );
+          result.items = result.items.map((a) => ({
+            ...a,
+            totalCostUsd: costMap.has(a.id) ? parseFloat(costMap.get(a.id)!) : null,
+          } as any));
+        }
+
         res.json(result);
       } catch (error) {
         console.error("Get studio articles error:", error);
@@ -17710,6 +17730,22 @@ export async function registerRoutes(
           status: "reviewed",
         } as any);
 
+        // Compute and persist actual cost (non-blocking, best-effort)
+        void (async () => {
+          try {
+            const { computeCost } = await import("./config/aiPricing");
+            const { costUsd, pricingSnapshot } = computeCost(result.model, result.tokenEstimate);
+            await db.execute(sql`
+              UPDATE studio_generations
+              SET cost_usd = ${costUsd},
+                  output_json = COALESCE(output_json, '{}'::jsonb) || ${JSON.stringify({ pricingSnapshot })}::jsonb
+              WHERE id = ${generation.id}
+            `);
+          } catch (costErr) {
+            console.error("[studio] cost persistence error (non-fatal):", costErr);
+          }
+        })();
+
         // CMO Copilot v2.1 — lightweight domain inference from topic text.
         // Returns canonical enum values that the safety gate contract requires
         // (HEALTHCARE_STAFFING, IT_STAFFING, GOVERNMENT, GENERAL_STAFFING).
@@ -17946,6 +17982,22 @@ export async function registerRoutes(
           status: "reviewed",
         } as any);
 
+        // Compute and persist actual cost (non-blocking, best-effort)
+        void (async () => {
+          try {
+            const { computeCost } = await import("./config/aiPricing");
+            const { costUsd, pricingSnapshot } = computeCost(result.model, result.tokenEstimate);
+            await db.execute(sql`
+              UPDATE studio_generations
+              SET cost_usd = ${costUsd},
+                  output_json = COALESCE(output_json, '{}'::jsonb) || ${JSON.stringify({ pricingSnapshot })}::jsonb
+              WHERE id = ${generation.id}
+            `);
+          } catch (costErr) {
+            console.error("[studio] social kit cost persistence error (non-fatal):", costErr);
+          }
+        })();
+
         // Persist the canonical kit on the article (never auto-publishes).
         const hadSocialKit = !!(article as any).socialKitJsonb;
         await storage.updateStudioArticle(article.id, {
@@ -18000,6 +18052,225 @@ export async function registerRoutes(
       } catch (error) {
         console.error("Get studio generations error:", error);
         res.status(500).json({ error: "Failed to fetch generations" });
+      }
+    },
+  );
+
+  // Brief quality score for an article.
+  app.get(
+    "/api/admin/studio/articles/:id/brief-quality",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        const { scoreBrief } = await import("./services/briefQuality");
+        const result = scoreBrief({
+          title: article.title,
+          topic: (article as any).topic,
+          contentGoal: (article as any).contentGoal,
+          audience: (article as any).audience,
+          hookPattern: (article as any).hookPattern,
+          desiredEmotion: (article as any).desiredEmotion,
+          userSuppliedFacts: (article as any).userSuppliedFacts,
+        });
+        res.json(result);
+      } catch (err: any) {
+        res.status(500).json({ error: err?.message || "Failed to score brief" });
+      }
+    },
+  );
+
+  // Pre-generation cost estimate (no AI call — pure calculation).
+  app.post(
+    "/api/admin/studio/articles/:id/generation-estimate",
+    requireAuth,
+    requirePermission("studio.generate_ai_draft", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+
+        const { scoreBrief } = await import("./services/briefQuality");
+        const { computeCostRange, estimateInputTokens } = await import("./config/aiPricing");
+
+        // Fields from request body override stored article fields (live brief state)
+        const topic = req.body?.topic ?? (article as any).topic ?? article.title;
+        const contentGoal = req.body?.contentGoal ?? (article as any).contentGoal;
+        const audience = req.body?.audience ?? (article as any).audience;
+        const hookPattern = req.body?.hookPattern ?? (article as any).hookPattern;
+        const desiredEmotion = req.body?.desiredEmotion ?? (article as any).desiredEmotion;
+        const userSuppliedFacts = req.body?.userSuppliedFacts ?? (article as any).userSuppliedFacts;
+        const modelName = req.body?.modelName ?? (article as any).modelName;
+        const contentType = req.body?.contentType ?? article.contentType;
+
+        const briefQuality = scoreBrief({
+          title: article.title,
+          topic,
+          contentGoal,
+          audience,
+          hookPattern,
+          desiredEmotion,
+          userSuppliedFacts,
+        });
+
+        const inputTokens = estimateInputTokens({ topic, contentGoal, audience, hookPattern, desiredEmotion, userSuppliedFacts });
+        const { minCostUsd, maxCostUsd, pricingSnapshot } = computeCostRange(modelName, inputTokens, contentType);
+
+        res.json({
+          estimatedCostMin: minCostUsd,
+          estimatedCostMax: maxCostUsd,
+          inputTokenEstimate: inputTokens,
+          contentType,
+          briefQuality,
+          pricingSnapshot,
+        });
+      } catch (err: any) {
+        res.status(500).json({ error: err?.message || "Failed to compute estimate" });
+      }
+    },
+  );
+
+  // Total AI cost for an article (visible to all studio roles).
+  app.get(
+    "/api/admin/studio/articles/:id/cost",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const result = await db.execute(sql`
+          SELECT
+            COALESCE(SUM(cost_usd), 0) AS total_cost_usd,
+            COUNT(*) AS generation_count,
+            MAX(created_at) AS last_generated_at,
+            MAX(model_name) AS last_model
+          FROM studio_generations
+          WHERE article_id = ${req.params.id}
+            AND status NOT IN ('rejected', 'draft')
+        `);
+        const row = result.rows[0] ?? {};
+        const isSuperAdmin = req.session?.role === "super_admin";
+
+        let breakdown: any[] = [];
+        if (isSuperAdmin) {
+          const brkResult = await db.execute(sql`
+            SELECT id, kind, model_name, token_estimate, cost_usd, created_at, generated_by_user_id
+            FROM studio_generations
+            WHERE article_id = ${req.params.id}
+            ORDER BY created_at DESC
+          `);
+          breakdown = brkResult.rows;
+        }
+
+        res.json({
+          totalCostUsd: parseFloat(String(row.total_cost_usd ?? "0")),
+          generationCount: parseInt(String(row.generation_count ?? "0"), 10),
+          lastGeneratedAt: row.last_generated_at ?? null,
+          lastModel: row.last_model ?? null,
+          breakdown: isSuperAdmin ? breakdown : undefined,
+        });
+      } catch (err: any) {
+        res.status(500).json({ error: err?.message || "Failed to fetch article cost" });
+      }
+    },
+  );
+
+  // Studio Spend Dashboard — super admin only.
+  app.get(
+    "/api/admin/studio/spend/summary",
+    requireAuth,
+    requirePermission("studio.spend_dashboard"),
+    async (req: Request, res: Response) => {
+      try {
+        // Monthly totals (this month vs last month)
+        const monthlyResult = await db.execute(sql`
+          SELECT
+            DATE_TRUNC('month', created_at) AS month,
+            COALESCE(SUM(cost_usd), 0) AS total_cost_usd,
+            COUNT(*) AS generation_count
+          FROM studio_generations
+          WHERE created_at >= NOW() - INTERVAL '2 months'
+          GROUP BY 1
+          ORDER BY 1 DESC
+        `);
+
+        // By model
+        const byModelResult = await db.execute(sql`
+          SELECT
+            COALESCE(model_name, 'unknown') AS model_name,
+            COALESCE(SUM(cost_usd), 0) AS total_cost_usd,
+            COUNT(*) AS generation_count
+          FROM studio_generations
+          WHERE created_at >= DATE_TRUNC('month', NOW())
+          GROUP BY 1
+          ORDER BY 2 DESC
+        `);
+
+        // By kind
+        const byKindResult = await db.execute(sql`
+          SELECT
+            kind,
+            COALESCE(SUM(cost_usd), 0) AS total_cost_usd,
+            COUNT(*) AS generation_count
+          FROM studio_generations
+          WHERE created_at >= DATE_TRUNC('month', NOW())
+          GROUP BY 1
+          ORDER BY 2 DESC
+        `);
+
+        // Top 10 most expensive articles
+        const topArticlesResult = await db.execute(sql`
+          SELECT
+            g.article_id,
+            a.title,
+            COALESCE(SUM(g.cost_usd), 0) AS total_cost_usd,
+            COUNT(*) AS generation_count
+          FROM studio_generations g
+          LEFT JOIN studio_articles a ON a.id = g.article_id
+          GROUP BY g.article_id, a.title
+          ORDER BY 3 DESC
+          LIMIT 10
+        `);
+
+        // Spend by user
+        const byUserResult = await db.execute(sql`
+          SELECT
+            g.generated_by_user_id,
+            CONCAT(u.first_name, ' ', u.last_name) AS user_name,
+            COALESCE(SUM(g.cost_usd), 0) AS total_cost_usd,
+            COUNT(*) AS generation_count
+          FROM studio_generations g
+          LEFT JOIN admin_users u ON u.id = g.generated_by_user_id
+          WHERE g.created_at >= DATE_TRUNC('month', NOW())
+          GROUP BY g.generated_by_user_id, user_name
+          ORDER BY 3 DESC
+          LIMIT 20
+        `);
+
+        // 30-day daily spend series
+        const dailyResult = await db.execute(sql`
+          SELECT
+            DATE_TRUNC('day', created_at) AS day,
+            COALESCE(SUM(cost_usd), 0) AS total_cost_usd,
+            COUNT(*) AS generation_count
+          FROM studio_generations
+          WHERE created_at >= NOW() - INTERVAL '30 days'
+          GROUP BY 1
+          ORDER BY 1 ASC
+        `);
+
+        res.json({
+          monthly: monthlyResult.rows,
+          byModel: byModelResult.rows,
+          byKind: byKindResult.rows,
+          topArticles: topArticlesResult.rows,
+          byUser: byUserResult.rows,
+          dailySeries: dailyResult.rows,
+        });
+      } catch (err: any) {
+        console.error("Studio spend summary error:", err);
+        res.status(500).json({ error: err?.message || "Failed to fetch spend summary" });
       }
     },
   );

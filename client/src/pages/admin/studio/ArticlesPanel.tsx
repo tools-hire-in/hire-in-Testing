@@ -34,7 +34,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Search, FileEdit, Clock3, FastForward, UserPlus, UserX } from "lucide-react";
+import { Loader2, Plus, Search, FileEdit, Clock3, FastForward, UserPlus, UserX, DollarSign } from "lucide-react";
 import { STUDIO_CONTENT_TYPES, getStudioContentType } from "@shared/studioContent";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import type { StudioArticle, StudioAuthorProfile } from "@shared/schema";
@@ -358,6 +358,7 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                   <TableHead>Status</TableHead>
                   <TableHead>Author</TableHead>
                   <TableHead className="text-right">Read</TableHead>
+                  <TableHead className="text-right">Cost</TableHead>
                   <TableHead>Updated</TableHead>
                 </TableRow>
               </TableHeader>
@@ -410,6 +411,14 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                         <Clock3 className="h-3 w-3" />
                         {a.readTimeMinutes ?? "—"}m
                       </span>
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
+                      {(a as any).totalCostUsd != null ? (
+                        <span className="inline-flex items-center gap-0.5" data-testid={`text-cost-${a.id}`}>
+                          <DollarSign className="h-3 w-3" />
+                          {parseFloat(String((a as any).totalCostUsd)).toFixed(4)}
+                        </span>
+                      ) : "—"}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       {a.updatedAt ? new Date(a.updatedAt).toLocaleDateString() : "—"}

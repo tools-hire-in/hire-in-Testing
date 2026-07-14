@@ -260,6 +260,7 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "studio.manage_assets": ["super_admin", "admin", "marketing_manager", "content_editor"],
   "studio.view_analytics": ["super_admin", "admin", "marketing_manager"],
   "studio.manage_settings": ["super_admin", "admin", "marketing_manager"],
+  "studio.spend_dashboard": ["super_admin"],
   "system.allowedDomains": ["super_admin"],
   "system.featureFlags": ["super_admin", "admin"],
   "sops.view": ["super_admin", "admin", "hr", "operations", "manager"],

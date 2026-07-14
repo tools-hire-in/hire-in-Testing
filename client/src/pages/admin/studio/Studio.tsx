@@ -41,6 +41,10 @@ import {
   Flame,
   Heart,
   MousePointerClick,
+  DollarSign,
+  TrendingUp,
+  BarChart2,
+  Users,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { StudioProject, StudioBrandSettings } from "@shared/schema";
@@ -466,6 +470,214 @@ function BrandReference({ brand }: { brand?: StudioBrandSettings }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// SpendDashboard — super admin view of AI generation costs
+// ---------------------------------------------------------------------------
+interface SpendSummary {
+  monthly: Array<{ month: string; total_cost_usd: string; generation_count: string }>;
+  byModel: Array<{ model_name: string; total_cost_usd: string; generation_count: string }>;
+  byKind: Array<{ kind: string; total_cost_usd: string; generation_count: string }>;
+  topArticles: Array<{ article_id: string; title: string | null; total_cost_usd: string; generation_count: string }>;
+  byUser: Array<{ generated_by_user_id: string; user_name: string | null; total_cost_usd: string; generation_count: string }>;
+  dailySeries: Array<{ day: string; total_cost_usd: string; generation_count: string }>;
+}
+
+function SpendDashboard() {
+  const { data, isLoading } = useQuery<SpendSummary>({
+    queryKey: ["/api/admin/studio/spend/summary"],
+    staleTime: 60_000,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!data) return null;
+
+  const thisMonth = data.monthly[0];
+  const lastMonth = data.monthly[1];
+  const thisMonthCost = parseFloat(thisMonth?.total_cost_usd ?? "0");
+  const lastMonthCost = parseFloat(lastMonth?.total_cost_usd ?? "0");
+  const totalGens = parseInt(thisMonth?.generation_count ?? "0", 10);
+
+  // Daily sparkline bar heights (normalized)
+  const maxDailyCost = Math.max(...data.dailySeries.map((d) => parseFloat(d.total_cost_usd)), 0.0001);
+
+  const fmt = (n: number) => n < 0.001 ? "<$0.001" : `$${n.toFixed(4)}`;
+  const fmtLarge = (n: number) => `$${n.toFixed(2)}`;
+
+  return (
+    <div className="space-y-6" data-testid="section-spend-dashboard">
+      {/* Header */}
+      <div>
+        <h2 className="text-lg font-semibold">AI Spend Dashboard</h2>
+        <p className="text-sm text-muted-foreground">Cost tracking for all studio AI generations. Visible only to super admins.</p>
+      </div>
+
+      {/* Summary cards */}
+      <div className="grid gap-4 sm:grid-cols-3">
+        <Card data-testid="card-spend-this-month">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <DollarSign className="h-4 w-4" />
+              This month
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold tabular-nums" data-testid="text-spend-this-month">{fmtLarge(thisMonthCost)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{totalGens} generation{totalGens !== 1 ? "s" : ""}</p>
+          </CardContent>
+        </Card>
+        <Card data-testid="card-spend-last-month">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <TrendingUp className="h-4 w-4" />
+              Last month
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold tabular-nums text-muted-foreground" data-testid="text-spend-last-month">{fmtLarge(lastMonthCost)}</p>
+            <p className="text-xs text-muted-foreground mt-1">{lastMonth?.generation_count ?? 0} generations</p>
+          </CardContent>
+        </Card>
+        <Card data-testid="card-spend-avg">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
+              <BarChart2 className="h-4 w-4" />
+              Avg per generation
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-bold tabular-nums" data-testid="text-spend-avg">
+              {totalGens > 0 ? fmt(thisMonthCost / totalGens) : "—"}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">this month</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* 30-day sparkline */}
+      {data.dailySeries.length > 0 && (
+        <Card data-testid="card-spend-sparkline">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Daily spend — last 30 days</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-0.5 h-16">
+              {data.dailySeries.map((d, i) => {
+                const cost = parseFloat(d.total_cost_usd);
+                const h = maxDailyCost > 0 ? Math.max((cost / maxDailyCost) * 100, cost > 0 ? 4 : 1) : 1;
+                return (
+                  <div
+                    key={i}
+                    title={`${new Date(d.day).toLocaleDateString()}: ${fmt(cost)} (${d.generation_count} gen${parseInt(d.generation_count) !== 1 ? "s" : ""})`}
+                    className="flex-1 rounded-sm bg-primary/70 hover:bg-primary transition-colors cursor-help"
+                    style={{ height: `${h}%` }}
+                    data-testid={`bar-daily-${i}`}
+                  />
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-4 md:grid-cols-2">
+        {/* By model */}
+        <Card data-testid="card-spend-by-model">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">This month by model</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.byModel.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No data yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {data.byModel.map((m, i) => (
+                  <div key={i} className="flex items-center justify-between text-sm" data-testid={`row-model-${i}`}>
+                    <span className="font-mono text-xs text-muted-foreground truncate max-w-[60%]">{m.model_name}</span>
+                    <span className="tabular-nums font-medium">{fmt(parseFloat(m.total_cost_usd))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* By kind */}
+        <Card data-testid="card-spend-by-kind">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">This month by type</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.byKind.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No data yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {data.byKind.map((k, i) => (
+                  <div key={i} className="flex items-center justify-between text-sm" data-testid={`row-kind-${i}`}>
+                    <span className="capitalize text-muted-foreground">{(k.kind ?? "unknown").replace(/_/g, " ")}</span>
+                    <span className="tabular-nums font-medium">{fmt(parseFloat(k.total_cost_usd))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Top articles */}
+        <Card data-testid="card-spend-top-articles">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium">Top articles by cost (all time)</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.topArticles.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No data yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {data.topArticles.map((a, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2 text-sm" data-testid={`row-top-article-${i}`}>
+                    <span className="truncate text-muted-foreground max-w-[65%]">{a.title ?? a.article_id}</span>
+                    <span className="tabular-nums font-medium shrink-0">{fmt(parseFloat(a.total_cost_usd))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* By user */}
+        <Card data-testid="card-spend-by-user">
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-sm font-medium">
+              <Users className="h-4 w-4" />
+              This month by user
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {data.byUser.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No data yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {data.byUser.map((u, i) => (
+                  <div key={i} className="flex items-center justify-between gap-2 text-sm" data-testid={`row-user-spend-${i}`}>
+                    <span className="truncate text-muted-foreground max-w-[65%]">{u.user_name ?? u.generated_by_user_id ?? "Unknown"}</span>
+                    <span className="tabular-nums font-medium shrink-0">{fmt(parseFloat(u.total_cost_usd))}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
 export default function Studio() {
   const [location] = useLocation();
   // wouter useLocation returns the path only; search params live on window.location.search.
@@ -474,6 +686,7 @@ export default function Studio() {
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
   const { can } = usePermissions();
   const canManageSettings = can("studio.manage_settings");
+  const canSpendDashboard = can("studio.spend_dashboard");
   const canCreate = can("studio.create_article");
 
   // Sync tab when URL search param changes (e.g. clicking a clickable stat card).
@@ -595,6 +808,11 @@ export default function Studio() {
             <TabsTrigger value="settings" data-testid="tab-studio-settings">
               Settings
             </TabsTrigger>
+            {canSpendDashboard && (
+              <TabsTrigger value="spend" data-testid="tab-studio-spend">
+                AI Spend
+              </TabsTrigger>
+            )}
           </TabsList>
 
           {/* Dashboard */}
@@ -797,6 +1015,13 @@ export default function Studio() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* AI Spend Dashboard — super admin only */}
+          {canSpendDashboard && (
+            <TabsContent value="spend" className="mt-6">
+              <SpendDashboard />
+            </TabsContent>
+          )}
 
           {/* Settings */}
           <TabsContent value="settings" className="mt-6 space-y-6">

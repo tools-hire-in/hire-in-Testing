@@ -73,6 +73,7 @@ import {
   FileSearch,
   BookOpen,
   HelpCircle,
+  DollarSign,
 } from "lucide-react";
 import {
   Dialog,
@@ -298,6 +299,8 @@ function ArticleEditorInner({ id }: { id: string }) {
   }>>([]);
   // Brief resolution state (backend only — not surfaced in UI yet)
   const [genStep, setGenStep] = useState<"input" | "brief" | "hooks">("input");
+  // Thin-brief override — user explicitly acknowledged the "thin" warning and wants to proceed
+  const [genThinBriefOverride, setGenThinBriefOverride] = useState(false);
   const [resolvedBrief, setResolvedBrief] = useState<any>(null);
   const [selectedHookIdx, setSelectedHookIdx] = useState<number>(0);
   // Task #906 defect fix: AI failures surface as a persistent banner with
@@ -340,6 +343,51 @@ function ArticleEditorInner({ id }: { id: string }) {
       return res.json();
     },
     enabled: !!id,
+  });
+
+  // Pre-generation estimate + brief quality — fires when dialog is open & topic is filled
+  const [estimateTopic, setEstimateTopic] = useState("");
+  useEffect(() => {
+    if (!genOpen) { setEstimateTopic(""); return; }
+    const t = setTimeout(() => setEstimateTopic(genTopic.trim()), 600);
+    return () => clearTimeout(t);
+  }, [genOpen, genTopic]);
+
+  const { data: estimateData } = useQuery<{
+    estimatedCostMin: number;
+    estimatedCostMax: number;
+    inputTokenEstimate: number;
+    contentType: string;
+    briefQuality: { score: number; tier: string; missingFields: string[] };
+    pricingSnapshot: Record<string, unknown>;
+  }>({
+    queryKey: ["/api/admin/studio/articles", id, "generation-estimate", estimateTopic, genAudience, genUserFacts, genHookPattern, genDesiredEmotion],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/studio/articles/${id}/generation-estimate`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          topic: estimateTopic,
+          audience: genAudience || undefined,
+          userSuppliedFacts: genUserFacts || undefined,
+          hookPattern: genHookPattern || undefined,
+          desiredEmotion: genDesiredEmotion || undefined,
+          contentType: article?.contentType,
+        }),
+      });
+      if (!res.ok) throw new Error("estimate failed");
+      return res.json();
+    },
+    enabled: !!id && estimateTopic.length > 4,
+    staleTime: 30_000,
+  });
+
+  // Article total AI cost — available to all studio roles (detailed breakdown restricted to super_admin)
+  const { data: articleCostData } = useQuery<{ totalCostUsd: number; generationCount: number }>({
+    queryKey: ["/api/admin/studio/articles", id, "cost"],
+    enabled: !!id,
+    staleTime: 60_000,
   });
 
   // Hydrate the form once the article loads.
@@ -906,6 +954,16 @@ function ArticleEditorInner({ id }: { id: string }) {
           >
             {STATUS_LABELS[article.status] ?? article.status}
           </Badge>
+          {articleCostData && articleCostData.totalCostUsd > 0 && (
+            <span
+              className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
+              title={`${articleCostData.generationCount} AI generation(s)`}
+              data-testid="chip-article-cost"
+            >
+              <DollarSign className="h-3 w-3" />
+              {articleCostData.totalCostUsd.toFixed(4)}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -1850,7 +1908,7 @@ function ArticleEditorInner({ id }: { id: string }) {
       {/* AI Generate Draft modal — Psychological Brief (Task #1060) */}
       <Dialog open={genOpen} onOpenChange={(open) => {
         setGenOpen(open);
-        if (!open) { setGenStep("input"); setResolvedBrief(null); }
+        if (!open) { setGenStep("input"); setResolvedBrief(null); setGenThinBriefOverride(false); }
       }}>
         <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-lg">
           <DialogHeader>
@@ -2086,28 +2144,105 @@ function ArticleEditorInner({ id }: { id: string }) {
             </div>
           </div>
 
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setGenOpen(false)} data-testid="button-cancel-generate">
-              Cancel
-            </Button>
-            <Button
-              onClick={() => generateArticleMutation.mutate()}
-              disabled={generateArticleMutation.isPending || !genTopic.trim()}
-              data-testid="button-run-generate"
-            >
-              {generateArticleMutation.isPending ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Generating…
-                </>
-              ) : (
-                <>
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Generate
-                </>
+          {/* Brief quality + cost estimate panel — appears when topic is filled */}
+          {genTopic.trim().length > 4 && estimateData && (
+            <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+              {/* Brief quality header row */}
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xs font-medium text-muted-foreground">Brief quality</span>
+                <span
+                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold ${
+                    estimateData.briefQuality.tier === "ready"
+                      ? "bg-green-100 text-green-700"
+                      : estimateData.briefQuality.tier === "fair"
+                      ? "bg-yellow-100 text-yellow-700"
+                      : "bg-red-100 text-red-700"
+                  }`}
+                  data-testid="badge-brief-quality"
+                >
+                  {estimateData.briefQuality.score}/100 — {estimateData.briefQuality.tier.charAt(0).toUpperCase() + estimateData.briefQuality.tier.slice(1)}
+                </span>
+              </div>
+
+              {/* Thin-brief warning banner */}
+              {estimateData.briefQuality.tier === "thin" && !genThinBriefOverride && (
+                <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-2.5" data-testid="banner-thin-brief">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                  <div className="space-y-1">
+                    <p className="text-xs font-semibold text-red-700">Brief is too thin to generate high-quality content</p>
+                    <p className="text-xs text-red-600">
+                      AI drafts from thin briefs tend to be generic and require heavy edits. Fill in the missing fields below, then generate.
+                    </p>
+                  </div>
+                </div>
               )}
-            </Button>
-          </DialogFooter>
+
+              {/* Missing fields */}
+              {estimateData.briefQuality.missingFields.length > 0 && (
+                <ul className="space-y-0.5">
+                  {estimateData.briefQuality.missingFields.map((s: string, i: number) => (
+                    <li key={i} className="flex items-start gap-1 text-xs text-muted-foreground">
+                      <span className="mt-0.5 shrink-0 text-red-400">+</span>
+                      <span>Add: {s}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+
+              {/* Cost estimate */}
+              <div className="flex items-center justify-between border-t pt-2 mt-1">
+                <span className="text-xs text-muted-foreground">Estimated cost</span>
+                <span className="text-xs tabular-nums font-medium" data-testid="text-estimate-cost">
+                  ${estimateData.estimatedCostMin.toFixed(4)}–${estimateData.estimatedCostMax.toFixed(4)}
+                </span>
+              </div>
+            </div>
+          )}
+
+          {/* Thin-brief gate: split footer */}
+          {genTopic.trim().length > 4 && estimateData?.briefQuality?.tier === "thin" && !genThinBriefOverride ? (
+            <DialogFooter className="flex-col gap-2 sm:flex-row">
+              <Button
+                variant="outline"
+                onClick={() => setGenOpen(false)}
+                data-testid="button-fill-brief"
+                className="w-full sm:w-auto"
+              >
+                Fill brief first
+              </Button>
+              <Button
+                variant="ghost"
+                onClick={() => setGenThinBriefOverride(true)}
+                data-testid="button-generate-anyway"
+                className="w-full text-muted-foreground hover:text-foreground sm:w-auto"
+              >
+                Generate anyway (poor quality)
+              </Button>
+            </DialogFooter>
+          ) : (
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setGenOpen(false)} data-testid="button-cancel-generate">
+                Cancel
+              </Button>
+              <Button
+                onClick={() => generateArticleMutation.mutate()}
+                disabled={generateArticleMutation.isPending || !genTopic.trim()}
+                data-testid="button-run-generate"
+              >
+                {generateArticleMutation.isPending ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Generating…
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Generate
+                  </>
+                )}
+              </Button>
+            </DialogFooter>
+          )}
         </DialogContent>
       </Dialog>
     </div>
