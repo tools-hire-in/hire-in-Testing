@@ -4123,9 +4123,10 @@ async function runStartupTasks() {
   }
 
   // ── BD Domain Masters Seed ────────────────────────────────────────────────
+  // WARNING: This block must NEVER UPDATE existing rows — only INSERT missing ones.
   // Seeds three master BD decks (general, it, healthcare) if not yet created.
-  try {
-    const bdSeedDomains: Array<{ domain: string; title: string; slides: Array<{ title: string; bullets: string[]; speaker_notes: string }> }> = [
+  // Declared outside try so the force-restore block below can reference the same arrays.
+  const bdSeedDomains: Array<{ domain: string; title: string; slides: Array<{ title: string; bullets: string[]; speaker_notes: string }> }> = [
       {
         domain: "general",
         title: "Hire'in Solutions — General Capability Deck",
@@ -4177,19 +4178,30 @@ async function runStartupTasks() {
           { title: "Let's Staff Your Clinical Team", bullets: ["Ready to fill urgent clinical positions with compliance-verified candidates? Let's start now.", "We deliver Joint Commission-aligned, fully credentialed candidates within 24–48 hours", "Phone: +1 (408) 412-9890", "Email: contact@hire-in.com", "Website: hire-in.com", "Travel nursing · Locum tenens · Allied health · Healthcare IT · All 50 states"], speaker_notes: "Close with the compliance guarantee. Ask: 'What's your most urgent open clinical position today?'" },
         ],
       },
-    ];
+  ];
 
+  try {
     for (const { domain, title, slides } of bdSeedDomains) {
       const markerKey = `bd_domain_master_seeded_${domain}_v1`;
       const existing = await db.execute(
         sql`SELECT value FROM system_settings WHERE key = ${markerKey} LIMIT 1`
       );
-      if (existing.rows.length > 0) continue;
+      const markerExists = existing.rows.length > 0;
 
       const existingMaster = await db.execute(
         sql`SELECT id FROM bd_decks WHERE domain = ${domain} AND deck_type = 'master' LIMIT 1`
       );
-      if (existingMaster.rows.length === 0) {
+      const deckExists = existingMaster.rows.length > 0;
+
+      if (markerExists && deckExists) {
+        log(`[bd-seed] Skipping domain "${domain}" — already seeded (marker exists, deck present).`);
+        continue;
+      }
+      if (markerExists && !deckExists) {
+        log(`[bd-seed] WARNING: Marker ${markerKey} exists but master deck is missing — re-seeding domain "${domain}".`);
+      }
+
+      if (!deckExists) {
         const slidesJson = JSON.stringify(slides);
         await db.execute(sql`
           INSERT INTO bd_decks (title, domain, deck_type, version, status, description, slides, created_by)
@@ -4206,6 +4218,94 @@ async function runStartupTasks() {
     }
   } catch (err) {
     console.error("[startup] BD domain masters seed error (non-fatal):", err);
+  }
+
+  // ── BD Deck Content Force-Restore (one-shot) ──────────────────────────────
+  // Restores the three master deck slides to the original rich brand-specific content
+  // after a July 11 deploy overwrote them with generic content.
+  // Gated by bd_decks_content_restored_v2 so it runs exactly once on next deploy.
+  try {
+    const restoreMarker = "bd_decks_content_restored_v2";
+    const markerCheck = await db.execute(
+      sql`SELECT value FROM system_settings WHERE key = ${restoreMarker} LIMIT 1`
+    );
+    if (markerCheck.rows.length > 0) {
+      log("[bd-restore] Skipping — content already restored (bd_decks_content_restored_v2 marker found).");
+    } else {
+      log("[bd-restore] Starting one-shot BD deck content restoration...");
+
+      // 1. Restore general and IT decks from bdSeedDomains arrays (already the rich originals)
+      for (const { domain, slides } of bdSeedDomains.filter((d) => d.domain === "general" || d.domain === "it")) {
+        const masterRow = await db.execute(sql`
+          SELECT id FROM bd_decks
+          WHERE domain = ${domain} AND deck_type = 'master' AND status IN ('active', 'approved')
+          LIMIT 1
+        `);
+        if (masterRow.rows.length > 0) {
+          const deckId = masterRow.rows[0].id as string;
+          const slidesJson = JSON.stringify(slides);
+          await db.execute(sql`
+            UPDATE bd_decks SET slides = ${slidesJson}::jsonb, updated_at = NOW()
+            WHERE id = ${deckId}
+          `);
+          await db.execute(sql`
+            INSERT INTO bd_deck_audit_log (deck_id, action, actor_id, actor_email, note)
+            VALUES (${deckId}, 'content_restored', NULL, 'system',
+              'Slides restored to original rich brand content via startup ensure block (bd_decks_content_restored_v2)')
+          `);
+          log(`[bd-restore] Restored slides for ${domain} master deck (id: ${deckId})`);
+        } else {
+          log(`[bd-restore] No active master found for domain "${domain}" — skipping slide update.`);
+        }
+      }
+
+      // 2. Restore healthcare: activate the archived "Healthcare Staffing — Hire'in Solutions" original
+      //    and archive the generic "US Healthcare Staffing — AI + Compliance" replacement.
+      const archivedHealthcare = await db.execute(sql`
+        SELECT id FROM bd_decks
+        WHERE domain = 'healthcare' AND deck_type = 'master' AND status = 'archived'
+          AND title = 'Healthcare Staffing — Hire''in Solutions'
+        LIMIT 1
+      `);
+      if (archivedHealthcare.rows.length > 0) {
+        const originalId = archivedHealthcare.rows[0].id as string;
+        // Archive the current active/approved healthcare deck(s) that are NOT the original
+        await db.execute(sql`
+          UPDATE bd_decks SET status = 'archived', updated_at = NOW()
+          WHERE domain = 'healthcare' AND deck_type = 'master'
+            AND status IN ('active', 'approved') AND id != ${originalId}
+        `);
+        // Activate the archived original
+        await db.execute(sql`
+          UPDATE bd_decks SET status = 'active', updated_at = NOW() WHERE id = ${originalId}
+        `);
+        await db.execute(sql`
+          INSERT INTO bd_deck_audit_log (deck_id, action, actor_id, actor_email, note)
+          VALUES (${originalId}, 'content_restored', NULL, 'system',
+            'Original "Healthcare Staffing — Hire''in Solutions" master re-activated; generic replacement archived (bd_decks_content_restored_v2)')
+        `);
+        log(`[bd-restore] Healthcare master deck restored to original (id: ${originalId})`);
+      } else {
+        // Archived original NOT found by title — do NOT silently restore wrong (generic) content.
+        // The bdSeedDomains healthcare entry is the generic replacement, not the original rich deck.
+        // Log a loud warning so the operator can manually upload the correct healthcare content.
+        console.warn(
+          "[bd-restore] WARNING: Could not find archived 'Healthcare Staffing — Hire\\'in Solutions' deck. " +
+          "Healthcare master deck slides were NOT updated. " +
+          "Please manually restore the original healthcare deck via the BD admin panel."
+        );
+      }
+
+      // Mark as done — never run again
+      await db.execute(sql`
+        INSERT INTO system_settings (key, value)
+        VALUES (${restoreMarker}, 'true')
+        ON CONFLICT (key) DO NOTHING
+      `);
+      log("[bd-restore] Content restoration complete. Marker set: bd_decks_content_restored_v2");
+    }
+  } catch (err) {
+    console.error("[startup] BD deck content restore error (non-fatal):", err);
   }
 
   // Governance Controls table — obligation tracking + CEO exception reports
