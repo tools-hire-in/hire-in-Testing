@@ -62,15 +62,18 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> 
   "Opinion": { bg: "#ec489914", text: "#db2777", border: "#ec489930" },
 };
 
-// Brand gradient variants — Navy #1F3A6E + Orange #F47C20 only
-// Orange is used as a warm ember accent, never full-face bright
-const GRAD_NAVY      = `linear-gradient(140deg,${NAVY_DARK} 0%,${NAVY} 60%,${NAVY_LIGHT} 100%)`;
-const GRAD_ORANGE    = `linear-gradient(135deg,${NAVY_DARK} 0%,${NAVY} 45%,#5c2a06 80%,#8b3e0a 100%)`;
-const GRAD_NAVY_OG   = `linear-gradient(135deg,${NAVY_DARK} 0%,${NAVY} 55%,#4a2204 100%)`;
-const GRAD_OG_NAVY   = `linear-gradient(135deg,#3d1a04 0%,#7a3208 45%,${NAVY} 100%)`;
-const GRAD_DEEP_NAVY = `linear-gradient(140deg,#0f1f3d 0%,${NAVY_DARK} 55%,${NAVY} 100%)`;
-const GRAD_OG_WARM   = `linear-gradient(140deg,${NAVY_DARK} 0%,#3a1a06 55%,#6b2e08 100%)`;
-const GRAD_NAVY_MID  = `linear-gradient(135deg,${NAVY} 0%,${NAVY_LIGHT} 60%,#3a5fa8 100%)`;
+// Brand gradient variants — lifted 2-3 tones, distinct per slot
+// Featured: cool mid-navy — crisp, authoritative
+const GRAD_NAVY      = `linear-gradient(140deg,#243f7a 0%,#2e549e 55%,#3d68b8 100%)`;
+// Trending: steel-navy — slightly lighter, energetic
+const GRAD_NAVY_MID  = `linear-gradient(135deg,#2e54a0 0%,#3d6abf 55%,#4d7ad0 100%)`;
+// Latest: navy-to-warm-amber — navy base, warm editorial edge
+const GRAD_ORANGE    = `linear-gradient(135deg,#243f7a 0%,#2e549e 45%,#7a4212 80%,#b06428 100%)`;
+// Article list rows — varied brand tones
+const GRAD_NAVY_OG   = `linear-gradient(135deg,#243f7a 0%,#2e549e 55%,#5c3010 100%)`;
+const GRAD_OG_NAVY   = `linear-gradient(135deg,#7a4010 0%,#a05818 45%,#2e549e 100%)`;
+const GRAD_DEEP_NAVY = `linear-gradient(140deg,#1a3060 0%,#243f7a 55%,#2e549e 100%)`;
+const GRAD_OG_WARM   = `linear-gradient(140deg,#243f7a 0%,#4a2a0a 55%,#7a4212 100%)`;
 
 const ARTICLES = [
   { id: 1, type: "Executive Insight", title: "Why Healthcare Systems Are Losing Top Clinical Talent — And the Three Shifts That Will Stop the Bleeding", deck: "Burnout alone doesn't explain the exodus. A deeper structural misalignment is quietly accelerating a workforce crisis.", author: { name: "Kavita Sharma", role: "Founder & CEO", initials: "KS", color: NAVY }, date: "Jul 11, 2025", readMin: 8, impressions: 4820, gradient: GRAD_NAVY },
@@ -114,103 +117,76 @@ function FeaturedCarousel() {
 
   return (
     <div className="mb-10">
-      {/* Section label row */}
-      <div className="flex items-center gap-4 mb-5">
-        <div style={{ background: ORANGE }} className="w-5 h-0.5 rounded-full flex-shrink-0" />
-        <p style={{ color: NAVY, fontFamily: "'Inter',sans-serif" }} className="text-[11px] font-bold uppercase tracking-[0.16em] whitespace-nowrap">
-          Top Picks
-        </p>
-        <div className="flex-1 h-px" style={{ background: "#e5e7eb" }} />
-        {/* Dot indicators */}
-        <div className="flex items-center gap-1.5">
-          {CAROUSEL_CARDS.map((_, i) => (
-            <button key={i} onClick={() => setActive(i)}
-              style={{ width: i === active ? 18 : 6, height: 6, borderRadius: 3, background: i === active ? NAVY : "#d1d5db", transition: "all 0.2s", border: "none", cursor: "pointer", padding: 0 }} />
-          ))}
-        </div>
-      </div>
-
-      {/* Full-width gradient card — title + controls all on card */}
+      {/* Full-width gradient card — all controls self-contained */}
       <div className="relative rounded-2xl overflow-hidden cursor-pointer hover:shadow-2xl transition-all" style={{ minHeight: 300, background: art.gradient }}>
         {/* Dot texture */}
-        <div className="absolute inset-0 opacity-[0.07]" style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "28px 28px" }} />
-        {/* Subtle bottom fade so text pops */}
-        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.45) 0%, transparent 55%)" }} />
+        <div className="absolute inset-0 opacity-[0.08]" style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "26px 26px" }} />
+        {/* Bottom fade */}
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.4) 0%, transparent 50%)" }} />
 
         <div className="relative flex flex-col justify-between p-10 h-full" style={{ minHeight: 300 }}>
-          {/* Top row — badge + meta + prev/next */}
-          <div className="flex items-start justify-between">
-            <div className="flex flex-col gap-2">
-              <span style={{ fontFamily: "'Inter',sans-serif", background: card.badgeBg, backdropFilter: "blur(6px)", color: "white", border: "1px solid rgba(255,255,255,0.2)" }}
-                className="self-start px-3 py-1 rounded-full text-[11px] font-bold">
-                {card.badge}
-              </span>
-              <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.45)", letterSpacing: "0.1em" }}
-                className="text-[9px] font-bold uppercase">
-                {card.label}
-              </span>
-            </div>
-            {/* Prev / Next on card */}
-            <div className="flex items-center gap-2">
-              <button onClick={prev}
-                style={{ width: 34, height: 34, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.25)", background: "rgba(255,255,255,0.1)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6" /></svg>
-              </button>
-              <button onClick={next}
-                style={{ width: 34, height: 34, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.22)", backdropFilter: "blur(6px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}>
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6" /></svg>
-              </button>
-            </div>
+
+          {/* Top row — badge + label only */}
+          <div className="flex flex-col gap-2">
+            <span style={{ fontFamily: "'Inter',sans-serif", background: card.badgeBg, backdropFilter: "blur(6px)", color: "white", border: "1px solid rgba(255,255,255,0.22)" }}
+              className="self-start px-3 py-1 rounded-full text-[11px] font-bold tracking-wide">
+              {card.badge}
+            </span>
+            <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.4)", letterSpacing: "0.12em" }}
+              className="text-[9px] font-bold uppercase">
+              {card.label}
+            </span>
           </div>
 
-          {/* Title — centre of card */}
+          {/* Title */}
           <div className="py-8 max-w-3xl">
             <h2 style={{ fontFamily: "'Playfair Display',Georgia,serif", color: "white", lineHeight: 1.25, fontWeight: 700 }}
               className="text-3xl line-clamp-3">{art.title}</h2>
           </div>
 
-          {/* Bottom row — author + type + views + CTA */}
-          <div className="flex items-end justify-between" style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16 }}>
+          {/* Bottom row — author · meta | dots + arrows | CTA */}
+          <div className="flex items-center justify-between" style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16 }}>
+            {/* Author + meta */}
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
-                style={{ background: art.author.color, border: "2px solid rgba(255,255,255,0.35)" }}>
-                <span style={{ fontFamily: "'Inter',sans-serif" }} className="text-white text-[10px] font-bold">{art.author.initials}</span>
+                style={{ background: "rgba(255,255,255,0.18)", border: "2px solid rgba(255,255,255,0.3)" }}>
+                <span style={{ fontFamily: "'Inter',sans-serif", color: "white", fontSize: 10, fontWeight: 700 }}>{art.author.initials}</span>
               </div>
               <div>
                 <p style={{ fontFamily: "'Inter',sans-serif", color: "white" }} className="text-sm font-semibold leading-tight">{art.author.name}</p>
                 <p style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.5)" }} className="text-[11px] leading-tight">{art.author.role}</p>
               </div>
-              <div style={{ width: 1, height: 28, background: "rgba(255,255,255,0.15)", margin: "0 6px" }} />
-              <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.6)", fontSize: 12 }}>{art.date}</span>
-              <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.6)", fontSize: 12 }}>· {art.readMin} min read</span>
-              <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.6)", fontSize: 12 }}>· {art.impressions.toLocaleString()} views</span>
+              <div style={{ width: 1, height: 26, background: "rgba(255,255,255,0.18)", margin: "0 4px" }} />
+              <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.55)", fontSize: 12 }}>{art.date} · {art.readMin} min · {art.impressions.toLocaleString()} views</span>
             </div>
-            <button style={{ background: ORANGE, fontFamily: "'Inter',sans-serif", flexShrink: 0 }}
-              className="px-6 py-2.5 rounded-full text-white text-sm font-bold hover:brightness-110 transition-all">
-              Read article →
-            </button>
-          </div>
-        </div>
-      </div>
 
-      {/* Thumbnail strip — quick-jump */}
-      <div className="flex gap-3 mt-3">
-        {CAROUSEL_CARDS.map((c, i) => (
-          <button key={i} onClick={() => setActive(i)}
-            className="flex-1 flex items-center gap-2.5 px-3 py-2.5 rounded-xl border transition-all text-left"
-            style={{ border: i === active ? `1.5px solid ${NAVY}` : "1.5px solid #e5e7eb", background: i === active ? NAVY + "06" : "white", cursor: "pointer" }}>
-            <div className="w-5 h-5 rounded-full flex-shrink-0 flex items-center justify-center"
-              style={{ background: c.article.gradient }}>
-              <span style={{ fontFamily: "'Inter',sans-serif", color: "white", fontSize: 8, fontWeight: 800 }}>{i + 1}</span>
+            {/* Nav controls — dots + prev/next + CTA */}
+            <div className="flex items-center gap-3 flex-shrink-0">
+              {/* Dot indicators */}
+              <div className="flex items-center gap-1.5">
+                {CAROUSEL_CARDS.map((_, i) => (
+                  <button key={i} onClick={(e) => { e.stopPropagation(); setActive(i); }}
+                    style={{ width: i === active ? 18 : 6, height: 6, borderRadius: 3, background: i === active ? "white" : "rgba(255,255,255,0.35)", border: "none", cursor: "pointer", padding: 0, transition: "all 0.2s" }} />
+                ))}
+              </div>
+              {/* Arrows */}
+              <button onClick={(e) => { e.stopPropagation(); prev(); }}
+                style={{ width: 32, height: 32, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.28)", background: "rgba(255,255,255,0.12)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6" /></svg>
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); next(); }}
+                style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.22)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6" /></svg>
+              </button>
+              {/* CTA */}
+              <button style={{ background: ORANGE, fontFamily: "'Inter',sans-serif", flexShrink: 0 }}
+                className="px-5 py-2 rounded-full text-white text-sm font-bold hover:brightness-110 transition-all">
+                Read article →
+              </button>
             </div>
-            <div className="min-w-0">
-              <p style={{ fontFamily: "'Inter',sans-serif", color: i === active ? NAVY : "#6b7280", fontSize: 11, fontWeight: 700, lineHeight: 1.2, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 1, WebkitBoxOrient: "vertical" }}>
-                {c.article.title}
-              </p>
-              <p style={{ fontFamily: "'Inter',sans-serif", color: "#9ca3af", fontSize: 9, marginTop: 1 }}>{c.badge}</p>
-            </div>
-          </button>
-        ))}
+          </div>
+
+        </div>
       </div>
     </div>
   );
