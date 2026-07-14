@@ -63,12 +63,13 @@ const TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> 
 };
 
 // Brand gradient variants — Navy #1F3A6E + Orange #F47C20 only
+// Orange is used as a warm ember accent, never full-face bright
 const GRAD_NAVY      = `linear-gradient(140deg,${NAVY_DARK} 0%,${NAVY} 60%,${NAVY_LIGHT} 100%)`;
-const GRAD_ORANGE    = `linear-gradient(140deg,#c45e0a 0%,${ORANGE} 60%,#F96D3E 100%)`;
-const GRAD_NAVY_OG   = `linear-gradient(135deg,${NAVY_DARK} 0%,${NAVY} 50%,#b85c10 100%)`;
-const GRAD_OG_NAVY   = `linear-gradient(135deg,#c45e0a 0%,${ORANGE} 40%,${NAVY} 100%)`;
+const GRAD_ORANGE    = `linear-gradient(135deg,${NAVY_DARK} 0%,${NAVY} 45%,#5c2a06 80%,#8b3e0a 100%)`;
+const GRAD_NAVY_OG   = `linear-gradient(135deg,${NAVY_DARK} 0%,${NAVY} 55%,#4a2204 100%)`;
+const GRAD_OG_NAVY   = `linear-gradient(135deg,#3d1a04 0%,#7a3208 45%,${NAVY} 100%)`;
 const GRAD_DEEP_NAVY = `linear-gradient(140deg,#0f1f3d 0%,${NAVY_DARK} 55%,${NAVY} 100%)`;
-const GRAD_OG_WARM   = `linear-gradient(140deg,#8b3a06 0%,#c45e0a 50%,${ORANGE} 100%)`;
+const GRAD_OG_WARM   = `linear-gradient(140deg,${NAVY_DARK} 0%,#3a1a06 55%,#6b2e08 100%)`;
 const GRAD_NAVY_MID  = `linear-gradient(135deg,${NAVY} 0%,${NAVY_LIGHT} 60%,#3a5fa8 100%)`;
 
 const ARTICLES = [
