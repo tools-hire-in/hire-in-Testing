@@ -872,7 +872,7 @@ export function IdeaPeek({
                       ? "No performance entries yet. Log after publishing."
                       : `${perfEntries.length} entr${perfEntries.length === 1 ? "y" : "ies"} logged`}
                   </p>
-                  {(idea.status === "published" || idea.status === "done") && can("studio.create_article") && (
+                  {(["published", "done", "scheduled", "approved"].includes(idea.status)) && can("studio.create_article") && (
                     <Button size="sm" variant="outline" onClick={() => setLogPerfOpen(true)} data-testid="button-log-performance">
                       <Plus className="mr-1 h-3.5 w-3.5" />
                       Log Performance
