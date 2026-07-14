@@ -772,6 +772,8 @@ function AttachPlanPicker({ value, onChange, designation, departmentName, autoDe
 }
 
 interface OfferFormData {
+  existingEmployeeMode: boolean;
+  resultingUserId: string;
   candidateTitle: string;
   candidateName: string;
   candidatePersonalEmail: string;
@@ -813,6 +815,8 @@ interface OfferFormData {
 function getDefaultOfferData(): OfferFormData {
   const today = new Date().toISOString().split("T")[0];
   return {
+    existingEmployeeMode: false,
+    resultingUserId: "",
     candidateTitle: "Mr.",
     candidateName: "",
     candidatePersonalEmail: "",
@@ -977,6 +981,8 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
 
     const split = !!(letter.probationSalary && letter.postProbationSalary);
     setFormData({
+      existingEmployeeMode: !!letter.isReengagement,
+      resultingUserId: letter.resultingUserId || "",
       candidateTitle: letter.candidateTitle || "Mr.",
       candidateName: letter.candidateName || "",
       candidatePersonalEmail: letter.candidatePersonalEmail || "",
@@ -1141,7 +1147,7 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
   };
 
   const handleSendOffer = async () => {
-    if (!formData.candidateName || !formData.designation || !formData.candidatePersonalEmail) {
+    if (!formData.existingEmployeeMode && (!formData.candidateName || !formData.designation || !formData.candidatePersonalEmail)) {
       toast({ title: "Please fill in candidate name, designation, and personal email", variant: "destructive" });
       return;
     }
@@ -1150,6 +1156,7 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
     try {
       const payload = {
         ...formData,
+        resultingUserId: formData.existingEmployeeMode && formData.resultingUserId ? formData.resultingUserId : undefined,
         salary: (formData.splitProbationSalary || formData.performanceProbationReview) ? null : (formData.salary ? String(formData.salary) : null),
         offerDate: formData.offerDate
           ? parseDateLocal(formData.offerDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })
@@ -1264,26 +1271,67 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
           </CardContent>
         </Card>
       )}
+      {/* Mode toggle */}
       <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <User className="h-4 w-4" />
-            Load from Existing Employee (Optional)
+            Offer Letter Mode
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <Select value={selectedUserId} onValueChange={handleLoadEmployee}>
-            <SelectTrigger data-testid="select-employee-offer">
-              <SelectValue placeholder="Choose an employee to auto-fill..." />
-            </SelectTrigger>
-            <SelectContent>
-              {activeUsers.map((u: any) => (
-                <SelectItem key={u.id} value={u.id}>
-                  {u.firstName} {u.lastName} — {u.designation || u.role}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+        <CardContent className="space-y-3">
+          <div className="flex gap-3">
+            <button
+              type="button"
+              data-testid="toggle-mode-new-candidate"
+              onClick={() => { updateField("existingEmployeeMode", false); updateField("resultingUserId", ""); setSelectedUserId(""); }}
+              className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${!formData.existingEmployeeMode ? "bg-[#1F3A6E] text-white border-[#1F3A6E]" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}
+            >
+              New Candidate
+            </button>
+            <button
+              type="button"
+              data-testid="toggle-mode-existing-employee"
+              onClick={() => { updateField("existingEmployeeMode", true); }}
+              className={`flex-1 rounded-lg border px-4 py-2.5 text-sm font-medium transition-colors ${formData.existingEmployeeMode ? "bg-[#1F3A6E] text-white border-[#1F3A6E]" : "bg-muted/30 text-muted-foreground border-border hover:bg-muted/50"}`}
+            >
+              Existing Employee
+            </button>
+          </div>
+          {formData.existingEmployeeMode ? (
+            <div>
+              <Label>Select Employee <span className="text-destructive">*</span></Label>
+              <Select value={formData.resultingUserId} onValueChange={v => { updateField("resultingUserId", v); handleLoadEmployee(v); }}>
+                <SelectTrigger data-testid="select-reengagement-employee">
+                  <SelectValue placeholder="Choose the employee this offer is for..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeUsers.map((u: any) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.firstName} {u.lastName} — {u.designation || u.role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">The offer will be linked to this employee at creation and will appear in the Onboarding tab with an "Apply to Profile" action.</p>
+            </div>
+          ) : (
+            <div>
+              <Label>Auto-fill from Existing Employee <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Select value={selectedUserId} onValueChange={handleLoadEmployee}>
+                <SelectTrigger data-testid="select-employee-offer">
+                  <SelectValue placeholder="Choose an employee to auto-fill..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeUsers.map((u: any) => (
+                    <SelectItem key={u.id} value={u.id}>
+                      {u.firstName} {u.lastName} — {u.designation || u.role}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -1293,30 +1341,34 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
             <CardTitle className="text-base">Candidate Information</CardTitle>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="grid grid-cols-3 gap-3">
-              <div>
-                <Label>Title</Label>
-                <Select value={formData.candidateTitle} onValueChange={v => updateField("candidateTitle", v)}>
-                  <SelectTrigger data-testid="select-offer-title">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Mr.">Mr.</SelectItem>
-                    <SelectItem value="Ms.">Ms.</SelectItem>
-                    <SelectItem value="Mrs.">Mrs.</SelectItem>
-                    <SelectItem value="Dr.">Dr.</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="col-span-2">
-                <Label>Full Name</Label>
-                <Input data-testid="input-offer-name" value={formData.candidateName} onChange={e => updateField("candidateName", e.target.value)} />
-              </div>
-            </div>
-            <div>
-              <Label>Address / Location</Label>
-              <Input data-testid="input-offer-address" value={formData.candidateAddress} onChange={e => updateField("candidateAddress", e.target.value)} placeholder="e.g., Punjab" />
-            </div>
+            {!formData.existingEmployeeMode && (
+              <>
+                <div className="grid grid-cols-3 gap-3">
+                  <div>
+                    <Label>Title</Label>
+                    <Select value={formData.candidateTitle} onValueChange={v => updateField("candidateTitle", v)}>
+                      <SelectTrigger data-testid="select-offer-title">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Mr.">Mr.</SelectItem>
+                        <SelectItem value="Ms.">Ms.</SelectItem>
+                        <SelectItem value="Mrs.">Mrs.</SelectItem>
+                        <SelectItem value="Dr.">Dr.</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="col-span-2">
+                    <Label>Full Name</Label>
+                    <Input data-testid="input-offer-name" value={formData.candidateName} onChange={e => updateField("candidateName", e.target.value)} />
+                  </div>
+                </div>
+                <div>
+                  <Label>Address / Location</Label>
+                  <Input data-testid="input-offer-address" value={formData.candidateAddress} onChange={e => updateField("candidateAddress", e.target.value)} placeholder="e.g., Punjab" />
+                </div>
+              </>
+            )}
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <Label>Designation</Label>
@@ -1327,10 +1379,12 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
                 <Input data-testid="input-offer-subject-designation" value={formData.subjectDesignation} onChange={e => updateField("subjectDesignation", e.target.value)} placeholder="Leave blank to use Designation" />
               </div>
             </div>
-            <div>
-              <Label>Personal Email</Label>
-              <Input data-testid="input-offer-email" type="email" value={formData.candidatePersonalEmail} onChange={e => updateField("candidatePersonalEmail", e.target.value)} placeholder="candidate@gmail.com" />
-            </div>
+            {!formData.existingEmployeeMode && (
+              <div>
+                <Label>Personal Email</Label>
+                <Input data-testid="input-offer-email" type="email" value={formData.candidatePersonalEmail} onChange={e => updateField("candidatePersonalEmail", e.target.value)} placeholder="candidate@gmail.com" />
+              </div>
+            )}
             <div>
               <Label>CC Recipients <span className="text-muted-foreground font-normal">(optional)</span></Label>
               <Input data-testid="input-offer-cc" type="text" value={formData.ccEmails} onChange={e => updateField("ccEmails", e.target.value)} placeholder="manager@hire-in.com, ceo@hire-in.com" />
@@ -1717,7 +1771,7 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
                 {generating ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Download className="h-4 w-4 mr-2" />}
                 Download DOCX
               </Button>
-              <Button onClick={() => setShowPreview(true)} disabled={!formData.candidateName || !formData.designation || !formData.candidatePersonalEmail} data-testid="button-preview-offer">
+              <Button onClick={() => setShowPreview(true)} disabled={!formData.existingEmployeeMode && (!formData.candidateName || !formData.designation || !formData.candidatePersonalEmail)} data-testid="button-preview-offer">
                 <Eye className="h-4 w-4 mr-2" />
                 Preview Offer
               </Button>
@@ -2772,6 +2826,11 @@ export function OfferLettersDashboard() {
                             {row.attachedPlan && (
                               <span className="inline-flex items-center gap-1 rounded-full bg-purple-50 text-purple-700 border border-purple-200 px-2 py-0.5 text-[10px] font-medium w-fit" data-testid={`badge-attached-plan-${row.key}`}>
                                 <ClipboardList className="h-3 w-3" /> {row.attachedPlan}
+                              </span>
+                            )}
+                            {row.kind === "offer" && (row.raw as any)?.isReengagement && (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[10px] font-medium w-fit" data-testid={`badge-reengagement-${row.key}`}>
+                                Existing Employee
                               </span>
                             )}
                           </div>

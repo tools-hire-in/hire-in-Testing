@@ -1035,6 +1035,13 @@ async function ensureOfferLetterApprovalColumns() {
   } catch (err) {
     console.error("offer_letters verify_auth_code column migration error:", err);
   }
+
+  try {
+    await db.execute(sql`ALTER TABLE offer_letters ADD COLUMN IF NOT EXISTS is_reengagement BOOLEAN NOT NULL DEFAULT false`);
+    log("Ensured is_reengagement column exists on offer_letters");
+  } catch (err) {
+    console.error("offer_letters is_reengagement column migration error:", err);
+  }
 }
 
 async function ensureOfferLetterAddendumsTable() {

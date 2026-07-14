@@ -6,7 +6,7 @@ import * as XLSX from "xlsx";
 import { storage } from "./storage";
 import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, adminUsers, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, offerLetterAddendums, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, sopReviewAssignments, type SopDocument } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
-import { salaryStructures, salaryStructureRules, stateDeductions, establishmentCoverage, headcountHistory, salaryStructureHistory, payrollSettings, salaryRunPayments } from "@shared/schema";
+import { salaryStructures, salaryStructureRules, stateDeductions, establishmentCoverage, headcountHistory, salaryStructureHistory, payrollSettings, salaryRunPayments, salaryChanges } from "@shared/schema";
 import { getPortalBaseUrl } from "./portalUrl";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
@@ -10845,8 +10845,23 @@ export async function registerRoutes(
         policyAnnexures, seedProbationPlan,
         attachedPlanType, attachedPlanDepartment, attachedPlanRole, attachedPlanLevel } = req.body;
 
-      if (!candidateName || !candidatePersonalEmail || !designation) {
-        return res.status(400).json({ error: "Candidate name, personal email, and designation are required" });
+      const resultingUserId: string | undefined = req.body.resultingUserId || undefined;
+
+      // In existing-employee mode name/email come from the employee record;
+      // only require candidatePersonalEmail when no employee is linked.
+      if (!candidateName || !designation) {
+        return res.status(400).json({ error: "Candidate name and designation are required" });
+      }
+      if (!resultingUserId && !candidatePersonalEmail) {
+        return res.status(400).json({ error: "Personal email is required for new candidates" });
+      }
+
+      // When linking to an existing employee, validate the employee exists.
+      if (resultingUserId) {
+        const linkedEmployee = await storage.getAdminUser(resultingUserId);
+        if (!linkedEmployee) {
+          return res.status(400).json({ error: "Linked employee not found" });
+        }
       }
 
       // Validate the performance-based probation review mode when selected
@@ -10940,7 +10955,7 @@ export async function registerRoutes(
         status: offerStatus,
         candidateTitle: candidateTitle || "Mr.",
         candidateName,
-        candidatePersonalEmail: candidatePersonalEmail.toLowerCase(),
+        candidatePersonalEmail: (candidatePersonalEmail || "").toLowerCase(),
         candidateAddress: candidateAddress || null,
         designation,
         subjectDesignation: subjectDesignation || designation,
@@ -10978,6 +10993,15 @@ export async function registerRoutes(
         attachedPlanRole: attachedPlanRole || null,
         attachedPlanLevel: attachedPlanLevel || null,
       });
+
+      // If this letter is linked to an existing employee at creation time,
+      // persist the link and mark it as a re-engagement offer.
+      if (resultingUserId) {
+        await storage.updateOfferLetter(offerLetter.id, {
+          resultingUserId,
+          isReengagement: true,
+        } as any);
+      }
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host || "localhost";
@@ -11031,8 +11055,18 @@ export async function registerRoutes(
         return res.json({ ...offerLetterWithoutToken, emailSent: false, pendingApproval: true });
       }
 
-      // super_admin flow: send directly to candidate
+      // super_admin flow: send directly to candidate (skip email for re-engagement / existing-employee offers)
       const acceptUrl = `${protocol}://${host}/onboard/${token}`;
+
+      if (!candidatePersonalEmail || resultingUserId) {
+        // Re-engagement offer linked to an existing employee — no candidate email delivery
+        await storage.createAuditLog({
+          action: "offer_letter_created_reengagement",
+          actorId,
+          changes: { offerId: offerLetter.id, candidateName, designation, resultingUserId, emailSent: false },
+        });
+        return res.json({ ...offerLetter, emailSent: false, emailError: undefined });
+      }
 
       const parsedCcEmails = Array.isArray(ccEmails)
         ? ccEmails.filter(Boolean)
@@ -11181,7 +11215,7 @@ export async function registerRoutes(
       const updates: Partial<OfferLetter> = {
         candidateTitle: candidateTitle || "Mr.",
         candidateName,
-        candidatePersonalEmail: candidatePersonalEmail.toLowerCase(),
+        candidatePersonalEmail: (candidatePersonalEmail || "").toLowerCase(),
         candidateAddress: candidateAddress || null,
         designation,
         subjectDesignation: subjectDesignation || designation,
@@ -13107,18 +13141,148 @@ export async function registerRoutes(
             LEFT JOIN section_progress sp
               ON sp.assignment_id = ta.id AND sp.section_id = ts.id
             WHERE ta.user_id = u.id
-          ), 0) AS training_pct
+          ), 0) AS training_pct,
+          false AS is_reissue,
+          NULL::varchar AS offer_id
         FROM admin_users u
         LEFT JOIN departments d ON d.id = u.department_id
         WHERE (u.joining_date IS NULL OR u.joining_date >= CURRENT_DATE - INTERVAL '90 days')
           AND u.is_active = true
           AND u.deleted_at IS NULL
           AND u.role NOT IN ('super_admin', 'admin')
-        ORDER BY u.joining_date DESC NULLS LAST
+
+        UNION
+
+        SELECT
+          u.id,
+          u.first_name,
+          u.last_name,
+          u.email,
+          u.employee_id,
+          u.designation,
+          u.joining_date,
+          u.role,
+          u.gender,
+          u.employment_type,
+          u.attendance_exempt,
+          u.training_exempt,
+          u.maternity_leave_eligible,
+          d.name AS department_name,
+          COALESCE((
+            SELECT COUNT(*)::int FROM employee_documents WHERE user_id = u.id
+          ), 0) AS document_count,
+          EXISTS (
+            SELECT 1 FROM employee_bank_details WHERE user_id = u.id LIMIT 1
+          ) AS has_bank_details,
+          EXISTS (
+            SELECT 1 FROM night_shift_consents WHERE user_id = u.id AND is_active = true LIMIT 1
+          ) AS has_ns_consent,
+          COALESCE((
+            SELECT ROUND(
+              100.0 * COUNT(CASE WHEN sp.completed_at IS NOT NULL THEN 1 END)
+                    / NULLIF(COUNT(ts.id), 0)
+            )::int
+            FROM track_assignments ta
+            JOIN track_sections ts ON ts.track_id = ta.track_id
+            LEFT JOIN section_progress sp
+              ON sp.assignment_id = ta.id AND sp.section_id = ts.id
+            WHERE ta.user_id = u.id
+          ), 0) AS training_pct,
+          true AS is_reissue,
+          ol.id::varchar AS offer_id
+        FROM offer_letters ol
+        JOIN admin_users u ON u.id = ol.resulting_user_id
+        LEFT JOIN departments d ON d.id = u.department_id
+        WHERE ol.is_reengagement = true
+          AND ol.status NOT IN ('cancelled', 'expired', 'rejected')
+          AND u.is_active = true
+          AND u.deleted_at IS NULL
+          AND (u.joining_date IS NULL OR u.joining_date < CURRENT_DATE - INTERVAL '90 days')
+
+        ORDER BY joining_date DESC NULLS LAST
       `);
       res.json(result.rows);
     } catch (err: any) {
       res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Apply offer letter terms to an existing linked employee's profile
+  app.post("/api/hr/offer-letters/:id/apply-to-profile", requireAuth, requirePermission("hr.tools.offerLetters.applyToProfile", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const offerId = req.params.id;
+      const actorId = req.session.userId!;
+
+      const letter = await storage.getOfferLetter(offerId);
+      if (!letter) return res.status(404).json({ error: "Offer letter not found" });
+      if (!letter.resultingUserId) return res.status(400).json({ error: "This offer letter is not linked to an existing employee" });
+      if (!letter.isReengagement) return res.status(400).json({ error: "Apply to Profile is only available for re-engagement offer letters" });
+
+      const employee = await storage.getAdminUser(letter.resultingUserId);
+      if (!employee) return res.status(404).json({ error: "Linked employee not found" });
+
+      const oldDesignation = employee.designation || null;
+      const oldDepartmentId = employee.departmentId || null;
+      const oldSalary = employee.salary ? String(employee.salary) : null;
+
+      const updates: Record<string, any> = {};
+      if (letter.designation) updates.designation = letter.designation;
+      if (letter.departmentId) updates.departmentId = letter.departmentId;
+
+      // Apply profile updates
+      await db.update(adminUsers)
+        .set({ ...updates, updatedAt: new Date() })
+        .where(eq(adminUsers.id, employee.id));
+
+      // Write salary change ledger entry if salary is specified
+      let salaryChangeId: string | null = null;
+      if (letter.salary) {
+        const newSalary = String(letter.salary);
+        const effectiveDate = letter.proposedStartDate || new Date().toISOString().split("T")[0];
+        const [inserted] = await db.insert(salaryChanges).values({
+          employeeId: employee.id,
+          sourceType: "offer_letter",
+          sourceDocumentType: "offer_letter",
+          sourceDocumentId: letter.id,
+          oldSalary: oldSalary,
+          newSalary: newSalary,
+          effectiveDate: effectiveDate,
+          reason: `Applied from re-engagement offer letter ${letter.referenceNumber || letter.id}`,
+          status: "applied",
+          initiatedBy: actorId,
+          appliedAt: new Date(),
+        }).returning();
+        salaryChangeId = inserted.id;
+
+        // Also update the admin_users.salary field
+        await db.update(adminUsers)
+          .set({ salary: newSalary as any, updatedAt: new Date() })
+          .where(eq(adminUsers.id, employee.id));
+      }
+
+      // Audit log
+      await storage.createAuditLog({
+        actorId,
+        targetId: employee.id,
+        action: "offer_letter_applied_to_profile",
+        changes: {
+          offerId: letter.id,
+          offerReference: letter.referenceNumber || letter.id,
+          oldDesignation,
+          newDesignation: letter.designation || null,
+          oldDepartmentId,
+          newDepartmentId: letter.departmentId || null,
+          oldSalary,
+          newSalary: letter.salary || null,
+          salaryChangeId,
+        },
+      });
+
+      const updatedEmployee = await storage.getAdminUser(employee.id);
+      res.json({ success: true, employee: updatedEmployee });
+    } catch (err: any) {
+      console.error("Apply to profile error:", err);
+      res.status(500).json({ error: err.message || "Failed to apply offer letter to profile" });
     }
   });
 

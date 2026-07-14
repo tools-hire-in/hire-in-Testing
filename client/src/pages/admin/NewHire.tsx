@@ -1,15 +1,18 @@
 import { useState, useEffect } from "react";
 import { useLocation, useSearch } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { Loader2, Users, CheckCircle2, XCircle, AlertCircle, ExternalLink, Search, Shield, UserPlus } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Loader2, Users, CheckCircle2, XCircle, AlertCircle, ExternalLink, Search, Shield, UserPlus, RefreshCw } from "lucide-react";
 import { V2PageHeader } from "@/components/admin/V2PageHeader";
 import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useAuth } from "@/hooks/use-auth";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import { OfferLetterGenerator, OfferLettersDashboard } from "@/pages/admin/hr/HRTools";
 import type { AdminUsersResponse } from "@shared/schema";
 import { formatLocalDate } from "@/lib/dateUtils";
@@ -33,6 +36,8 @@ interface NewHire {
   attendance_exempt: boolean;
   training_exempt: boolean;
   maternity_leave_eligible: boolean;
+  is_reissue: boolean;
+  offer_id: string | null;
 }
 
 const roleLabels: Record<string, string> = {
@@ -95,9 +100,35 @@ function formatJoiningDate(date: string | null): string {
 
 function OnboardingTab() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
+  const [applyTarget, setApplyTarget] = useState<{ hire: NewHire } | null>(null);
+
   const { data: hires, isLoading } = useQuery<NewHire[]>({
     queryKey: ["/api/hr/new-hire/onboarding-status"],
   });
+
+  const applyMutation = useMutation({
+    mutationFn: async (offerId: string) => {
+      const res = await apiRequest("POST", `/api/hr/offer-letters/${offerId}/apply-to-profile`, {});
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || "Failed to apply offer letter to profile");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Profile updated", description: "Designation, department, and salary have been applied from the offer letter." });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/new-hire/onboarding-status"] });
+      setApplyTarget(null);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const canApplyToProfile = ["super_admin", "admin", "hr"].includes((user as any)?.role || "");
 
   if (isLoading) {
     return (
@@ -113,7 +144,7 @@ function OnboardingTab() {
         <CardContent className="flex flex-col items-center justify-center py-12 text-center gap-3">
           <Users className="h-10 w-10 text-muted-foreground/40" />
           <p className="font-medium text-muted-foreground">No recent hires found</p>
-          <p className="text-sm text-muted-foreground">Employees who joined within the last 90 days, or whose joining date has not been set yet, will appear here with their setup status.</p>
+          <p className="text-sm text-muted-foreground">Employees who joined within the last 90 days, those with no joining date set, and re-engagement offer letter recipients will appear here.</p>
         </CardContent>
       </Card>
     );
@@ -122,7 +153,7 @@ function OnboardingTab() {
   return (
     <div className="space-y-4">
       <p className="text-sm text-muted-foreground">
-        Showing <strong>{hires.length}</strong> employee{hires.length !== 1 ? "s" : ""} who joined in the last 90 days or have no joining date set.
+        Showing <strong>{hires.length}</strong> employee{hires.length !== 1 ? "s" : ""}. Includes recent hires, employees with no joining date set, and existing employees with a linked re-engagement offer.
       </p>
 
       <div className="rounded-md border overflow-x-auto">
@@ -138,6 +169,7 @@ function OnboardingTab() {
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Bank Details</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">NS Consent</th>
               <th className="text-left px-4 py-3 font-medium text-muted-foreground">Flags</th>
+              <th className="text-left px-4 py-3 font-medium text-muted-foreground">Re-engagement</th>
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -206,16 +238,38 @@ function OnboardingTab() {
                     </div>
                   </td>
                   <td className="px-4 py-3">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-7 gap-1 text-xs"
-                      onClick={(e) => { e.stopPropagation(); setLocation(`/admin/hr/people?tab=users&userId=${h.id}`); }}
-                      data-testid={`button-view-hire-${h.id}`}
-                    >
-                      <ExternalLink className="h-3 w-3" />
-                      View
-                    </Button>
+                    {h.is_reissue ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 text-blue-700 border border-blue-200 px-2 py-0.5 text-[10px] font-medium" data-testid={`badge-reissue-${h.id}`}>
+                        <RefreshCw className="h-3 w-3" /> Re-engagement
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground/50 text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex items-center gap-1">
+                      {h.is_reissue && h.offer_id && canApplyToProfile && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="h-7 gap-1 text-xs border-[#1F3A6E] text-[#1F3A6E] hover:bg-[#1F3A6E]/5"
+                          onClick={(e) => { e.stopPropagation(); setApplyTarget({ hire: h }); }}
+                          data-testid={`button-apply-to-profile-${h.id}`}
+                        >
+                          Apply to Profile
+                        </Button>
+                      )}
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 gap-1 text-xs"
+                        onClick={(e) => { e.stopPropagation(); setLocation(`/admin/hr/people?tab=users&userId=${h.id}`); }}
+                        data-testid={`button-view-hire-${h.id}`}
+                      >
+                        <ExternalLink className="h-3 w-3" />
+                        View
+                      </Button>
+                    </div>
                   </td>
                 </tr>
               );
@@ -223,6 +277,37 @@ function OnboardingTab() {
           </tbody>
         </table>
       </div>
+      {applyTarget && (
+        <Dialog open onOpenChange={() => setApplyTarget(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Apply Offer Letter to Profile</DialogTitle>
+              <DialogDescription>
+                This will update <strong>{applyTarget.hire.first_name} {applyTarget.hire.last_name}</strong>'s designation, department, and salary based on the linked re-engagement offer letter. This action is logged in the audit trail.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="py-2 text-sm text-muted-foreground">
+              The following will be overwritten on the employee's profile:
+              <ul className="mt-2 ml-4 list-disc space-y-1">
+                <li>Designation (if specified on the offer)</li>
+                <li>Department (if specified on the offer)</li>
+                <li>Salary — a salary change ledger entry will be created</li>
+              </ul>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setApplyTarget(null)} data-testid="button-cancel-apply">Cancel</Button>
+              <Button
+                onClick={() => applyMutation.mutate(applyTarget.hire.offer_id!)}
+                disabled={applyMutation.isPending}
+                data-testid="button-confirm-apply"
+                className="bg-[#1F3A6E] hover:bg-[#1F3A6E]/90"
+              >
+                {applyMutation.isPending ? <><Loader2 className="h-4 w-4 animate-spin mr-1" /> Applying…</> : "Apply to Profile"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }

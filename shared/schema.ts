@@ -742,6 +742,10 @@ export const offerLetters = pgTable("offer_letters", {
   // Nullable — backfilled for existing rows by ensureOfferLetterReferenceNumbers().
   referenceNumber: varchar("reference_number").unique(),
   verifyAuthCode: varchar("verify_auth_code"),
+  // Set to true when the offer letter was explicitly linked to an existing
+  // employee at creation time (re-engagement / role-change scenario).
+  // Distinct from resultingUserId being set post-onboarding for a new hire.
+  isReengagement: boolean("is_reengagement").notNull().default(false),
 });
 
 export const insertOfferLetterSchema = createInsertSchema(offerLetters).omit({
