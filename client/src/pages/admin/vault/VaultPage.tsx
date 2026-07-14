@@ -21,7 +21,7 @@ import {
 import {
   KeyRound, Plus, Edit2, Archive, Eye, Copy, ChevronRight, AlertTriangle,
   Shield, ShieldAlert, ShieldCheck, Lock, RefreshCw, Users, ExternalLink,
-  MoreHorizontal, Trash2,
+  MoreHorizontal, Trash2, Share2,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
@@ -43,6 +43,10 @@ type Secret = {
   id: string; vaultId: string; systemName: string; loginUrl?: string;
   sensitivity: string; rotationDueAt?: string; rotationRequired: boolean;
   canCopy: boolean; canReveal: boolean; createdAt: string;
+};
+type VaultShare = {
+  id: string; vaultId: string; userId: string; role: string;
+  grantedBy: string; grantedAt: string; revokedAt?: string;
 };
 
 function SensitivityBadge({ sensitivity }: { sensitivity: string }) {
@@ -197,6 +201,142 @@ function VaultFormDialog({ open, onClose, existing }: { open: boolean; onClose: 
   );
 }
 
+function ShareVaultDialog({ vault, onClose }: { vault: Vault; onClose: () => void }) {
+  const { toast } = useToast();
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [selectedRole, setSelectedRole] = useState<"viewer" | "manager">("viewer");
+
+  const { data: shares = [], isLoading: sharesLoading } = useQuery<VaultShare[]>({
+    queryKey: [`/api/vaults/${vault.id}/shares`],
+  });
+
+  const { data: usersData } = useQuery<{ users: any[] }>({
+    queryKey: ["/api/admin/users"],
+  });
+  const users = usersData?.users ?? [];
+
+  const activeShares = shares.filter(s => !s.revokedAt);
+
+  const addShareMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/vaults/${vault.id}/shares`, { userId: selectedUserId, role: selectedRole }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/vaults/${vault.id}/shares`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-vault-access"] });
+      toast({ title: "Vault shared" });
+      setSelectedUserId("");
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const revokeShareMutation = useMutation({
+    mutationFn: (shareId: string) => apiRequest("DELETE", `/api/vaults/${vault.id}/shares/${shareId}`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/vaults/${vault.id}/shares`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/my-vault-access"] });
+      toast({ title: "Access revoked" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const getUserName = (uid: string) => {
+    const u = users.find((u: any) => u.id === uid);
+    return u ? `${u.firstName} ${u.lastName} (${u.role})` : uid;
+  };
+
+  const sharedUserIds = new Set(activeShares.map(s => s.userId));
+  const availableUsers = users.filter((u: any) => u.isActive && !u.deletedAt && !sharedUserIds.has(u.id));
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Share2 className="h-5 w-5" />
+            Share Vault — {vault.name}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div>
+            <p className="text-sm text-muted-foreground mb-3">
+              Sharing a vault gives the recipient access to all its credentials. They'll appear in the recipient's "Shared With Me" list.
+            </p>
+
+            {sharesLoading ? (
+              <div className="py-4 text-center text-sm text-muted-foreground">Loading shares…</div>
+            ) : activeShares.length > 0 ? (
+              <div className="mb-4">
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Currently Shared With</p>
+                <div className="space-y-2">
+                  {activeShares.map(s => (
+                    <div key={s.id} className="flex items-center justify-between bg-accent/40 rounded-md px-3 py-2" data-testid={`share-row-${s.id}`}>
+                      <div>
+                        <p className="text-sm font-medium">{getUserName(s.userId)}</p>
+                        <p className="text-xs text-muted-foreground capitalize">{s.role}</p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-red-500 hover:text-red-700"
+                        data-testid={`button-revoke-share-${s.id}`}
+                        onClick={() => { if (confirm("Revoke vault access for this person?")) revokeShareMutation.mutate(s.id); }}
+                        disabled={revokeShareMutation.isPending}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground mb-4">This vault hasn't been shared with anyone yet.</p>
+            )}
+
+            <Separator className="my-3" />
+
+            <div className="space-y-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Add Person</p>
+              <div className="flex gap-2">
+                <div className="flex-1">
+                  <Select value={selectedUserId} onValueChange={setSelectedUserId}>
+                    <SelectTrigger data-testid="select-share-user">
+                      <SelectValue placeholder="Pick a team member…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableUsers.map((u: any) => (
+                        <SelectItem key={u.id} value={u.id}>
+                          {u.firstName} {u.lastName} — {u.role}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Select value={selectedRole} onValueChange={v => setSelectedRole(v as any)}>
+                  <SelectTrigger className="w-32" data-testid="select-share-role">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="viewer">Viewer</SelectItem>
+                    <SelectItem value="manager">Manager</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                className="w-full"
+                data-testid="button-add-share"
+                disabled={!selectedUserId || addShareMutation.isPending}
+                onClick={() => addShareMutation.mutate()}
+              >
+                {addShareMutation.isPending ? "Sharing…" : "Share Vault"}
+              </Button>
+            </div>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean }) {
   const { toast } = useToast();
   const [secretFormOpen, setSecretFormOpen] = useState(false);
@@ -322,6 +462,7 @@ function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean 
 
       {secretFormOpen && (
         <SecretFormDialog
+          key={editingSecret?.id ?? "new"}
           open={secretFormOpen}
           onClose={() => { setSecretFormOpen(false); setEditingSecret(null); }}
           vaultId={vaultId}
@@ -345,6 +486,7 @@ export default function VaultPage() {
 
   const [vaultFormOpen, setVaultFormOpen] = useState(false);
   const [editingVault, setEditingVault] = useState<Vault | null>(null);
+  const [sharingVault, setSharingVault] = useState<Vault | null>(null);
   const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"vaults" | "my-access">("my-access");
 
@@ -442,9 +584,14 @@ export default function VaultPage() {
                           <h2 className="font-semibold">{selectedVault.name}</h2>
                           {selectedVault.description && <p className="text-xs text-muted-foreground">{selectedVault.description}</p>}
                         </div>
-                        <Button size="sm" variant="outline" onClick={() => { setEditingVault(selectedVault); setVaultFormOpen(true); }} data-testid="button-edit-vault">
-                          <Edit2 className="h-4 w-4 mr-1" /> Edit Vault
-                        </Button>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" variant="outline" onClick={() => setSharingVault(selectedVault)} data-testid="button-share-vault">
+                            <Share2 className="h-4 w-4 mr-1" /> Share Vault
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => { setEditingVault(selectedVault); setVaultFormOpen(true); }} data-testid="button-edit-vault">
+                            <Edit2 className="h-4 w-4 mr-1" /> Edit Vault
+                          </Button>
+                        </div>
                       </div>
                       <SecretsTable vaultId={selectedVault.id} isAdmin={isAdmin} />
                     </div>
@@ -453,10 +600,14 @@ export default function VaultPage() {
               </div>
 
               <VaultFormDialog
+                key={editingVault?.id ?? "new-vault"}
                 open={vaultFormOpen}
                 onClose={() => { setVaultFormOpen(false); setEditingVault(null); }}
                 existing={editingVault}
               />
+              {sharingVault && (
+                <ShareVaultDialog vault={sharingVault} onClose={() => setSharingVault(null)} />
+              )}
             </TabsContent>
           )}
         </Tabs>
@@ -498,14 +649,9 @@ function MyAccessTable({ secrets }: { secrets: any[] }) {
               <TableCell>
                 <div className="font-medium">{s.systemName}</div>
                 {s.loginUrl && (
-                  <a href={s.loginUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
-                    <ExternalLink className="h-3 w-3" /> Open
+                  <a href={s.loginUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1 mt-0.5">
+                    <ExternalLink className="h-3 w-3" /> {s.loginUrl}
                   </a>
-                )}
-                {s.rotationRequired && (
-                  <span className="text-xs text-amber-600 flex items-center gap-1">
-                    <RefreshCw className="h-3 w-3" /> Rotation required
-                  </span>
                 )}
               </TableCell>
               <TableCell className="text-sm text-muted-foreground">{s.vaultName}</TableCell>
@@ -515,16 +661,16 @@ function MyAccessTable({ secrets }: { secrets: any[] }) {
               </TableCell>
               <TableCell>
                 <div className="flex items-center gap-1.5">
-                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => copyValue(s.id, "username")} data-testid={`button-my-copy-username-${s.id}`}>
+                  <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => copyValue(s.id, "username")} data-testid={`button-access-copy-username-${s.id}`}>
                     <Copy className="h-3 w-3 mr-1" /> Username
                   </Button>
                   {s.canCopy && (
-                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => copyValue(s.id, "password")} data-testid={`button-my-copy-password-${s.id}`}>
+                    <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => copyValue(s.id, "password")} data-testid={`button-access-copy-password-${s.id}`}>
                       <Copy className="h-3 w-3 mr-1" /> Password
                     </Button>
                   )}
                   {s.canReveal && (
-                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setRevealSecret(s)} data-testid={`button-my-reveal-${s.id}`}>
+                    <Button size="sm" variant="ghost" className="h-7 px-2 text-xs" onClick={() => setRevealSecret(s)} data-testid={`button-access-reveal-${s.id}`}>
                       <Eye className="h-3 w-3 mr-1" /> Reveal
                     </Button>
                   )}

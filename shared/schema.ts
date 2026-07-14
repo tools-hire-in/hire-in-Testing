@@ -4204,11 +4204,27 @@ export const vaults = pgTable("vaults", {
   description: text("description"),
   category: varchar("category", { length: 80 }),
   createdBy: varchar("created_by").notNull().references(() => adminUsers.id),
+  isPersonal: boolean("is_personal").notNull().default(false),
+  ownerId: varchar("owner_id").references(() => adminUsers.id),
   archivedAt: timestamp("archived_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({
   nameIdx: index("vaults_name_idx").on(t.name),
+}));
+
+export const vaultShares = pgTable("vault_shares", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  vaultId: varchar("vault_id").notNull().references(() => vaults.id),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  role: varchar("role", { length: 20 }).notNull().default("viewer"),
+  grantedBy: varchar("granted_by").notNull().references(() => adminUsers.id),
+  grantedAt: timestamp("granted_at").defaultNow().notNull(),
+  revokedAt: timestamp("revoked_at"),
+  revokedBy: varchar("revoked_by"),
+}, (t) => ({
+  vaultIdx: index("vault_shares_vault_idx").on(t.vaultId),
+  userIdx: index("vault_shares_user_idx").on(t.userId),
 }));
 
 export const vaultSecrets = pgTable("vault_secrets", {

@@ -1,7 +1,7 @@
 import { type Express, type Request, type Response, type NextFunction } from "express";
 import { db } from "./db";
 import {
-  vaults, vaultSecrets, vaultSecretGrants, vaultAuditLogs,
+  vaults, vaultSecrets, vaultSecretGrants, vaultAuditLogs, vaultShares,
   type Vault, type VaultSecret, type VaultSecretGrant,
 } from "../shared/schema";
 import { eq, and, isNull, inArray, desc, gte, sql } from "drizzle-orm";
@@ -53,15 +53,58 @@ async function getGrantsForUser(secretId: string, userId: string, userRole: stri
   return rows.filter(g => g.userId === userId || g.roleName === userRole);
 }
 
-async function canAccessSecret(userId: string, userRole: string, secretId: string): Promise<{ allowed: boolean; canCopy: boolean; canReveal: boolean }> {
+async function canAccessSecret(
+  userId: string, userRole: string, secretId: string,
+  vaultHint?: { vaultId: string; isPersonal?: boolean | null; ownerId?: string | null }
+): Promise<{ allowed: boolean; canCopy: boolean; canReveal: boolean }> {
+  // Resolve vault metadata (prefer hint to avoid extra query)
+  let vaultId = vaultHint?.vaultId;
+  let isPersonal = vaultHint?.isPersonal;
+  let ownerId = vaultHint?.ownerId;
+
+  if (!vaultId) {
+    const [row] = await db.select({ vaultId: vaultSecrets.vaultId }).from(vaultSecrets).where(eq(vaultSecrets.id, secretId));
+    if (!row) return { allowed: false, canCopy: false, canReveal: false };
+    vaultId = row.vaultId;
+  }
+  if (isPersonal === undefined || ownerId === undefined) {
+    const [vault] = await db.select({ isPersonal: vaults.isPersonal, ownerId: vaults.ownerId }).from(vaults).where(eq(vaults.id, vaultId));
+    isPersonal = vault?.isPersonal;
+    ownerId = vault?.ownerId ?? null;
+  }
+
+  // Personal vault: ONLY the owner can access — admins are intentionally blocked
+  if (isPersonal) {
+    const isOwner = ownerId === userId;
+    return { allowed: isOwner, canCopy: isOwner, canReveal: isOwner };
+  }
+
+  // Non-personal vault: admins get full access
   if (ADMIN_ROLES.includes(userRole)) {
     return { allowed: true, canCopy: true, canReveal: true };
   }
+
+  // Vault-level share: viewer = read-only, manager = copy + reveal
+  const [vaultShare] = await db.select().from(vaultShares).where(
+    and(eq(vaultShares.vaultId, vaultId), eq(vaultShares.userId, userId), isNull(vaultShares.revokedAt))
+  );
+  if (vaultShare) {
+    const isManager = vaultShare.role === "manager";
+    return { allowed: true, canCopy: isManager, canReveal: isManager };
+  }
+
+  // Secret-level grants (existing mechanism)
   const grants = await getGrantsForUser(secretId, userId, userRole);
   if (!grants.length) return { allowed: false, canCopy: false, canReveal: false };
-  const canCopy = grants.some(g => g.canCopyPassword);
-  const canReveal = grants.some(g => g.canRevealPassword);
-  return { allowed: true, canCopy, canReveal };
+  return { allowed: true, canCopy: grants.some(g => g.canCopyPassword), canReveal: grants.some(g => g.canRevealPassword) };
+}
+
+/** Returns whether a user may create/edit/delete secrets in the given vault. */
+async function canWriteVaultSecret(userId: string, userRole: string, vaultId: string): Promise<boolean> {
+  const [vault] = await db.select({ isPersonal: vaults.isPersonal, ownerId: vaults.ownerId }).from(vaults).where(eq(vaults.id, vaultId));
+  if (!vault) return false;
+  if (vault.isPersonal) return vault.ownerId === userId; // only owner, never admin
+  return ADMIN_ROLES.includes(userRole); // system vaults: admin only
 }
 
 function getClientIp(req: Request): string {
@@ -119,7 +162,10 @@ export function registerVaultRoutes(app: Express): void {
       const userRole = req.session.role ?? "";
       const isAdmin = ADMIN_ROLES.includes(userRole);
 
-      const allVaults = await db.select().from(vaults).where(isNull(vaults.archivedAt)).orderBy(vaults.name);
+      // Personal vaults are never shown in the system vault list
+      const allVaults = await db.select().from(vaults).where(
+        and(isNull(vaults.archivedAt), sql`(${vaults.isPersonal} IS NOT TRUE)`)
+      ).orderBy(vaults.name);
 
       if (isAdmin) {
         return res.json(allVaults);
@@ -133,15 +179,23 @@ export function registerVaultRoutes(app: Express): void {
       );
       const userGrants = activeGrants.filter(g => g.userId === userId || g.roleName === userRole);
 
-      if (!userGrants.length) {
+      // Also include vaults shared directly with this user
+      const myVaultShares = await db.select({ vaultId: vaultShares.vaultId }).from(vaultShares).where(
+        and(eq(vaultShares.userId, userId), isNull(vaultShares.revokedAt))
+      );
+      const directSharedVaultIds = new Set(myVaultShares.map(s => s.vaultId));
+
+      if (!userGrants.length && !directSharedVaultIds.size) {
         return res.json([]);
       }
 
-      const accessibleSecrets = await db.select({ vaultId: vaultSecrets.vaultId })
-        .from(vaultSecrets)
-        .where(inArray(vaultSecrets.id, userGrants.map(g => g.secretId)));
-
-      const accessibleVaultIds = new Set(accessibleSecrets.map(s => s.vaultId));
+      const accessibleVaultIds = new Set(directSharedVaultIds);
+      if (userGrants.length) {
+        const accessibleSecrets = await db.select({ vaultId: vaultSecrets.vaultId })
+          .from(vaultSecrets)
+          .where(inArray(vaultSecrets.id, userGrants.map(g => g.secretId)));
+        for (const s of accessibleSecrets) accessibleVaultIds.add(s.vaultId);
+      }
       return res.json(allVaults.filter(v => accessibleVaultIds.has(v.id)));
     } catch (err) {
       console.error("[Vault] GET /api/vaults:", err);
@@ -190,12 +244,16 @@ export function registerVaultRoutes(app: Express): void {
       const isAdmin = ADMIN_ROLES.includes(userRole);
       const { id: vaultId } = req.params;
 
+      // Resolve vault to check personal ownership (canAccessSecret handles this too, but we need it for the batch hint)
+      const [vault] = await db.select({ isPersonal: vaults.isPersonal, ownerId: vaults.ownerId }).from(vaults).where(eq(vaults.id, vaultId));
+      const vaultHint = vault ? { vaultId, isPersonal: vault.isPersonal, ownerId: vault.ownerId } : undefined;
+
       const secrets = await db.select().from(vaultSecrets).where(
         and(eq(vaultSecrets.vaultId, vaultId), isNull(vaultSecrets.archivedAt))
       ).orderBy(vaultSecrets.systemName);
 
       const sanitized = await Promise.all(secrets.map(async (s) => {
-        const access = isAdmin ? { allowed: true, canCopy: true, canReveal: true } : await canAccessSecret(userId, userRole, s.id);
+        const access = await canAccessSecret(userId, userRole, s.id, vaultHint);
         if (!access.allowed) return null;
         return {
           id: s.id, vaultId: s.vaultId, systemName: s.systemName, loginUrl: s.loginUrl,
@@ -211,9 +269,24 @@ export function registerVaultRoutes(app: Express): void {
     }
   });
 
-  app.post("/api/vaults/:id/secrets", ...authMiddleware, adminOnly, async (req: Request, res: Response) => {
+  app.post("/api/vaults/:id/secrets", ...authMiddleware, async (req: Request, res: Response) => {
     try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role ?? "";
+      const isAdmin = ADMIN_ROLES.includes(userRole);
       const { id: vaultId } = req.params;
+
+      if (!(await canWriteVaultSecret(userId, userRole, vaultId))) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+      // Sensitivity cap: personal vault owners are restricted to low/medium
+      if (!ADMIN_ROLES.includes(userRole)) {
+        const allowedSens = ["low", "medium"];
+        if (req.body.sensitivity && !allowedSens.includes(req.body.sensitivity)) {
+          return res.status(403).json({ error: "Personal vault secrets may only use low or medium sensitivity" });
+        }
+      }
+
       const { systemName, loginUrl, username, password, notes, sensitivity, rotationDueAt } = req.body as {
         systemName: string; loginUrl?: string; username?: string; password?: string;
         notes?: string; sensitivity?: string; rotationDueAt?: string;
@@ -231,10 +304,10 @@ export function registerVaultRoutes(app: Express): void {
         notesEnc: notes ? encryptVaultField(notes) : null,
         sensitivity: sens,
         rotationDueAt: rotationDueAt ? new Date(rotationDueAt) : null,
-        createdBy: req.session.userId!,
+        createdBy: userId,
       }).returning();
 
-      await logVaultAudit({ actorId: req.session.userId!, secretId: created.id, vaultId, action: "create_secret", ip: getClientIp(req), userAgent: req.headers["user-agent"] });
+      await logVaultAudit({ actorId: userId, secretId: created.id, vaultId, action: "create_secret", ip: getClientIp(req), userAgent: req.headers["user-agent"] });
       const { usernameEnc: _u, passwordEnc: _p, notesEnc: _n, ...safe } = created;
       res.json(safe);
     } catch (err) {
@@ -253,7 +326,7 @@ export function registerVaultRoutes(app: Express): void {
       const [secret] = await db.select().from(vaultSecrets).where(eq(vaultSecrets.id, id));
       if (!secret || secret.archivedAt) return res.status(404).json({ error: "Secret not found" });
 
-      const access = isAdmin ? { allowed: true, canCopy: true, canReveal: true } : await canAccessSecret(userId, userRole, id);
+      const access = await canAccessSecret(userId, userRole, id);
       if (!access.allowed) {
         await logVaultAudit({ actorId: userId, secretId: id, action: "failed_access", ip: getClientIp(req), userAgent: req.headers["user-agent"] });
         return res.status(403).json({ error: "Access denied" });
@@ -266,8 +339,11 @@ export function registerVaultRoutes(app: Express): void {
     }
   });
 
-  app.patch("/api/secrets/:id", ...authMiddleware, adminOnly, async (req: Request, res: Response) => {
+  app.patch("/api/secrets/:id", ...authMiddleware, async (req: Request, res: Response) => {
     try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role ?? "";
+      const isAdmin = ADMIN_ROLES.includes(userRole);
       const { id } = req.params;
       const { systemName, loginUrl, username, password, notes, sensitivity, rotationDueAt, rotationRequired } = req.body as {
         systemName?: string; loginUrl?: string; username?: string; password?: string;
@@ -277,9 +353,18 @@ export function registerVaultRoutes(app: Express): void {
       const [existing] = await db.select().from(vaultSecrets).where(eq(vaultSecrets.id, id));
       if (!existing || existing.archivedAt) return res.status(404).json({ error: "Secret not found" });
 
+      if (!(await canWriteVaultSecret(userId, userRole, existing.vaultId))) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
+      // Sensitivity cap: personal vault owners are restricted to low/medium
+      if (!ADMIN_ROLES.includes(userRole) && sensitivity && !["low", "medium"].includes(sensitivity)) {
+        return res.status(403).json({ error: "Personal vault secrets may only use low or medium sensitivity" });
+      }
+
       const validSensitivities = ["low", "medium", "high", "critical"];
       const updates: Partial<VaultSecret> = {
-        updatedAt: new Date(), updatedBy: req.session.userId!,
+        updatedAt: new Date(), updatedBy: userId,
         ...(systemName && { systemName: systemName.trim() }),
         ...(loginUrl !== undefined && { loginUrl: loginUrl?.trim() || null }),
         ...(username !== undefined && { usernameEnc: username ? encryptVaultField(username) : null }),
@@ -300,13 +385,20 @@ export function registerVaultRoutes(app: Express): void {
     }
   });
 
-  app.delete("/api/secrets/:id", ...authMiddleware, adminOnly, async (req: Request, res: Response) => {
+  app.delete("/api/secrets/:id", ...authMiddleware, async (req: Request, res: Response) => {
     try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role ?? "";
       const { id } = req.params;
       const [existing] = await db.select().from(vaultSecrets).where(eq(vaultSecrets.id, id));
       if (!existing) return res.status(404).json({ error: "Secret not found" });
+
+      if (!(await canWriteVaultSecret(userId, userRole, existing.vaultId))) {
+        return res.status(403).json({ error: "Access denied" });
+      }
+
       await db.update(vaultSecrets).set({ archivedAt: new Date() }).where(eq(vaultSecrets.id, id));
-      await logVaultAudit({ actorId: req.session.userId!, secretId: id, vaultId: existing.vaultId, action: "archive_secret", ip: getClientIp(req), userAgent: req.headers["user-agent"] });
+      await logVaultAudit({ actorId: userId, secretId: id, vaultId: existing.vaultId, action: "archive_secret", ip: getClientIp(req), userAgent: req.headers["user-agent"] });
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ error: "Failed to archive secret" });
@@ -326,6 +418,7 @@ export function registerVaultRoutes(app: Express): void {
         const allSecrets = await db.select({ id: vaultSecrets.id }).from(vaultSecrets).where(isNull(vaultSecrets.archivedAt));
         secretIds = allSecrets.map(s => s.id);
       } else {
+        // Secret-level grants (existing mechanism)
         const grants = await db.select().from(vaultSecretGrants).where(
           and(
             isNull(vaultSecretGrants.revokedAt),
@@ -333,7 +426,22 @@ export function registerVaultRoutes(app: Express): void {
           )
         );
         const userGrants = grants.filter(g => g.userId === userId || g.roleName === userRole);
-        secretIds = [...new Set(userGrants.map(g => g.secretId))];
+        const grantSecretIds = userGrants.map(g => g.secretId);
+
+        // Vault-level shares (new mechanism)
+        const myVaultShares = await db.select().from(vaultShares).where(
+          and(eq(vaultShares.userId, userId), isNull(vaultShares.revokedAt))
+        );
+        const sharedVaultIds = myVaultShares.map(s => s.vaultId);
+        let sharedVaultSecretIds: string[] = [];
+        if (sharedVaultIds.length > 0) {
+          const sharedSecrets = await db.select({ id: vaultSecrets.id }).from(vaultSecrets).where(
+            and(inArray(vaultSecrets.vaultId, sharedVaultIds), isNull(vaultSecrets.archivedAt))
+          );
+          sharedVaultSecretIds = sharedSecrets.map(s => s.id);
+        }
+
+        secretIds = [...new Set([...grantSecretIds, ...sharedVaultSecretIds])];
       }
 
       if (!secretIds.length) return res.json([]);
@@ -347,22 +455,113 @@ export function registerVaultRoutes(app: Express): void {
       const vaultMap = new Map(vaultList.map(v => [v.id, v]));
 
       const result = await Promise.all(secrets.map(async (s) => {
-        const access = isAdmin ? { canCopy: true, canReveal: true } : await (async () => {
-          const grants = await getGrantsForUser(s.id, userId, userRole);
-          return { canCopy: grants.some(g => g.canCopyPassword), canReveal: grants.some(g => g.canRevealPassword) };
-        })();
+        const vault = vaultMap.get(s.vaultId);
+        const vaultHint = vault ? { vaultId: s.vaultId, isPersonal: vault.isPersonal, ownerId: vault.ownerId } : undefined;
+        const access = await canAccessSecret(userId, userRole, s.id, vaultHint);
+        if (!access.allowed) return null;
         return {
-          id: s.id, vaultId: s.vaultId, vaultName: vaultMap.get(s.vaultId)?.name ?? "",
+          id: s.id, vaultId: s.vaultId, vaultName: vault?.name ?? "",
           systemName: s.systemName, loginUrl: s.loginUrl, sensitivity: s.sensitivity,
           rotationDueAt: s.rotationDueAt, rotationRequired: s.rotationRequired,
           createdAt: s.createdAt, updatedAt: s.updatedAt,
           canCopy: access.canCopy, canReveal: access.canReveal,
         };
       }));
-      res.json(result);
+      res.json(result.filter(Boolean));
     } catch (err) {
       console.error("[Vault] GET /api/my-vault-access:", err);
       res.status(500).json({ error: "Failed to fetch vault access" });
+    }
+  });
+
+  // ── Vault-level sharing (admin can share entire vault with a user) ──────────
+  app.get("/api/vaults/:id/shares", ...authMiddleware, adminOnly, async (req: Request, res: Response) => {
+    try {
+      const { id: vaultId } = req.params;
+      const shares = await db.select().from(vaultShares)
+        .where(eq(vaultShares.vaultId, vaultId))
+        .orderBy(desc(vaultShares.grantedAt));
+      res.json(shares);
+    } catch (err) {
+      console.error("[Vault] GET /api/vaults/:id/shares:", err);
+      res.status(500).json({ error: "Failed to fetch vault shares" });
+    }
+  });
+
+  app.post("/api/vaults/:id/shares", ...authMiddleware, adminOnly, async (req: Request, res: Response) => {
+    try {
+      const { id: vaultId } = req.params;
+      const { userId, role } = req.body as { userId: string; role?: string };
+      if (!userId) return res.status(400).json({ error: "userId is required" });
+
+      const existing = await db.select().from(vaultShares).where(
+        and(eq(vaultShares.vaultId, vaultId), eq(vaultShares.userId, userId), isNull(vaultShares.revokedAt))
+      );
+      if (existing.length > 0) return res.status(409).json({ error: "Vault already shared with this user" });
+
+      const [share] = await db.insert(vaultShares).values({
+        vaultId,
+        userId,
+        role: role ?? "viewer",
+        grantedBy: req.session.userId!,
+      }).returning();
+
+      await logVaultAudit({
+        actorId: req.session.userId!, vaultId, action: "share_vault",
+        ip: getClientIp(req), userAgent: req.headers["user-agent"],
+        meta: { userId, role },
+      });
+      res.json(share);
+    } catch (err) {
+      console.error("[Vault] POST /api/vaults/:id/shares:", err);
+      res.status(500).json({ error: "Failed to share vault" });
+    }
+  });
+
+  app.delete("/api/vaults/:id/shares/:shareId", ...authMiddleware, adminOnly, async (req: Request, res: Response) => {
+    try {
+      const { id: vaultId, shareId } = req.params;
+      const [share] = await db.select().from(vaultShares).where(
+        and(eq(vaultShares.id, shareId), eq(vaultShares.vaultId, vaultId))
+      );
+      if (!share) return res.status(404).json({ error: "Share not found" });
+
+      await db.update(vaultShares)
+        .set({ revokedAt: new Date(), revokedBy: req.session.userId! })
+        .where(eq(vaultShares.id, shareId));
+
+      await logVaultAudit({
+        actorId: req.session.userId!, vaultId, action: "revoke_vault_share",
+        ip: getClientIp(req), userAgent: req.headers["user-agent"],
+        meta: { shareId, userId: share.userId },
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[Vault] DELETE /api/vaults/:id/shares/:shareId:", err);
+      res.status(500).json({ error: "Failed to revoke vault share" });
+    }
+  });
+
+  // ── Personal vault (employee-owned, auto-created) ──────────────────────────
+  app.get("/api/my-personal-vault", ...authMiddleware, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const existing = await db.select().from(vaults).where(
+        and(eq(vaults.isPersonal, true), eq(vaults.ownerId, userId), isNull(vaults.archivedAt))
+      );
+      if (existing.length > 0) return res.json(existing[0]);
+
+      const [created] = await db.insert(vaults).values({
+        name: "My Personal Vault",
+        description: "Your private credential storage",
+        isPersonal: true,
+        ownerId: userId,
+        createdBy: userId,
+      }).returning();
+      res.json(created);
+    } catch (err) {
+      console.error("[Vault] GET /api/my-personal-vault:", err);
+      res.status(500).json({ error: "Failed to get personal vault" });
     }
   });
 

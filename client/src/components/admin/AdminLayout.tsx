@@ -313,6 +313,20 @@ function CommandCenterSection({
                   </Link>
                 );
               })}
+
+              {/* My Vault — always visible, links to /admin/my-vault */}
+              <Link
+                href="/admin/my-vault"
+                className={`flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs transition-colors ${
+                  location.startsWith("/admin/my-vault")
+                    ? "bg-accent text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                }`}
+                data-testid="nav-mydesk-sub-my-vault"
+              >
+                <KeyRound className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1">My Vault</span>
+              </Link>
             </div>
 
             {/* Service Desk */}
@@ -1715,6 +1729,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href.startsWith("/admin/settings/")) return location === href || location.startsWith(href);
     if (href === "/admin/help-desk") return location === "/admin/help-desk" || location.startsWith("/admin/help-desk");
     if (href === "/admin/vault") return location === "/admin/vault" || location.startsWith("/admin/vault");
+    if (href === "/admin/my-vault") return location === "/admin/my-vault" || location.startsWith("/admin/my-vault");
     if (href === "/admin/finance") return location === "/admin/finance" || location.startsWith("/admin/finance");
     if (href === "/admin/payroll/executive") return location.startsWith("/admin/payroll");
     if (href === "/admin/studio") return location === "/admin/studio";
@@ -1841,8 +1856,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 pendingOfferCount={pendingOfferCount}
               />
 
-              {/* ORGANISATION section — role-filtered items */}
-              {orgNavItems.length > 0 && (
+              {/* ORGANISATION section — only visible to super_admin, admin, hr */}
+              {orgNavItems.length > 0 && ["super_admin", "admin", "hr"].includes(user?.role ?? "") && (
                 <SidebarGroup>
                   <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
                     Organisation

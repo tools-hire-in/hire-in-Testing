@@ -119,6 +119,7 @@ const TrainingCatalog = lazy(() => import("@/pages/admin/training/TrainingCatalo
 const ExecCockpit = lazy(() => import("@/pages/admin/ExecCockpit"));
 const VaultPage = lazy(() => import("@/pages/admin/vault/VaultPage"));
 const VaultAuditPage = lazy(() => import("@/pages/admin/vault/VaultAuditPage"));
+const MyVaultPage = lazy(() => import("@/pages/admin/vault/MyVaultPage"));
 const BulkPayrollRun = lazy(() => import("@/pages/admin/payroll/BulkPayrollRun"));
 const ExecutiveDashboard = lazy(() => import("@/pages/admin/payroll/ExecutiveDashboard"));
 const PayrollSetup = lazy(() => import("@/pages/admin/payroll/PayrollSetup"));
@@ -447,6 +448,7 @@ function PublicRouter() {
       {/* Systems Vault */}
       <Route path="/admin/vault/audit">{() => <Suspense fallback={<AdminFallback />}><VaultAuditPage /></Suspense>}</Route>
       <Route path="/admin/vault">{() => <Suspense fallback={<AdminFallback />}><VaultPage /></Suspense>}</Route>
+      <Route path="/admin/my-vault">{() => <Suspense fallback={<AdminFallback />}><MyVaultPage /></Suspense>}</Route>
 
       {/* Payroll */}
       <Route path="/admin/payroll/run">{() => <Suspense fallback={<AdminFallback />}><BulkPayrollRun /></Suspense>}</Route>
@@ -627,6 +629,7 @@ function EmployeeRouter() {
       {/* Systems Vault */}
       <Route path="/admin/vault/audit">{() => <Suspense fallback={<AdminFallback />}><VaultAuditPage /></Suspense>}</Route>
       <Route path="/admin/vault">{() => <Suspense fallback={<AdminFallback />}><VaultPage /></Suspense>}</Route>
+      <Route path="/admin/my-vault">{() => <Suspense fallback={<AdminFallback />}><MyVaultPage /></Suspense>}</Route>
 
       {/* Payroll */}
       <Route path="/admin/payroll/run">{() => <Suspense fallback={<AdminFallback />}><BulkPayrollRun /></Suspense>}</Route>
