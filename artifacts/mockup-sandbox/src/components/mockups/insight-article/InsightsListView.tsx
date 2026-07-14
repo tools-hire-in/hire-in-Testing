@@ -110,8 +110,6 @@ const CAROUSEL_CARDS = [
 /* ─── Featured Carousel ─────────────────────────────────────────────────── */
 function FeaturedCarousel() {
   const [active, setActive] = useState(0);
-  const prev = () => setActive((i) => (i - 1 + CAROUSEL_CARDS.length) % CAROUSEL_CARDS.length);
-  const next = () => setActive((i) => (i + 1) % CAROUSEL_CARDS.length);
   const card = CAROUSEL_CARDS[active];
   const art = card.article;
 
@@ -144,7 +142,17 @@ function FeaturedCarousel() {
               className="text-3xl line-clamp-3">{art.title}</h2>
           </div>
 
-          {/* Bottom row — author · meta | dots + arrows | CTA */}
+          {/* Dot indicators — centered, sitting on the bottom separator */}
+          <div className="flex justify-center" style={{ marginBottom: 14 }}>
+            <div className="flex items-center gap-2">
+              {CAROUSEL_CARDS.map((_, i) => (
+                <button key={i} onClick={(e) => { e.stopPropagation(); setActive(i); }}
+                  style={{ width: i === active ? 22 : 7, height: 7, borderRadius: 4, background: i === active ? "white" : "rgba(255,255,255,0.35)", border: "none", cursor: "pointer", padding: 0, transition: "all 0.25s" }} />
+              ))}
+            </div>
+          </div>
+
+          {/* Bottom row — author · meta | CTA */}
           <div className="flex items-center justify-between" style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16 }}>
             {/* Author + meta */}
             <div className="flex items-center gap-3">
@@ -159,31 +167,11 @@ function FeaturedCarousel() {
               <div style={{ width: 1, height: 26, background: "rgba(255,255,255,0.18)", margin: "0 4px" }} />
               <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.55)", fontSize: 12 }}>{art.date} · {art.readMin} min · {art.impressions.toLocaleString()} views</span>
             </div>
-
-            {/* Nav controls — dots + prev/next + CTA */}
-            <div className="flex items-center gap-3 flex-shrink-0">
-              {/* Dot indicators */}
-              <div className="flex items-center gap-1.5">
-                {CAROUSEL_CARDS.map((_, i) => (
-                  <button key={i} onClick={(e) => { e.stopPropagation(); setActive(i); }}
-                    style={{ width: i === active ? 18 : 6, height: 6, borderRadius: 3, background: i === active ? "white" : "rgba(255,255,255,0.35)", border: "none", cursor: "pointer", padding: 0, transition: "all 0.2s" }} />
-                ))}
-              </div>
-              {/* Arrows */}
-              <button onClick={(e) => { e.stopPropagation(); prev(); }}
-                style={{ width: 32, height: 32, borderRadius: "50%", border: "1px solid rgba(255,255,255,0.28)", background: "rgba(255,255,255,0.12)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="15 18 9 12 15 6" /></svg>
-              </button>
-              <button onClick={(e) => { e.stopPropagation(); next(); }}
-                style={{ width: 32, height: 32, borderRadius: "50%", border: "none", background: "rgba(255,255,255,0.22)", backdropFilter: "blur(4px)", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", color: "white" }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="9 18 15 12 9 6" /></svg>
-              </button>
-              {/* CTA */}
-              <button style={{ background: ORANGE, fontFamily: "'Inter',sans-serif", flexShrink: 0 }}
-                className="px-5 py-2 rounded-full text-white text-sm font-bold hover:brightness-110 transition-all">
-                Read article →
-              </button>
-            </div>
+            {/* CTA */}
+            <button style={{ background: ORANGE, fontFamily: "'Inter',sans-serif", flexShrink: 0 }}
+              className="px-5 py-2 rounded-full text-white text-sm font-bold hover:brightness-110 transition-all">
+              Read article →
+            </button>
           </div>
 
         </div>
