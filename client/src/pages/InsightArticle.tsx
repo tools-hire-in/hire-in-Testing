@@ -6,19 +6,41 @@ import { Layout } from "@/components/layout/Layout";
 import { SchemaHead, ORGANIZATION_SCHEMA } from "@/components/SchemaHead";
 import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { InsightCard } from "@/components/insights/InsightCard";
 import { ReactionBar } from "@/components/insights/ReactionBar";
 import { ShareBar } from "@/components/insights/ShareBar";
 import { NewsletterSubscribe } from "@/components/insights/NewsletterSubscribe";
+import { InsightCard } from "@/components/insights/InsightCard";
 import { insightCategoryLabel, ctaForCategory } from "@shared/insights";
 import { formatInsightDate, type InsightDetailResponse } from "@/lib/insights";
 import { Clock, ArrowLeft, ArrowRight, Linkedin, CheckCircle2, Lightbulb } from "lucide-react";
 
 const BASE_URL = "https://hire-in.com";
+const NAVY = "#1F3A6E";
+const NAVY_DARK = "#162d56";
+const ORANGE = "#F47C20";
+
+function getInitials(name: string): string {
+  return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
+}
+
+function getAuthorColor(name: string): string {
+  const colors = [NAVY, "#4B7BEC", "#059669", "#7C3AED", "#DC2626", "#D97706"];
+  return colors[name.charCodeAt(0) % colors.length];
+}
+
+function getCategoryGradient(category: string | null): string {
+  const map: Record<string, string> = {
+    healthcare: "linear-gradient(140deg,#243f7a 0%,#2e549e 55%,#3d68b8 100%)",
+    it_staffing: "linear-gradient(135deg,#2e54a0 0%,#3d6abf 55%,#4d7ad0 100%)",
+    ai_in_hiring: "linear-gradient(135deg,#243f7a 0%,#2e549e 45%,#7a4212 80%,#b06428 100%)",
+    staffing_market: "linear-gradient(140deg,#243f7a 0%,#2e549e 55%,#4268b8 100%)",
+    employer_guide: "linear-gradient(135deg,#2e54a0 0%,#3d6abf 55%,#4d7ad0 100%)",
+    recruiter_playbook: "linear-gradient(140deg,#243f7a 0%,#4a2a0a 55%,#7a4212 100%)",
+    candidate_hub: "linear-gradient(135deg,#243f7a 0%,#2e549e 55%,#5c3010 100%)",
+  };
+  return map[category ?? ""] ?? "linear-gradient(140deg,#243f7a 0%,#2e549e 55%,#3d68b8 100%)";
+}
 
 export default function InsightArticle() {
   const params = useParams();
@@ -27,9 +49,7 @@ export default function InsightArticle() {
   const { data, isLoading, isError } = useQuery<InsightDetailResponse>({
     queryKey: ["/api/insights", slug],
     queryFn: async () => {
-      const res = await fetch(`/api/insights/${encodeURIComponent(slug)}`, {
-        credentials: "include",
-      });
+      const res = await fetch(`/api/insights/${encodeURIComponent(slug)}`, { credentials: "include" });
       if (res.status === 404) throw new Error("not-found");
       if (!res.ok) throw new Error("Failed to load article");
       return res.json();
@@ -40,8 +60,6 @@ export default function InsightArticle() {
   const article = data?.article;
   const viewedRef = useRef<string | null>(null);
 
-  // Record a single view per article load for the studio analytics dashboard.
-  // The backend additionally rate-limits to one counted view per session/hour.
   useEffect(() => {
     const id = article?.id;
     if (!id || viewedRef.current === id) return;
@@ -49,9 +67,7 @@ export default function InsightArticle() {
     fetch(`/api/insights/${encodeURIComponent(id)}/view`, {
       method: "POST",
       credentials: "include",
-    }).catch(() => {
-      /* analytics is best-effort */
-    });
+    }).catch(() => {});
   }, [article?.id]);
 
   const handleCtaClick = () => {
@@ -62,17 +78,12 @@ export default function InsightArticle() {
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ href: cta?.href ?? null }),
-    }).catch(() => {
-      /* analytics is best-effort */
-    });
+    }).catch(() => {});
   };
 
   useSEO({
     title: article ? `${article.seoTitle || article.title} | Hire'in Solutions` : "Insights | Hire'in Solutions",
-    description:
-      article?.seoDescription ||
-      article?.excerpt ||
-      "Insights from Hire'in Solutions on staffing, hiring, and recruitment.",
+    description: article?.seoDescription || article?.excerpt || "Insights from Hire'in Solutions on staffing, hiring, and recruitment.",
     canonical: article ? `${BASE_URL}/insights/${article.slug}` : `${BASE_URL}/insights`,
     image: article?.ogImageUrl || article?.coverImageUrl || undefined,
     type: "article",
@@ -84,11 +95,11 @@ export default function InsightArticle() {
   if (isLoading) {
     return (
       <Layout>
-        <div className="container mx-auto max-w-3xl px-4 py-16 lg:px-6">
-          <Skeleton className="mb-4 h-6 w-32" />
+        {/* Gradient hero skeleton */}
+        <Skeleton className="w-full rounded-none" style={{ height: 340 }} />
+        <div className="container mx-auto max-w-3xl px-4 py-12 lg:px-6">
           <Skeleton className="mb-3 h-10 w-full" />
           <Skeleton className="mb-8 h-10 w-2/3" />
-          <Skeleton className="mb-6 aspect-[16/9] w-full rounded-xl" />
           <div className="space-y-3">
             {Array.from({ length: 8 }).map((_, i) => (
               <Skeleton key={i} className="h-4 w-full" />
@@ -103,10 +114,10 @@ export default function InsightArticle() {
     return (
       <Layout>
         <div className="container mx-auto max-w-2xl px-4 py-24 text-center lg:px-6">
-          <h1 className="text-3xl font-bold" data-testid="text-not-found">Article not found</h1>
-          <p className="mt-3 text-muted-foreground">
-            This article may have been moved or is no longer available.
-          </p>
+          <h1 className="text-3xl font-bold" style={{ fontFamily: "'Playfair Display', Georgia, serif", color: NAVY }} data-testid="text-not-found">
+            Article not found
+          </h1>
+          <p className="mt-3 text-gray-500">This article may have been moved or is no longer available.</p>
           <Link href="/insights">
             <Button className="mt-6" data-testid="button-back-insights">
               <ArrowLeft className="mr-2 h-4 w-4" />
@@ -122,6 +133,11 @@ export default function InsightArticle() {
   const date = formatInsightDate(article.publishedAt);
   const cta = ctaForCategory(article.category);
   const related = data?.related ?? [];
+  const gradient = getCategoryGradient(article.category);
+  const authorName = article.author?.name ?? "Hire'in Solutions";
+  const authorRole = article.author?.title ?? "Editorial Team";
+  const initials = getInitials(authorName);
+  const authorColor = getAuthorColor(authorName);
 
   const articleSchema = {
     "@context": "https://schema.org",
@@ -157,61 +173,140 @@ export default function InsightArticle() {
     <Layout>
       <SchemaHead schema={[ORGANIZATION_SCHEMA, articleSchema, breadcrumbSchema]} />
 
-      <article className="px-4 py-10 lg:px-6 lg:py-14">
-        <div className="container mx-auto max-w-3xl">
-          {/* Breadcrumb / back */}
+      {/* ── Gradient hero card ─────────────────────────────────────────────── */}
+      <div className="relative overflow-hidden" style={{ background: gradient }}>
+        {/* Dot texture */}
+        <div
+          className="absolute inset-0 opacity-[0.07]"
+          style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "26px 26px" }}
+        />
+        {/* Bottom fade */}
+        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.35) 0%, transparent 55%)" }} />
+
+        <div className="relative max-w-4xl mx-auto px-8 py-12">
+          {/* Back link */}
           <Link
             href="/insights"
-            className="mb-6 inline-flex items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-primary"
+            className="inline-flex items-center gap-1.5 mb-6"
+            style={{ fontFamily: "'Inter', sans-serif", color: "rgba(255,255,255,0.6)", fontSize: 13, fontWeight: 500, textDecoration: "none" }}
             data-testid="link-back-insights"
           >
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft className="w-4 h-4" />
             All Insights
           </Link>
 
-          {/* Header */}
-          <header className="mb-8">
-            <Badge className="mb-4" data-testid="badge-article-category">{categoryLabel}</Badge>
-            <h1 className="text-3xl font-bold leading-tight md:text-4xl lg:text-5xl" data-testid="text-article-title">
-              {article.title}
-            </h1>
-            {article.excerpt && (
-              <p className="mt-4 text-lg text-muted-foreground" data-testid="text-article-excerpt">
-                {article.excerpt}
-              </p>
-            )}
-            <div className="mt-5 flex flex-wrap items-center gap-4 text-sm text-muted-foreground">
-              {article.author?.name && (
-                article.author.slug ? (
+          {/* Category badge */}
+          <div className="mb-4">
+            <span
+              style={{
+                fontFamily: "'Inter', sans-serif",
+                background: "rgba(255,255,255,0.15)",
+                backdropFilter: "blur(6px)",
+                color: "white",
+                border: "1px solid rgba(255,255,255,0.22)",
+                fontSize: 11,
+                fontWeight: 700,
+                letterSpacing: "0.04em",
+                padding: "4px 12px",
+                borderRadius: 20,
+              }}
+              data-testid="badge-article-category"
+            >
+              {categoryLabel}
+            </span>
+          </div>
+
+          {/* Title */}
+          <h1
+            style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "white", lineHeight: 1.2, fontWeight: 700 }}
+            className="text-3xl lg:text-4xl xl:text-5xl mb-4"
+            data-testid="text-article-title"
+          >
+            {article.title}
+          </h1>
+
+          {/* Excerpt */}
+          {article.excerpt && (
+            <p
+              style={{ fontFamily: "'Inter', sans-serif", color: "rgba(255,255,255,0.7)", fontSize: 15, lineHeight: 1.6 }}
+              className="mb-8 max-w-2xl"
+              data-testid="text-article-excerpt"
+            >
+              {article.excerpt}
+            </p>
+          )}
+
+          {/* Author + meta row */}
+          <div
+            className="flex items-center justify-between"
+            style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16 }}
+          >
+            <div className="flex items-center gap-3">
+              {article.author?.photoUrl ? (
+                <img
+                  src={article.author.photoUrl}
+                  alt={authorName}
+                  className="w-10 h-10 rounded-full object-cover flex-shrink-0"
+                  style={{ border: "2px solid rgba(255,255,255,0.3)" }}
+                />
+              ) : (
+                <div
+                  className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: "rgba(255,255,255,0.18)", border: "2px solid rgba(255,255,255,0.3)" }}
+                >
+                  <span style={{ fontFamily: "'Inter', sans-serif", color: "white", fontSize: 11, fontWeight: 700 }}>{initials}</span>
+                </div>
+              )}
+              <div>
+                {article.author?.slug ? (
                   <a
                     href={`/insights/authors/${article.author.slug}`}
-                    className="font-medium text-foreground hover:underline"
+                    style={{ fontFamily: "'Inter', sans-serif", color: "white", fontSize: 14, fontWeight: 600, textDecoration: "none" }}
+                    className="hover:underline"
                     data-testid="text-article-author"
                   >
-                    {article.author.name}
+                    {authorName}
                   </a>
                 ) : (
-                  <span className="font-medium text-foreground" data-testid="text-article-author">
-                    {article.author.name}
-                  </span>
-                )
-              )}
-              {date && <span data-testid="text-article-date">{date}</span>}
-              {article.readTimeMinutes ? (
-                <span className="flex items-center gap-1">
-                  <Clock className="h-4 w-4" />
-                  {article.readTimeMinutes} min read
-                </span>
-              ) : null}
+                  <p style={{ fontFamily: "'Inter', sans-serif", color: "white", fontSize: 14, fontWeight: 600 }} data-testid="text-article-author">{authorName}</p>
+                )}
+                <p style={{ fontFamily: "'Inter', sans-serif", color: "rgba(255,255,255,0.5)", fontSize: 12 }}>{authorRole}</p>
+              </div>
+              <div style={{ width: 1, height: 26, background: "rgba(255,255,255,0.2)", margin: "0 4px" }} />
+              <span style={{ fontFamily: "'Inter', sans-serif", color: "rgba(255,255,255,0.55)", fontSize: 13 }} data-testid="text-article-date">
+                {[
+                  date,
+                  article.readTimeMinutes ? `${article.readTimeMinutes} min read` : null,
+                ].filter(Boolean).join(" · ")}
+              </span>
             </div>
-          </header>
+            {article.author?.linkedinUrl && (
+              <a
+                href={article.author.linkedinUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ color: "rgba(255,255,255,0.55)" }}
+                className="hover:text-white transition-colors"
+                aria-label={`${authorName} on LinkedIn`}
+                data-testid="link-author-linkedin"
+              >
+                <Linkedin className="w-5 h-5" />
+              </a>
+            )}
+          </div>
+        </div>
+      </div>
 
-          {/* Cover */}
+      {/* ── Article body ──────────────────────────────────────────────────── */}
+      <article className="bg-white">
+        <div className="max-w-3xl mx-auto px-6 py-12 lg:px-8">
+
+          {/* Cover image (if separate from hero) */}
           {article.coverImageUrl && (
             <img
               src={article.coverImageUrl}
               alt={article.title}
-              className="mb-10 aspect-[16/9] w-full rounded-xl object-cover"
+              className="mb-10 aspect-[16/9] w-full rounded-2xl object-cover shadow-sm"
               data-testid="img-article-cover"
             />
           )}
@@ -219,49 +314,76 @@ export default function InsightArticle() {
           {/* Body */}
           {article.bodyMarkdown && (
             <div
-              className="prose prose-lg max-w-none dark:prose-invert prose-headings:font-bold prose-headings:text-foreground prose-a:text-primary prose-blockquote:border-l-primary prose-blockquote:bg-primary/5 prose-blockquote:py-1 prose-blockquote:not-italic prose-img:rounded-xl"
+              className="prose prose-lg max-w-none prose-headings:font-bold prose-headings:text-gray-900 prose-a:text-blue-700 prose-blockquote:border-l-orange-400 prose-blockquote:bg-orange-50 prose-blockquote:py-1 prose-blockquote:not-italic prose-img:rounded-xl"
+              style={{ fontFamily: "'Inter', sans-serif" }}
               data-testid="article-body"
             >
               <ReactMarkdown>{article.bodyMarkdown}</ReactMarkdown>
             </div>
           )}
 
-          {/* Hire'in Perspective callout */}
-          {article.excerpt && (
-            <Card className="mt-10 border-l-4 border-l-primary bg-primary/5" data-testid="card-perspective">
-              <CardContent className="flex gap-4 p-6">
-                <Lightbulb className="h-6 w-6 flex-shrink-0 text-primary" />
-                <div>
-                  <h3 className="mb-1 font-semibold text-primary">The Hire'in Perspective</h3>
-                  <p className="text-sm text-muted-foreground">{article.excerpt}</p>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Key Takeaways */}
+          {article.checklistItems.length > 0 && (
+            <div
+              className="mt-10 rounded-2xl p-6"
+              style={{ background: "#f8f9ff", border: `1px solid ${NAVY}20` }}
+              data-testid="card-checklist"
+            >
+              <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", color: NAVY, fontWeight: 700, fontSize: 18, marginBottom: 16 }}>
+                Key Takeaways
+              </h3>
+              <ul className="space-y-3">
+                {article.checklistItems.map((item, i) => (
+                  <li key={i} className="flex items-start gap-3" data-testid={`text-checklist-${i}`}>
+                    <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0" style={{ color: ORANGE }} />
+                    <span style={{ fontFamily: "'Inter', sans-serif", fontSize: 14, color: "#374151" }}>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
 
-          {/* Checklist block */}
-          {article.checklistItems.length > 0 && (
-            <Card className="mt-8" data-testid="card-checklist">
-              <CardContent className="p-6">
-                <h3 className="mb-4 text-lg font-semibold">Key Takeaways</h3>
-                <ul className="space-y-3">
-                  {article.checklistItems.map((item, i) => (
-                    <li key={i} className="flex items-start gap-3" data-testid={`text-checklist-${i}`}>
-                      <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-primary" />
-                      <span className="text-sm">{item}</span>
-                    </li>
-                  ))}
-                </ul>
-              </CardContent>
-            </Card>
+          {/* Hire'in Perspective */}
+          {article.excerpt && (
+            <div
+              className="mt-8 rounded-2xl p-6 flex gap-4"
+              style={{ background: `${NAVY}08`, border: `1px solid ${NAVY}18` }}
+              data-testid="card-perspective"
+            >
+              <Lightbulb className="h-6 w-6 flex-shrink-0 mt-0.5" style={{ color: ORANGE }} />
+              <div>
+                <h3 style={{ fontFamily: "'Playfair Display', Georgia, serif", color: NAVY, fontWeight: 700, fontSize: 15, marginBottom: 6 }}>
+                  The Hire'in Perspective
+                </h3>
+                <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 14, color: "#4b5563", lineHeight: 1.6 }}>{article.excerpt}</p>
+              </div>
+            </div>
           )}
 
           {/* CTA block */}
-          <div className="mt-12 rounded-2xl bg-primary px-6 py-10 text-center text-primary-foreground lg:px-10" data-testid="block-cta">
-            <h2 className="text-2xl font-bold lg:text-3xl">{cta.heading}</h2>
-            <p className="mx-auto mt-3 max-w-xl text-primary-foreground/80">{cta.body}</p>
+          <div
+            className="mt-12 rounded-2xl px-8 py-10 text-center"
+            style={{ background: gradient }}
+            data-testid="block-cta"
+          >
+            <div className="absolute inset-0 opacity-[0.06] rounded-2xl" style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "22px 22px" }} />
+            <h2
+              style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "white", fontWeight: 700, fontSize: 26 }}
+              className="lg:text-3xl"
+            >
+              {cta.heading}
+            </h2>
+            <p style={{ fontFamily: "'Inter', sans-serif", color: "rgba(255,255,255,0.75)", fontSize: 14, marginTop: 10, marginBottom: 24, lineHeight: 1.6 }}>
+              {cta.body}
+            </p>
             <Link href={cta.href}>
-              <Button size="lg" variant="secondary" className="mt-6" data-testid="button-cta" onClick={handleCtaClick}>
+              <Button
+                size="lg"
+                onClick={handleCtaClick}
+                style={{ background: ORANGE, border: "none", fontFamily: "'Inter', sans-serif", fontWeight: 700 }}
+                className="hover:brightness-110"
+                data-testid="button-cta"
+              >
                 {cta.buttonLabel}
                 <ArrowRight className="ml-2 h-4 w-4" />
               </Button>
@@ -270,59 +392,61 @@ export default function InsightArticle() {
 
           {/* Author card */}
           {article.author?.name && (
-            <Card className="mt-10" data-testid="card-author">
-              <CardContent className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center">
-                <Avatar className="h-16 w-16">
-                  {article.author.photoUrl && (
-                    <AvatarImage src={article.author.photoUrl} alt={article.author.name} />
-                  )}
-                  <AvatarFallback>
-                    {article.author.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")
-                      .slice(0, 2)
-                      .toUpperCase()}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1">
-                  <div className="font-semibold" data-testid="text-author-name">
-                    {article.author.slug ? (
-                      <a href={`/insights/authors/${article.author.slug}`} className="hover:underline">
-                        {article.author.name}
-                      </a>
-                    ) : article.author.name}
-                  </div>
-                  {article.author.title && (
-                    <div className="text-sm text-muted-foreground">{article.author.title}</div>
-                  )}
-                  {article.author.bio && (
-                    <p className="mt-2 text-sm text-muted-foreground">{article.author.bio}</p>
-                  )}
+            <div
+              className="mt-10 rounded-2xl p-6 flex flex-col sm:flex-row gap-5 items-start sm:items-center"
+              style={{ border: "1px solid #e5e7eb", background: "white" }}
+              data-testid="card-author"
+            >
+              {article.author.photoUrl ? (
+                <img
+                  src={article.author.photoUrl}
+                  alt={authorName}
+                  className="w-16 h-16 rounded-full object-cover flex-shrink-0"
+                />
+              ) : (
+                <div
+                  className="w-16 h-16 rounded-full flex items-center justify-center flex-shrink-0"
+                  style={{ background: authorColor }}
+                >
+                  <span style={{ fontFamily: "'Inter', sans-serif", color: "white", fontSize: 18, fontWeight: 700 }}>{initials}</span>
                 </div>
-                {article.author.linkedinUrl && (
-                  <a
-                    href={article.author.linkedinUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-muted-foreground transition-colors hover:text-primary"
-                    aria-label={`${article.author.name} on LinkedIn`}
-                    data-testid="link-author-linkedin"
-                  >
-                    <Linkedin className="h-5 w-5" />
-                  </a>
+              )}
+              <div className="flex-1 min-w-0">
+                <div style={{ fontFamily: "'Inter', sans-serif", fontWeight: 700, color: NAVY, fontSize: 15 }} data-testid="text-author-name">
+                  {article.author.slug ? (
+                    <a href={`/insights/authors/${article.author.slug}`} className="hover:underline">{authorName}</a>
+                  ) : authorName}
+                </div>
+                {article.author.title && (
+                  <div style={{ fontFamily: "'Inter', sans-serif", color: "#6b7280", fontSize: 13, marginTop: 2 }}>{article.author.title}</div>
                 )}
-              </CardContent>
-            </Card>
+                {article.author.bio && (
+                  <p style={{ fontFamily: "'Inter', sans-serif", fontSize: 13, color: "#4b5563", marginTop: 8, lineHeight: 1.6 }}>{article.author.bio}</p>
+                )}
+              </div>
+              {article.author.linkedinUrl && (
+                <a
+                  href={article.author.linkedinUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: "#6b7280", flexShrink: 0 }}
+                  className="hover:text-blue-700 transition-colors"
+                  aria-label={`${authorName} on LinkedIn`}
+                >
+                  <Linkedin className="w-5 h-5" />
+                </a>
+              )}
+            </div>
           )}
 
-          {/* Reader reactions + share */}
+          {/* Reactions + share */}
           <ReactionBar articleId={article.id} />
           <ShareBar title={article.title} />
         </div>
       </article>
 
-      <section className="px-4 pb-4 lg:px-6">
+      {/* Newsletter */}
+      <section className="bg-gray-50 px-4 py-12 lg:px-6">
         <div className="container mx-auto max-w-3xl">
           <NewsletterSubscribe />
         </div>
@@ -330,9 +454,15 @@ export default function InsightArticle() {
 
       {/* Related */}
       {related.length > 0 && (
-        <section className="border-t bg-muted/30 px-4 py-14 lg:px-6">
+        <section className="border-t px-4 py-14 lg:px-6" style={{ background: "white" }}>
           <div className="container mx-auto max-w-6xl">
-            <h2 className="mb-8 text-2xl font-bold">Related Insights</h2>
+            <div className="flex items-center gap-4 mb-8">
+              <div style={{ background: ORANGE }} className="w-5 h-0.5 rounded-full flex-shrink-0" />
+              <h2 style={{ fontFamily: "'Playfair Display', Georgia, serif", color: NAVY, fontWeight: 700, fontSize: 22, whiteSpace: "nowrap" }}>
+                Related Insights
+              </h2>
+              <div className="flex-1 h-px" style={{ background: "#e5e7eb" }} />
+            </div>
             <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
               {related.map((r) => (
                 <InsightCard key={r.id} article={r} />
