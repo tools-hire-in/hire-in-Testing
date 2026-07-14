@@ -92,6 +92,7 @@ import {
   TIER_MODELS,
 } from "./services/aiDraftService";
 import { runStaffingSafetyGate } from "./services/staffingSafetyGate";
+import { auditRow, checkPillarBalance, type RowQualityResult } from "./services/importQualityAudit";
 import { buildRelatedContentBlock } from "./services/commercialIntelligenceService";
 import { normalizeDomain } from "@shared/agentIntelligenceContracts";
 import { bdConversations, bdMessages } from "@shared/schema";
@@ -19548,23 +19549,49 @@ export async function registerRoutes(
       try {
         const { csvText, sourceFormat, sheetUsed, dataRowCount, error: inputError } = resolveImportInput(req.body);
         if (inputError) return res.status(400).json({ error: inputError });
+        const skipQualityAudit = req.body?.skipQualityAudit === true;
         const { headerError, results } = await parseImportRows(csvText);
         if (headerError) return res.status(400).json({ error: headerError });
         const valid = results.filter((r) => !r.errors.length);
         const invalid = results.filter((r) => r.errors.length);
+
+        // Run deterministic quality audit on each valid row (no LLM calls).
+        const qualityByRow = new Map<number, RowQualityResult>();
+        if (!skipQualityAudit) {
+          for (const row of valid) {
+            qualityByRow.set(row.rowNumber, auditRow(row.ideas));
+          }
+        }
+
+        // Batch-level pillar balance warning.
+        const balanceWarning = (!skipQualityAudit && valid.length > 0)
+          ? checkPillarBalance(valid)
+          : null;
+
+        const flaggedCount = skipQualityAudit ? 0
+          : [...qualityByRow.values()].filter((r) => r.qualityScore === "needs_work").length;
+
         res.json({
           totalRows: results.length,
           validCount: valid.length,
           invalidCount: invalid.length,
+          flaggedCount,
           ideaCount: valid.reduce((n, r) => n + r.ideas.length, 0),
           sourceFormat,
           sheetUsed,
           dataRowCount,
-          rows: results.map((r) => ({
-            rowNumber: r.rowNumber,
-            errors: r.errors,
-            ideas: r.ideas,
-          })),
+          balanceWarning,
+          skipQualityAudit,
+          rows: results.map((r) => {
+            const audit = qualityByRow.get(r.rowNumber);
+            return {
+              rowNumber: r.rowNumber,
+              errors: r.errors,
+              ideas: r.ideas,
+              qualityScore: audit?.qualityScore ?? null,
+              qualityFlags: audit?.qualityFlags ?? [],
+            };
+          }),
         });
       } catch (error: any) {
         console.error("Import preview error:", error);
@@ -19592,6 +19619,7 @@ export async function registerRoutes(
         if (!valid.length) {
           return res.status(400).json({ error: "No valid rows to import", invalidCount: invalid.length });
         }
+        const skipQualityAudit = req.body?.skipQualityAudit === true;
         const batch = await storage.createStudioImportBatch({
           projectId,
           fileName,
@@ -19601,6 +19629,10 @@ export async function registerRoutes(
         } as any);
         let created = 0;
         for (const row of valid) {
+          // Re-run the deterministic quality audit (fast, no LLM) so needsAttention
+          // is accurate even when the client didn't pass skipQualityAudit.
+          const audit = skipQualityAudit ? null : auditRow(row.ideas);
+          const rowNeedsAttention = !skipQualityAudit && audit?.qualityScore === "needs_work";
           const groupId = row.ideas.length > 1 ? crypto.randomUUID() : null;
           for (const ideaData of row.ideas) {
             await storage.createStudioContentIdea({
@@ -19609,6 +19641,7 @@ export async function registerRoutes(
               groupId,
               importBatchId: batch.id,
               createdByUserId: req.session.userId,
+              needsAttention: rowNeedsAttention,
             } as any);
             created++;
           }

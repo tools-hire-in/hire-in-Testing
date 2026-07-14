@@ -2890,6 +2890,10 @@ export const studioContentIdeas = pgTable("studio_content_ideas", {
   // Stores { sourceConversationId, domain, buyerStage, painPointTheme, icpHint }
   // from the BD conversation that generated this brief.
   bdIntelMetadata: jsonb("bd_intel_metadata"),
+  // Set to true when the idea was flagged by the import quality audit (slop phrases,
+  // missing pillar, vague brief, platform mismatch). Advisory only — never blocks import.
+  // Cleared by a human editing/approving the idea.
+  needsAttention: boolean("needs_attention").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

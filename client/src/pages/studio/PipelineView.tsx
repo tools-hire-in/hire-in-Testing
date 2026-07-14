@@ -57,13 +57,17 @@ import {
 } from "@/components/ui/table";
 import {
   Activity,
+  AlertTriangle,
   BarChart2,
   CalendarDays,
+  CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
   Columns3,
   Download,
   ExternalLink,
+  Filter,
   ImageIcon,
   Inbox,
   Loader2,
@@ -383,6 +387,26 @@ function QuickCreateDialog({
 }
 
 // ── Import wizard ───────────────────────────────────────────────────────────
+type QualityScore = "high" | "medium" | "needs_work";
+
+const QUALITY_BADGE: Record<QualityScore, { label: string; className: string; icon: JSX.Element }> = {
+  high: {
+    label: "High",
+    className: "bg-emerald-100 text-emerald-700 border border-emerald-300 dark:bg-emerald-950/40 dark:text-emerald-400",
+    icon: <CheckCircle2 className="h-3 w-3" />,
+  },
+  medium: {
+    label: "Medium",
+    className: "bg-amber-100 text-amber-700 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-400",
+    icon: <AlertTriangle className="h-3 w-3" />,
+  },
+  needs_work: {
+    label: "Needs Work",
+    className: "bg-red-100 text-red-700 border border-red-300 dark:bg-red-950/40 dark:text-red-400",
+    icon: <AlertTriangle className="h-3 w-3" />,
+  },
+};
+
 function ImportWizardDialog({
   open,
   onOpenChange,
@@ -398,6 +422,9 @@ function ImportWizardDialog({
   const [excelB64, setExcelB64] = useState<string | null>(null);
   const [fileName, setFileName] = useState("import.csv");
   const [preview, setPreview] = useState<any | null>(null);
+  const [skipQualityAudit, setSkipQualityAudit] = useState(false);
+  const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
+  const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
   const fileRef = useRef<HTMLInputElement>(null);
 
   const hasInput = excelB64 !== null || csv.trim().length > 0;
@@ -409,15 +436,15 @@ function ImportWizardDialog({
 
   const buildPayload = () =>
     excelB64 !== null
-      ? { fileData: excelB64, fileName }
-      : { csv };
+      ? { fileData: excelB64, fileName, skipQualityAudit }
+      : { csv, skipQualityAudit };
 
   const previewMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/studio/import/content-calendar/preview", buildPayload());
       return res.json();
     },
-    onSuccess: (data) => setPreview(data),
+    onSuccess: (data) => { setPreview(data); setShowFlaggedOnly(false); setExpandedRows(new Set()); },
     onError: (e: Error) => toast({ title: "Preview failed", description: e.message, variant: "destructive" }),
   });
 
@@ -440,6 +467,8 @@ function ImportWizardDialog({
       setCsv("");
       setExcelB64(null);
       setPreview(null);
+      setShowFlaggedOnly(false);
+      setExpandedRows(new Set());
       onOpenChange(false);
     },
     onError: (e: Error) => toast({ title: "Import failed", description: e.message, variant: "destructive" }),
@@ -559,7 +588,7 @@ function ImportWizardDialog({
                 data-testid="input-import-csv"
               />
             )}
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
                 variant="outline"
@@ -579,16 +608,109 @@ function ImportWizardDialog({
                 {commitMutation.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
                 Import {preview ? `${preview.ideaCount} idea(s)` : ""}
               </Button>
+              <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground select-none" data-testid="label-skip-quality-audit">
+                <Checkbox
+                  checked={skipQualityAudit}
+                  onCheckedChange={(v) => { setSkipQualityAudit(!!v); setPreview(null); }}
+                  data-testid="checkbox-skip-quality-audit"
+                />
+                Skip quality audit — commit all valid rows immediately
+              </label>
             </div>
             {preview && (
-              <div className="space-y-2 rounded-md border p-3 text-sm" data-testid="panel-import-preview">
-                <p>
-                  <strong>{preview.validCount}</strong> valid row(s) → {preview.ideaCount} idea(s);{" "}
-                  <strong className={preview.invalidCount ? "text-red-600" : ""}>{preview.invalidCount}</strong> invalid row(s) will be skipped.
-                  {preview.sourceFormat === "excel" && preview.sheetUsed && (
-                    <span className="ml-2 text-muted-foreground text-xs">({preview.sheetUsed} was used)</span>
+              <div className="space-y-3 rounded-md border p-3 text-sm" data-testid="panel-import-preview">
+                {/* Summary bar */}
+                <div className="flex flex-wrap items-center gap-2 pb-2 border-b">
+                  <span className="flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+                    <CheckCircle2 className="h-3.5 w-3.5" />
+                    {preview.validCount - (preview.flaggedCount ?? 0)} ready
+                  </span>
+                  {(preview.flaggedCount ?? 0) > 0 && (
+                    <span className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      {preview.flaggedCount} need attention
+                    </span>
                   )}
-                </p>
+                  {preview.invalidCount > 0 && (
+                    <span className="flex items-center gap-1 text-xs font-medium text-red-600">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      {preview.invalidCount} have errors
+                    </span>
+                  )}
+                  {preview.sourceFormat === "excel" && preview.sheetUsed && (
+                    <span className="ml-auto text-muted-foreground text-xs">({preview.sheetUsed})</span>
+                  )}
+                  {(preview.flaggedCount ?? 0) > 0 && !preview.skipQualityAudit && (
+                    <button
+                      className="ml-auto flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
+                      onClick={() => setShowFlaggedOnly((v) => !v)}
+                      data-testid="button-show-flagged-only"
+                    >
+                      <Filter className="h-3 w-3" />
+                      {showFlaggedOnly ? "Show all" : "Show flagged only"}
+                    </button>
+                  )}
+                </div>
+
+                {/* Pillar balance warning */}
+                {preview.balanceWarning && (
+                  <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-400" data-testid="panel-balance-warning">
+                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                    {preview.balanceWarning}
+                  </div>
+                )}
+
+                {/* Per-row quality scores */}
+                {!preview.skipQualityAudit && (() => {
+                  const validRows = (preview.rows ?? []).filter((r: any) => !r.errors.length);
+                  const displayRows = showFlaggedOnly
+                    ? validRows.filter((r: any) => r.qualityScore === "needs_work" || r.qualityScore === "medium")
+                    : validRows;
+                  if (!displayRows.length) return null;
+                  return (
+                    <div className="space-y-1.5">
+                      {displayRows.map((r: any) => {
+                        const qs: QualityScore = r.qualityScore ?? "high";
+                        const cfg = QUALITY_BADGE[qs];
+                        const isExpanded = expandedRows.has(r.rowNumber);
+                        const hasFlags = r.qualityFlags?.length > 0;
+                        return (
+                          <div key={r.rowNumber} className="rounded-md border bg-muted/20 px-2 py-1.5" data-testid={`row-quality-${r.rowNumber}`}>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs text-muted-foreground w-10 shrink-0">Row {r.rowNumber}</span>
+                              <span className="flex-1 text-xs font-medium truncate">{r.ideas?.[0]?.topic || "—"}</span>
+                              <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cfg.className}`} data-testid={`badge-quality-${r.rowNumber}`}>
+                                {cfg.icon} {cfg.label}
+                              </span>
+                              {hasFlags && (
+                                <button
+                                  className="text-muted-foreground hover:text-foreground"
+                                  onClick={() => setExpandedRows((prev) => {
+                                    const next = new Set(prev);
+                                    isExpanded ? next.delete(r.rowNumber) : next.add(r.rowNumber);
+                                    return next;
+                                  })}
+                                  data-testid={`button-expand-row-${r.rowNumber}`}
+                                >
+                                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                </button>
+                              )}
+                            </div>
+                            {isExpanded && hasFlags && (
+                              <ul className="mt-1.5 ml-12 space-y-0.5 list-disc list-inside" data-testid={`list-flags-${r.rowNumber}`}>
+                                {r.qualityFlags.map((f: string, i: number) => (
+                                  <li key={i} className="text-[10px] text-muted-foreground">{f}</li>
+                                ))}
+                              </ul>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
+                {/* Field errors */}
                 {preview.rows?.filter((r: any) => r.errors.length).slice(0, 8).map((r: any) => (
                   <p key={r.rowNumber} className="text-xs text-red-600" data-testid={`text-import-error-${r.rowNumber}`}>
                     Row {r.rowNumber}: {r.errors.join("; ")}
@@ -963,6 +1085,28 @@ export function IdeaPeek({
                   <Badge key={c} variant="secondary" className="text-[10px]">{c}</Badge>
                 ))}
               </div>
+
+              {(idea as any).needsAttention && (
+                <div className="flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800 px-3 py-2" data-testid="panel-needs-attention-notice">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-medium text-amber-700 dark:text-amber-400">This idea was flagged at import</p>
+                    <p className="text-xs text-amber-600 dark:text-amber-500 mt-0.5">Review the topic, brief, and platform settings, then mark it as reviewed when ready.</p>
+                  </div>
+                  {canEdit && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="h-7 shrink-0 border-amber-300 bg-amber-50 text-amber-700 text-xs hover:bg-amber-100 dark:bg-amber-950/30 dark:border-amber-700 dark:text-amber-400"
+                      onClick={() => updateMutation.mutate({ needsAttention: false })}
+                      disabled={updateMutation.isPending}
+                      data-testid="button-mark-reviewed"
+                    >
+                      {updateMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : "Mark as reviewed"}
+                    </Button>
+                  )}
+                </div>
+              )}
 
               <div className="grid grid-cols-2 gap-2">
                 <div>
@@ -1702,6 +1846,11 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                               {idea.scheduledDate ? fmtDate(idea.scheduledDate) : "Backlog"}
                               {idea.pillar ? ` · ${idea.pillar.replace(/_/g, " ")}` : ""}
                             </p>
+                            {(idea as any).needsAttention && (
+                              <span className="mt-1 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" data-testid={`badge-needs-attention-${idea.id}`}>
+                                <AlertTriangle className="h-2.5 w-2.5" /> Review
+                              </span>
+                            )}
                           </button>
                         ))}
                       </div>
@@ -1757,7 +1906,16 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                             )}
                           </TableCell>
                           <TableCell className="text-xs">{getPipelineContentType(idea.contentType)?.label || idea.contentType}</TableCell>
-                          <TableCell className="max-w-64 truncate text-sm font-medium">{idea.topic}</TableCell>
+                          <TableCell className="max-w-64 text-sm font-medium">
+                            <span className="flex items-center gap-1.5">
+                              <span className="truncate">{idea.topic}</span>
+                              {(idea as any).needsAttention && (
+                                <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" data-testid={`badge-needs-attention-${idea.id}`}>
+                                  <AlertTriangle className="h-2.5 w-2.5" /> Review
+                                </span>
+                              )}
+                            </span>
+                          </TableCell>
                           <TableCell onClick={(e) => nextStates.length > 0 && e.stopPropagation()}>
                             {nextStates.length > 0 ? (
                               <Select
