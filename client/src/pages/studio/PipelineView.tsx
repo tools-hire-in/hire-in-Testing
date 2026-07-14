@@ -56,6 +56,8 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Activity,
+  BarChart2,
   CalendarDays,
   ChevronLeft,
   ChevronRight,
@@ -69,6 +71,8 @@ import {
   Plus,
   Pencil,
   Table2,
+  TrendingDown,
+  TrendingUp,
   Undo2,
   Upload,
 } from "lucide-react";
@@ -645,10 +649,67 @@ export function IdeaPeek({
   const { can } = usePermissions();
   const [, navigate] = useLocation();
   const [comment, setComment] = useState("");
+  const [peekTab, setPeekTab] = useState<"details" | "performance">("details");
+
+  // Performance log state
+  const [logPerfOpen, setLogPerfOpen] = useState(false);
+  const [perfPlatform, setPerfPlatform] = useState("linkedin");
+  const [perfDate, setPerfDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [perfImpressions, setPerfImpressions] = useState("");
+  const [perfReactions, setPerfReactions] = useState("");
+  const [perfComments, setPerfComments] = useState("");
+  const [perfShares, setPerfShares] = useState("");
+  const [perfClicks, setPerfClicks] = useState("");
+  const [perfReach, setPerfReach] = useState("");
+  const [perfWhatWorked, setPerfWhatWorked] = useState("");
 
   const { data: idea, isLoading } = useQuery<StudioContentIdea & { comments: StudioIdeaComment[] }>({
     queryKey: ["/api/studio/content-ideas", ideaId],
     enabled: !!ideaId,
+  });
+
+  // Performance entries
+  type PerfEntry = {
+    id: string; platform: string; measuredAt: string;
+    impressions: number|null; reactions: number|null; comments: number|null;
+    shares: number|null; clicks: number|null; reach: number|null;
+    whatWorked: string|null; loggedByName: string; createdAt: string;
+  };
+  const { data: perfEntries = [], refetch: refetchPerf } = useQuery<PerfEntry[]>({
+    queryKey: ["/api/studio/content-ideas", ideaId, "performance"],
+    queryFn: async () => {
+      const res = await fetch(`/api/studio/content-ideas/${ideaId}/performance`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!ideaId && peekTab === "performance",
+  });
+
+  const logPerfMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/studio/content-ideas/${ideaId}/performance`, {
+        platform: perfPlatform,
+        measuredAt: perfDate,
+        impressions: perfImpressions || undefined,
+        reactions: perfReactions || undefined,
+        comments: perfComments || undefined,
+        shares: perfShares || undefined,
+        clicks: perfClicks || undefined,
+        reach: perfReach || undefined,
+        whatWorked: perfWhatWorked || undefined,
+      });
+      if (!res.ok) { const b = await res.json(); throw new Error(b.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      setLogPerfOpen(false);
+      setPerfImpressions(""); setPerfReactions(""); setPerfComments("");
+      setPerfShares(""); setPerfClicks(""); setPerfReach(""); setPerfWhatWorked("");
+      setPerfDate(new Date().toISOString().slice(0, 10));
+      refetchPerf();
+      toast({ title: "Performance logged", description: "Entry saved." });
+    },
+    onError: (e: Error) => toast({ title: "Failed to log", description: e.message, variant: "destructive" }),
   });
 
   const invalidate = () => {
@@ -779,7 +840,115 @@ export function IdeaPeek({
                 {TYPE_ICON[idea.contentType] || ""} {idea.topic}
               </SheetTitle>
             </SheetHeader>
-            <div className="mt-3 space-y-4 text-sm">
+
+            {/* Tab switcher */}
+            <div className="mt-3 flex gap-1 border-b pb-0">
+              <button
+                className={`flex items-center gap-1.5 rounded-t px-3 py-1.5 text-xs font-medium transition-colors ${peekTab === "details" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setPeekTab("details")}
+                data-testid="tab-peek-details"
+              >
+                Details
+              </button>
+              <button
+                className={`flex items-center gap-1.5 rounded-t px-3 py-1.5 text-xs font-medium transition-colors ${peekTab === "performance" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
+                onClick={() => setPeekTab("performance")}
+                data-testid="tab-peek-performance"
+              >
+                <Activity className="h-3.5 w-3.5" />
+                Performance
+                {perfEntries.length > 0 && (
+                  <span className="ml-0.5 rounded-full bg-primary/10 px-1.5 py-0 text-[10px] text-primary">{perfEntries.length}</span>
+                )}
+              </button>
+            </div>
+
+            {/* ─── Performance tab ─────────────────────────────── */}
+            {peekTab === "performance" && (
+              <div className="mt-4 space-y-4 text-sm">
+                <div className="flex items-center justify-between">
+                  <p className="text-muted-foreground text-xs">
+                    {perfEntries.length === 0
+                      ? "No performance entries yet. Log after publishing."
+                      : `${perfEntries.length} entr${perfEntries.length === 1 ? "y" : "ies"} logged`}
+                  </p>
+                  {(idea.status === "published" || idea.status === "done") && can("studio.create_article") && (
+                    <Button size="sm" variant="outline" onClick={() => setLogPerfOpen(true)} data-testid="button-log-performance">
+                      <Plus className="mr-1 h-3.5 w-3.5" />
+                      Log Performance
+                    </Button>
+                  )}
+                </div>
+
+                {perfEntries.length > 0 && (() => {
+                    const best = perfEntries[0];
+                    return (
+                      <div className="rounded-md border bg-muted/30 p-3 text-xs space-y-1" data-testid="perf-summary-card">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Latest Entry</p>
+                        <div className="flex items-center justify-between">
+                          <span className="font-semibold capitalize">{best.platform}</span>
+                          <span className="text-muted-foreground">{best.measuredAt}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground">
+                          {best.impressions != null && <span><strong className="text-foreground">{best.impressions.toLocaleString()}</strong> impr.</span>}
+                          {best.reactions != null && <span><strong className="text-foreground">{best.reactions}</strong> react.</span>}
+                          {best.shares != null && <span><strong className="text-foreground">{best.shares}</strong> shares</span>}
+                          {best.reach != null && <span><strong className="text-foreground">{best.reach.toLocaleString()}</strong> reach</span>}
+                        </div>
+                        {best.whatWorked && <p className="italic text-muted-foreground">"{best.whatWorked}"</p>}
+                      </div>
+                    );
+                  })()}
+
+                {perfEntries.length > 1 && (
+                  <div className="space-y-2">
+                    {perfEntries.map((entry) => {
+                      const samePlatformPrev = perfEntries
+                        .filter((e) => e.platform === entry.platform && e.measuredAt < entry.measuredAt)
+                        .sort((a, b) => b.measuredAt.localeCompare(a.measuredAt))[0];
+                      const trend = samePlatformPrev && entry.impressions != null && samePlatformPrev.impressions != null
+                        ? entry.impressions > samePlatformPrev.impressions ? "up"
+                          : entry.impressions < samePlatformPrev.impressions ? "down" : "flat"
+                        : null;
+                      return (
+                        <div key={entry.id} className="rounded-md border p-3 text-xs space-y-1" data-testid={`perf-entry-${entry.id}`}>
+                          <div className="flex items-center justify-between">
+                            <span className="font-semibold capitalize">{entry.platform}</span>
+                            <div className="flex items-center gap-1 text-muted-foreground">
+                              {trend === "up" && <TrendingUp className="h-3 w-3 text-emerald-500" />}
+                              {trend === "down" && <TrendingDown className="h-3 w-3 text-red-500" />}
+                              <span>{entry.measuredAt}</span>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-3 gap-x-3 gap-y-0.5 text-muted-foreground">
+                            {entry.impressions != null && <span><strong className="text-foreground">{entry.impressions.toLocaleString()}</strong> impr.</span>}
+                            {entry.reactions != null && <span><strong className="text-foreground">{entry.reactions}</strong> react.</span>}
+                            {entry.comments != null && <span><strong className="text-foreground">{entry.comments}</strong> cmts</span>}
+                            {entry.shares != null && <span><strong className="text-foreground">{entry.shares}</strong> shares</span>}
+                            {entry.clicks != null && <span><strong className="text-foreground">{entry.clicks}</strong> clicks</span>}
+                            {entry.reach != null && <span><strong className="text-foreground">{entry.reach.toLocaleString()}</strong> reach</span>}
+                          </div>
+                          {entry.whatWorked && (
+                            <p className="mt-1 italic text-muted-foreground">"{entry.whatWorked}"</p>
+                          )}
+                          <p className="text-[10px] text-muted-foreground">by {entry.loggedByName}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                <p className="text-xs text-muted-foreground border-t pt-3">
+                  <a href="/studio/guide/analytics" target="_blank" className="inline-flex items-center gap-1 text-primary hover:underline" data-testid="link-analytics-guide">
+                    <ExternalLink className="h-3 w-3" />
+                    Where do I find these numbers? →
+                  </a>
+                </p>
+              </div>
+            )}
+
+            {/* ─── Details tab ─────────────────────────────────── */}
+            <div className={`mt-3 space-y-4 text-sm ${peekTab !== "details" ? "hidden" : ""}`}>
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge status={idea.status} />
                 <Badge variant="outline" className="text-[10px]">{typeCfg?.label || idea.contentType}</Badge>
@@ -1062,6 +1231,87 @@ export function IdeaPeek({
                 </div>
               )}
             </div>
+
+            {/* ─── Log Performance Dialog ─────────────────────── */}
+            <Dialog open={logPerfOpen} onOpenChange={setLogPerfOpen}>
+              <DialogContent className="sm:max-w-sm" data-testid="dialog-log-performance">
+                <DialogHeader>
+                  <DialogTitle className="flex items-center gap-2">
+                    <BarChart2 className="h-4 w-4" />
+                    Log Performance
+                  </DialogTitle>
+                </DialogHeader>
+                <div className="space-y-3 text-sm">
+                  <div>
+                    <Label className="text-xs">Platform</Label>
+                    <select
+                      className="mt-1 w-full rounded-md border px-3 py-1.5 text-sm bg-background"
+                      value={perfPlatform}
+                      onChange={(e) => setPerfPlatform(e.target.value)}
+                      data-testid="select-perf-platform"
+                    >
+                      <option value="linkedin">LinkedIn</option>
+                      <option value="instagram">Instagram</option>
+                      <option value="facebook">Facebook</option>
+                      <option value="x">X (Twitter)</option>
+                      <option value="website">Website / Blog</option>
+                    </select>
+                  </div>
+                  <div>
+                    <Label className="text-xs">Measured Date</Label>
+                    <Input type="date" className="mt-1 h-8 text-sm" value={perfDate} onChange={(e) => setPerfDate(e.target.value)} data-testid="input-perf-date" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <Label className="text-xs">Impressions</Label>
+                      <Input type="number" className="mt-1 h-8 text-sm" placeholder="e.g. 4500" value={perfImpressions} onChange={(e) => setPerfImpressions(e.target.value)} data-testid="input-perf-impressions" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Reach</Label>
+                      <Input type="number" className="mt-1 h-8 text-sm" placeholder="e.g. 3200" value={perfReach} onChange={(e) => setPerfReach(e.target.value)} data-testid="input-perf-reach" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Reactions / Likes</Label>
+                      <Input type="number" className="mt-1 h-8 text-sm" placeholder="e.g. 87" value={perfReactions} onChange={(e) => setPerfReactions(e.target.value)} data-testid="input-perf-reactions" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Comments</Label>
+                      <Input type="number" className="mt-1 h-8 text-sm" placeholder="e.g. 23" value={perfComments} onChange={(e) => setPerfComments(e.target.value)} data-testid="input-perf-comments" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Shares / Reposts</Label>
+                      <Input type="number" className="mt-1 h-8 text-sm" placeholder="e.g. 14" value={perfShares} onChange={(e) => setPerfShares(e.target.value)} data-testid="input-perf-shares" />
+                    </div>
+                    <div>
+                      <Label className="text-xs">Link Clicks</Label>
+                      <Input type="number" className="mt-1 h-8 text-sm" placeholder="e.g. 61" value={perfClicks} onChange={(e) => setPerfClicks(e.target.value)} data-testid="input-perf-clicks" />
+                    </div>
+                  </div>
+                  <div>
+                    <Label className="text-xs">What worked? <span className="text-muted-foreground">(optional — used by AI on regen)</span></Label>
+                    <Textarea
+                      className="mt-1 text-sm min-h-[60px]"
+                      placeholder="e.g. Opening question hooked readers, short sentences boosted shares"
+                      value={perfWhatWorked}
+                      onChange={(e) => setPerfWhatWorked(e.target.value)}
+                      data-testid="textarea-perf-what-worked"
+                    />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-1">
+                    <Button variant="outline" size="sm" onClick={() => setLogPerfOpen(false)} data-testid="button-perf-cancel">Cancel</Button>
+                    <Button
+                      size="sm"
+                      disabled={logPerfMutation.isPending}
+                      onClick={() => logPerfMutation.mutate()}
+                      data-testid="button-perf-save"
+                    >
+                      {logPerfMutation.isPending && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+                      Save
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
           </>
         )}
       </SheetContent>

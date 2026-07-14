@@ -25,6 +25,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  Activity,
   Loader2,
   RefreshCw,
   MessageSquarePlus,
@@ -126,6 +127,18 @@ export function ArticleRegenPanel({
     },
     enabled: !!articleId,
     refetchInterval: 30000,
+  });
+
+  type PerfSummary = { id: string; platform: string; measuredAt: string; impressions: number|null; reactions: number|null; shares: number|null; reach: number|null; whatWorked: string|null; loggedByName: string };
+  const { data: pastPerf = [] } = useQuery<PerfSummary[]>({
+    queryKey: ["/api/admin/studio/articles", articleId, "performance"],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/studio/articles/${articleId}/performance`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!articleId,
+    staleTime: 60000,
   });
 
   const activeApproval = myRequests.find(
@@ -469,6 +482,28 @@ export function ArticleRegenPanel({
                   <span className="font-medium">{modelStatus?.activeModel ?? "gpt-5.4"}</span>
                 </div>
               </div>
+
+              {/* Past Performance context block */}
+              {pastPerf.length > 0 && (() => {
+                const top = pastPerf[0];
+                return (
+                  <div className="rounded-lg border border-emerald-200 bg-emerald-50/50 dark:border-emerald-800/40 dark:bg-emerald-950/20 p-3 space-y-1 text-xs" data-testid="past-performance-context">
+                    <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400 font-medium">
+                      <Activity className="h-3.5 w-3.5" />
+                      AI will use past performance data
+                    </div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground">
+                      <span className="capitalize font-medium text-foreground">{top.platform}</span>
+                      {top.impressions != null && <span><strong className="text-foreground">{top.impressions.toLocaleString()}</strong> impr.</span>}
+                      {top.reactions != null && <span><strong className="text-foreground">{top.reactions}</strong> react.</span>}
+                      {top.shares != null && <span><strong className="text-foreground">{top.shares}</strong> shares</span>}
+                      {top.reach != null && <span><strong className="text-foreground">{top.reach.toLocaleString()}</strong> reach</span>}
+                    </div>
+                    {top.whatWorked && <p className="italic text-muted-foreground">"{top.whatWorked}"</p>}
+                    {pastPerf.length > 1 && <p className="text-[10px] text-muted-foreground">+{pastPerf.length - 1} more entr{pastPerf.length === 2 ? "y" : "ies"} included in context</p>}
+                  </div>
+                );
+              })()}
 
               {/* Rework feedback summary */}
               {regenMode === "rework" && feedbackNote && (

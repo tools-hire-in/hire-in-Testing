@@ -142,7 +142,13 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
       href: studioPath("/guide"),
       label: "Guide",
       icon: BookOpen,
-      active: location === studioPath("/guide") || (location.startsWith(studioPath("/guide")) && !location.startsWith(studioPath("/bd-guide"))),
+      active: location === studioPath("/guide"),
+    },
+    {
+      href: studioPath("/guide/analytics"),
+      label: "Analytics Guide",
+      icon: BarChart3,
+      active: location.startsWith(studioPath("/guide/analytics")),
     },
     ...(canManageAuthors
       ? [{

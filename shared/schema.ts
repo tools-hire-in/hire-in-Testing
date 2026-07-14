@@ -4687,3 +4687,36 @@ export const governanceEvents = pgTable("governance_events", {
 });
 
 export type GovernanceEvent = typeof governanceEvents.$inferSelect;
+
+// ── Studio Post Performance ───────────────────────────────────────────────────
+// Manual analytics log: content team records LinkedIn/Instagram metrics after
+// each post so the AI regeneration system can learn what resonated.
+// Applied via scripts/apply-studio-post-performance.ts (not drizzle-kit push).
+// Declared here so db:push does NOT treat the live table as a drift orphan.
+export const studioPostPlatformEnum = pgEnum("studio_post_platform", [
+  "linkedin", "instagram", "facebook", "x", "website",
+]);
+
+export const studioPostPerformance = pgTable("studio_post_performance", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  ideaId: varchar("idea_id").notNull().references(() => studioContentIdeas.id, { onDelete: "cascade" }),
+  articleId: varchar("article_id"),
+  platform: studioPostPlatformEnum("platform").notNull(),
+  measuredAt: date("measured_at").notNull(),
+  impressions: integer("impressions"),
+  reactions: integer("reactions"),
+  comments: integer("comments"),
+  shares: integer("shares"),
+  clicks: integer("clicks"),
+  reach: integer("reach"),
+  whatWorked: text("what_worked"),
+  loggedByUserId: varchar("logged_by_user_id").notNull().references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertStudioPostPerformanceSchema = createInsertSchema(studioPostPerformance).omit({
+  id: true,
+  createdAt: true,
+});
+export type StudioPostPerformance = typeof studioPostPerformance.$inferSelect;
+export type InsertStudioPostPerformance = z.infer<typeof insertStudioPostPerformanceSchema>;

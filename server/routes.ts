@@ -10,7 +10,7 @@ import { salaryStructures, salaryStructureRules, stateDeductions, establishmentC
 import { getPortalBaseUrl } from "./portalUrl";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
-import { db } from "./db";
+import { db, pool } from "./db";
 import { eq, and, inArray, sql, desc, isNull, isNotNull, or, asc } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
 import { setupSession, requireAuth as requireAuthImported, require2FA } from "./auth";
@@ -19089,6 +19089,139 @@ export async function registerRoutes(
     },
   );
 
+  // ── Post Performance Log ─────────────────────────────────────────────────────
+
+  // Article-scoped performance lookup (for ArticleRegenPanel UI callout)
+  app.get(
+    "/api/admin/studio/articles/:id/performance",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const { rows } = await pool.query<any>(
+          `SELECT p.*, u.first_name, u.last_name
+           FROM studio_post_performance p
+           JOIN admin_users u ON u.id = p.logged_by_user_id
+           JOIN studio_content_ideas i ON i.id = p.idea_id
+           WHERE i.linked_article_id = $1
+           ORDER BY COALESCE(p.impressions, 0) DESC, p.created_at DESC
+           LIMIT 5`,
+          [req.params.id],
+        );
+        res.json(rows.map((r: any) => ({
+          id: r.id, platform: r.platform,
+          measuredAt: r.measured_at,
+          impressions: r.impressions, reactions: r.reactions,
+          comments: r.comments, shares: r.shares,
+          clicks: r.clicks, reach: r.reach,
+          whatWorked: r.what_worked,
+          loggedByName: `${r.first_name} ${r.last_name}`,
+        })));
+      } catch {
+        res.json([]);
+      }
+    },
+  );
+
+  app.get(
+    "/api/studio/content-ideas/:id/performance",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const { rows } = await pool.query<any>(
+          `SELECT p.*, u.first_name, u.last_name
+           FROM studio_post_performance p
+           JOIN admin_users u ON u.id = p.logged_by_user_id
+           WHERE p.idea_id = $1
+           ORDER BY p.created_at DESC`,
+          [req.params.id],
+        );
+        res.json(rows.map((r: any) => ({
+          id: r.id,
+          ideaId: r.idea_id,
+          articleId: r.article_id,
+          platform: r.platform,
+          measuredAt: r.measured_at,
+          impressions: r.impressions,
+          reactions: r.reactions,
+          comments: r.comments,
+          shares: r.shares,
+          clicks: r.clicks,
+          reach: r.reach,
+          whatWorked: r.what_worked,
+          loggedByUserId: r.logged_by_user_id,
+          loggedByName: `${r.first_name} ${r.last_name}`,
+          createdAt: r.created_at,
+        })));
+      } catch (err: any) {
+        console.error("GET performance error:", err);
+        res.status(500).json({ error: "Failed to fetch performance entries" });
+      }
+    },
+  );
+
+  const PERFORMANCE_PLATFORMS = ["linkedin", "instagram", "facebook", "x", "website", "twitter", "other"] as const;
+
+  app.post(
+    "/api/studio/content-ideas/:id/performance",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const { platform, measuredAt, impressions, reactions, comments, shares, clicks, reach, whatWorked, articleId } = req.body ?? {};
+        if (!platform || !PERFORMANCE_PLATFORMS.includes(platform)) {
+          return res.status(400).json({ error: "Invalid or missing platform" });
+        }
+        if (!measuredAt) {
+          return res.status(400).json({ error: "measuredAt is required" });
+        }
+        const toInt = (v: unknown) => {
+          if (v === null || v === undefined || v === "") return null;
+          const n = Number(v);
+          return Number.isFinite(n) && n >= 0 ? Math.round(n) : null;
+        };
+        const { rows } = await pool.query<any>(
+          `INSERT INTO studio_post_performance
+             (idea_id, article_id, platform, measured_at, impressions, reactions, comments, shares, clicks, reach, what_worked, logged_by_user_id)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+           RETURNING *`,
+          [
+            req.params.id,
+            articleId ?? null,
+            platform,
+            measuredAt,
+            toInt(impressions),
+            toInt(reactions),
+            toInt(comments),
+            toInt(shares),
+            toInt(clicks),
+            toInt(reach),
+            whatWorked?.trim() || null,
+            req.session.userId,
+          ],
+        );
+        res.status(201).json({
+          id: rows[0].id,
+          ideaId: rows[0].idea_id,
+          platform: rows[0].platform,
+          measuredAt: rows[0].measured_at,
+          impressions: rows[0].impressions,
+          reactions: rows[0].reactions,
+          comments: rows[0].comments,
+          shares: rows[0].shares,
+          clicks: rows[0].clicks,
+          reach: rows[0].reach,
+          whatWorked: rows[0].what_worked,
+          createdAt: rows[0].created_at,
+        });
+      } catch (err: any) {
+        console.error("POST performance error:", err);
+        res.status(500).json({ error: err?.message || "Failed to log performance entry" });
+      }
+    },
+  );
+
   // ---- Import wizard (CSV / Excel) ----
 
   const IMPORT_TEMPLATE_HEADERS = [
@@ -21205,6 +21338,35 @@ export async function registerRoutes(
           }
         }
 
+        // Fetch past performance signal from the idea linked to this article
+        let pastPerformanceSignal: string | undefined;
+        try {
+          const { rows: perfRows } = await pool.query<any>(
+            `SELECT p.platform, p.impressions, p.reach, p.reactions, p.comments, p.shares, p.what_worked, p.measured_at
+             FROM studio_post_performance p
+             JOIN studio_content_ideas i ON i.id = p.idea_id
+             WHERE i.linked_article_id = $1
+             ORDER BY COALESCE(p.impressions, 0) DESC
+             LIMIT 3`,
+            [article.id],
+          );
+          if (perfRows.length > 0) {
+            const lines = perfRows.map((r: any) => {
+              const metrics: string[] = [`Platform: ${r.platform}`];
+              if (r.impressions != null) metrics.push(`Impressions: ${r.impressions.toLocaleString()}`);
+              if (r.reach != null) metrics.push(`Reach: ${r.reach.toLocaleString()}`);
+              if (r.reactions != null) metrics.push(`Reactions: ${r.reactions}`);
+              if (r.comments != null) metrics.push(`Comments: ${r.comments}`);
+              if (r.shares != null) metrics.push(`Shares: ${r.shares}`);
+              if (r.what_worked?.trim()) metrics.push(`What worked: "${r.what_worked.trim()}"`);
+              return metrics.join(", ");
+            });
+            pastPerformanceSignal = `Best-performing entries for this content (by impressions):\n${lines.map((l: string, i: number) => `${i + 1}. ${l}`).join("\n")}`;
+          }
+        } catch {
+          // Performance data is optional — never block regeneration if query fails
+        }
+
         // Build params
         const rawParams: AiGenerationParams = {
           ...(await resolveBrandVoiceParams(article.projectId)),
@@ -21219,6 +21381,7 @@ export async function registerRoutes(
           engagementGoal: confirmedBrief.engagementGoal ?? (article as any).engagementGoal ?? undefined,
           platform: "ARTICLE",
           complianceMode: (article as any).complianceMode ?? "normal",
+          pastPerformanceSignal,
           ...(mode === "rework" ? {
             mode: "shape",
             rawInput: `${article.bodyMarkdown ?? ""}\n\n---\nFeedback to incorporate: ${feedbackNote ?? "Improve overall quality"}${priorFeedback}`,

@@ -107,6 +107,7 @@ const StudioOutreachView = lazy(() => import("@/pages/studio/OutreachView"));
 const StudioBdAgentView = lazy(() => import("@/pages/studio/BdAgentView"));
 const StudioBdTemplatesView = lazy(() => import("@/pages/studio/BdTemplatesView"));
 const StudioBdGuideView = lazy(() => import("@/pages/studio/BdGuideView"));
+const StudioAnalyticsGuide = lazy(() => import("@/pages/studio/AnalyticsGuide"));
 const StudioFeedbackInsights = lazy(() => import("@/pages/studio/FeedbackInsightsPage"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
@@ -425,6 +426,7 @@ function PublicRouter() {
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
       <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
       <Route path="/studio/access">{() => <StudioV2><StudioAccess /></StudioV2>}</Route>
+      <Route path="/studio/guide/analytics">{() => <StudioV2><StudioAnalyticsGuide /></StudioV2>}</Route>
       <Route path="/studio/guide">{() => <StudioV2><StudioGuide /></StudioV2>}</Route>
       <Route path="/studio">{() => <StudioV2><Studio /></StudioV2>}</Route>
 
@@ -604,6 +606,7 @@ function EmployeeRouter() {
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
       <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
       <Route path="/studio/access">{() => <StudioV2><StudioAccess /></StudioV2>}</Route>
+      <Route path="/studio/guide/analytics">{() => <StudioV2><StudioAnalyticsGuide /></StudioV2>}</Route>
       <Route path="/studio/guide">{() => <StudioV2><StudioGuide /></StudioV2>}</Route>
       <Route path="/studio">{() => <StudioV2><Studio /></StudioV2>}</Route>
 

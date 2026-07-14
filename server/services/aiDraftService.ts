@@ -248,10 +248,17 @@ function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationP
     // Self-edit pass — immediately before user-supplied facts
     blocks.push(SELF_EDIT_BLOCK);
 
-    // 12. User-supplied facts (always last)
+    // 12. User-supplied facts (always last before performance signal)
     if (params.userSuppliedFacts?.trim()) {
       blocks.push(
         `User-supplied facts and claims (use as provided, preserve qualifiers, do not strengthen or expand): ${params.userSuppliedFacts.trim()}`
+      );
+    }
+
+    // 13. Past Performance Signal (additive context — appended last so it does not override content rules)
+    if (params.pastPerformanceSignal?.trim()) {
+      blocks.push(
+        `PAST PERFORMANCE SIGNAL (use as additional context to guide tone and structure — do not quote these metrics in the content):\n${params.pastPerformanceSignal.trim()}`
       );
     }
 

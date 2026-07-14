@@ -224,6 +224,8 @@ export interface AiGenerationParams {
   hookPattern?: string;
   contentStructure?: string;
   engagementGoal?: string;
+  // Past performance signal — best-performing entry injected from studio_post_performance
+  pastPerformanceSignal?: string;
 }
 
 // ---------------------------------------------------------------------------
