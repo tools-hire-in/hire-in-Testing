@@ -72,6 +72,7 @@ import {
   Users,
   FileSearch,
   BookOpen,
+  HelpCircle,
 } from "lucide-react";
 import {
   Dialog,

@@ -116,6 +116,50 @@ function SignalMatrix() {
   );
 }
 
+function StructureMatrix() {
+  const INTENTS = ["Thought Leadership", "Job Marketing", "Educational", "Brand Perspective"];
+  const PLATFORMS = ["Article", "LinkedIn", "Instagram", "X"];
+  const DATA: Record<string, Record<string, string>> = {
+    "Thought Leadership": { Article: "The Framework", LinkedIn: "Rule of Three", Instagram: "The Reveal", X: "Contrast" },
+    "Job Marketing": { Article: "PAS", LinkedIn: "PAS", Instagram: "PAS", X: "Contrast" },
+    "Educational": { Article: "Framework / Listicle", LinkedIn: "Listicle", Instagram: "Listicle", X: "Rule of Three" },
+    "Brand Perspective": { Article: "The Reveal", LinkedIn: "Rule of Three", Instagram: "Contrast", X: "Rule of Three" },
+  };
+  const COLOR: Record<string, string> = {
+    "Rule of Three": "font-medium text-blue-700 dark:text-blue-300",
+    "PAS": "font-medium text-red-700 dark:text-red-300",
+    "The Framework": "font-medium text-teal-700 dark:text-teal-300",
+    "Framework / Listicle": "font-medium text-teal-700 dark:text-teal-300",
+    "Listicle": "font-medium text-emerald-700 dark:text-emerald-300",
+    "Contrast": "font-medium text-amber-700 dark:text-amber-300",
+    "The Reveal": "font-medium text-violet-700 dark:text-violet-300",
+  };
+  return (
+    <div className="my-4 overflow-x-auto">
+      <div
+        className="grid gap-px overflow-hidden rounded-md border bg-border text-xs"
+        style={{ gridTemplateColumns: "auto 1fr 1fr 1fr 1fr" }}
+      >
+        <div className="bg-background p-2" />
+        {PLATFORMS.map((p) => (
+          <div key={p} className="bg-muted p-2 text-center font-semibold">{p}</div>
+        ))}
+        {INTENTS.map((intent) => [
+          <div key={`lbl-${intent}`} className="flex items-center bg-muted p-2 font-semibold">{intent}</div>,
+          ...PLATFORMS.map((platform) => {
+            const val = DATA[intent][platform];
+            return (
+              <div key={`${intent}-${platform}`} className="bg-background p-2.5">
+                <span className={COLOR[val] ?? ""}>{val}</span>
+              </div>
+            );
+          }),
+        ])}
+      </div>
+    </div>
+  );
+}
+
 function SectionHeading({ id, index, title, subtitle }: { id: string; index: string; title: string; subtitle: string }) {
   return (
     <div className="scroll-mt-20 border-t pt-8 first:border-t-0 first:pt-0" id={id}>
@@ -170,6 +214,9 @@ const SECTIONS: { id: string; index: string; label: string }[] = [
   { id: "s12", index: "12", label: "The Content Brief" },
   { id: "s13", index: "13", label: "Content Guardrails" },
   { id: "s14", index: "14", label: "Measuring What Matters" },
+  { id: "s15", index: "15", label: "The AI Brief" },
+  { id: "s16", index: "16", label: "Hook Patterns" },
+  { id: "s17", index: "17", label: "Content Structures" },
 ];
 
 export default function Guide() {
@@ -676,6 +723,13 @@ export default function Guide() {
                 80% value-led content (insights, case studies, team stories, industry data). 20% direct
                 promotion (open roles, services, CTAs). Violating this ratio accelerates audience fatigue. The
                 Campaign board makes this visible — look at the ratio of content types in any campaign.
+              </ProTip>
+              <ProTip title="LinkedIn and Instagram brief differently">
+                LinkedIn and Instagram require different briefs — not just different word counts. LinkedIn rewards
+                the Curiosity Gap hook and the Rule of Three structure. Instagram rewards the PAS structure and
+                the Loss Aversion or Specific Scene hook. Choosing the wrong structure for the platform is the
+                most common reason social AI output needs heavy editing. Set Hook Pattern and Content Structure
+                in Creative direction before generating — see Sections 16 and 17 for the full reference.
               </ProTip>
             </section>
 
@@ -1222,6 +1276,12 @@ export default function Guide() {
                 inputs — a recruiter conversation, a candidate question, a client intake discussion. Generic
                 content comes from generic briefs. Never brief without a source.
               </ProTip>
+              <ProTip title="The AI generation dialog now has two new quality levers">
+                The AI generation dialog now asks for Hook Pattern and Content Structure in Creative direction.
+                These are the two brief fields that most directly affect output quality — they shape the opening
+                line and the entire body of the draft. Fill them in before generating. See Section 16 for Hook
+                Patterns and Section 17 for Content Structures.
+              </ProTip>
             </section>
 
             {/* ── Section 13 ── */}
@@ -1402,9 +1462,448 @@ export default function Guide() {
                 contact link to move the audience from aware to acting.
               </ProTip>
               <div className="mt-8 rounded-md border bg-muted/40 p-4 text-center text-sm">
+                <p className="font-medium">That covers Strategy.</p>
+                <p className="mt-1 text-muted-foreground">
+                  Tools (0–9) + Strategy (10–14). Continue to Sections 15–17 for the AI brief and psychology
+                  guide — the deep reference for generation.
+                </p>
+              </div>
+            </section>
+
+            {/* ── Section 15 ── */}
+            <section>
+              <SectionHeading
+                id="s15"
+                index="15"
+                title="The AI Brief: How to Instruct the Engine"
+                subtitle="Five fields that separate a draft you'll use from one you'll rewrite."
+              />
+              <Why>
+                The AI generation dialog asks for five psychological brief fields in addition to the topic and
+                audience. These aren't optional extras — they are the primary levers that control output quality.
+                A team that understands what each field does will consistently produce first drafts that need
+                editing, not rewriting. A team that skips them will consistently produce output that sounds
+                plausible but lands wrong.
+              </Why>
+              <H3>The generation flow:</H3>
+              <FlowStrip stages={["Platform", "Content Intent", "Hook Pattern", "Desired Emotion", "Content Structure", "Engagement Goal", "Generate"]} />
+              <H3>Field-by-field — what it is and why it exists:</H3>
+              <div className="my-4 space-y-3">
+                {[
+                  {
+                    field: "Platform",
+                    what: "Where the content will live: Article, LinkedIn, Instagram, or X.",
+                    why: "Each platform has different rules for word count, formatting, line breaks, and reader expectations. The AI applies platform-specific craft rules when you specify the platform. A LinkedIn brief produces professional text-post structure (150–300 words, hook in the first two lines). An Instagram brief produces carousel-ready slide copy. An Article brief produces 800–1,400 words with H2s and a framework. Without specifying the platform, the AI produces copy that fits nowhere well.",
+                    example: "Platform: LinkedIn → hook + payoff in the first two lines, line breaks every 1–2 sentences, 150–300 words, one CTA.",
+                  },
+                  {
+                    field: "Content Intent",
+                    what: "The strategic purpose: Thought Leadership, Educational, Job Marketing, or Brand Perspective.",
+                    why: "This maps to the content goal block inside the AI intelligence engine. Each intent triggers a different internal pattern. Thought Leadership follows Problem → Why the usual approach fails → What actually changes the outcome → CTA. Job Marketing triggers fit-filter language and avoids invented job facts. Educational follows Question → Explanation → Example → Takeaway. Getting intent wrong produces content that is tonally correct but strategically misaligned.",
+                    example: "Intent: Educational → the AI structures the piece as Question → Explanation → Example → Takeaway, using staffing-specific examples throughout.",
+                  },
+                  {
+                    field: "Hook Pattern",
+                    what: "The psychological archetype for the opening line — the mechanism that creates an open question in the reader's mind.",
+                    why: "The first line of any content does one job: pull the reader to line two. Different archetypes use different psychological mechanisms. Loss Aversion creates fear of a mistake already being made. Curiosity Gap creates a knowledge tension the reader needs to resolve. Reader's Inner Monologue creates validation before instruction — which lowers resistance before any teaching begins. Without specifying a hook, the AI defaults to a competent but predictable opener. See Section 16 for the full breakdown.",
+                    example: "Hook Pattern: Loss Aversion → \"That 3-day delay returning interview feedback just cost you your top candidate — she had two other offers by Thursday.\"",
+                  },
+                  {
+                    field: "Desired Emotion",
+                    what: "What the reader should feel in the first 3 seconds: Validated, Challenged, Warned, Curious, Surprised, or Inspired.",
+                    why: "Emotion shapes tone from the first word. \"Warned\" produces a different register than \"Inspired\" — one is urgent and loss-focused, the other is expansive and possibility-focused. The AI adjusts word choice, sentence rhythm, and urgency level based on this field. If left blank, the AI defaults to a neutral professional register — which is rarely the most effective choice for social content.",
+                    example: "Emotion: Validated → the AI opens by naming something the reader already knows but has never seen stated plainly, then builds from that moment of recognition.",
+                  },
+                  {
+                    field: "Content Structure",
+                    what: "The internal architecture of the body — the psychological sequence that carries the reader from hook to CTA.",
+                    why: "The hook gets the reader in the door. The structure determines whether they stay. Each structure uses a different psychological logic to maintain momentum: PAS uses agitation to create motivation; Rule of Three uses pattern completion; The Reveal uses narrative tension. Without a deliberate structure, the AI defaults to a generic introduction-points-conclusion pattern that is functional but forgettable. See Section 17 for the full breakdown.",
+                    example: "Structure: PAS → names a real problem (credentialing delay), agitates it (what it costs the hiring manager, specifically), then resolves with a clear mechanism.",
+                  },
+                  {
+                    field: "Engagement Goal",
+                    what: "The one action you want the reader to take after finishing: save it, share it, comment, follow, DM, or apply.",
+                    why: "This shapes the closing line and the CTA. \"Save it\" tells the AI to end with a framework or checklist worth bookmarking. \"Share it\" tells it to end with a sharp, quotable statement or a question worth forwarding. \"DM / reach out\" tells it to close with a direct, warm, low-friction invitation. Without this field, the AI produces a generic close that drives no specific action.",
+                    example: "Goal: DM / reach out → \"If your current staffing partner can't answer the intake question above, send us the requirement. We'll tell you if we can help.\"",
+                  },
+                ].map((item) => (
+                  <div key={item.field} className="rounded-md border bg-muted/30 p-4 text-sm">
+                    <p className="font-semibold text-foreground">{item.field}</p>
+                    <p className="mt-0.5 text-xs font-medium text-primary">{item.what}</p>
+                    <p className="mt-2 text-muted-foreground">
+                      <span className="font-medium text-foreground">Why it matters: </span>{item.why}
+                    </p>
+                    <p className="mt-2 rounded border border-dashed bg-background p-2 text-xs italic text-muted-foreground">
+                      {item.example}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <H3>Side-by-side example — same topic, two different briefs:</H3>
+              <div className="my-4 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-md border p-4 text-sm">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-primary">LinkedIn Post Brief</p>
+                  <div className="space-y-2">
+                    {[
+                      { label: "Platform", value: "LinkedIn" },
+                      { label: "Content Intent", value: "Thought Leadership" },
+                      { label: "Topic", value: "Why IT hiring managers reject technically qualified candidates" },
+                      { label: "Hook Pattern", value: "Mechanism Reveal" },
+                      { label: "Desired Emotion", value: "Challenged" },
+                      { label: "Content Structure", value: "Rule of Three" },
+                      { label: "Engagement Goal", value: "Comment their take" },
+                    ].map((row) => (
+                      <div key={row.label} className="grid grid-cols-[120px_1fr] gap-2 text-xs">
+                        <span className="font-medium text-muted-foreground">{row.label}</span>
+                        <span>{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-md border p-4 text-sm">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wider text-primary">Article Brief (same topic)</p>
+                  <div className="space-y-2">
+                    {[
+                      { label: "Platform", value: "Article" },
+                      { label: "Content Intent", value: "Educational" },
+                      { label: "Topic", value: "Why IT hiring managers reject technically qualified candidates" },
+                      { label: "Hook Pattern", value: "Loss Aversion" },
+                      { label: "Desired Emotion", value: "Warned" },
+                      { label: "Content Structure", value: "The Framework" },
+                      { label: "Engagement Goal", value: "Save it" },
+                    ].map((row) => (
+                      <div key={row.label} className="grid grid-cols-[120px_1fr] gap-2 text-xs">
+                        <span className="font-medium text-muted-foreground">{row.label}</span>
+                        <span>{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+              <P>
+                The same topic produces different content because the platform, the intended emotion, the
+                structure, and the desired action are all different. The LinkedIn post challenges the reader
+                with a mechanism reveal and asks for their perspective. The article warns the reader with a
+                loss-aversion hook and ends with a framework they will save and return to.
+              </P>
+              <H3>Weak brief vs. strong brief — what the output difference looks like:</H3>
+              <div className="my-4 grid gap-4 sm:grid-cols-2">
+                <div className="rounded-md border border-red-100 bg-red-50/50 p-4 text-sm dark:border-red-900/40 dark:bg-red-950/20">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-red-600 dark:text-red-400">Weak brief</p>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    {[
+                      ["Platform", "LinkedIn"],
+                      ["Intent", "Thought Leadership"],
+                      ["Topic", "IT hiring tips"],
+                      ["Hook", "Let AI decide"],
+                      ["Emotion", "Let AI decide"],
+                      ["Structure", "Let AI decide"],
+                      ["Goal", "Let AI decide"],
+                    ].map(([k, v]) => (
+                      <p key={k}><span className="font-medium text-foreground">{k}:</span> {v}</p>
+                    ))}
+                  </div>
+                  <div className="mt-3 rounded border border-red-200 bg-background/60 p-2 text-xs italic text-muted-foreground dark:border-red-800">
+                    Output: "In today's fast-paced IT hiring landscape, finding the right candidates can be
+                    challenging. Here are some tips that might help your team..."
+                  </div>
+                </div>
+                <div className="rounded-md border border-emerald-100 bg-emerald-50/50 p-4 text-sm dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                  <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">Strong brief</p>
+                  <div className="space-y-1 text-xs text-muted-foreground">
+                    {[
+                      ["Platform", "LinkedIn"],
+                      ["Intent", "Thought Leadership"],
+                      ["Topic", "Why IT hiring managers reject technically qualified candidates"],
+                      ["Hook", "Mechanism Reveal"],
+                      ["Emotion", "Challenged"],
+                      ["Structure", "Rule of Three"],
+                      ["Goal", "Comment their take"],
+                    ].map(([k, v]) => (
+                      <p key={k}><span className="font-medium text-foreground">{k}:</span> {v}</p>
+                    ))}
+                  </div>
+                  <div className="mt-3 rounded border border-emerald-200 bg-background/60 p-2 text-xs italic text-muted-foreground dark:border-emerald-800">
+                    Output: "The resume isn't the problem. The intake call is. Three things IT hiring managers
+                    never say — but every recruiter needs to hear — before a single profile is sourced..."
+                  </div>
+                </div>
+              </div>
+              <ProTip title="The two fields that most affect output quality">
+                Hook Pattern and Content Structure are the brief fields that most directly change what the AI
+                produces. Platform shapes the format. Hook shapes the first line. Structure shapes the entire
+                body. If you only use two optional fields, use these two. See Section 16 for hooks, Section 17
+                for structures.
+              </ProTip>
+            </section>
+
+            {/* ── Section 16 ── */}
+            <section>
+              <SectionHeading
+                id="s16"
+                index="16"
+                title="Hook Patterns: 8 Ways to Open Content"
+                subtitle="The first line is the only line most readers will see. Choose the right archetype."
+              />
+              <Why>
+                A hook earns its place by creating a specific open question in the reader's mind — not by being
+                loud. Each of the 8 archetypes below works through a different psychological mechanism. The
+                choice of archetype is a strategic decision based on the reader's current state and the
+                content's intent. Use the wrong archetype for the platform or audience and the reader never
+                gets past line one.
+              </Why>
+              <div className="my-4 space-y-4">
+                {[
+                  {
+                    number: "1",
+                    name: "Mechanism Reveal",
+                    description: "Name the hidden cause of a familiar pain.",
+                    mechanism: "Curiosity + Competence signal. The reader recognises the pain but not the cause — naming the mechanism makes them feel they are about to learn something they should already know.",
+                    example: "\"Your OR req isn't stuck. Your titers are.\"",
+                    platforms: "LinkedIn · Article",
+                    color: "border-blue-200 bg-blue-50/30 dark:border-blue-800 dark:bg-blue-950/20",
+                  },
+                  {
+                    number: "2",
+                    name: "Insider Contrast",
+                    description: "What amateurs do vs. what operators do.",
+                    mechanism: "Identity + Aspiration. The reader immediately places themselves in one camp and wants to move to the other — or confirm they are already in the right one.",
+                    example: "\"Weak agencies send you resumes. Strong ones send you evidence.\"",
+                    platforms: "LinkedIn · X",
+                    color: "border-violet-200 bg-violet-50/30 dark:border-violet-800 dark:bg-violet-950/20",
+                  },
+                  {
+                    number: "3",
+                    name: "Loss Aversion",
+                    description: "A specific, costed error the reader is probably already making.",
+                    mechanism: "Loss Aversion (Kahneman). The pain of losing something is psychologically twice as powerful as the pleasure of gaining something. Naming a specific, believable cost forces the reader to evaluate whether they are the one making the mistake.",
+                    example: "\"That 3-day delay returning interview feedback just cost you your top candidate — she had two other offers by Thursday.\"",
+                    platforms: "LinkedIn · Article · X",
+                    color: "border-red-200 bg-red-50/30 dark:border-red-800 dark:bg-red-950/20",
+                  },
+                  {
+                    number: "4",
+                    name: "Unasked Question",
+                    description: "The question the reader should be asking but isn't.",
+                    mechanism: "Knowledge Gap + Self-awareness trigger. The reader is suddenly aware they have been missing a critical frame. The discomfort of not having asked this question is the pull.",
+                    example: "\"Nobody asks their staffing partner this one question. It predicts everything.\"",
+                    platforms: "LinkedIn · Article",
+                    color: "border-amber-200 bg-amber-50/30 dark:border-amber-800 dark:bg-amber-950/20",
+                  },
+                  {
+                    number: "5",
+                    name: "Counter-intuitive Number",
+                    description: "A pattern-from-experience observation that surprises — must be clearly framed as such, never invented.",
+                    mechanism: "Surprise + Calibration. The reader's existing mental model is challenged. The dissonance creates the need to resolve it — which requires reading the next line.",
+                    example: "\"Most IT screening calls are 30 minutes long. The first 3 minutes decide everything.\"",
+                    platforms: "All platforms",
+                    color: "border-teal-200 bg-teal-50/30 dark:border-teal-800 dark:bg-teal-950/20",
+                  },
+                  {
+                    number: "6",
+                    name: "Reader's Inner Monologue",
+                    description: "Say what the reader is privately thinking.",
+                    mechanism: "Validation before instruction. When a reader sees their own unexpressed thought stated plainly, the reaction is recognition, not resistance. This disarms scepticism and creates trust before any teaching begins.",
+                    example: "\"You're not 'behind on credentialing.' You were given a checklist designed for someone who's done this five times.\"",
+                    platforms: "LinkedIn (candidate) · Instagram",
+                    color: "border-emerald-200 bg-emerald-50/30 dark:border-emerald-800 dark:bg-emerald-950/20",
+                  },
+                  {
+                    number: "7",
+                    name: "Stakes Flip",
+                    description: "Reframe who actually bears the risk.",
+                    mechanism: "Accountability shift. The reader assumes the risk is symmetric — it isn't. Revealing the asymmetry makes them recalibrate their relationship with the topic and with the decision-maker involved.",
+                    example: "\"A bad submittal doesn't cost the agency anything. It costs you a week.\"",
+                    platforms: "LinkedIn (employer) · Article",
+                    color: "border-orange-200 bg-orange-50/30 dark:border-orange-800 dark:bg-orange-950/20",
+                  },
+                  {
+                    number: "8",
+                    name: "Specific Scene",
+                    description: "Drop the reader into a moment.",
+                    mechanism: "Narrative transportation. A concrete, specific scene bypasses intellectual resistance. The reader is inside the moment before they decide whether they agree with it.",
+                    example: "\"Day 12 of a 13-week contract. Your recruiter hasn't mentioned extension. Here's what that silence usually means.\"",
+                    platforms: "LinkedIn · Instagram · Article",
+                    color: "border-sky-200 bg-sky-50/30 dark:border-sky-800 dark:bg-sky-950/20",
+                  },
+                ].map((hook) => (
+                  <div key={hook.number} className={`rounded-md border p-4 text-sm ${hook.color}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-2">
+                        <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-foreground/10 text-xs font-bold">
+                          {hook.number}
+                        </span>
+                        <div>
+                          <p className="font-semibold">{hook.name}</p>
+                          <p className="text-xs text-muted-foreground">{hook.description}</p>
+                        </div>
+                      </div>
+                      <Badge variant="outline" className="shrink-0 whitespace-nowrap text-xs">{hook.platforms}</Badge>
+                    </div>
+                    <div className="mt-3 space-y-2 pl-7">
+                      <p className="text-xs text-muted-foreground">
+                        <span className="font-medium text-foreground">Mechanism: </span>{hook.mechanism}
+                      </p>
+                      <p className="rounded border border-dashed bg-background/60 p-2 text-xs italic text-muted-foreground">
+                        {hook.example}
+                      </p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <H3>Pick your hook — 3 questions that narrow to the right archetype:</H3>
+              <StepList
+                steps={[
+                  <>
+                    <strong>What is the reader's current emotional state?</strong> Anxious or frustrated with a
+                    recurring problem → Mechanism Reveal or Loss Aversion. Confident but potentially wrong →
+                    Insider Contrast or Stakes Flip. Unaware of an angle → Unasked Question or Counter-intuitive
+                    Number. Resistant to being taught → Reader's Inner Monologue (validate first).
+                  </>,
+                  <>
+                    <strong>What is the content's primary job?</strong> Challenge a belief → Insider Contrast,
+                    Stakes Flip, Counter-intuitive Number. Warn about a risk → Loss Aversion. Deepen understanding
+                    → Mechanism Reveal, Unasked Question. Build trust before instruction → Reader's Inner
+                    Monologue, Specific Scene.
+                  </>,
+                  <>
+                    <strong>What is the platform and available word count?</strong> Under 12 words (X, Instagram) →
+                    Mechanism Reveal, Insider Contrast, Loss Aversion all compress well. LinkedIn (under 20 words)
+                    → any archetype works. Long-form article → Specific Scene or Unasked Question set up a longer
+                    narrative naturally.
+                  </>,
+                ]}
+              />
+              <ProTip title="The default choices for staffing content">
+                When in doubt: use <strong>Unasked Question</strong> (Curiosity Gap) for LinkedIn — it performs
+                consistently well across employer and candidate content because the reader always wonders what
+                the question is. Use <strong>Loss Aversion</strong> for articles — the cost framing creates
+                enough tension to sustain 800+ words. These two have the highest engagement floor across
+                Hire'in content.
+              </ProTip>
+              <ProTip title="Hook rules — the constraints that make them work">
+                Under 12 words for X and Instagram. Under 20 for LinkedIn. No questions that answer themselves.
+                No "Here's why" as the entire hook. Never promise more than the body delivers. The second line
+                must pay off the first — immediately. If it doesn't, the hook isn't finished.
+              </ProTip>
+            </section>
+
+            {/* ── Section 17 ── */}
+            <section>
+              <SectionHeading
+                id="s17"
+                index="17"
+                title="Content Structures: How to Architect the Body"
+                subtitle="The hook gets the reader in. The structure keeps them reading to the end."
+              />
+              <Why>
+                A structure is not an outline. It is the psychological sequence that moves a reader from engaged
+                to committed. Each structure works for a different reason — and fails for a different reason.
+                PAS works because agitation creates motivation. Rule of Three works because the brain completes
+                patterns. The Reveal works because narrative tension is nearly impossible to exit. Choosing the
+                wrong structure for the content intent is the most common reason AI output needs heavy editing.
+              </Why>
+              <div className="my-4 space-y-5">
+                {[
+                  {
+                    name: "Rule of Three",
+                    definition: "Hook + three proof points + CTA.",
+                    psychology: "Pattern completion. The brain is wired to expect triads. Three points feel complete; two feel thin; four feel long. The reader is always waiting for the third point to arrive — and the CTA lands at the moment that satisfaction is highest.",
+                    skeleton: ["Hook — names one mechanism or challenge", "Point 1 — the evidence, observation, or example", "Point 2 — the complication or deeper layer", "Point 3 — the resolution or implication", "CTA — one clear action"],
+                    example: "Thought Leadership LinkedIn post: Hook names the real reason IT hiring slows down. Point 1: intake quality gap. Point 2: what it costs in time and credibility. Point 3: the one question that fixes it. CTA: 'What's your intake question?'",
+                    platforms: "LinkedIn (primary) · Article (secondary)",
+                    color: "border-blue-200",
+                  },
+                  {
+                    name: "PAS — Problem → Agitate → Solution",
+                    definition: "Name the pain, make it visceral, then resolve it.",
+                    psychology: "Agitation drives action. The brain moves away from pain faster than it moves toward gain. PAS exploits this by making the problem feel immediately real — not abstract — then intensifying it to the point where the solution is a relief, not a pitch. The agitation step is what most people omit. Without it, the structure feels like a weak list.",
+                    skeleton: ["Problem — the specific, real problem", "Agitate — what it costs, who bears it, what happens if it goes unresolved", "Solution — the mechanism or action that resolves it", "CTA — low friction, direct"],
+                    example: "Job Marketing Instagram: Problem: agency submits unqualified IT candidates. Agitate: what that costs the hiring manager in time, team credibility, and delayed delivery. Solution: fit-filter language that self-qualifies before any call. CTA: 'Apply only if these three criteria match.'",
+                    platforms: "Instagram (primary) · LinkedIn · Job Marketing across all platforms",
+                    color: "border-red-200",
+                  },
+                  {
+                    name: "The Reveal",
+                    definition: "Setup → Tension → Payoff. Scene-based storytelling.",
+                    psychology: "Narrative transportation. Once a reader is inside a scene, they experience narrative closure compulsion — the same mechanism that makes you keep reading a novel past your bedtime. The Reveal is the only structure where the reader actively resists stopping.",
+                    skeleton: ["Setup — drop the reader into a specific moment or situation", "Tension — show what's at stake, what the reader doesn't know yet", "Complication — the thing that makes resolution non-obvious", "Payoff — the resolution, the mechanism, the lesson"],
+                    example: "Article opening: 'Day 12 of a 13-week contract. The recruiter hasn't called. The hiring manager is wondering if extension is coming. Here's what that silence actually means — and what a different agency would have done on Day 1.'",
+                    platforms: "Article (primary) · LinkedIn (secondary, narrative posts)",
+                    color: "border-violet-200",
+                  },
+                  {
+                    name: "Contrast (Before / After)",
+                    definition: "Wrong way vs. right way — show, never just tell.",
+                    psychology: "Comparative evaluation. The brain understands differences faster than it understands absolutes. Showing two states side by side makes the quality gap immediately legible — no argument required. The reader evaluates the contrast rather than the claim.",
+                    skeleton: ["Before — the common, weaker approach (named specifically, not vaguely)", "The gap — what's missing and what it costs", "After — the stronger approach, with the mechanism that makes it better", "Application — how the reader uses this today"],
+                    example: "Educational post: 'Weak intake: Here's the JD, let me know what you find. Strong intake: Three questions that surface must-haves the hiring manager forgot to list.' Side by side, the reader sees the difference without being told what to think.",
+                    platforms: "LinkedIn · Instagram · X (pairs naturally with Insider Contrast hook)",
+                    color: "border-amber-200",
+                  },
+                  {
+                    name: "The Framework",
+                    definition: "Name a concept, explain the mechanics, show the application.",
+                    psychology: "Mental model construction. The reader is given a reusable cognitive tool — something they can apply beyond this piece. This creates the highest save-rate of any structure because the reader associates the framework with the brand that gave it to them.",
+                    skeleton: ["Name the framework — give it a memorable label", "Explain each component — what it is and why it matters", "Show the mechanism — how the parts interact", "Application — what a reader should do with this today", "Optional: where it breaks down (adds credibility)"],
+                    example: "Thought Leadership article: 'The Intake Triangle: three inputs that determine whether a staffing engagement succeeds before sourcing begins. Requirement clarity, must-have vs. nice-to-have separation, and decision timeline. When all three are present, fill time compresses. When any one is missing, every other variable degrades.'",
+                    platforms: "Article (primary) · LinkedIn (condensed versions)",
+                    color: "border-teal-200",
+                  },
+                  {
+                    name: "Listicle",
+                    definition: "Numbered breakdown for scannability and completeness.",
+                    psychology: "Information chunking + completion bias. Numbered lists exploit two mechanisms simultaneously: chunking makes each item feel digestible, and the number in the headline creates a completion contract — the reader counts to the end. The listicle is the most scannable structure, ideal for high-competition feeds where most content is not read linearly.",
+                    skeleton: ["Headline with the number and the promise ('5 signs your req is under-specified')", "Brief framing — why this list matters, in 1–2 lines", "Items — each specific, actionable, and standalone", "Closing — one thing to do today"],
+                    example: "Educational LinkedIn post: '6 questions every recruiter should ask in the IT intake call. Most ask 2 of these. The ones who ask all 6 fill the role faster.' Each question is a specific, concrete intake topic — not a vague category.",
+                    platforms: "Instagram carousel (primary) · LinkedIn · Educational content across all platforms",
+                    color: "border-emerald-200",
+                  },
+                ].map((s) => (
+                  <div key={s.name} className={`rounded-md border ${s.color} bg-muted/10 p-4 text-sm`}>
+                    <p className="font-semibold">{s.name}</p>
+                    <p className="mt-0.5 text-xs italic text-muted-foreground">{s.definition}</p>
+                    <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Why it works</p>
+                        <p className="mt-1 text-xs leading-relaxed text-muted-foreground">{s.psychology}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Internal moves</p>
+                        <ol className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                          {s.skeleton.map((move, i) => <li key={i}>→ {move}</li>)}
+                        </ol>
+                      </div>
+                    </div>
+                    <div className="mt-3 rounded border border-dashed bg-background/60 p-2 text-xs italic text-muted-foreground">
+                      {s.example}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">
+                      <span className="font-medium">Platform fit: </span>{s.platforms}
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <H3>Decision matrix — Content intent × Platform → Recommended structure:</H3>
+              <StructureMatrix />
+              <ProTip title="The two most common structure mistakes">
+                <strong>Mistake 1:</strong> Using Listicle for Thought Leadership. Listicles scan well but feel
+                thin for authority content — use Rule of Three or The Framework instead. <strong>Mistake 2:</strong>{" "}
+                Using PAS for Educational content. PAS agitates before it teaches, which works for marketing
+                but creates anxiety in an educational context. Use The Framework or Listicle for Educational,
+                and save PAS for Job Marketing and awareness content.
+              </ProTip>
+              <ProTip title="LinkedIn and Instagram structure differently">
+                LinkedIn rewards Curiosity Gap hooks paired with Rule of Three — this combination produces
+                professional authority with a strong discussion CTA. Instagram rewards PAS structure paired
+                with Loss Aversion or Specific Scene hooks — this produces urgency in a visual-first format.
+                Choosing the wrong structure for the platform is the most common reason social AI output needs
+                heavy editing.
+              </ProTip>
+              <div className="mt-8 rounded-md border bg-muted/40 p-4 text-center text-sm">
                 <p className="font-medium">That is the complete Playbook.</p>
                 <p className="mt-1 text-muted-foreground">
-                  Tools (Sections 0–9) + Strategy (Sections 10–14). Head to the{" "}
+                  Tools (0–9) + Strategy (10–14) + AI Brief &amp; Psychology (15–17). Head to the{" "}
                   <ScreenLink href={studioPath("")}>Dashboard</ScreenLink> and start with a brief.
                 </p>
               </div>
