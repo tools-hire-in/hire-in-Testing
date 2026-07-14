@@ -391,18 +391,26 @@ function ImportWizardDialog({
   const { toast } = useToast();
   const [tab, setTab] = useState<"import" | "batches">("import");
   const [csv, setCsv] = useState("");
+  const [excelB64, setExcelB64] = useState<string | null>(null);
   const [fileName, setFileName] = useState("import.csv");
   const [preview, setPreview] = useState<any | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const hasInput = excelB64 !== null || csv.trim().length > 0;
 
   const { data: batches } = useQuery<StudioImportBatch[]>({
     queryKey: ["/api/studio/import/batches", { projectId }],
     enabled: open && tab === "batches" && !!projectId,
   });
 
+  const buildPayload = () =>
+    excelB64 !== null
+      ? { fileData: excelB64, fileName }
+      : { csv };
+
   const previewMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/studio/import/content-calendar/preview", { csv });
+      const res = await apiRequest("POST", "/api/studio/import/content-calendar/preview", buildPayload());
       return res.json();
     },
     onSuccess: (data) => setPreview(data),
@@ -412,7 +420,7 @@ function ImportWizardDialog({
   const commitMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/studio/import/content-calendar/commit", {
-        csv,
+        ...buildPayload(),
         projectId,
         fileName,
       });
@@ -426,6 +434,7 @@ function ImportWizardDialog({
         description: `${data.createdIdeas} idea(s) created from ${data.validRows} row(s).`,
       });
       setCsv("");
+      setExcelB64(null);
       setPreview(null);
       onOpenChange(false);
     },
@@ -447,19 +456,43 @@ function ImportWizardDialog({
 
   const handleFile = (f: File) => {
     setFileName(f.name);
-    const reader = new FileReader();
-    reader.onload = () => {
-      setCsv(String(reader.result || ""));
-      setPreview(null);
-    };
-    reader.readAsText(f);
+    setPreview(null);
+    const ext = f.name.split(".").pop()?.toLowerCase();
+    if (ext === "xlsx" || ext === "xls") {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const buf = ev.target?.result as ArrayBuffer | null;
+        if (!buf) return;
+        const bytes = new Uint8Array(buf);
+        let binary = "";
+        for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
+        setExcelB64(btoa(binary));
+        setCsv("");
+      };
+      reader.readAsArrayBuffer(f);
+    } else {
+      const reader = new FileReader();
+      reader.onload = () => {
+        setCsv(String(reader.result || ""));
+        setExcelB64(null);
+      };
+      reader.readAsText(f);
+    }
   };
+
+  const formatBadge = preview
+    ? preview.sourceFormat === "excel"
+      ? `Excel · ${preview.sheetUsed ?? "Sheet1"} · ${preview.dataRowCount} row(s) found`
+      : `CSV · ${preview.dataRowCount} row(s) found`
+    : excelB64 !== null
+      ? `Excel · ${fileName}`
+      : null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Import content plan (CSV)</DialogTitle>
+          <DialogTitle>Import content plan</DialogTitle>
         </DialogHeader>
         <div className="flex gap-2 border-b pb-2">
           <Button size="sm" variant={tab === "import" ? "default" : "ghost"} onClick={() => setTab("import")} data-testid="tab-import">
@@ -473,38 +506,60 @@ function ImportWizardDialog({
         {tab === "import" ? (
           <div className="space-y-3">
             <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} data-testid="button-pick-csv">
+              <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} data-testid="button-pick-file">
                 <Upload className="mr-1.5 h-4 w-4" />
-                Choose CSV file
+                Choose file
               </Button>
               <input
                 ref={fileRef}
                 type="file"
-                accept=".csv,text/csv"
+                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
                 className="hidden"
                 onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+                data-testid="input-file-upload"
               />
-              <a href="/api/studio/import/template" download>
-                <Button size="sm" variant="ghost" data-testid="button-download-template">
-                  <Download className="mr-1.5 h-4 w-4" />
-                  Download template
-                </Button>
-              </a>
-              {fileName !== "import.csv" && <span className="text-xs text-muted-foreground">{fileName}</span>}
+              <div className="flex items-center gap-1">
+                <a href="/api/studio/import/template" download data-testid="link-template-csv">
+                  <Button size="sm" variant="ghost">
+                    <Download className="mr-1.5 h-4 w-4" />
+                    CSV template
+                  </Button>
+                </a>
+                <a href="/api/studio/import/template?format=xlsx" download data-testid="link-template-xlsx">
+                  <Button size="sm" variant="ghost">
+                    <Download className="mr-1.5 h-4 w-4" />
+                    Excel template
+                  </Button>
+                </a>
+              </div>
+              {formatBadge && (
+                <Badge variant="secondary" className="text-xs" data-testid="badge-detected-format">
+                  {formatBadge}
+                </Badge>
+              )}
             </div>
-            <Textarea
-              rows={6}
-              value={csv}
-              onChange={(e) => { setCsv(e.target.value); setPreview(null); }}
-              placeholder="…or paste CSV content here"
-              className="font-mono text-xs"
-              data-testid="input-import-csv"
-            />
+            {excelB64 !== null ? (
+              <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="panel-excel-loaded">
+                <span className="flex-1 text-muted-foreground truncate">{fileName} loaded — click Preview to validate</span>
+                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => { setExcelB64(null); setPreview(null); if (fileRef.current) fileRef.current.value = ""; }} data-testid="button-clear-excel">
+                  Clear
+                </Button>
+              </div>
+            ) : (
+              <Textarea
+                rows={6}
+                value={csv}
+                onChange={(e) => { setCsv(e.target.value); setPreview(null); }}
+                placeholder="…or paste CSV content here"
+                className="font-mono text-xs"
+                data-testid="input-import-csv"
+              />
+            )}
             <div className="flex gap-2">
               <Button
                 size="sm"
                 variant="outline"
-                disabled={!csv.trim() || previewMutation.isPending}
+                disabled={!hasInput || previewMutation.isPending}
                 onClick={() => previewMutation.mutate()}
                 data-testid="button-preview-import"
               >
@@ -526,6 +581,9 @@ function ImportWizardDialog({
                 <p>
                   <strong>{preview.validCount}</strong> valid row(s) → {preview.ideaCount} idea(s);{" "}
                   <strong className={preview.invalidCount ? "text-red-600" : ""}>{preview.invalidCount}</strong> invalid row(s) will be skipped.
+                  {preview.sourceFormat === "excel" && preview.sheetUsed && (
+                    <span className="ml-2 text-muted-foreground text-xs">({preview.sheetUsed} was used)</span>
+                  )}
                 </p>
                 {preview.rows?.filter((r: any) => r.errors.length).slice(0, 8).map((r: any) => (
                   <p key={r.rowNumber} className="text-xs text-red-600" data-testid={`text-import-error-${r.rowNumber}`}>

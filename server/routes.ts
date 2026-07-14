@@ -19089,13 +19089,12 @@ export async function registerRoutes(
     },
   );
 
-  // ---- Import wizard (CSV) ----
+  // ---- Import wizard (CSV / Excel) ----
 
   const IMPORT_TEMPLATE_HEADERS = [
-    "Date", "Post Type", "Channels", "Pillar", "Topic", "Details",
+    "Date", "Day", "Platform", "Post Type", "Topic", "Details",
     "Reference Link", "Caption/Copy", "Requirement", "Final Creative",
-    "Status", "Story Content", "Story Reference", "Story Creative",
-    "Assignee Email", "Due Date",
+    "Status/Publish", "Story Content", "Story reference", "Final Story Creative", "Story Publish",
   ];
 
   /** Minimal RFC-4180-ish CSV parser (quotes, escaped quotes, CRLF). */
@@ -19130,20 +19129,34 @@ export async function registerRoutes(
   const normalizeHeader = (h: string) => h.toLowerCase().replace(/[^a-z0-9]/g, "");
 
   const HEADER_ALIASES: Record<string, string> = {
-    date: "date", postdate: "date", scheduleddate: "date",
+    // Date — "Day" column is computed/display only, ignored
+    date: "date", postdate: "date", scheduleddate: "date", dateofposting: "date",
+    // Post type
     posttype: "contentType", type: "contentType", contenttype: "contentType",
+    // Channels / Pillar (kept for backward compat with older exports)
     channels: "channels", channel: "channels", platform: "channels", platforms: "channels",
     pillar: "pillar", category: "pillar",
+    // Topic
     topic: "topic", title: "topic", idea: "topic",
-    details: "brief", brief: "brief", description: "brief", notes: "brief",
+    // Details / brief — LinkedIn uses "Comments" for the same field
+    details: "brief", brief: "brief", description: "brief", notes: "brief", comments: "brief",
+    // Reference link
     referencelink: "referenceLink", reference: "referenceLink", ref: "referenceLink",
+    // Caption / copy
     captioncopy: "captionCopy", caption: "captionCopy", copy: "captionCopy",
+    // Requirement
     requirement: "requirement", requirements: "requirement",
+    // Final creative (main post asset)
     finalcreative: "creativeLink", creative: "creativeLink", creativelink: "creativeLink",
-    status: "status",
+    // Status — team file uses "Status/Publish"
+    status: "status", statuspublish: "status",
+    // Story fields — team file uses "Final Story Creative" and "Story Publish"
+    // "Story Publsih" (typo in their actual file) is also handled
     storycontent: "storyContent", story: "storyContent",
     storyreference: "storyReference", storyref: "storyReference",
-    storycreative: "storyCreativeLink", storycreativelink: "storyCreativeLink",
+    finalstorycreative: "storyCreativeLink", storycreative: "storyCreativeLink", storycreativelink: "storyCreativeLink",
+    storypublish: "storyCreativeLink", storypublsih: "storyCreativeLink",
+    // Assignee / due date (kept for backward compat)
     assigneeemail: "assigneeEmail", assignee: "assigneeEmail", owner: "assigneeEmail",
     duedate: "dueDate", deadline: "dueDate",
   };
@@ -19311,13 +19324,38 @@ export async function registerRoutes(
     "/api/studio/import/template",
     requireAuth,
     requirePermission("studio.create_article", "marketing_manager", "content_editor"),
-    (_req: Request, res: Response) => {
+    (req: Request, res: Response) => {
+      // Example row aligned to IMPORT_TEMPLATE_HEADERS:
+      // Date | Day | Platform | Post Type | Topic | Details | Reference Link | Caption/Copy |
+      // Requirement | Final Creative | Status/Publish | Story Content | Story reference |
+      // Final Story Creative | Story Publish
       const example = [
-        "12/08/2026", "Post", "linkedin; instagram", "it_staffing",
-        "5 interview red flags", "Carousel-style tips post", "https://example.com/source",
-        "Hiring? Watch for these red flags…", "1080x1080 creative", "",
-        "Idea", "", "", "", "", "",
+        "12/08/2026", "Tuesday", "Instagram", "Post",
+        "5 interview red flags",
+        "Carousel-style tips post about common hiring pitfalls.",
+        "https://example.com/source",
+        "Hiring? Watch for these red flags…",
+        "1080x1080 graphic",
+        "",
+        "Idea",
+        "",
+        "",
+        "",
+        "",
       ];
+      if (req.query.format === "xlsx") {
+        const wb = XLSX.utils.book_new();
+        const ws = XLSX.utils.aoa_to_sheet([IMPORT_TEMPLATE_HEADERS, example]);
+        // Freeze header row
+        ws["!freeze"] = { xSplit: 0, ySplit: 1, topLeftCell: "A2", activePane: "bottomLeft" };
+        // Set column widths based on header length
+        ws["!cols"] = IMPORT_TEMPLATE_HEADERS.map((h) => ({ wch: Math.max(h.length + 4, 16) }));
+        XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+        const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        res.setHeader("Content-Disposition", 'attachment; filename="content-plan-template.xlsx"');
+        return res.send(buf);
+      }
       const csv = [
         IMPORT_TEMPLATE_HEADERS.join(","),
         example.map((c) => (c.includes(",") ? `"${c}"` : c)).join(","),
@@ -19328,15 +19366,56 @@ export async function registerRoutes(
     },
   );
 
+  /**
+   * Resolve import input from either a raw CSV string or a base64-encoded Excel file.
+   * Returns the CSV text plus file-type metadata for use in preview responses.
+   */
+  const resolveImportInput = (body: any): {
+    csvText: string;
+    sourceFormat: "csv" | "excel";
+    sheetUsed: string | null;
+    dataRowCount: number;
+    error?: string;
+  } => {
+    const fileData = typeof body?.fileData === "string" ? body.fileData : null;
+    const fileName = typeof body?.fileName === "string" ? body.fileName : "";
+    const csvRaw = typeof body?.csv === "string" ? body.csv : "";
+
+    if (fileData) {
+      const ext = fileName.split(".").pop()?.toLowerCase();
+      if (ext !== "xlsx" && ext !== "xls") {
+        return { csvText: "", sourceFormat: "csv", sheetUsed: null, dataRowCount: 0, error: "Unsupported file type. Please upload a .csv, .xlsx, or .xls file." };
+      }
+      try {
+        const buf = Buffer.from(fileData, "base64");
+        const wb = XLSX.read(buf, { type: "buffer" });
+        const sheetName = wb.SheetNames[0];
+        if (!sheetName) return { csvText: "", sourceFormat: "excel", sheetUsed: null, dataRowCount: 0, error: "The workbook contains no sheets." };
+        const ws = wb.Sheets[sheetName];
+        const csvText = XLSX.utils.sheet_to_csv(ws);
+        const dataRowCount = Math.max(0, csvText.split("\n").filter((l) => l.trim()).length - 1);
+        return { csvText, sourceFormat: "excel", sheetUsed: sheetName, dataRowCount };
+      } catch {
+        return { csvText: "", sourceFormat: "excel", sheetUsed: null, dataRowCount: 0, error: "Could not read the Excel file. Please make sure it is a valid .xlsx or .xls workbook." };
+      }
+    }
+
+    if (!csvRaw.trim()) {
+      return { csvText: "", sourceFormat: "csv", sheetUsed: null, dataRowCount: 0, error: "No file or CSV content provided." };
+    }
+    const dataRowCount = Math.max(0, csvRaw.split("\n").filter((l) => l.trim()).length - 1);
+    return { csvText: csvRaw, sourceFormat: "csv", sheetUsed: null, dataRowCount };
+  };
+
   app.post(
     "/api/studio/import/content-calendar/preview",
     requireAuth,
     requirePermission("studio.create_article", "marketing_manager", "content_editor"),
     async (req: Request, res: Response) => {
       try {
-        const csv = typeof req.body?.csv === "string" ? req.body.csv : "";
-        if (!csv.trim()) return res.status(400).json({ error: "csv content is required" });
-        const { headerError, results } = await parseImportRows(csv);
+        const { csvText, sourceFormat, sheetUsed, dataRowCount, error: inputError } = resolveImportInput(req.body);
+        if (inputError) return res.status(400).json({ error: inputError });
+        const { headerError, results } = await parseImportRows(csvText);
         if (headerError) return res.status(400).json({ error: headerError });
         const valid = results.filter((r) => !r.errors.length);
         const invalid = results.filter((r) => r.errors.length);
@@ -19345,6 +19424,9 @@ export async function registerRoutes(
           validCount: valid.length,
           invalidCount: invalid.length,
           ideaCount: valid.reduce((n, r) => n + r.ideas.length, 0),
+          sourceFormat,
+          sheetUsed,
+          dataRowCount,
           rows: results.map((r) => ({
             rowNumber: r.rowNumber,
             errors: r.errors,
@@ -19364,13 +19446,13 @@ export async function registerRoutes(
     requirePermission("studio.create_article", "marketing_manager", "content_editor"),
     async (req: Request, res: Response) => {
       try {
-        const csv = typeof req.body?.csv === "string" ? req.body.csv : "";
+        const { csvText, error: inputError } = resolveImportInput(req.body);
+        if (inputError) return res.status(400).json({ error: inputError });
         const projectId = typeof req.body?.projectId === "string" ? req.body.projectId : "";
         const fileName = typeof req.body?.fileName === "string" ? req.body.fileName : "import.csv";
-        if (!csv.trim()) return res.status(400).json({ error: "csv content is required" });
         const projErr = await assertPipelineProject(projectId, { forWrite: true });
         if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
-        const { headerError, results } = await parseImportRows(csv);
+        const { headerError, results } = await parseImportRows(csvText);
         if (headerError) return res.status(400).json({ error: headerError });
         const valid = results.filter((r) => !r.errors.length);
         const invalid = results.filter((r) => r.errors.length);
