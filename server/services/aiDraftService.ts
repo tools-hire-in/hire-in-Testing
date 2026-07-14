@@ -58,7 +58,7 @@ const openai = new OpenAI({
 
 // Model tier -> concrete model. Templates carry their own modelName; tier is the
 // fallback / override knob used for cost discipline.
-const TIER_MODELS: Record<string, string> = {
+export const TIER_MODELS: Record<string, string> = {
   economy: "gpt-5-mini",
   standard: "gpt-5.4",
   strong: "gpt-5.4",

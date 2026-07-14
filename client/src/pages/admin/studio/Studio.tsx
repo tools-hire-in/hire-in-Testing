@@ -55,6 +55,7 @@ import { StudioTip } from "@/components/studio/StudioTip";
 import { studioPath } from "@/lib/studioBase";
 import { RoutingSettings } from "./RoutingSettings";
 import { NewsletterSettings } from "./NewsletterSettings";
+import { RegenRequestsQueue } from "./ArticleRegenPanel";
 import { LaunchControlPanel } from "./LaunchControlPanel";
 import { usePermissions } from "@/hooks/use-permissions";
 
@@ -684,10 +685,11 @@ export default function Studio() {
   const tabFromUrl = new URLSearchParams(window.location.search).get("tab");
   const [activeTab, setActiveTab] = useState(tabFromUrl ?? "dashboard");
   const [selectedProjectId, setSelectedProjectId] = useState<string>("");
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
   const canManageSettings = can("studio.manage_settings");
   const canSpendDashboard = can("studio.spend_dashboard");
   const canCreate = can("studio.create_article");
+  const isSuperAdmin = role === "super_admin";
 
   // Sync tab when URL search param changes (e.g. clicking a clickable stat card).
   useEffect(() => {
@@ -1063,6 +1065,16 @@ export default function Studio() {
                 </div>
 
                 <NewsletterSettings />
+
+                {isSuperAdmin && (
+                  <div className="border-t pt-4" data-testid="section-regen-requests">
+                    <h2 className="text-lg font-semibold mb-1">Regeneration Requests</h2>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Review and approve requests from content editors to regenerate or rework articles.
+                    </p>
+                    <RegenRequestsQueue />
+                  </div>
+                )}
 
                 <LaunchControlPanel />
               </div>

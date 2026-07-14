@@ -2969,9 +2969,39 @@ export const studioArticleVersions = pgTable("studio_article_versions", {
   bodyMarkdown: text("body_markdown"),
   bodyJson: jsonb("body_json"),
   createdBy: varchar("created_by"),
+  // Set to true on publish of an upgraded version — soft-archives prior published
+  // snapshots so they are hidden from UI but never hard-deleted.
+  superseded: boolean("superseded").notNull().default(false),
+  // Mode used to produce this version: 'full' | 'rework' | null (manual snapshot)
+  regenMode: varchar("regen_mode"),
+  // Feedback note stored when mode = 'rework'
+  feedbackNote: text("feedback_note"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => [
   index("studio_article_versions_article_idx").on(table.articleId),
+]);
+
+// Governed regeneration requests — non-super-admins must request an unlock
+// that super admin approves before they can fire a (costly) AI regeneration.
+export const studioRegenRequests = pgTable("studio_regen_requests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  articleId: varchar("article_id").notNull().references(() => studioArticles.id),
+  requestedByUserId: varchar("requested_by_user_id").notNull().references(() => adminUsers.id),
+  reason: text("reason").notNull(),
+  feedbackNote: text("feedback_note"),
+  // 'full' | 'rework'
+  mode: varchar("mode").notNull().default("full"),
+  // 'pending' | 'approved' | 'rejected'
+  status: varchar("status").notNull().default("pending"),
+  approvedByUserId: varchar("approved_by_user_id").references(() => adminUsers.id),
+  approvalNote: text("approval_note"),
+  // 24h window after approval during which the requester may fire regeneration
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("studio_regen_requests_article_idx").on(table.articleId),
+  index("studio_regen_requests_status_idx").on(table.status),
+  index("studio_regen_requests_user_idx").on(table.requestedByUserId),
 ]);
 
 // Review workflow assignments.
@@ -3192,6 +3222,7 @@ export const insertStudioProjectSchema = createInsertSchema(studioProjects).omit
 export const insertStudioAuthorProfileSchema = createInsertSchema(studioAuthorProfiles).omit({ id: true, createdAt: true });
 export const insertStudioArticleSchema = createInsertSchema(studioArticles).omit({ id: true, createdAt: true, updatedAt: true });
 export const insertStudioArticleVersionSchema = createInsertSchema(studioArticleVersions).omit({ id: true, createdAt: true });
+export const insertStudioRegenRequestSchema = createInsertSchema(studioRegenRequests).omit({ id: true, createdAt: true });
 export const insertStudioReviewAssignmentSchema = createInsertSchema(studioReviewAssignments).omit({ id: true, createdAt: true });
 export const insertStudioArticleReactionSchema = createInsertSchema(studioArticleReactions).omit({ id: true, createdAt: true });
 export const insertStudioNewsletterSubscriberSchema = createInsertSchema(studioNewsletterSubscribers).omit({ id: true, createdAt: true });
@@ -3225,6 +3256,8 @@ export type StudioArticle = typeof studioArticles.$inferSelect;
 export type InsertStudioArticle = z.infer<typeof insertStudioArticleSchema>;
 export type StudioArticleVersion = typeof studioArticleVersions.$inferSelect;
 export type InsertStudioArticleVersion = z.infer<typeof insertStudioArticleVersionSchema>;
+export type StudioRegenRequest = typeof studioRegenRequests.$inferSelect;
+export type InsertStudioRegenRequest = z.infer<typeof insertStudioRegenRequestSchema>;
 export type StudioReviewAssignment = typeof studioReviewAssignments.$inferSelect;
 export type InsertStudioReviewAssignment = z.infer<typeof insertStudioReviewAssignmentSchema>;
 export type StudioArticleReaction = typeof studioArticleReactions.$inferSelect;

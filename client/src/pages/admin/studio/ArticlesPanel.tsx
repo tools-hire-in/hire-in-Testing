@@ -37,6 +37,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Plus, Search, FileEdit, Clock3, FastForward, UserPlus, UserX, DollarSign } from "lucide-react";
 import { STUDIO_CONTENT_TYPES, getStudioContentType } from "@shared/studioContent";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
+import { OutdatedModelBadge } from "./ArticleRegenPanel";
 import type { StudioArticle, StudioAuthorProfile } from "@shared/schema";
 
 interface ArticleListResponse {
@@ -382,13 +383,17 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                     <TableCell className="font-medium" data-testid={`text-article-title-${a.id}`} onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       <span className="flex flex-col gap-0.5">
                         <span>{a.title}</span>
-                        {(a as any).hookPattern && (
-                          <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1 flex-wrap">
+                          {(a as any).hookPattern && (
                             <Badge variant="outline" className="h-4 rounded px-1 py-0 text-[10px] font-normal text-muted-foreground" data-testid={`badge-hook-${a.id}`}>
                               {((a as any).hookPattern as string).replace(/_/g, " ")}
                             </Badge>
-                          </span>
-                        )}
+                          )}
+                          <OutdatedModelBadge
+                            articleId={a.id}
+                            onRegenClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}
+                          />
+                        </span>
                       </span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>

@@ -69,6 +69,13 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
     category: "studio",
     typePrefixes: ["studio_weekly_digest"],
   },
+  {
+    key: "studio_regen",
+    label: "Regeneration requests",
+    description: "Article regeneration request approvals, rejections, and unlock notifications.",
+    category: "studio",
+    typePrefixes: ["studio_regen_"],
+  },
   // ── HR ───────────────────────────────────────────────────────────────────
   {
     key: "hr_leave",

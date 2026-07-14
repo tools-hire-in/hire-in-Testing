@@ -93,6 +93,7 @@ import {
 } from "@shared/studioContent";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import { ForcePublishButton } from "./ForcePublishButton";
+import { ArticleRegenPanel } from "./ArticleRegenPanel";
 import type { StudioArticle, StudioArticleVersion, StudioAuthorProfile } from "@shared/schema";
 import { cardVariantsForLayout, cardBudget, type CardBudget } from "@shared/socialCards";
 
@@ -964,6 +965,24 @@ function ArticleEditorInner({ id }: { id: string }) {
               {articleCostData.totalCostUsd.toFixed(4)}
             </span>
           )}
+          <ArticleRegenPanel
+            articleId={article.id}
+            articleTitle={article.title ?? ""}
+            currentMarkdown={article.bodyMarkdown ?? ""}
+            initialBrief={{
+              hookPattern: (article as any).hookPattern ?? "",
+              desiredEmotion: (article as any).desiredEmotion ?? "",
+              contentStructure: (article as any).contentStructure ?? "",
+              engagementGoal: (article as any).engagementGoal ?? "",
+            }}
+            onCommit={(newMarkdown, newTitle) => {
+              setForm((f) =>
+                f ? { ...f, bodyMarkdown: newMarkdown, ...(newTitle ? { title: newTitle } : {}) } : f
+              );
+              setDirty(true);
+            }}
+            badgeOnly
+          />
         </div>
 
         <div className="flex items-center gap-2">
@@ -1827,12 +1846,22 @@ function ArticleEditorInner({ id }: { id: string }) {
                   {versions.map((v) => (
                     <div
                       key={v.id}
-                      className="flex items-center justify-between rounded-md border px-2.5 py-1.5 text-xs"
+                      className={`flex items-center justify-between rounded-md border px-2.5 py-1.5 text-xs ${(v as any).superseded ? "opacity-50" : ""}`}
                       data-testid={`version-${v.id}`}
                     >
-                      <div className="min-w-0">
-                        <span className="font-medium">v{v.versionNo}</span>
-                        <span className="ml-2 text-muted-foreground">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-medium">v{v.versionNo}</span>
+                          {(v as any).regenMode && (
+                            <span className="rounded bg-blue-100 text-blue-700 px-1 py-0 text-[10px] font-medium capitalize">
+                              {(v as any).regenMode === "rework" ? "rework" : "regen"}
+                            </span>
+                          )}
+                          {(v as any).superseded && (
+                            <span className="rounded bg-gray-100 text-gray-500 px-1 py-0 text-[10px]">superseded</span>
+                          )}
+                        </div>
+                        <span className="text-muted-foreground">
                           {v.createdAt ? new Date(v.createdAt).toLocaleString() : ""}
                         </span>
                       </div>
@@ -1855,6 +1884,33 @@ function ArticleEditorInner({ id }: { id: string }) {
               )}
             </CardContent>
           </Card>
+
+          {/* Regen panel — shown when article has content */}
+          {article && article.bodyMarkdown && (
+            <ArticleRegenPanel
+              articleId={article.id}
+              articleTitle={article.title ?? ""}
+              currentMarkdown={article.bodyMarkdown ?? ""}
+              initialBrief={{
+                hookPattern: (article as any).hookPattern ?? "",
+                desiredEmotion: (article as any).desiredEmotion ?? "",
+                contentStructure: (article as any).contentStructure ?? "",
+                engagementGoal: (article as any).engagementGoal ?? "",
+              }}
+              onCommit={(newMarkdown, newTitle) => {
+                setForm((f) =>
+                  f
+                    ? {
+                        ...f,
+                        bodyMarkdown: newMarkdown,
+                        ...(newTitle ? { title: newTitle } : {}),
+                      }
+                    : f
+                );
+                setDirty(true);
+              }}
+            />
+          )}
         </div>
       </div>
 

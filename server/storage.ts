@@ -160,6 +160,9 @@ import {
   type InsertStudioArticle,
   type StudioArticleVersion,
   type InsertStudioArticleVersion,
+  studioRegenRequests,
+  type StudioRegenRequest,
+  type InsertStudioRegenRequest,
   type StudioAuthorProfile,
   type InsertStudioAuthorProfile,
   type StudioAuditEvent,
@@ -609,6 +612,15 @@ export interface IStorage {
   ): Promise<StudioGeneration | undefined>;
   getStudioGenerations(articleId: string): Promise<StudioGeneration[]>;
   countStudioGenerationsByUserSince(userId: string, since: Date): Promise<number>;
+
+  // ---- Studio Regen Requests ----
+  createStudioRegenRequest(data: Omit<InsertStudioRegenRequest, "status">): Promise<StudioRegenRequest>;
+  getStudioRegenRequest(id: string): Promise<StudioRegenRequest | undefined>;
+  getStudioRegenRequestsByArticle(articleId: string): Promise<StudioRegenRequest[]>;
+  getAllStudioRegenRequests(status?: string): Promise<StudioRegenRequest[]>;
+  updateStudioRegenRequest(id: string, updates: Partial<InsertStudioRegenRequest>): Promise<StudioRegenRequest | undefined>;
+  getActiveApprovedRegenRequest(articleId: string, userId: string): Promise<StudioRegenRequest | undefined>;
+  supersedePriorVersions(articleId: string): Promise<void>;
 
   updateStudioProject(id: string, updates: Partial<InsertStudioProject>): Promise<StudioProject | undefined>;
   getStudioProject(id: string): Promise<StudioProject | undefined>;
@@ -5082,6 +5094,80 @@ export class DatabaseStorage implements IStorage {
         ),
       );
     return count ?? 0;
+  }
+
+  // ---- Studio Regen Requests ----
+  async createStudioRegenRequest(data: Omit<InsertStudioRegenRequest, "status">): Promise<StudioRegenRequest> {
+    const [created] = await db.insert(studioRegenRequests).values({ ...data, status: "pending" }).returning();
+    return created;
+  }
+
+  async getStudioRegenRequest(id: string): Promise<StudioRegenRequest | undefined> {
+    const [row] = await db.select().from(studioRegenRequests).where(eq(studioRegenRequests.id, id));
+    return row;
+  }
+
+  async getStudioRegenRequestsByArticle(articleId: string): Promise<StudioRegenRequest[]> {
+    return db
+      .select()
+      .from(studioRegenRequests)
+      .where(eq(studioRegenRequests.articleId, articleId))
+      .orderBy(desc(studioRegenRequests.createdAt));
+  }
+
+  async getAllStudioRegenRequests(status?: string): Promise<StudioRegenRequest[]> {
+    if (status) {
+      return db
+        .select()
+        .from(studioRegenRequests)
+        .where(eq(studioRegenRequests.status, status))
+        .orderBy(desc(studioRegenRequests.createdAt));
+    }
+    return db
+      .select()
+      .from(studioRegenRequests)
+      .orderBy(desc(studioRegenRequests.createdAt));
+  }
+
+  async updateStudioRegenRequest(id: string, updates: Partial<InsertStudioRegenRequest>): Promise<StudioRegenRequest | undefined> {
+    const [updated] = await db
+      .update(studioRegenRequests)
+      .set(updates)
+      .where(eq(studioRegenRequests.id, id))
+      .returning();
+    return updated;
+  }
+
+  async getActiveApprovedRegenRequest(articleId: string, userId: string): Promise<StudioRegenRequest | undefined> {
+    const now = new Date();
+    const [row] = await db
+      .select()
+      .from(studioRegenRequests)
+      .where(
+        and(
+          eq(studioRegenRequests.articleId, articleId),
+          eq(studioRegenRequests.requestedByUserId, userId),
+          eq(studioRegenRequests.status, "approved"),
+          sql`${studioRegenRequests.expiresAt} > ${now}`,
+        ),
+      )
+      .orderBy(desc(studioRegenRequests.createdAt))
+      .limit(1);
+    return row;
+  }
+
+  async supersedePriorVersions(articleId: string): Promise<void> {
+    // On publish, ALL prior version snapshots become superseded — both regen snapshots
+    // and manually saved snapshots — so the published content is clearly the authoritative version.
+    await db
+      .update(studioArticleVersions)
+      .set({ superseded: true } as any)
+      .where(
+        and(
+          eq(studioArticleVersions.articleId, articleId),
+          eq(studioArticleVersions.superseded, false),
+        ),
+      );
   }
 
   // ---- Review assignments ----

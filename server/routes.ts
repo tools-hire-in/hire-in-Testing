@@ -89,6 +89,7 @@ import {
   generateBdTemplate,
   runBdAgentChat,
   resolveBrief,
+  TIER_MODELS,
 } from "./services/aiDraftService";
 import { runStaffingSafetyGate } from "./services/staffingSafetyGate";
 import { buildRelatedContentBlock } from "./services/commercialIntelligenceService";
@@ -20061,6 +20062,10 @@ export async function registerRoutes(
       void notifyNewContentSubscribers(article.id);
       // Pipeline sync-back: parent idea (if any) → done.
       void syncIdeaDoneForPublishedArticle(article.id);
+      // Supersede all prior version snapshots for this article on publish.
+      void storage.supersedePriorVersions(article.id).catch((err) => {
+        console.error("[performPublish] supersedePriorVersions failed (non-fatal):", err);
+      });
     }
     return { updated, scheduled: isFuture };
   };
@@ -20836,6 +20841,411 @@ export async function registerRoutes(
       } catch (error: any) {
         console.error("Restore studio version error:", error);
         res.status(400).json({ error: error?.message || "Failed to restore version" });
+      }
+    },
+  );
+
+  // ---- Regeneration Requests ----
+
+  // POST /api/admin/studio/articles/:id/regen-request
+  // Non-super-admins submit a request to unlock regeneration for an article.
+  app.post(
+    "/api/admin/studio/articles/:id/regen-request",
+    requireAuth,
+    requirePermission("studio.generate_ai_draft", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const { reason, feedbackNote, mode } = req.body;
+        if (!reason?.trim()) return res.status(400).json({ error: "reason is required" });
+        const validMode = mode === "rework" ? "rework" : "full";
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        const request = await storage.createStudioRegenRequest({
+          articleId: req.params.id,
+          requestedByUserId: req.session.userId!,
+          reason: reason.trim(),
+          feedbackNote: feedbackNote?.trim() ?? null,
+          mode: validMode,
+        });
+        // Notify all super_admins of the pending request
+        try {
+          const allUsers = await storage.getAdminUsers();
+          const superAdmins = allUsers.filter((u) => u.role === "super_admin" && u.isActive);
+          for (const sa of superAdmins) {
+            await storage.createNotification({
+              userId: sa.id,
+              title: `Regeneration request: ${article.title ?? "Untitled"}`,
+              message: `${req.session.role} submitted a ${validMode === "rework" ? "rework" : "regeneration"} request. Reason: ${reason.trim().slice(0, 100)}`,
+              type: "studio_regen_request",
+            });
+          }
+        } catch { /* non-fatal */ }
+        res.status(201).json(request);
+      } catch (error: any) {
+        console.error("Create regen request error:", error);
+        res.status(500).json({ error: error?.message || "Failed to create regen request" });
+      }
+    },
+  );
+
+  // GET /api/admin/studio/regen-requests — super admin queue
+  app.get(
+    "/api/admin/studio/regen-requests",
+    requireAuth,
+    requirePermission("studio.manage_settings"),
+    async (req: Request, res: Response) => {
+      // Hard super_admin role check — manage_settings is not exclusive enough
+      if (req.session.role !== "super_admin") {
+        return res.status(403).json({ error: "Super admin only" });
+      }
+      try {
+        const status = req.query.status as string | undefined;
+        const requests = await storage.getAllStudioRegenRequests(status);
+        // Enrich with article title and requester name
+        const articleIds = [...new Set(requests.map((r) => r.articleId))];
+        const userIds = [...new Set([
+          ...requests.map((r) => r.requestedByUserId),
+          ...requests.filter((r) => r.approvedByUserId).map((r) => r.approvedByUserId!),
+        ])];
+        const [articles, users] = await Promise.all([
+          Promise.all(articleIds.map((id) => storage.getStudioArticle(id))),
+          storage.getAdminUsers(),
+        ]);
+        const articleMap = Object.fromEntries(articles.filter(Boolean).map((a) => [a!.id, a]));
+        const userMap = Object.fromEntries(users.map((u) => [u.id, u]));
+        const enriched = requests.map((r) => ({
+          ...r,
+          articleTitle: articleMap[r.articleId]?.title ?? "Unknown article",
+          requesterName: (() => {
+            const u = userMap[r.requestedByUserId];
+            return u ? `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email : "Unknown";
+          })(),
+          approverName: r.approvedByUserId ? (() => {
+            const u = userMap[r.approvedByUserId];
+            return u ? `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email : "Unknown";
+          })() : null,
+        }));
+        res.json(enriched);
+      } catch (error: any) {
+        console.error("Get regen requests error:", error);
+        res.status(500).json({ error: "Failed to fetch regen requests" });
+      }
+    },
+  );
+
+  // PATCH /api/admin/studio/regen-requests/:id — approve or reject (super_admin only)
+  app.patch(
+    "/api/admin/studio/regen-requests/:id",
+    requireAuth,
+    requirePermission("studio.manage_settings"),
+    async (req: Request, res: Response) => {
+      // Hard super_admin role check — manage_settings is not exclusive enough
+      if (req.session.role !== "super_admin") {
+        return res.status(403).json({ error: "Super admin only" });
+      }
+      try {
+        const { action, approvalNote } = req.body;
+        if (!["approve", "reject"].includes(action)) {
+          return res.status(400).json({ error: "action must be approve or reject" });
+        }
+        const existing = await storage.getStudioRegenRequest(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Request not found" });
+        if (existing.status !== "pending") {
+          return res.status(409).json({ error: "Request is no longer pending" });
+        }
+        const newStatus = action === "approve" ? "approved" : "rejected";
+        const expiresAt = action === "approve" ? new Date(Date.now() + 24 * 60 * 60 * 1000) : null;
+        const updated = await storage.updateStudioRegenRequest(req.params.id, {
+          status: newStatus,
+          approvedByUserId: req.session.userId,
+          approvalNote: approvalNote?.trim() ?? null,
+          ...(expiresAt ? { expiresAt } : {}),
+        });
+        // Notify the requester
+        try {
+          const isApproved = action === "approve";
+          const article = await storage.getStudioArticle(existing.articleId);
+          await storage.createNotification({
+            userId: existing.requestedByUserId,
+            title: `Regeneration request ${isApproved ? "approved" : "rejected"}`,
+            message: isApproved
+              ? `Your ${existing.mode === "rework" ? "rework" : "regeneration"} request for "${article?.title ?? "article"}" was approved. You have 24 hours to generate.${approvalNote ? ` Note: ${approvalNote}` : ""}`
+              : `Your regeneration request for "${article?.title ?? "article"}" was rejected.${approvalNote ? ` Reason: ${approvalNote}` : ""}`,
+            type: isApproved ? "studio_regen_approved" : "studio_regen_rejected",
+          });
+        } catch { /* non-fatal */ }
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Update regen request error:", error);
+        res.status(500).json({ error: error?.message || "Failed to update regen request" });
+      }
+    },
+  );
+
+  // GET /api/admin/studio/articles/:id/regen-requests — requester's own requests
+  app.get(
+    "/api/admin/studio/articles/:id/regen-requests",
+    requireAuth,
+    requirePermission("studio.generate_ai_draft", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const requests = await storage.getStudioRegenRequestsByArticle(req.params.id);
+        // Non-super-admins only see their own requests
+        const userId = req.session.userId!;
+        const role = req.session.role;
+        const filtered = role === "super_admin" ? requests : requests.filter((r) => r.requestedByUserId === userId);
+        res.json(filtered);
+      } catch (error: any) {
+        console.error("Get article regen requests error:", error);
+        res.status(500).json({ error: "Failed to fetch regen requests" });
+      }
+    },
+  );
+
+  // GET /api/admin/studio/articles/:id/model-status
+  // Returns whether the article's last generation used the current active model.
+  app.get(
+    "/api/admin/studio/articles/:id/model-status",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const generations = await storage.getStudioGenerations(req.params.id);
+        const lastGen = generations[0];
+        const CURRENT_MODEL = TIER_MODELS.standard; // active generation model
+        if (!lastGen) {
+          return res.json({ current: true, articleModel: null, activeModel: CURRENT_MODEL });
+        }
+        const articleModel = lastGen.modelName ?? null;
+        const current = !articleModel || articleModel === CURRENT_MODEL;
+        res.json({ current, articleModel, activeModel: CURRENT_MODEL });
+      } catch (error: any) {
+        console.error("Model status error:", error);
+        res.status(500).json({ error: "Failed to check model status" });
+      }
+    },
+  );
+
+  // POST /api/admin/studio/articles/:id/regenerate
+  // Governed regeneration — caller must be super_admin OR have an active approved request.
+  app.post(
+    "/api/admin/studio/articles/:id/regenerate",
+    requireAuth,
+    requirePermission("studio.generate_ai_draft", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI provider is not configured", code: "upstream" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+
+        const userId = req.session.userId!;
+        const role = req.session.role;
+        const isSuperAdmin = role === "super_admin";
+
+        // Gate: super_admin acts freely; others need an active approved request
+        let approvedRequest: Awaited<ReturnType<typeof storage.getActiveApprovedRegenRequest>> = undefined;
+        if (!isSuperAdmin) {
+          approvedRequest = await storage.getActiveApprovedRegenRequest(req.params.id, userId);
+          if (!approvedRequest) {
+            return res.status(403).json({
+              error: "You need an approved regeneration unlock to do this.",
+              code: "needs_approval",
+            });
+          }
+        }
+
+        const mode = (req.body?.mode === "rework" || approvedRequest?.mode === "rework") ? "rework" : "full";
+        const feedbackNote = req.body?.feedbackNote ?? approvedRequest?.feedbackNote ?? null;
+
+        if (!(await checkAiRateLimit(userId, res))) return;
+
+        // For rework mode, collect prior feedback history so the AI can see iteration context
+        let priorFeedback = "";
+        if (mode === "rework") {
+          const priorRequests = await storage.getStudioRegenRequestsByArticle(req.params.id);
+          const completedReworks = priorRequests
+            .filter((r) => r.mode === "rework" && r.status === "approved" && r.feedbackNote)
+            .slice(0, 5); // limit context
+          if (completedReworks.length > 0) {
+            priorFeedback = `\n\nPrior feedback rounds (do NOT repeat resolved issues):\n${completedReworks
+              .map((r, i) => `Round ${i + 1}: ${r.feedbackNote}`)
+              .join("\n")}`;
+          }
+        }
+
+        // Resolve template
+        const preferredKey = mode === "rework" ? "shape_my_draft" : "marketing_intelligence_article";
+        const fallbackKey = mode === "rework" ? "shape_my_draft" : "article_generator";
+        let template = await storage.getActiveStudioPromptTemplate(preferredKey, article.projectId);
+        if (!template && preferredKey !== fallbackKey) {
+          template = await storage.getActiveStudioPromptTemplate(fallbackKey, article.projectId);
+        }
+        if (!template) {
+          return res.status(422).json({ error: "No prompt template found", code: "validation" });
+        }
+
+        // For full mode: auto-resolve missing intelligence fields so generation has full context.
+        // Caller may also supply pre-confirmed brief fields (from the preflight UI review step).
+        let confirmedBrief: {
+          desiredEmotion?: string;
+          hookPattern?: string;
+          contentStructure?: string;
+          engagementGoal?: string;
+        } = {};
+        if (mode === "full") {
+          const preConfirmed = req.body?.confirmedBrief as typeof confirmedBrief | undefined;
+          if (preConfirmed?.hookPattern) {
+            confirmedBrief = preConfirmed; // user reviewed and confirmed
+          } else {
+            // Auto-resolve defaults for any missing fields
+            const resolved = resolveCreativeDefaults(
+              "ARTICLE",
+              (article as any).contentGoal ?? defaultContentGoal(article.contentType) ?? undefined,
+              {
+                desiredEmotion: (article as any).desiredEmotion ?? undefined,
+                hookPattern: (article as any).hookPattern ?? undefined,
+                contentStructure: (article as any).contentStructure ?? undefined,
+                engagementGoal: (article as any).engagementGoal ?? undefined,
+              },
+            );
+            if (resolved.autoResolved) {
+              // Persist the resolved fields back to the article for future use
+              await storage.updateStudioArticle(article.id, {
+                desiredEmotion: resolved.desiredEmotion,
+                hookPattern: resolved.hookPattern,
+                contentStructure: resolved.contentStructure,
+                engagementGoal: resolved.engagementGoal,
+              } as any);
+            }
+            confirmedBrief = resolved;
+          }
+        }
+
+        // Build params
+        const rawParams: AiGenerationParams = {
+          ...(await resolveBrandVoiceParams(article.projectId)),
+          topic: (article as any).title ?? "Untitled",
+          content_type: article.contentType ?? "article",
+          contentGoal: (article as any).contentGoal ?? defaultContentGoal(article.contentType) ?? undefined,
+          industry: (article as any).industry ?? undefined,
+          audience: (article as any).audienceResolved ?? undefined,
+          desiredEmotion: confirmedBrief.desiredEmotion ?? (article as any).desiredEmotion ?? undefined,
+          hookPattern: confirmedBrief.hookPattern ?? (article as any).hookPattern ?? undefined,
+          contentStructure: confirmedBrief.contentStructure ?? (article as any).contentStructure ?? undefined,
+          engagementGoal: confirmedBrief.engagementGoal ?? (article as any).engagementGoal ?? undefined,
+          platform: "ARTICLE",
+          complianceMode: (article as any).complianceMode ?? "normal",
+          ...(mode === "rework" ? {
+            mode: "shape",
+            rawInput: `${article.bodyMarkdown ?? ""}\n\n---\nFeedback to incorporate: ${feedbackNote ?? "Improve overall quality"}${priorFeedback}`,
+          } : {}),
+        };
+
+        const generation = await storage.createStudioGeneration({
+          projectId: article.projectId,
+          articleId: article.id,
+          promptTemplateId: template.id,
+          promptVersion: template.version,
+          kind: "article_draft",
+          contentType: article.contentType ?? "article",
+          modelName: template.modelName,
+          inputJson: { mode, feedbackNote, ...rawParams },
+          generatedByUserId: userId,
+          status: "draft",
+        } as any);
+
+        let result;
+        try {
+          result = await generateArticleDraft(template, rawParams);
+        } catch (err) {
+          await storage.updateStudioGeneration(generation.id, {
+            status: "rejected",
+            approvalNotes: err instanceof Error ? err.message : "generation failed",
+          } as any);
+          return handleAiError(err, res);
+        }
+
+        // Safety gate
+        const safetyResult = runStaffingSafetyGate({
+          generatedText: result.draft.body_markdown ?? "",
+          domain: (article as any).domainResolved ?? "GENERAL_STAFFING",
+        });
+
+        await storage.updateStudioGeneration(generation.id, {
+          outputJson: result.rawOutput,
+          tokenEstimate: result.tokenEstimate,
+          modelName: result.model,
+          status: "reviewed",
+        } as any);
+
+        await storage.createStudioAuditEvent({
+          articleId: article.id,
+          actorUserId: userId,
+          eventType: "regen_generated",
+          metadata: { mode, safetyPass: safetyResult.pass },
+        } as any);
+
+        res.json({
+          draft: result.draft,
+          originalMarkdown: article.bodyMarkdown,
+          safetyPass: safetyResult.pass,
+          safetyFailures: safetyResult.failures ?? [],
+          tokenEstimate: result.tokenEstimate,
+          model: result.model,
+          mode,
+        });
+      } catch (error: any) {
+        console.error("Regenerate article error:", error);
+        handleAiError(error, res);
+      }
+    },
+  );
+
+  // POST /api/admin/studio/articles/:id/regenerate/commit
+  // Commits the regenerated draft as a new version and moves article to in_review.
+  app.post(
+    "/api/admin/studio/articles/:id/regenerate/commit",
+    requireAuth,
+    requirePermission("studio.generate_ai_draft", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        const { bodyMarkdown, title, mode, feedbackNote } = req.body;
+        if (!bodyMarkdown?.trim()) return res.status(400).json({ error: "bodyMarkdown is required" });
+
+        // Snapshot the current version before replacing
+        await storage.createStudioArticleVersion({
+          articleId: article.id,
+          title: article.title,
+          bodyMarkdown: article.bodyMarkdown,
+          bodyJson: article.bodyJson,
+          createdBy: req.session.userId,
+          regenMode: mode ?? "full",
+          feedbackNote: feedbackNote ?? null,
+        } as any);
+
+        const readTimeMinutes = computeReadTime(bodyMarkdown, article.contentType);
+        const updated = await storage.updateStudioArticle(article.id, {
+          bodyMarkdown,
+          ...(title ? { title } : {}),
+          readTimeMinutes,
+          status: "in_review",
+        });
+
+        await storage.createStudioAuditEvent({
+          articleId: article.id,
+          actorUserId: req.session.userId,
+          eventType: "regen_committed",
+          metadata: { mode: mode ?? "full" },
+        } as any);
+
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Regen commit error:", error);
+        res.status(500).json({ error: error?.message || "Failed to commit regeneration" });
       }
     },
   );
