@@ -142,9 +142,8 @@ function FeaturedCarousel() {
               className="text-3xl line-clamp-3">{art.title}</h2>
           </div>
 
-          {/* Bottom row — 3-col: author | dots (centered) | CTA */}
-          <div className="grid items-center" style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16, gridTemplateColumns: "1fr auto 1fr" }}>
-            {/* Author + meta */}
+          {/* Bottom row — author | CTA */}
+          <div className="flex items-center justify-between" style={{ borderTop: "1px solid rgba(255,255,255,0.15)", paddingTop: 16 }}>
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
                 style={{ background: "rgba(255,255,255,0.18)", border: "2px solid rgba(255,255,255,0.3)" }}>
@@ -157,20 +156,18 @@ function FeaturedCarousel() {
               <div style={{ width: 1, height: 26, background: "rgba(255,255,255,0.18)", margin: "0 4px" }} />
               <span style={{ fontFamily: "'Inter',sans-serif", color: "rgba(255,255,255,0.55)", fontSize: 12 }}>{art.date} · {art.readMin} min · {art.impressions.toLocaleString()} views</span>
             </div>
-            {/* Dots — perfectly centered */}
-            <div className="flex items-center gap-2">
-              {CAROUSEL_CARDS.map((_, i) => (
-                <button key={i} onClick={(e) => { e.stopPropagation(); setActive(i); }}
-                  style={{ width: i === active ? 22 : 7, height: 7, borderRadius: 4, background: i === active ? "white" : "rgba(255,255,255,0.35)", border: "none", cursor: "pointer", padding: 0, transition: "all 0.25s" }} />
-              ))}
-            </div>
-            {/* CTA — right-aligned */}
-            <div className="flex justify-end">
-              <button style={{ background: ORANGE, fontFamily: "'Inter',sans-serif" }}
-                className="px-5 py-2 rounded-full text-white text-sm font-bold hover:brightness-110 transition-all">
-                Read article →
-              </button>
-            </div>
+            <button style={{ background: ORANGE, fontFamily: "'Inter',sans-serif" }}
+              className="px-5 py-2 rounded-full text-white text-sm font-bold hover:brightness-110 transition-all">
+              Read article →
+            </button>
+          </div>
+
+          {/* Dots — absolute, pinned to bottom center of card */}
+          <div style={{ position: "absolute", bottom: 10, left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: 7 }}>
+            {CAROUSEL_CARDS.map((_, i) => (
+              <button key={i} onClick={(e) => { e.stopPropagation(); setActive(i); }}
+                style={{ width: i === active ? 22 : 7, height: 7, borderRadius: 4, background: i === active ? "white" : "rgba(255,255,255,0.4)", border: "none", cursor: "pointer", padding: 0, transition: "all 0.25s" }} />
+            ))}
           </div>
 
         </div>
