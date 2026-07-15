@@ -125,6 +125,7 @@ const BulkPayrollRun = lazy(() => import("@/pages/admin/payroll/BulkPayrollRun")
 const ExecutiveDashboard = lazy(() => import("@/pages/admin/payroll/ExecutiveDashboard"));
 const PayrollSetup = lazy(() => import("@/pages/admin/payroll/PayrollSetup"));
 const CompetitiveAudit = lazy(() => import("@/pages/admin/CompetitiveAudit"));
+const Integrations = lazy(() => import("@/pages/admin/Integrations"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -462,6 +463,9 @@ function PublicRouter() {
       {/* Strategy */}
       <Route path="/admin/competitive-audit">{() => <Suspense fallback={<AdminFallback />}><CompetitiveAudit /></Suspense>}</Route>
 
+      {/* Integrations Hub */}
+      <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
+
       <Route component={NotFound} />
     </Switch>
   );
@@ -647,6 +651,9 @@ function EmployeeRouter() {
 
       {/* Strategy */}
       <Route path="/admin/competitive-audit">{() => <Suspense fallback={<AdminFallback />}><CompetitiveAudit /></Suspense>}</Route>
+
+      {/* Integrations Hub */}
+      <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
 
       <Route component={NotFound} />
     </Switch>

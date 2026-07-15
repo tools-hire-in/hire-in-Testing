@@ -4426,6 +4426,15 @@ async function runStartupTasks() {
   // Cron/scheduled jobs start only after schema is ensured so they query
   // tables that are guaranteed to exist.
   startScheduler();
+
+  // Load Zoom credentials from DB so they survive server restarts.
+  try {
+    const { initIntegrations } = await import("./integrationsRoutes");
+    await initIntegrations();
+  } catch (err) {
+    console.warn("[startup] Could not initialize integrations:", err);
+  }
+
   log("Background startup tasks complete");
 }
 

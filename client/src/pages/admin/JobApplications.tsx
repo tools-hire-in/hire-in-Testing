@@ -360,6 +360,13 @@ export default function JobApplications() {
                         {retryCeipalMutation.isPending ? "Syncing..." : "Retry Sync"}
                       </Button>
                     )}
+                    <a
+                      href="/admin/integrations"
+                      className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+                      data-testid="link-integrations-ceipal"
+                    >
+                      Manage Ceipal settings →
+                    </a>
                   </div>
                 </div>
 

@@ -54,6 +54,7 @@ import {
   KeyRound,
   DollarSign,
   ArrowUpRight,
+  Plug,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1699,6 +1700,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: KeyRound,
       roles: ["all"],
     },
+    ...((userRole === "super_admin" || userRole === "admin" || userRole === "operations") ? [{
+      href: "/admin/integrations",
+      label: "Integrations",
+      icon: Plug,
+      roles: ["super_admin", "admin", "operations"],
+    }] : []),
     ...(isSuperAdmin ? [{
       href: "/admin/control-tower",
       label: "Control Tower",
@@ -1744,6 +1751,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/automated-changes") return location.startsWith("/admin/automated-changes");
     if (href === "/admin/executive-cockpit") return location.startsWith("/admin/executive-cockpit");
     if (href === "/admin/control-tower") return location.startsWith("/admin/control-tower");
+    if (href === "/admin/integrations") return location === "/admin/integrations" || location.startsWith("/admin/integrations");
     if (href === "/admin/studio/calendar") return location.startsWith("/admin/studio/calendar");
     if (href === "/admin/studio/analytics") return location.startsWith("/admin/studio/analytics");
     if (href === "/admin/studio/authors") return location.startsWith("/admin/studio/authors");

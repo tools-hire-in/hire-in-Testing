@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Upload, Trash2, Edit, MoreHorizontal, Search, Eye, EyeOff, Download, CheckSquare, RefreshCw } from "lucide-react";
+import { Plus, Upload, Trash2, Edit, MoreHorizontal, Search, Eye, EyeOff, Download, CheckSquare, Plug } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -187,23 +187,6 @@ export function AdminJobsContent({ embedded = false }: { embedded?: boolean }) {
     },
   });
 
-  const ceipalSyncMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/admin/jobs/sync-ceipal");
-      return await res.json();
-    },
-    onSuccess: (data: { message?: string; created?: number; updated?: number; deactivated?: number; total?: number }) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/jobs"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/jobs"] });
-      toast({
-        title: "Ceipal Sync Complete",
-        description: data.message || `${data.created || 0} new, ${data.updated || 0} updated, ${data.deactivated || 0} deactivated`,
-      });
-    },
-    onError: (err: any) => {
-      toast({ title: "Ceipal sync failed", description: err.message, variant: "destructive" });
-    },
-  });
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -347,14 +330,11 @@ export function AdminJobsContent({ embedded = false }: { embedded?: boolean }) {
             </div>
           )}
           <div className="flex gap-3 flex-wrap md:ml-auto">
-            <Button
-              variant="outline"
-              onClick={() => ceipalSyncMutation.mutate()}
-              disabled={ceipalSyncMutation.isPending}
-              data-testid="button-sync-ceipal"
-            >
-              <RefreshCw className={`h-4 w-4 mr-2 ${ceipalSyncMutation.isPending ? "animate-spin" : ""}`} />
-              {ceipalSyncMutation.isPending ? "Syncing..." : "Sync from Ceipal"}
+            <Button variant="outline" size="sm" asChild data-testid="link-integrations-hub">
+              <a href="/admin/integrations" className="flex items-center gap-1.5">
+                <Plug className="h-4 w-4" />
+                Ceipal Sync & Settings
+              </a>
             </Button>
             <Button variant="outline" onClick={() => setUploadOpen(true)} data-testid="button-upload-csv">
               <Upload className="h-4 w-4 mr-2" />

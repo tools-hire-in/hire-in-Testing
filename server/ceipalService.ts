@@ -1,13 +1,35 @@
 import { db } from "./db";
-import { jobs, applications } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { jobs, applications, adminUsers } from "@shared/schema";
+import { eq, and, isNull } from "drizzle-orm";
+import {
+  isZoomConfigured,
+  getZoomUsers,
+  getZoomCallLogs,
+  getZoomSmsLogs,
+  getZoomMeetings,
+} from "./zoomService";
 
 const CEIPAL_AUTH_URL = "https://api.ceipal.com/v1/createAuthtoken";
 const CEIPAL_REFRESH_URL = "https://api.ceipal.com/v1/refreshToken/";
 
 let cachedToken: string | null = null;
 let tokenExpiresAt: number = 0;
+let lastAuthAt: number = 0;
 let isSyncing = false;
+
+/** Return health metadata for the Ceipal token cache — used by the status route. */
+export function getCeipalTokenHealth(): {
+  lastAuthAt: string | null;
+  tokenExpiresAt: string | null;
+  tokenValid: boolean;
+} {
+  const now = Date.now();
+  return {
+    lastAuthAt: lastAuthAt ? new Date(lastAuthAt).toISOString() : null,
+    tokenExpiresAt: tokenExpiresAt ? new Date(tokenExpiresAt).toISOString() : null,
+    tokenValid: !!(cachedToken && now < tokenExpiresAt),
+  };
+}
 
 function parseXmlToken(xml: string, tag: string): string | null {
   const match = xml.match(new RegExp(`<${tag}>([^<]+)</${tag}>`));
@@ -45,6 +67,7 @@ async function authenticate(): Promise<string> {
         if (parsed.access_token) {
           cachedToken = parsed.access_token;
           tokenExpiresAt = now + 55 * 60 * 1000;
+          lastAuthAt = now;
           return cachedToken;
         }
       }
@@ -79,6 +102,7 @@ async function authenticate(): Promise<string> {
 
   cachedToken = parsed.access_token;
   tokenExpiresAt = now + 55 * 60 * 1000;
+  lastAuthAt = now;
 
   return cachedToken;
 }
@@ -377,6 +401,299 @@ export async function searchCeipalCandidates(q: string): Promise<{
   } catch (err: any) {
     console.warn("[ceipal] searchCeipalCandidates error:", err.message);
     return { candidates: [], ceipal_unavailable: true, message: "Ceipal candidate search is temporarily unavailable." };
+  }
+}
+
+export interface RecruiterMetric {
+  recruiterId: string;
+  recruiterName: string;
+  email: string;
+  /** Submissions in the last 7 days (always computed, regardless of period) */
+  submissionsWeek: number;
+  /** Submissions in the last 30 days (always computed, regardless of period) */
+  submissionsMonth: number;
+  /** Submissions within the selected custom date range (equals submissionsMonth for week/month periods) */
+  submissionsInPeriod: number;
+  interviews: number;
+  placements: number;
+  /** Placements from Jan 1 of the current year to today */
+  placementsYTD: number;
+  topChannel: string;
+  channels: Record<string, number>;
+  callsMade: number;
+  callMinutes: number;
+  smsSent: number;
+  meetingsHosted: number;
+  dailyBreakdown: Array<{ date: string; submissions: number; calls: number }>;
+}
+
+function parseSubmissions(data: any): any[] {
+  return Array.isArray(data?.results) ? data.results
+    : Array.isArray(data?.data) ? data.data
+    : Array.isArray(data) ? data : [];
+}
+
+function isPlacement(sub: any): boolean {
+  const stage = (sub.stage || sub.status || "").toLowerCase();
+  return stage.includes("placement") || stage.includes("placed") || stage.includes("start");
+}
+
+export async function getCeipalRecruiterMetrics(
+  period: string = "week",
+  recruiterId?: string,
+  customFrom?: string,
+  customTo?: string
+): Promise<{ metrics: RecruiterMetric[]; zoomAvailable: boolean; ceipalAvailable: boolean }> {
+  const envEmail = process.env.CEIPAL_EMAIL;
+  const envPassword = process.env.CEIPAL_PASSWORD;
+  const envApiKey = process.env.CEIPAL_API_KEY;
+
+  if (!envEmail || !envPassword || !envApiKey) {
+    return { metrics: [], zoomAvailable: false, ceipalAvailable: false };
+  }
+
+  const now = new Date();
+  const todayStr = now.toISOString().split("T")[0];
+
+  // ── Fixed date windows (always computed) ───────────────────────────────────
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const weekFromStr = weekAgo.toISOString().split("T")[0];
+  const monthFromStr = monthAgo.toISOString().split("T")[0];
+  const ytdFromStr = `${now.getFullYear()}-01-01`;
+
+  // ── Selected range (for dailyBreakdown + submissionsInPeriod) ──────────────
+  let periodFrom: string;
+  let periodTo: string;
+  if (period === "custom" && customFrom && customTo) {
+    periodFrom = customFrom;
+    periodTo = customTo;
+  } else if (period === "week") {
+    periodFrom = weekFromStr;
+    periodTo = todayStr;
+  } else {
+    periodFrom = monthFromStr;
+    periodTo = todayStr;
+  }
+
+  try {
+    const token = await authenticate();
+
+    async function fetchSubmissions(from: string, to: string): Promise<any[]> {
+      const url = `https://api.ceipal.com/v1/getSubmissions/?from_date=${from}&to_date=${to}&page=1&page_size=300`;
+      const res = await fetch(url, {
+        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+      });
+      if (!res.ok) {
+        console.warn(`[ceipal] getSubmissions ${from}→${to} returned ${res.status}`);
+        return [];
+      }
+      return parseSubmissions(await res.json());
+    }
+
+    // Fetch rolling 30-day submissions, YTD submissions, and local admin_user
+    // emails in parallel.  Recruiter rows are filtered to known local users.
+    const [monthSubs, ytdSubs, periodSubs, localAdminRows] = await Promise.all([
+      fetchSubmissions(monthFromStr, todayStr),
+      fetchSubmissions(ytdFromStr, todayStr),
+      // Only fetch separately for custom ranges; week/month overlap with monthSubs
+      (period === "custom" && customFrom && customTo)
+        ? fetchSubmissions(periodFrom, periodTo)
+        : Promise.resolve(null),
+      db.select({ id: adminUsers.id, email: adminUsers.email, name: adminUsers.name })
+        .from(adminUsers)
+        .where(isNull(adminUsers.deletedAt)),
+    ]);
+
+    // Build a set of lowercase local emails for fast lookups
+    const localEmailSet = new Set(
+      localAdminRows
+        .map(u => (u.email ?? "").toLowerCase())
+        .filter(Boolean)
+    );
+
+    /** Returns true if rEmail belongs to a known local user (or if the set is
+     *  empty, which means the DB query failed — degrade gracefully). */
+    function isLocalRecruiter(rEmail: string): boolean {
+      if (localEmailSet.size === 0) return true; // graceful degrade
+      return localEmailSet.has(rEmail.toLowerCase());
+    }
+
+    // Build an email → display-name map from local users so recruiter names
+    // shown in the dashboard match the internal HR system, not raw Ceipal strings.
+    const localNameMap = new Map<string, string>(
+      localAdminRows
+        .filter(u => u.email)
+        .map(u => [(u.email!).toLowerCase(), u.name ?? ""])
+    );
+
+    // For week/month periods the period window is a subset of monthSubs
+    const effectivePeriodSubs: any[] = periodSubs ?? monthSubs;
+
+    const recruiterMap = new Map<string, RecruiterMetric>();
+
+    function ensureRecruiter(rId: string, rName: string, rEmail: string): RecruiterMetric {
+      if (!recruiterMap.has(rId)) {
+        recruiterMap.set(rId, {
+          recruiterId: rId,
+          recruiterName: rName,
+          email: rEmail,
+          submissionsWeek: 0,
+          submissionsMonth: 0,
+          submissionsInPeriod: 0,
+          interviews: 0,
+          placements: 0,
+          placementsYTD: 0,
+          topChannel: "",
+          channels: {},
+          callsMade: 0,
+          callMinutes: 0,
+          smsSent: 0,
+          meetingsHosted: 0,
+          dailyBreakdown: [],
+        });
+      }
+      return recruiterMap.get(rId)!;
+    }
+
+    // ── Process 30-day submissions → submissionsWeek + submissionsMonth ────────
+    for (const sub of monthSubs) {
+      const rEmail = (sub.submitted_by_email || sub.recruiter_email || "").trim();
+      const rName = sub.submitted_by || sub.recruiter_name || rEmail;
+      const rId = rEmail || rName;
+      if (!rId) continue;
+      if (!isLocalRecruiter(rEmail)) continue; // filter to known local users
+      if (recruiterId && rId !== recruiterId) continue;
+
+      // Prefer the name from local admin_users so it matches HR records
+      const displayName = (rEmail && localNameMap.get(rEmail.toLowerCase())) || rName;
+      const m = ensureRecruiter(rId, displayName, rEmail);
+      m.submissionsMonth++;
+
+      const subDate = new Date(sub.submission_date || sub.created_date || now);
+      if (subDate >= weekAgo) m.submissionsWeek++;
+
+      const stage = (sub.stage || sub.status || "").toLowerCase();
+      if (stage.includes("interview") || stage.includes("scheduled")) m.interviews++;
+      if (isPlacement(sub)) m.placements++;
+
+      const channel = sub.source || sub.sourcing_channel || sub.job_board || "Other";
+      m.channels[channel] = (m.channels[channel] || 0) + 1;
+    }
+
+    // ── Process selected-period submissions → submissionsInPeriod + dailyBreakdown
+    for (const sub of effectivePeriodSubs) {
+      const rEmail = (sub.submitted_by_email || sub.recruiter_email || "").trim();
+      const rName = sub.submitted_by || sub.recruiter_name || rEmail;
+      const rId = rEmail || rName;
+      if (!rId) continue;
+      if (!isLocalRecruiter(rEmail)) continue;
+      if (recruiterId && rId !== recruiterId) continue;
+
+      const displayName = (rEmail && localNameMap.get(rEmail.toLowerCase())) || rName;
+      const m = ensureRecruiter(rId, displayName, rEmail);
+      m.submissionsInPeriod++;
+
+      const subDate = new Date(sub.submission_date || sub.created_date || now);
+      const dateKey = subDate.toISOString().split("T")[0];
+      const dayEntry = m.dailyBreakdown.find(d => d.date === dateKey);
+      if (dayEntry) dayEntry.submissions++;
+      else m.dailyBreakdown.push({ date: dateKey, submissions: 1, calls: 0 });
+    }
+
+    // ── Process YTD submissions → placementsYTD ───────────────────────────────
+    for (const sub of ytdSubs) {
+      const rEmail = (sub.submitted_by_email || sub.recruiter_email || "").trim();
+      const rName = sub.submitted_by || sub.recruiter_name || rEmail;
+      const rId = rEmail || rName;
+      if (!rId) continue;
+      if (!isLocalRecruiter(rEmail)) continue;
+      if (recruiterId && rId !== recruiterId) continue;
+      if (!isPlacement(sub)) continue;
+
+      const displayName = (rEmail && localNameMap.get(rEmail.toLowerCase())) || rName;
+      const m = ensureRecruiter(rId, displayName, rEmail);
+      m.placementsYTD++;
+    }
+
+    for (const m of recruiterMap.values()) {
+      let maxCount = 0;
+      for (const [ch, cnt] of Object.entries(m.channels)) {
+        if (cnt > maxCount) { maxCount = cnt; m.topChannel = ch; }
+      }
+      m.dailyBreakdown.sort((a, b) => a.date.localeCompare(b.date));
+    }
+
+    // ── Zoom enrichment ────────────────────────────────────────────────────────
+    // Zoom activity always uses fixed week (7d) + rolling-30 ranges so the
+    // metrics are comparable regardless of the selected Ceipal period.
+    const zoomOn = isZoomConfigured();
+
+    if (zoomOn && recruiterMap.size > 0) {
+      try {
+        const zoomUsers = await getZoomUsers();
+
+        if (zoomUsers.length > 0) {
+          const emailIndex = new Map<string, RecruiterMetric>();
+          for (const m of recruiterMap.values()) {
+            if (m.email) emailIndex.set(m.email.toLowerCase(), m);
+          }
+
+          const matchedUsers = zoomUsers.filter(
+            zu => zu.email && emailIndex.has(zu.email.toLowerCase())
+          );
+
+          // Fetch rolling-30 Zoom call data (normalizes to same cadence as submissionsMonth)
+          const zoomRolling30 = { from: monthFromStr, to: todayStr };
+          const zoomRollingWeek = { from: weekFromStr, to: todayStr };
+
+          await Promise.allSettled(
+            matchedUsers.map(async (zu) => {
+              const m = emailIndex.get(zu.email.toLowerCase())!;
+
+              // Call logs — rolling 30 days
+              const calls = await getZoomCallLogs(zu.id, zoomRolling30);
+              m.callsMade = calls.length;
+              m.callMinutes = Math.round(
+                calls.reduce((sum: number, c: any) => sum + (Number(c.duration) || 0), 0) / 60
+              );
+              // Merge call dates into the daily breakdown
+              for (const c of calls) {
+                const d = ((c.date_time || c.start_time || "") as string).split("T")[0];
+                if (!d) continue;
+                const day = m.dailyBreakdown.find(x => x.date === d);
+                if (day) day.calls++;
+                else m.dailyBreakdown.push({ date: d, submissions: 0, calls: 1 });
+              }
+
+              // SMS sessions — rolling week (short-range activity metric)
+              const sms = await getZoomSmsLogs(zu.id, zoomRollingWeek);
+              m.smsSent = sms.length;
+
+              // Meetings hosted — rolling week
+              const meetings = await getZoomMeetings(zu.id, zoomRollingWeek);
+              m.meetingsHosted = meetings.length;
+            })
+          );
+
+          for (const m of recruiterMap.values()) {
+            m.dailyBreakdown.sort((a, b) => a.date.localeCompare(b.date));
+          }
+        }
+      } catch (zoomErr: any) {
+        console.warn("[ceipal] Zoom enrichment failed (non-fatal):", zoomErr.message);
+      }
+    }
+    // ── end Zoom enrichment ────────────────────────────────────────────────────
+
+    return {
+      metrics: Array.from(recruiterMap.values()),
+      zoomAvailable: zoomOn,
+      ceipalAvailable: true,
+    };
+  } catch (err: any) {
+    console.warn("[ceipal] getCeipalRecruiterMetrics error:", err.message);
+    return { metrics: [], zoomAvailable: false, ceipalAvailable: false };
   }
 }
 

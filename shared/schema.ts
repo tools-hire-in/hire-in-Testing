@@ -4766,3 +4766,23 @@ export const insertStudioPostPerformanceSchema = createInsertSchema(studioPostPe
 });
 export type StudioPostPerformance = typeof studioPostPerformance.$inferSelect;
 export type InsertStudioPostPerformance = z.infer<typeof insertStudioPostPerformanceSchema>;
+
+// ── Integration Settings ───────────────────────────────────────────────────────
+// Stores connection health metadata for external integrations (Ceipal, Zoom).
+// Secrets are never stored here — only non-secret metadata like last sync counts,
+// scopes, and token expiry. Credentials live in env vars or system_settings.
+// Applied via scripts/apply-integration-settings.ts (not drizzle-kit push).
+export const integrationStatusEnum = pgEnum("integration_status", [
+  "connected", "error", "unconfigured",
+]);
+
+export const integrationSettings = pgTable("integration_settings", {
+  key: varchar("key").primaryKey(),
+  status: integrationStatusEnum("status").notNull().default("unconfigured"),
+  lastCheckedAt: timestamp("last_checked_at"),
+  lastError: text("last_error"),
+  meta: jsonb("meta"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type IntegrationSetting = typeof integrationSettings.$inferSelect;

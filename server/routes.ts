@@ -140,6 +140,7 @@ import { registerHelpDeskRoutes } from "./helpDeskRoutes";
 import { registerSalaryAdvanceRoutes, applyAdvanceRecoveriesForRun, applyCreditsForRun } from "./salaryAdvanceRoutes";
 import { registerAttendanceExceptionRoutes, createExceptionForShortDay, checkEscalationTiers } from "./attendanceExceptionRoutes";
 import { registerTravelRoutes } from "./travelRoutes";
+import { registerIntegrationsRoutes } from "./integrationsRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 import { registerTrainingCatalogRoutes } from "./trainingCatalogRoutes";
 import { registerGovernanceRoutes } from "./governanceRoutes";
@@ -1581,18 +1582,11 @@ export async function registerRoutes(
     }
   });
 
-  // Sync jobs from Ceipal ATS
-  app.post("/api/admin/jobs/sync-ceipal", requirePermission("admin.jobs.syncCeipal", "operations", "recruiter", "manager"), async (req, res) => {
-    try {
-      const result = await syncCeipalJobs();
-      res.json({
-        message: `Ceipal sync complete: ${result.created} new, ${result.updated} updated, ${result.deactivated} deactivated out of ${result.total} total`,
-        ...result,
-      });
-    } catch (error: any) {
-      console.error("Ceipal sync error:", error);
-      res.status(500).json({ error: error.message || "Failed to sync jobs from Ceipal" });
-    }
+  // Sync jobs from Ceipal ATS — redirects to the integrations hub endpoint so
+  // unified role checks (super_admin/admin/operations only), audit logging, and
+  // status tracking always apply.  307 preserves the POST method.
+  app.post("/api/admin/jobs/sync-ceipal", (req, res) => {
+    res.redirect(307, "/api/integrations/ceipal/sync");
   });
 
   // CSV/XLSX Upload for Jobs
@@ -25286,6 +25280,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   registerSalaryAdvanceRoutes(app);
   registerAttendanceExceptionRoutes(app);
   registerTravelRoutes(app);
+  registerIntegrationsRoutes(app);
   registerTrainingCatalogRoutes(app);
   registerGovernanceRoutes(app);
   registerSalaryStructureRoutes(app, requirePermission);
