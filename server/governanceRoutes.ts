@@ -41,6 +41,11 @@ import {
 } from "./governanceService";
 import { emitGovernanceEvent, getControlEventHistory } from "./governanceEvents";
 import { resolveRoles } from "@shared/accessControl";
+import { buildGovernancePulse, type GovernancePulse } from "./governancePulse";
+
+// ── 5-minute in-memory pulse cache ───────────────────────────────────────────
+const PULSE_CACHE_TTL_MS = 5 * 60 * 1000;
+let pulseCache: { data: GovernancePulse; expiresAt: number } | null = null;
 
 // ── camelCase normalizer ──────────────────────────────────────────────────────
 function snakeToCamel(s: string): string {
@@ -259,6 +264,51 @@ export function registerGovernanceRoutes(app: Express): void {
     } catch (err) {
       console.error("[governance] GET /admin failed:", err);
       res.status(500).json({ error: "Failed to fetch governance controls" });
+    }
+  });
+
+  // ── CEO exception report data (anonymized) ────────────────────────────────
+  app.get("/api/governance/ceo-report", async (req: Request, res: Response) => {
+    const session = checkPermission(req, res, "governance.ceo");
+    if (!session) return;
+    try {
+      const reportData = await buildCeoReportData();
+      res.json(reportData);
+    } catch (err) {
+      console.error("[governance] GET /ceo-report failed:", err);
+      res.status(500).json({ error: "Failed to build CEO report" });
+    }
+  });
+
+  // ── Governance Pulse — org-wide health snapshot ───────────────────────────
+  // Aggregates SOP, training, plans, probation milestones, goals health split,
+  // and check-in compliance into a single structured response.
+  // Access: super_admin, admin, hr only. 403 for all other roles.
+  // Cached 5 minutes in-memory; bypass with ?refresh=true.
+  app.get("/api/governance/pulse", async (req: Request, res: Response) => {
+    if (!req.session?.userId) {
+      return res.status(401).json({ error: "Unauthorized" });
+    }
+    const role = req.session.role as string;
+    const ALLOWED_ROLES = ["super_admin", "admin", "hr"];
+    if (!ALLOWED_ROLES.includes(role)) {
+      return res.status(403).json({ error: "Insufficient permissions" });
+    }
+
+    const forceRefresh = req.query.refresh === "true";
+    const now = Date.now();
+
+    if (!forceRefresh && pulseCache && pulseCache.expiresAt > now) {
+      return res.json(pulseCache.data);
+    }
+
+    try {
+      const pulse = await buildGovernancePulse();
+      pulseCache = { data: pulse, expiresAt: now + PULSE_CACHE_TTL_MS };
+      return res.json(pulse);
+    } catch (err) {
+      console.error("[governance] GET /pulse failed:", err);
+      return res.status(500).json({ error: "Failed to build governance pulse" });
     }
   });
 
@@ -508,16 +558,4 @@ export function registerGovernanceRoutes(app: Express): void {
     }
   });
 
-  // ── CEO exception report data (anonymized) ────────────────────────────────
-  app.get("/api/governance/ceo-report", async (req: Request, res: Response) => {
-    const session = checkPermission(req, res, "governance.ceo");
-    if (!session) return;
-    try {
-      const reportData = await buildCeoReportData();
-      res.json(reportData);
-    } catch (err) {
-      console.error("[governance] GET /ceo-report failed:", err);
-      res.status(500).json({ error: "Failed to build CEO report" });
-    }
-  });
 }
