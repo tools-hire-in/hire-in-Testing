@@ -161,7 +161,23 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
       "checkin_overdue_digest",
       "compliance_digest",
       "sop_manager_escalation",
+      "sop_overdue_contextual",
+      "compliance_manager_alert",
     ],
+  },
+  {
+    key: "performance_checkin_reminders",
+    label: "Check-in reminders",
+    description: "Contextual check-in reminders with goal progress summaries.",
+    category: "performance",
+    typePrefixes: ["checkin_reminder_contextual"],
+  },
+  {
+    key: "performance_coaching_prompts",
+    label: "Coaching prompts",
+    description: "Contextual PIP/plan coaching entry prompts for managers.",
+    category: "performance",
+    typePrefixes: ["pip_coaching_prompt_contextual"],
   },
   // ── System ────────────────────────────────────────────────────────────────
   {

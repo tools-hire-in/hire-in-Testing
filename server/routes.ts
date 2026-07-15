@@ -11,6 +11,7 @@ import { getPortalBaseUrl } from "./portalUrl";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
 import { INDUSTRY_SPECIALTY_MAP } from "@shared/industryMap";
 import { db, pool } from "./db";
+import { workingDaysUntilLock, maybeSendManagerCountdownAlert } from "./complianceCountdown";
 import { eq, and, inArray, sql, desc, isNull, isNotNull, or, asc } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
 import { setupSession, requireAuth as requireAuthImported, require2FA } from "./auth";
@@ -2966,6 +2967,27 @@ export async function registerRoutes(
 
       const correctionsThisMonthForUser = monthRecords.filter(r => r.isCorrect).length;
 
+      // Compliance countdown — only for non-exempt roles (hr/admin/super_admin skip the lock)
+      const isLockExempt = ["hr", "admin", "super_admin"].includes(currentUser?.role || "");
+      let complianceCountdown = { active: false, workingDaysLeft: 999, items: [] as any[] };
+      if (!isLockExempt) {
+        try {
+          const countdown = await workingDaysUntilLock(userId);
+          complianceCountdown = countdown;
+          // Fire manager 3-day alert (deduped internally)
+          if (countdown.active && countdown.workingDaysLeft === 3 && currentUser?.managerId) {
+            maybeSendManagerCountdownAlert(
+              userId,
+              `${currentUser.firstName} ${currentUser.lastName}`,
+              currentUser.managerId,
+              countdown.workingDaysLeft,
+            ).catch(console.error);
+          }
+        } catch (cdErr) {
+          console.error("[dashboard-stats] complianceCountdown failed:", cdErr);
+        }
+      }
+
       res.json({
         todayStatus,
         punchInTime: todayRecord?.punchIn || null,
@@ -2976,6 +2998,7 @@ export async function registerRoutes(
         leaveBalances: activeBalances,
         productiveHoursToday,
         correctionsThisMonth: correctionsThisMonthForUser,
+        complianceCountdown,
       });
     } catch (error) {
       console.error("Dashboard stats error:", error);

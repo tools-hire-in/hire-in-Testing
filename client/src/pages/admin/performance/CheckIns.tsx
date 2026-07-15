@@ -16,6 +16,10 @@ import {
   AlertCircle,
   Target,
   TrendingUp,
+  TrendingDown,
+  Minus,
+  BookOpen,
+  MessageCircle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -356,6 +360,133 @@ function CreateCheckInDialog({
   );
 }
 
+// ─── Manager Context Panel ─────────────────────────────────────────────────
+// Async-loaded context card shown to managers at the top of the check-in dialog.
+// Displays goal progress with trend arrows + last 3 coaching log snippets.
+interface ContextGoal {
+  id: string;
+  title: string;
+  progress: number;
+  targetDate: string | null;
+  isOverdue: boolean;
+  trend: "up" | "down" | "stable";
+  isManual: boolean;
+}
+interface CoachingSnippet {
+  id: string;
+  snippet: string;
+  entryDate: string;
+  authorName: string;
+}
+interface CheckInContext {
+  planId: string | null;
+  planType: string | null;
+  goals: ContextGoal[];
+  coachingSnippets: CoachingSnippet[];
+  daysSinceLastNote: number | null;
+}
+
+function TrendIcon({ trend }: { trend: "up" | "down" | "stable" }) {
+  if (trend === "up") return <TrendingUp className="h-3.5 w-3.5 text-green-600 shrink-0" />;
+  if (trend === "down") return <TrendingDown className="h-3.5 w-3.5 text-red-500 shrink-0" />;
+  return <Minus className="h-3.5 w-3.5 text-muted-foreground shrink-0" />;
+}
+
+function ManagerContextPanel({ checkInId }: { checkInId: string }) {
+  const { data: ctx, isLoading } = useQuery<CheckInContext>({
+    queryKey: ["/api/hr/check-ins", checkInId, "context"],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/check-ins/${checkInId}/context`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load context");
+      return res.json();
+    },
+    staleTime: 60000,
+    retry: false,
+  });
+
+  if (isLoading) {
+    return (
+      <div className="rounded-md border bg-muted/30 p-3 space-y-2" data-testid="section-manager-context-loading">
+        <Skeleton className="h-3 w-24" />
+        <Skeleton className="h-3 w-full" />
+        <Skeleton className="h-3 w-3/4" />
+      </div>
+    );
+  }
+
+  if (!ctx || (!ctx.goals.length && !ctx.coachingSnippets.length)) return null;
+
+  const overdueCount = ctx.goals.filter(g => g.isOverdue).length;
+
+  return (
+    <div className="rounded-md border bg-primary/5 border-primary/20 p-3 space-y-3" data-testid="section-manager-context-panel">
+      {/* Header */}
+      <div className="flex items-center gap-2">
+        <BookOpen className="h-3.5 w-3.5 text-primary" />
+        <span className="text-xs font-semibold text-primary">Session Context</span>
+        {overdueCount > 0 && (
+          <Badge variant="destructive" className="h-4 text-[10px] px-1.5 py-0">{overdueCount} overdue</Badge>
+        )}
+        {ctx.planType && (
+          <Badge variant="outline" className="h-4 text-[10px] px-1.5 py-0 capitalize">
+            {ctx.planType.replace(/_/g, " ")}
+          </Badge>
+        )}
+      </div>
+
+      {/* Goal progress rows */}
+      {ctx.goals.length > 0 && (
+        <div className="space-y-1.5">
+          <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">Goal Progress</p>
+          {ctx.goals.map(g => (
+            <div key={g.id} className="flex items-center gap-2 text-xs" data-testid={`context-goal-${g.id}`}>
+              <TrendIcon trend={g.trend} />
+              <span className={`flex-1 truncate ${g.isOverdue ? "text-red-700 dark:text-red-400" : "text-foreground"}`}>
+                {g.title}
+              </span>
+              <span className={`font-mono font-semibold shrink-0 ${
+                g.isOverdue ? "text-red-600" :
+                g.progress >= 80 ? "text-green-700 dark:text-green-400" :
+                "text-amber-700 dark:text-amber-400"
+              }`}>
+                {g.progress}%
+              </span>
+              {g.isManual && (
+                <span className="text-[10px] text-muted-foreground shrink-0">(manual)</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Coaching log snippets */}
+      {ctx.coachingSnippets.length > 0 && (
+        <div className="space-y-1.5 pt-1 border-t border-primary/10">
+          <div className="flex items-center gap-1.5">
+            <MessageCircle className="h-3 w-3 text-muted-foreground" />
+            <p className="text-[11px] font-medium text-muted-foreground uppercase tracking-wide">
+              Recent Coaching Notes
+              {ctx.daysSinceLastNote !== null && (
+                <span className="ml-1 normal-case font-normal">
+                  (last {ctx.daysSinceLastNote === 0 ? "today" : ctx.daysSinceLastNote === 1 ? "yesterday" : `${ctx.daysSinceLastNote}d ago`})
+                </span>
+              )}
+            </p>
+          </div>
+          {ctx.coachingSnippets.map(s => (
+            <div key={s.id} className="text-xs text-muted-foreground" data-testid={`context-coaching-${s.id}`}>
+              <span className="italic">"{s.snippet}{s.snippet.length >= 100 ? "…" : ""}"</span>
+              <span className="ml-1 text-[10px] not-italic">— {s.authorName}, {new Date(s.entryDate + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {ctx.goals.length === 0 && ctx.coachingSnippets.length === 0 && null}
+    </div>
+  );
+}
+
 function CheckInDetailDialog({
   open,
   onOpenChange,
@@ -520,6 +651,11 @@ function CheckInDetailDialog({
             {formatDate(checkIn.scheduledDate)} — {checkIn.employeeName} &amp; {checkIn.managerName}
           </DialogDescription>
         </DialogHeader>
+
+        {/* Manager context panel — loads async, shown at top of dialog for managers */}
+        {isManager && open && checkIn.id && (
+          <ManagerContextPanel checkInId={checkIn.id} />
+        )}
 
         <div className="space-y-4">
           <div className="flex items-center gap-3 flex-wrap">

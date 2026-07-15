@@ -15,6 +15,7 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { notifyUser } from "./notifications";
 import { emitGovernanceEvent } from "./governanceEvents";
+import { buildSopNudgePayload } from "./contextualNotifications";
 import type { GovernanceFinding, GovernanceRunResult } from "@shared/governanceTypes";
 
 export type GovernanceControlType = "goal" | "check_in" | "training" | "sop" | "probation" | "pip";
@@ -1484,11 +1485,50 @@ async function dispatchEscalationNotifications(
           recipients.push({ email: employeeEmail, channel: "email", notificationType: "goal_overdue_nudge", success: emailOk });
         }
       } else if (entityType === "sop") {
-        if (await notifyEmployee(
-          "sop_overdue_nudge",
-          `SOP acknowledgement overdue`,
-          `You have an SOP "${titleLabel}" that is ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} past its acknowledgement deadline. Please review and acknowledge it.`
-        )) successCount++;
+        // Contextual SOP nudge: shows SOP code, title, days remaining, estimated read time
+        try {
+          const graceDays = 15; // default; governance_sop_grace_days may override
+          const sopDetail = (await db.execute(sql`
+            SELECT sd.code, sd.title, ws.operational_at,
+                   COALESCE(sep.deadline_at::date, ws.operational_at::date + (${graceDays} || ' days')::interval)::date AS lock_date
+            FROM sop_employee_progress sep
+            JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+            JOIN sop_documents sd ON sd.sop_master_id = sep.sop_master_id AND sd.is_current = true
+            WHERE sep.id = ${finding.entityId}
+            LIMIT 1
+          `)).rows[0] as any;
+
+          if (sopDetail) {
+            const todayStr = new Date().toISOString().slice(0, 10);
+            const lockDateStr = String(sopDetail.lock_date).slice(0, 10);
+            const calendarDaysRemaining = Math.max(0, Math.ceil(
+              (new Date(lockDateStr + "T12:00:00Z").getTime() - new Date(todayStr + "T12:00:00Z").getTime()) / 86400000
+            ));
+            const nudgePayload = await buildSopNudgePayload({
+              progressId: finding.entityId,
+              sopMasterId: String(sopDetail.code),
+              sopCode: String(sopDetail.code),
+              title: String(sopDetail.title),
+              calendarDaysRemaining,
+              workingDaysRemaining: calendarDaysRemaining, // approx; precise value from countdown endpoint
+            });
+            if (await notifyEmployee("sop_overdue_contextual", nudgePayload.inAppTitle, nudgePayload.inAppMessage)) successCount++;
+          } else {
+            // Fallback to generic if lookup fails
+            if (await notifyEmployee(
+              "sop_overdue_nudge",
+              `SOP acknowledgement overdue`,
+              `You have an SOP that is ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} past its acknowledgement deadline. Please review and acknowledge it.`
+            )) successCount++;
+          }
+        } catch (sopErr) {
+          console.error("[applyEscalation] SOP contextual nudge build failed:", sopErr);
+          if (await notifyEmployee(
+            "sop_overdue_nudge",
+            `SOP acknowledgement overdue`,
+            `You have an SOP that is ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} past its acknowledgement deadline.`
+          )) successCount++;
+        }
       }
       break;
     }

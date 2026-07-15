@@ -3215,4 +3215,131 @@ export function registerPerformanceRoutes(app: Express) {
       res.status(500).json({ error: "Failed to add coaching note" });
     }
   });
+
+  // ─── GET /api/hr/check-ins/:id/context ────────────────────────────────────
+  // Manager context panel: goal progress + trend arrows + last 3 coaching snippets.
+  // Loaded async when a check-in detail dialog opens; does not block the form.
+  app.get("/api/hr/check-ins/:id/context", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const role = req.session.role!;
+      const checkInId = req.params.id;
+
+      const ciResult = await db.execute(sql`
+        SELECT ci.*, ep.plan_type, ep.start_date, ep.end_date
+        FROM check_ins ci
+        LEFT JOIN employee_plans ep ON ci.plan_id = ep.id
+        WHERE ci.id = ${checkInId}
+        LIMIT 1
+      `);
+      if (ciResult.rows.length === 0) return res.status(404).json({ error: "Check-in not found" });
+      const ci = ciResult.rows[0] as any;
+
+      // Auth: managers/admin/HR only — this panel contains manager coaching notes
+      // intended as prep material before the session; employees must not see them.
+      const MANAGER_CONTEXT_ROLES = ["super_admin", "admin", "hr", "manager"];
+      if (!MANAGER_CONTEXT_ROLES.includes(role)) {
+        return res.status(403).json({ error: "Not authorized — manager or HR access required" });
+      }
+      // Managers may only view check-ins from their own team
+      if (role === "manager") {
+        const teamIds = await getTeamMemberIds(userId);
+        if (!teamIds.includes(ci.employee_id) && ci.manager_id !== userId) {
+          return res.status(403).json({ error: "Not authorized — not in your team" });
+        }
+      }
+
+      const todayStr = new Date().toISOString().slice(0, 10);
+
+      // Goals for this plan (if plan-linked)
+      let goalRows: any[] = [];
+      if (ci.plan_id) {
+        const gr = await db.execute(sql`
+          SELECT id, title, progress, start_date, target_date, status, tracking_type,
+                 last_progress_updated_at
+          FROM performance_goals
+          WHERE plan_id = ${ci.plan_id}
+            AND status NOT IN ('cancelled')
+          ORDER BY sort_order ASC NULLS LAST, created_at ASC
+          LIMIT 10
+        `);
+        goalRows = gr.rows as any[];
+      }
+
+      const todayMs = new Date(todayStr + "T12:00:00Z").getTime();
+
+      const goals = goalRows.map((g: any) => {
+        const progress = parseFloat(String(g.progress ?? "0"));
+        const isOverdue = !!g.target_date && String(g.target_date).slice(0, 10) < todayStr && progress < 100;
+
+        // Trend: compare actual progress vs time-proportional expected progress.
+        // "up" = ahead of schedule (> expected + 10pp), "down" = behind (< expected - 10pp).
+        // Falls back to "stable" when dates are absent or the goal is already overdue.
+        let trend: "up" | "down" | "stable" = "stable";
+        if (!isOverdue && g.start_date && g.target_date) {
+          const startMs = new Date(String(g.start_date).slice(0, 10) + "T12:00:00Z").getTime();
+          const endMs   = new Date(String(g.target_date).slice(0, 10) + "T12:00:00Z").getTime();
+          const totalDays = endMs - startMs;
+          if (totalDays > 0 && todayMs > startMs) {
+            const elapsed = Math.min(todayMs - startMs, totalDays);
+            const expectedProgress = (elapsed / totalDays) * 100;
+            if (progress > expectedProgress + 10) trend = "up";
+            else if (progress < expectedProgress - 10) trend = "down";
+          }
+        }
+
+        return {
+          id: String(g.id),
+          title: String(g.title),
+          progress,
+          targetDate: g.target_date ? String(g.target_date).slice(0, 10) : null,
+          status: String(g.status),
+          isOverdue,
+          trend,
+          isManual: !g.tracking_type || g.tracking_type === "manual",
+        };
+      });
+
+      // Last 3 coaching log entries for this plan
+      let coachingSnippets: any[] = [];
+      if (ci.plan_id) {
+        const cr = await db.execute(sql`
+          SELECT cle.id, cle.note, cle.entry_date, cle.created_at,
+                 au.first_name || ' ' || au.last_name AS author_name
+          FROM coaching_log_entries cle
+          JOIN admin_users au ON cle.author_id = au.id
+          WHERE cle.plan_id = ${ci.plan_id}
+          ORDER BY cle.created_at DESC
+          LIMIT 3
+        `);
+        coachingSnippets = (cr.rows as any[]).map(r => ({
+          id: String(r.id),
+          snippet: String(r.note).slice(0, 100),
+          entryDate: String(r.entry_date),
+          authorName: String(r.author_name),
+        }));
+      }
+
+      // Days since last coaching note
+      let daysSinceLastNote: number | null = null;
+      if (coachingSnippets.length > 0) {
+        const lastEntry = coachingSnippets[0];
+        const lastDate = new Date(lastEntry.entryDate + "T12:00:00Z");
+        daysSinceLastNote = Math.floor((Date.now() - lastDate.getTime()) / 86400000);
+      }
+
+      res.json({
+        checkInId,
+        planId: ci.plan_id || null,
+        planType: ci.plan_type || null,
+        employeeId: String(ci.employee_id),
+        goals,
+        coachingSnippets,
+        daysSinceLastNote,
+      });
+    } catch (error) {
+      console.error("Error fetching check-in context:", error);
+      res.status(500).json({ error: "Failed to fetch check-in context" });
+    }
+  });
 }

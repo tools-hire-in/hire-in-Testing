@@ -18,6 +18,7 @@ import {
   ClipboardCheck,
   ArrowRight,
   KeyRound,
+  ShieldAlert,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,6 +46,14 @@ function formatTime(ts: string | null): string {
   return new Date(ts).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit" });
 }
 
+interface ComplianceCountdownItem {
+  sopMasterId: string;
+  sopCode: string;
+  title: string;
+  estimatedMinutes: number;
+  daysUntilLockCalendar: number;
+}
+
 interface DashboardStats {
   todayStatus: "not_punched" | "punched_in" | "completed" | "exempt";
   punchInTime: string | null;
@@ -60,6 +69,11 @@ interface DashboardStats {
     totalDays: string;
     usedDays: string;
   }>;
+  complianceCountdown?: {
+    active: boolean;
+    workingDaysLeft: number;
+    items: ComplianceCountdownItem[];
+  };
 }
 
 interface LeaveType {
@@ -97,6 +111,7 @@ export default function CommandCenter() {
   const [liveMs, setLiveMs] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [lunchReminderDismissed, setLunchReminderDismissed] = useState(false);
+  const [countdownDismissed, setCountdownDismissed] = useState(false);
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/hr/dashboard-stats"],
@@ -367,6 +382,71 @@ export default function CommandCenter() {
           </Button>
         </Alert>
       )}
+
+      {/* Compliance countdown banner */}
+      {(() => {
+        const cd = stats?.complianceCountdown;
+        if (!cd?.active) return null;
+        const wdLeft = cd.workingDaysLeft;
+        // Dismissable at 5 or 4 working days; non-dismissable at ≤ 3
+        const isDismissable = wdLeft >= 4;
+        if (isDismissable && countdownDismissed) return null;
+
+        const isCritical = wdLeft <= 1;
+        const isUrgent = wdLeft <= 3;
+        const colorClass = isCritical
+          ? "border-red-400 bg-red-50 dark:bg-red-950/30 dark:border-red-700"
+          : isUrgent
+          ? "border-orange-400 bg-orange-50 dark:bg-orange-950/30 dark:border-orange-700"
+          : "border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700";
+        const textClass = isCritical
+          ? "text-red-800 dark:text-red-200"
+          : isUrgent
+          ? "text-orange-800 dark:text-orange-200"
+          : "text-amber-800 dark:text-amber-200";
+        const iconClass = isCritical
+          ? "text-red-600"
+          : isUrgent
+          ? "text-orange-600"
+          : "text-amber-600";
+        const sopCode = cd.items[0]?.sopCode ?? "";
+        const totalItems = cd.items.length;
+        const moreText = totalItems > 1 ? ` (+${totalItems - 1} more)` : "";
+        const wdWord = wdLeft === 1 ? "working day" : "working days";
+        const label = wdLeft === 0 ? "Today is the last day" : `${wdLeft} ${wdWord} left`;
+
+        return (
+          <Alert
+            className={`flex items-center justify-between gap-4 ${colorClass}`}
+            data-testid="cc-compliance-countdown-banner"
+          >
+            <div className="flex items-center gap-3 flex-1 min-w-0">
+              <ShieldAlert className={`h-5 w-5 shrink-0 ${iconClass}`} />
+              <AlertDescription className={`${textClass} text-xs leading-snug`}>
+                <strong>{label}</strong> to acknowledge SOP{totalItems > 1 ? "s" : ""}{sopCode ? ` (${sopCode}${moreText})` : moreText}. After that, portal access is restricted until complete.
+                <button
+                  onClick={() => setLocation("/admin/my-desk?tab=my-sops")}
+                  className={`ml-2 underline underline-offset-2 font-medium ${textClass}`}
+                  data-testid="cc-compliance-countdown-cta"
+                >
+                  Acknowledge now →
+                </button>
+              </AlertDescription>
+            </div>
+            {isDismissable && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className={`h-7 w-7 p-0 shrink-0 ${iconClass}`}
+                onClick={() => setCountdownDismissed(true)}
+                data-testid="cc-dismiss-compliance-countdown"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            )}
+          </Alert>
+        );
+      })()}
 
       {/* Lunch reminder */}
       {showLunchReminder && (

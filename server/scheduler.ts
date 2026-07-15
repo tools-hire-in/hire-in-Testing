@@ -10,6 +10,8 @@ import { attendanceApprovalUrl, getPortalBaseUrl } from "./portalUrl";
 import { refreshRecentZips } from "./gsaRateService";
 
 import { notifyUser as notifyStudioUser } from "./studioNotifications";
+import { notifyUser } from "./notifications";
+import { buildCheckinReminderPayload } from "./contextualNotifications";
 
 function isLastDayOfMonth(): boolean {
   const today = new Date();
@@ -985,12 +987,18 @@ export function startScheduler() {
       const tomorrowStr = tomorrow.toISOString().split("T")[0];
       const todayStr = now.toISOString().split("T")[0];
 
-      // Day-before employee reminders (check-ins scheduled for tomorrow, not yet notified)
+      // Day-before contextual reminders: employee gets data-rich summary; manager gets same + coaching note CTA.
+      // Query now includes names and milestone_day for the contextual builder.
       const dayBeforeRows = (await db.execute(sql`
-        SELECT ci.id, ci.employee_id, ci.plan_id, ci.check_in_type, ci.scheduled_date,
-               ep.plan_type
+        SELECT ci.id, ci.employee_id, ci.manager_id, ci.plan_id, ci.check_in_type, ci.scheduled_date,
+               ci.milestone_day,
+               ep.plan_type,
+               emp.first_name || ' ' || emp.last_name AS employee_name,
+               COALESCE(mgr.first_name || ' ' || mgr.last_name, 'Your Manager') AS manager_name
         FROM check_ins ci
         JOIN employee_plans ep ON ci.plan_id = ep.id
+        JOIN admin_users emp ON emp.id = ci.employee_id
+        LEFT JOIN admin_users mgr ON mgr.id = ci.manager_id
         WHERE ci.scheduled_date = ${tomorrowStr}
           AND ci.status = 'scheduled'
           AND ci.plan_id IS NOT NULL
@@ -999,50 +1007,49 @@ export function startScheduler() {
       `)).rows as any[];
 
       for (const ci of dayBeforeRows) {
-        const ciTypeLabel = (ci.check_in_type as string).replace(/_/g, " ");
-        await storage.createNotification({
-          userId: ci.employee_id,
-          type: "checkin_reminder_employee",
-          title: "Check-in tomorrow",
-          message: `Reminder: you have a ${ciTypeLabel} check-in scheduled for tomorrow.`,
-          isRead: false,
-          metadata: { planId: ci.plan_id, checkInId: ci.id, scheduledDate: ci.scheduled_date, planType: ci.plan_type },
-        });
-        await db.execute(sql`UPDATE check_ins SET notified_at = NOW() WHERE id = ${ci.id}`);
+        try {
+          // Employee contextual reminder — routes through notifyUser so SendGrid email is sent
+          const empPayload = await buildCheckinReminderPayload(ci, ci.employee_name, ci.manager_name, false);
+          await notifyUser({
+            userId: ci.employee_id,
+            type: "checkin_reminder_contextual",
+            title: empPayload.inAppTitle,
+            message: empPayload.inAppMessage,
+            metadata: empPayload.metadata ?? {},
+            email: {
+              subject: empPayload.emailSubject,
+              html: empPayload.emailHtml,
+              configType: "checkin_reminder_contextual",
+              sourceJob: "scheduler_plan_reminder",
+            },
+          });
+          // Manager contextual reminder (same data-rich summary + coaching note CTA)
+          if (ci.manager_id) {
+            const mgrPayload = await buildCheckinReminderPayload(ci, ci.employee_name, ci.manager_name, true);
+            await notifyUser({
+              userId: ci.manager_id,
+              type: "checkin_reminder_contextual",
+              title: mgrPayload.inAppTitle,
+              message: mgrPayload.inAppMessage,
+              metadata: mgrPayload.metadata ?? {},
+              email: {
+                subject: mgrPayload.emailSubject,
+                html: mgrPayload.emailHtml,
+                configType: "checkin_reminder_contextual",
+                sourceJob: "scheduler_plan_reminder",
+              },
+            });
+            await db.execute(sql`UPDATE check_ins SET manager_notified_at = NOW() WHERE id = ${ci.id} AND manager_notified_at IS NULL`);
+          }
+          // Only mark as notified after all notifyUser calls succeed
+          await db.execute(sql`UPDATE check_ins SET notified_at = NOW() WHERE id = ${ci.id}`);
+        } catch (builderErr) {
+          console.error(`[scheduler] contextual reminder build/dispatch failed for check-in ${ci.id}:`, builderErr);
+          // notified_at intentionally NOT set — will retry on next scheduler run
+        }
       }
 
-      // Same-day manager reminders (check-ins scheduled for today, manager assigned, not yet notified)
-      // Uses manager_notified_at as a separate dedupe marker independent of the day-before employee flag
-      const sameDayRows = (await db.execute(sql`
-        SELECT ci.id, ci.employee_id, ci.manager_id, ci.plan_id, ci.check_in_type, ci.scheduled_date,
-               ep.plan_type,
-               au.first_name || ' ' || au.last_name AS employee_name
-        FROM check_ins ci
-        JOIN employee_plans ep ON ci.plan_id = ep.id
-        JOIN admin_users au ON ci.employee_id = au.id
-        WHERE ci.scheduled_date = ${todayStr}
-          AND ci.status = 'scheduled'
-          AND ci.plan_id IS NOT NULL
-          AND ep.status = 'active'
-          AND ci.manager_id IS NOT NULL
-          AND ci.manager_notified_at IS NULL
-      `)).rows as any[];
-
-      for (const ci of sameDayRows) {
-        const ciTypeLabel = (ci.check_in_type as string).replace(/_/g, " ");
-        await storage.createNotification({
-          userId: ci.manager_id,
-          type: "checkin_reminder_manager",
-          title: `Check-in today: ${ci.employee_name}`,
-          message: `${ci.employee_name} has a ${ciTypeLabel} check-in scheduled for today.`,
-          isRead: false,
-          metadata: { planId: ci.plan_id, checkInId: ci.id, employeeId: ci.employee_id, planType: ci.plan_type },
-        });
-        // Mark manager as notified so reruns / retries don't duplicate
-        await db.execute(sql`UPDATE check_ins SET manager_notified_at = NOW() WHERE id = ${ci.id}`);
-      }
-
-      console.log(`[scheduler] Plan check-in reminders: ${dayBeforeRows.length} day-before, ${sameDayRows.length} same-day`);
+      console.log(`[scheduler] Contextual plan check-in reminders sent: ${dayBeforeRows.length} check-ins`);
     } catch (err) {
       console.error("[scheduler] Plan check-in reminder job failed:", err);
     }

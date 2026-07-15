@@ -28,6 +28,8 @@ import { sql } from "drizzle-orm";
 import { storage } from "./storage";
 import type { GovernanceFinding } from "@shared/governanceTypes";
 import { getPortalBaseUrl } from "./portalUrl";
+import { buildCoachingPromptPayload } from "./contextualNotifications";
+import { notifyUser } from "./notifications";
 
 export interface ComplianceFinding {
   userId: string;
@@ -129,13 +131,14 @@ export async function runDailySweep(): Promise<void> {
 }
 
 // ─── Built-in collector: check-in overdue digest (HR visibility) ──────────────
-// Sends each HR/admin user a single in-app digest listing all check-ins that
-// are 3+ days overdue across active plans. This is an HR VISIBILITY notification,
-// distinct from the per-employee governance escalation path.
+// Contextual digest sent to HR/admin: lists every overdue check-in by name,
+// plan type, and days overdue — both in-app and via SendGrid email.
+// Distinct from the per-employee governance escalation path.
 registerCollector("checkin_overdue_digest", async (_flags) => {
   const thresholdDate = new Date();
   thresholdDate.setDate(thresholdDate.getDate() - 3);
   const thresholdStr = thresholdDate.toISOString().split("T")[0];
+  const todayMs = Date.now();
 
   const overdueRows = (
     await db.execute(sql`
@@ -165,28 +168,171 @@ registerCollector("checkin_overdue_digest", async (_flags) => {
     `)
   ).rows as any[];
 
-  const digestMsg = `${overdueRows.length} check-in${overdueRows.length !== 1 ? "s" : ""} across active plans are 3+ days overdue.`;
+  const portalBase = getPortalBaseUrl();
+
+  // Build a contextual line per overdue check-in showing who, what, and how late
+  const display = overdueRows.slice(0, 20).map((r: any) => {
+    const daysLate = Math.floor(
+      (todayMs - new Date(String(r.scheduled_date) + "T12:00:00Z").getTime()) / 86400000
+    );
+    const planLabel = String(r.plan_type).replace(/_/g, " ");
+    const ciLabel = String(r.check_in_type).replace(/_/g, " ");
+    return {
+      employeeName: String(r.employee_name),
+      planType: planLabel,
+      checkInType: ciLabel,
+      scheduledDate: String(r.scheduled_date),
+      daysLate,
+      line: `— ${r.employee_name}: ${ciLabel} (${planLabel}) — ${daysLate} day${daysLate !== 1 ? "s" : ""} overdue`,
+    };
+  });
+
+  const lineList = display.map(d => d.line).join("\n");
+  const truncNote = overdueRows.length > 20 ? `\n…and ${overdueRows.length - 20} more.` : "";
+
+  const digestMsg =
+    `${overdueRows.length} check-in${overdueRows.length !== 1 ? "s" : ""} are 3+ days overdue:\n${lineList}${truncNote}`;
+
+  const emailHtml = `
+<div style="font-family:sans-serif;max-width:600px;margin:0 auto">
+  <h2 style="color:#1F3A6E">Overdue Check-ins — ${overdueRows.length} Pending</h2>
+  <p>${overdueRows.length} active-plan check-in${overdueRows.length !== 1 ? "s are" : " is"} 3+ days overdue:</p>
+  <table style="width:100%;border-collapse:collapse;font-size:14px">
+    <thead>
+      <tr style="background:#1F3A6E;color:#fff">
+        <th style="padding:8px;text-align:left">Employee</th>
+        <th style="padding:8px;text-align:left">Check-in type</th>
+        <th style="padding:8px;text-align:left">Plan</th>
+        <th style="padding:8px;text-align:right">Days overdue</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${display.map((d, i) => `
+      <tr style="background:${i % 2 === 0 ? "#f9f9f9" : "#fff"}">
+        <td style="padding:8px">${d.employeeName}</td>
+        <td style="padding:8px">${d.checkInType}</td>
+        <td style="padding:8px">${d.planType}</td>
+        <td style="padding:8px;text-align:right;color:${d.daysLate >= 7 ? "#c0392b" : "#e67e22"}">${d.daysLate}d</td>
+      </tr>`).join("")}
+    </tbody>
+  </table>
+  ${overdueRows.length > 20 ? `<p style="color:#999">…and ${overdueRows.length - 20} more.</p>` : ""}
+  <p><a href="${portalBase}/admin/hr/my-team?tab=checkins" style="color:#F47C20">→ View All Check-ins</a></p>
+</div>`.trim();
+
   const sharedMetadata = {
     overdueCount: overdueRows.length,
-    items: overdueRows.slice(0, 20).map((r: any) => ({
-      employeeName: r.employee_name,
-      scheduledDate: r.scheduled_date,
-      planType: r.plan_type,
-      checkInType: r.check_in_type,
+    items: display.map(d => ({
+      employeeName: d.employeeName,
+      scheduledDate: d.scheduledDate,
+      planType: d.planType,
+      checkInType: d.checkInType,
+      daysLate: d.daysLate,
     })),
   };
 
   console.log(
-    `[complianceSweep] checkin_overdue_digest: ${overdueRows.length} overdue → ${hrAdmins.length} HR/admin users queued`
+    `[complianceSweep] checkin_overdue_digest: ${overdueRows.length} overdue → ${hrAdmins.length} HR/admin users notified`
   );
 
-  return hrAdmins.map((hr: any) => ({
-    userId: hr.id,
-    type: "checkin_overdue_digest",
-    title: `Overdue check-ins: ${overdueRows.length} pending`,
-    message: digestMsg,
-    metadata: sharedMetadata,
-  }));
+  // Dispatch directly via notifyUser so both in-app and SendGrid email are sent
+  for (const hr of hrAdmins) {
+    await notifyUser({
+      userId: String(hr.id),
+      type: "checkin_overdue_digest",
+      title: `Overdue check-ins: ${overdueRows.length} pending`,
+      message: digestMsg,
+      metadata: sharedMetadata,
+      email: {
+        subject: `Overdue check-ins: ${overdueRows.length} pending — action needed`,
+        html: emailHtml,
+        configType: "checkin_overdue_digest",
+        sourceJob: "compliance_sweep",
+      },
+    });
+  }
+
+  // Return [] — notifications already dispatched above via notifyUser
+  return [];
+});
+
+// ─── Built-in collector: PIP / plan coaching entry prompt (manager) ──────────
+// When a manager hasn't logged a coaching note for an active plan in ≥ 5 days,
+// send a contextual prompt listing the employee's current goal status.
+// Deduped: one nudge per plan per day via system_settings marker.
+registerCollector("pip_coaching_prompt", async (_flags) => {
+  const THRESHOLD_DAYS = 5;
+  const nowMs = Date.now();
+  const todayStr = new Date().toISOString().slice(0, 10);
+
+  // Find active plans where the plan has a manager and the most recent
+  // coaching log entry is older than THRESHOLD_DAYS (or no entry exists).
+  const planRows = (await db.execute(sql`
+    SELECT ep.id AS plan_id, ep.employee_id, ep.manager_id, ep.plan_type,
+           ep.start_date, ep.end_date,
+           emp.first_name || ' ' || emp.last_name AS employee_name,
+           MAX(cle.created_at) AS last_note_at
+    FROM employee_plans ep
+    JOIN admin_users emp ON emp.id = ep.employee_id
+    LEFT JOIN coaching_log_entries cle ON cle.plan_id = ep.id
+    WHERE ep.status = 'active'
+      AND ep.manager_id IS NOT NULL
+    GROUP BY ep.id, ep.employee_id, ep.manager_id, ep.plan_type,
+             ep.start_date, ep.end_date, employee_name
+    HAVING MAX(cle.created_at) IS NULL
+        OR MAX(cle.created_at) < NOW() - INTERVAL '5 days'
+    ORDER BY ep.updated_at ASC
+    LIMIT 50
+  `)).rows as any[];
+
+  let dispatched = 0;
+
+  for (const row of planRows) {
+    // Dedup: only one prompt per plan per calendar day
+    const dedupKey = `coaching_prompt_${String(row.plan_id)}_${todayStr}`;
+    const alreadySent = await storage.getSystemSetting(dedupKey);
+    if (alreadySent) continue;
+
+    const daysSince = row.last_note_at
+      ? Math.floor((nowMs - new Date(row.last_note_at).getTime()) / 86400000)
+      : 999;
+
+    if (daysSince < THRESHOLD_DAYS) continue;
+
+    try {
+      const payload = await buildCoachingPromptPayload(
+        { id: String(row.plan_id), plan_type: String(row.plan_type), employee_id: String(row.employee_id) },
+        String(row.manager_id),
+        String(row.employee_name),
+        daysSince === 999 ? THRESHOLD_DAYS : daysSince,
+      );
+
+      // Dispatch directly via notifyUser so both in-app AND SendGrid email are sent
+      await notifyUser({
+        userId: String(row.manager_id),
+        type: "pip_coaching_prompt_contextual",
+        title: payload.inAppTitle,
+        message: payload.inAppMessage,
+        metadata: payload.metadata,
+        email: {
+          subject: payload.emailSubject,
+          html: payload.emailHtml,
+          configType: "pip_coaching_prompt_contextual",
+          sourceJob: "compliance_sweep",
+        },
+      });
+
+      // Mark as sent for today so the sweep doesn't re-fire
+      await storage.upsertSystemSetting(dedupKey, new Date().toISOString());
+      dispatched++;
+    } catch (err) {
+      console.error(`[complianceSweep] coaching prompt build/dispatch failed for plan ${row.plan_id}:`, err);
+    }
+  }
+
+  console.log(`[complianceSweep] pip_coaching_prompt: ${dispatched} manager nudges dispatched`);
+  // Return [] — notifications already dispatched above via notifyUser
+  return [];
 });
 
 // ─── Pure detector: collectOverdueItems ──────────────────────────────────────
