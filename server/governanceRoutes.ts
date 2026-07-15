@@ -41,7 +41,7 @@ import {
 } from "./governanceService";
 import { emitGovernanceEvent, getControlEventHistory } from "./governanceEvents";
 import { resolveRoles } from "@shared/accessControl";
-import { buildGovernancePulse, type GovernancePulse } from "./governancePulse";
+import { buildGovernancePulse, buildControlCounts, type GovernancePulse } from "./governancePulse";
 
 // ── 5-minute in-memory pulse cache ───────────────────────────────────────────
 const PULSE_CACHE_TTL_MS = 5 * 60 * 1000;
@@ -298,14 +298,24 @@ export function registerGovernanceRoutes(app: Express): void {
     const forceRefresh = req.query.refresh === "true";
     const now = Date.now();
 
-    if (!forceRefresh && pulseCache && pulseCache.expiresAt > now) {
-      return res.json(pulseCache.data);
-    }
-
     try {
-      const pulse = await buildGovernancePulse();
-      pulseCache = { data: pulse, expiresAt: now + PULSE_CACHE_TTL_MS };
-      return res.json(pulse);
+      let basePulse: GovernancePulse;
+      if (!forceRefresh && pulseCache && pulseCache.expiresAt > now) {
+        basePulse = pulseCache.data;
+      } else {
+        basePulse = await buildGovernancePulse();
+        pulseCache = { data: basePulse, expiresAt: now + PULSE_CACHE_TTL_MS };
+      }
+
+      // Always compute control counts live (fast GROUP BY — not cacheable, changes per insert)
+      const { goalOverdue, checkinOverdue, pipOverdue, pipByManager } = await buildControlCounts();
+
+      return res.json({
+        ...basePulse,
+        goals:   { ...basePulse.goals,   overdueCount: goalOverdue },
+        checkins: { ...basePulse.checkins, overdueCount: checkinOverdue },
+        pip: { overdue: pipOverdue, byManager: pipByManager },
+      });
     } catch (err) {
       console.error("[governance] GET /pulse failed:", err);
       return res.status(500).json({ error: "Failed to build governance pulse" });

@@ -937,6 +937,12 @@ export const performanceGoals = pgTable("performance_goals", {
   // Set ONLY when the progress field changes (not on title/description/etc edits).
   // Used by the hard gate to distinguish "touched goal" from "logged real progress".
   lastProgressUpdatedAt: timestamp("last_progress_updated_at"),
+  // Auto-progress source: null or "manual" = hand-entered; any other value
+  // (e.g. "recruiter_metric:call_volume:200") means the goal is KPI-linked
+  // and progress is computed automatically by the goal auto-progress engine.
+  trackingType: varchar("tracking_type"),
+  // Display order within a plan; lower = shown first. Null sorts last.
+  sortOrder: integer("sort_order").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -4024,6 +4030,9 @@ export const sopEmployeeProgress = pgTable("sop_employee_progress", {
   // overdue nudge was dispatched. The sweep checks this is not today before
   // sending a new notification, ensuring exactly one nudge per user per day.
   overdueNudgeSentDate: date("overdue_nudge_sent_date"),
+  // Optional per-employee SOP deadline (override of wave operational_at + grace days).
+  // Used by governanceService syncGovernanceObligations to compute due dates.
+  deadlineAt: timestamp("deadline_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({

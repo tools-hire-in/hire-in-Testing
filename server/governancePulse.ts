@@ -110,6 +110,7 @@ export interface EscalatedGoalWithCoachingGap {
 export interface GoalsSection {
   healthSplit: GoalsHealthSplit;
   escalatedWithCoachingGap: EscalatedGoalWithCoachingGap[];
+  overdueCount: number;
 }
 
 export interface OrgCheckinRate {
@@ -132,6 +133,12 @@ export interface ManagerCheckinCompliance {
 export interface CheckinsSection {
   org: OrgCheckinRate;
   perManager: ManagerCheckinCompliance[];
+  overdueCount: number;
+}
+
+export interface PipPulseSection {
+  overdue: number;
+  byManager: Array<{ managerId: string; count: number }>;
 }
 
 export type ActionItemCategory = "sop" | "pip" | "probation" | "goal" | "training" | "checkin";
@@ -191,6 +198,7 @@ export interface GovernancePulse {
   probation: ProbationSection;
   goals: GoalsSection;
   checkins: CheckinsSection;
+  pip: PipPulseSection;
   action_items: ActionItem[];
   generatedAt: string;
 }
@@ -359,7 +367,7 @@ async function buildTrainingSectionWithActions(): Promise<TrainingSectionResult>
   const assignments = (await db.execute(sql`
     SELECT ta.user_id, ta.id AS assignment_id, ta.status, ta.due_date, ta.track_id
     FROM track_assignments ta
-    WHERE ta.user_id = ANY(${userIds}::varchar[])
+    WHERE ta.user_id = ANY(ARRAY[${sql.join(userIds.map(id => sql`${id}`), sql`, `)}])
       AND ta.status != 'completed'
       AND ta.due_date IS NOT NULL
   `)).rows as any[];
@@ -369,7 +377,7 @@ async function buildTrainingSectionWithActions(): Promise<TrainingSectionResult>
   if (trackIds.length > 0) {
     const tracks = (await db.execute(sql`
       SELECT id, title FROM learning_tracks
-      WHERE id = ANY(${trackIds}::varchar[])
+      WHERE id = ANY(ARRAY[${sql.join(trackIds.map(id => sql`${id}`), sql`, `)}])
     `)).rows as any[];
     for (const t of tracks) trackTitleMap.set(t.id, t.title || "Training");
   }
@@ -378,7 +386,7 @@ async function buildTrainingSectionWithActions(): Promise<TrainingSectionResult>
     SELECT ter.user_id, ter.assignment_id, ter.new_due_date
     FROM training_extension_requests ter
     WHERE ter.status = 'approved'
-      AND ter.user_id = ANY(${userIds}::varchar[])
+      AND ter.user_id = ANY(ARRAY[${sql.join(userIds.map(id => sql`${id}`), sql`, `)}])
   `)).rows as any[];
 
   const extMap = new Map<string, Date>();
@@ -415,7 +423,7 @@ async function buildTrainingSectionWithActions(): Promise<TrainingSectionResult>
   if (managerIds.length > 0) {
     const mgrs = (await db.execute(sql`
       SELECT id, first_name || ' ' || last_name AS full_name FROM admin_users
-      WHERE id = ANY(${managerIds}::varchar[])
+      WHERE id = ANY(ARRAY[${sql.join(managerIds.map(id => sql`${id}`), sql`, `)}])
     `)).rows as any[];
     for (const m of mgrs) managerNameMap.set(m.id, m.full_name);
   }
@@ -475,7 +483,7 @@ async function buildPlansSectionWithActions(pipCheckinDays: number): Promise<Pla
   const coachingRows = planIds.length > 0 ? (await db.execute(sql`
     SELECT plan_id, MAX(entry_date) AS last_entry_date, COUNT(*) AS entry_count
     FROM coaching_log_entries
-    WHERE plan_id = ANY(${planIds}::varchar[])
+    WHERE plan_id = ANY(ARRAY[${sql.join(planIds.map(id => sql`${id}`), sql`, `)}])
     GROUP BY plan_id
   `)).rows as any[] : [];
 
@@ -487,7 +495,7 @@ async function buildPlansSectionWithActions(pipCheckinDays: number): Promise<Pla
   const checkInsForPlans = planIds.length > 0 ? (await db.execute(sql`
     SELECT plan_id, status, scheduled_date
     FROM check_ins
-    WHERE plan_id = ANY(${planIds}::varchar[])
+    WHERE plan_id = ANY(ARRAY[${sql.join(planIds.map(id => sql`${id}`), sql`, `)}])
   `)).rows as any[] : [];
 
   const checkInsByPlan = new Map<string, any[]>();
@@ -730,7 +738,7 @@ async function buildGoalsSection(goalCoachingThresholdDays: number): Promise<Goa
     const coachingRows = (await db.execute(sql`
       SELECT plan_id, employee_id, MAX(entry_date) AS last_date
       FROM coaching_log_entries
-      WHERE plan_id = ANY(${planIds}::varchar[])
+      WHERE plan_id = ANY(ARRAY[${sql.join(planIds.map(id => sql`${id}`), sql`, `)}])
       GROUP BY plan_id, employee_id
     `)).rows as any[];
     for (const c of coachingRows) {
@@ -793,6 +801,7 @@ async function buildGoalsSection(goalCoachingThresholdDays: number): Promise<Goa
   return {
     healthSplit: { onTrack, atRisk, overdue, total: goals.length },
     escalatedWithCoachingGap,
+    overdueCount: 0,
   };
 }
 
@@ -879,6 +888,7 @@ async function buildCheckinsSection(): Promise<CheckinsSection> {
   return {
     org: { scheduled: orgScheduled, completed: orgCompleted, missed: orgMissed, completionRate },
     perManager,
+    overdueCount: 0,
   };
 }
 
@@ -1084,6 +1094,42 @@ function buildActionItems(opts: {
   return items;
 }
 
+// ── Control counts from governance_controls ledger ────────────────────────────
+
+export async function buildControlCounts(): Promise<{
+  goalOverdue: number;
+  checkinOverdue: number;
+  pipOverdue: number;
+  pipByManager: Array<{ managerId: string; count: number }>;
+}> {
+  const rows = (await db.execute(sql`
+    SELECT control_type, manager_id, COUNT(*) AS cnt
+    FROM governance_controls
+    WHERE status = 'overdue'::governance_control_status
+    GROUP BY control_type, manager_id
+  `)).rows as any[];
+
+  let goalOverdue = 0;
+  let checkinOverdue = 0;
+  let pipOverdue = 0;
+  const pipByManagerMap = new Map<string, number>();
+
+  for (const r of rows) {
+    const cnt = Number(r.cnt);
+    if (r.control_type === "goal") goalOverdue += cnt;
+    else if (r.control_type === "check_in") checkinOverdue += cnt;
+    else if (r.control_type === "pip") {
+      pipOverdue += cnt;
+      if (r.manager_id) {
+        pipByManagerMap.set(r.manager_id, (pipByManagerMap.get(r.manager_id) ?? 0) + cnt);
+      }
+    }
+  }
+
+  const pipByManager = [...pipByManagerMap.entries()].map(([managerId, count]) => ({ managerId, count }));
+  return { goalOverdue, checkinOverdue, pipOverdue, pipByManager };
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function buildGovernancePulse(): Promise<GovernancePulse> {
@@ -1097,8 +1143,9 @@ export async function buildGovernancePulse(): Promise<GovernancePulse> {
     { section: training, actionRows: trainingActionRows },
     { section: plans, pipActionRows },
     probation,
-    goals,
-    checkins,
+    goalsRaw,
+    checkinsRaw,
+    { goalOverdue, checkinOverdue, pipOverdue, pipByManager },
   ] = await Promise.all([
     buildSopSectionWithActions(),
     buildTrainingSectionWithActions(),
@@ -1106,7 +1153,12 @@ export async function buildGovernancePulse(): Promise<GovernancePulse> {
     buildProbationSection(),
     buildGoalsSection(goalCoachingThresholdDays),
     buildCheckinsSection(),
+    buildControlCounts(),
   ]);
+
+  const goals: GoalsSection = { ...goalsRaw, overdueCount: goalOverdue };
+  const checkins: CheckinsSection = { ...checkinsRaw, overdueCount: checkinOverdue };
+  const pip: PipPulseSection = { overdue: pipOverdue, byManager: pipByManager };
 
   const action_items = buildActionItems({
     sopActionRows,
@@ -1125,6 +1177,7 @@ export async function buildGovernancePulse(): Promise<GovernancePulse> {
     probation,
     goals,
     checkins,
+    pip,
     action_items,
     generatedAt: new Date().toISOString(),
   };

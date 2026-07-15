@@ -201,6 +201,31 @@ export async function teardownGovernanceTestHierarchy(): Promise<void> {
       ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID}
     )
   `);
+  // Delete all auto-populated rows that FK back to admin_users before deleting test users.
+  // The startup/cron/sweep code creates rows in these tables for any active user it finds.
+  // Order matters: children before parents where there are FK chains.
+  // section_acknowledgements / track_completions reference track_assignments.id — delete first.
+  for (const [table, col] of [
+    ["section_acknowledgements", "user_id"],
+    ["track_completions", "user_id"],
+    ["track_assignments", "user_id"],
+    ["attendance", "user_id"],
+    ["break_records", "user_id"],
+    ["sop_employee_progress", "user_id"],
+    ["ceipal_update_logs", "user_id"],
+  ] as [string, string][]) {
+    await db.execute(sql`
+      DELETE FROM ${sql.raw(table)}
+      WHERE ${sql.raw(col)} IN (
+        ${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID},
+        ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID}
+      )
+    `);
+  }
+  // audit_logs has two FK columns pointing to admin_users
+  await db.execute(sql`DELETE FROM audit_logs WHERE actor_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})`);
+  await db.execute(sql`DELETE FROM audit_logs WHERE target_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})`);
+
   await db.execute(sql`
     DELETE FROM admin_users
     WHERE id IN (

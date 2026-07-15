@@ -943,7 +943,7 @@ export async function syncGovernanceObligations(): Promise<{
     WHERE ci.check_in_type IN ('weekly'::check_in_type, 'pip_review'::check_in_type, 'weekly_update'::check_in_type)
       AND ci.status = 'scheduled'::check_in_status
       AND ci.scheduled_date IS NOT NULL
-      AND ci.scheduled_date <= ${lookahead7}::date
+      AND ci.scheduled_date::date <= ${lookahead7}::date
     LIMIT 200
   `);
   for (const r of weeklyRows.rows as any[]) {
@@ -969,7 +969,7 @@ export async function syncGovernanceObligations(): Promise<{
     WHERE ci.check_in_type = 'milestone'::check_in_type
       AND ci.status = 'scheduled'::check_in_status
       AND ci.scheduled_date IS NOT NULL
-      AND ci.scheduled_date <= ${lookahead7}::date
+      AND ci.scheduled_date::date <= ${lookahead7}::date
     LIMIT 200
   `);
   for (const r of milestoneRows.rows as any[]) {

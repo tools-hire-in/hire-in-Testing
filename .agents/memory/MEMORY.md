@@ -56,3 +56,4 @@
 - [App.tsx duplicate route blocks](app-tsx-duplicate-route-blocks.md) — studio/legacy route lists exist twice; new routes need replace_all into both blocks or the page 404s in one context.
 - [Salary disbursement flow](salary-disbursement-flow.md) — per-employee payslip unlock via salary_run_payments; run auto-executes when all deposited; new slip endpoints must use findSlipRunForEmail.
 - [Notification gateway](notification-gateway.md) — all alerts go through notifyUser (pref-gated, COALESCE-on defaults); new types register in shared/notificationTypes.ts; digests skip empty content.
+- [Governance pulse cache trap](governance-pulse-cache.md) — 5-min in-memory pulse cache poisons counts computed at baseline; data sourced from governance_controls must be computed outside the cache (live on every request).
