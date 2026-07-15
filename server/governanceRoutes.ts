@@ -632,6 +632,152 @@ export function registerGovernanceRoutes(app: Express): void {
     }
   });
 
+  // ── Governance Hub: Nudge Manager ────────────────────────────────────────
+  // In-memory 24h re-nudge guard. Keyed by nudge:{managerId}:{employeeId}:{category}.
+  // Resets on server restart — intentional; restart clears stale state anyway.
+  const nudgeTtlMap = new Map<string, Date>();
+
+  app.post("/api/governance/nudge", async (req: Request, res: Response) => {
+    // governance.hr gate first (covers admin/super_admin/executive/hr), then narrow
+    // to admin/super_admin only — HR users have read-only access to the Governance Hub.
+    const session = checkPermission(req, res, "governance.hr");
+    if (!session) return;
+    if (!["admin", "super_admin"].includes(session.role)) {
+      return res.status(403).json({ error: "Only admin and super_admin can send nudges" });
+    }
+
+    const { actionItemId, managerId, employeeId, category, daysOverdue, strikeCount, context } = req.body as {
+      actionItemId?: string;
+      managerId: string;
+      employeeId?: string;
+      category: string;
+      daysOverdue?: number;
+      strikeCount?: number;
+      context?: string;
+    };
+
+    if (!managerId || !category) {
+      return res.status(400).json({ error: "managerId and category are required" });
+    }
+
+    const nudgeKey = `nudge:${managerId}:${employeeId ?? ""}:${category}`;
+    const lastNudge = nudgeTtlMap.get(nudgeKey);
+    if (lastNudge && Date.now() - lastNudge.getTime() < 24 * 60 * 60 * 1000) {
+      return res.json({ sent: false, alreadyNudged: true, sentAt: lastNudge.toISOString() });
+    }
+
+    try {
+      let employeeName = "the employee";
+      if (employeeId) {
+        const empRow = (await db.execute(sql`
+          SELECT first_name || ' ' || last_name AS full_name FROM admin_users WHERE id = ${employeeId} LIMIT 1
+        `)).rows[0] as any;
+        employeeName = empRow?.full_name || "the employee";
+      }
+
+      const overdueSuffix = daysOverdue && daysOverdue > 0 ? ` (${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue)` : "";
+      const strikeSuffix = strikeCount ? ` (strike ${strikeCount} of 3)` : "";
+
+      const MESSAGE_TEMPLATES: Record<string, string> = {
+        pip: `Action required: ${employeeName}'s PIP has had no coaching session logged${overdueSuffix}. Please record a coaching note today to keep the plan on track.${context ? " Context: " + context : ""}`,
+        checkin: `Check-in compliance alert: you have missed scheduled 1:1 check-ins${overdueSuffix}${strikeSuffix}. Please complete pending check-ins to maintain your team's coaching cadence.${context ? " Context: " + context : ""}`,
+        probation: `Probation milestone missed for ${employeeName}${overdueSuffix}${strikeSuffix}. Please update their probation record and log the milestone outcome as soon as possible.${context ? " Context: " + context : ""}`,
+        goal: `Goal compliance alert: ${employeeName} has an escalated goal with no coaching action${overdueSuffix}. Please log a coaching entry against this goal today.${context ? " Context: " + context : ""}`,
+        sop: `SOP acknowledgment overdue: one or more employees in your team have not acknowledged a required SOP${overdueSuffix}. Please follow up to ensure timely acknowledgment.${context ? " Context: " + context : ""}`,
+        training: `Training compliance alert: one or more employees in your team have overdue training assignments${overdueSuffix}. Please follow up to ensure completion.${context ? " Context: " + context : ""}`,
+      };
+
+      const message = MESSAGE_TEMPLATES[category] ?? `Governance action required for your team${overdueSuffix}. Please review the Governance Hub and take action.`;
+      const { notifyUser } = await import("./notifications");
+      await notifyUser({
+        userId: managerId,
+        type: "governance_overdue",
+        title: `Governance Nudge: Action Required`,
+        message,
+        metadata: { actionItemId, category, employeeId, daysOverdue, strikeCount },
+      });
+
+      const sentAt = new Date();
+      nudgeTtlMap.set(nudgeKey, sentAt);
+      res.json({ sent: true, sentAt: sentAt.toISOString() });
+    } catch (err) {
+      console.error("[governance] POST /nudge failed:", err);
+      res.status(500).json({ error: "Failed to send nudge" });
+    }
+  });
+
+  // ── Governance Hub: Escalate to HR ───────────────────────────────────────
+  // Creates an internal_requests row. Schema type enum has no "governance_escalation"
+  // value, so we use type='hr' (closest semantic match) with metadata.subtype =
+  // 'governance_escalation' to distinguish these rows.  status='pending_approval'
+  // (not "open" which is not in the enum) marks it as new/unreviewed in the HR queue.
+  // Idempotent: returns the existing open escalation if one already exists.
+  app.post("/api/governance/escalate", async (req: Request, res: Response) => {
+    // governance.hr gate first, then narrow to admin/super_admin only — HR is read-only
+    // on the Governance Hub and cannot create escalation requests on behalf of others.
+    const session = checkPermission(req, res, "governance.hr");
+    if (!session) return;
+    if (!["admin", "super_admin"].includes(session.role)) {
+      return res.status(403).json({ error: "Only admin and super_admin can escalate to HR" });
+    }
+
+    const { actionItemId, employeeId, category, description } = req.body as {
+      actionItemId?: string;
+      employeeId?: string;
+      category: string;
+      description?: string;
+    };
+
+    if (!category) {
+      return res.status(400).json({ error: "category is required" });
+    }
+
+    try {
+      // Check for existing open escalation (idempotency guard)
+      const existingRows = await db.execute(sql`
+        SELECT id FROM internal_requests
+        WHERE type = 'hr'
+          AND metadata->>'subtype' = 'governance_escalation'
+          AND (${employeeId ?? null}::text IS NULL OR requested_for_id = ${employeeId ?? null}::text)
+          AND metadata->>'category' = ${category}
+          AND status NOT IN ('resolved', 'closed', 'rejected')
+        LIMIT 1
+      `);
+
+      if (existingRows.rows.length > 0) {
+        const existing = existingRows.rows[0] as any;
+        return res.json({ alreadyOpen: true, requestId: existing.id });
+      }
+
+      const requestNumber = `GOV-${Date.now().toString(36).toUpperCase()}`;
+
+      const insertResult = await db.execute(sql`
+        INSERT INTO internal_requests (
+          request_number, requester_id, requested_for_id, type, title, description,
+          priority, status, metadata, created_at, updated_at
+        ) VALUES (
+          ${requestNumber},
+          ${session.userId},
+          ${employeeId ?? null},
+          'hr',
+          ${`Governance Escalation: ${category.toUpperCase()}`},
+          ${description ?? `Governance compliance issue escalated for HR review (category: ${category})`},
+          'p2',
+          'pending_approval',
+          ${JSON.stringify({ subtype: "governance_escalation", category, actionItemId: actionItemId ?? null })}::jsonb,
+          NOW(), NOW()
+        )
+        RETURNING id
+      `);
+
+      const newRow = insertResult.rows[0] as any;
+      res.status(201).json({ created: true, requestId: newRow.id });
+    } catch (err) {
+      console.error("[governance] POST /escalate failed:", err);
+      res.status(500).json({ error: "Failed to create escalation" });
+    }
+  });
+
   // ── HR: reassign a control to a new owner ─────────────────────────────────
   app.post("/api/governance/:id/reassign", async (req: Request, res: Response) => {
     const session = checkPermission(req, res, "governance.hr");
