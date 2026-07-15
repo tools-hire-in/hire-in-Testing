@@ -2855,6 +2855,31 @@ async function runEsiBackfill(): Promise<void> {
 // (see bootstrap below) so the deployment healthcheck never sees a closed port
 // during boot. These blocks are idempotent, so running them post-listen is safe.
 async function runStartupTasks() {
+  // Dev Control Center defaults
+  try {
+    const existing = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'env_mode' LIMIT 1`);
+    if ((existing.rows as any[]).length === 0) {
+      await db.execute(sql`
+        INSERT INTO system_settings (key, value, updated_at)
+        VALUES ('env_mode', '"dev"', NOW())
+        ON CONFLICT (key) DO NOTHING
+      `);
+    }
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES ('dev_email_override', '""', NOW())
+      ON CONFLICT (key) DO NOTHING
+    `);
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value, updated_at)
+      VALUES ('dev_dry_run', 'false', NOW())
+      ON CONFLICT (key) DO NOTHING
+    `);
+    log("Dev Control Center defaults seeded");
+  } catch (err) {
+    console.error("[startup] Dev Control Center seed error (non-fatal):", err);
+  }
+
   try {
     await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP`);
     log("Ensured deleted_at column exists on admin_users");

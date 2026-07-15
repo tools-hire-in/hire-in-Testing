@@ -55,6 +55,7 @@ import {
   DollarSign,
   ArrowUpRight,
   Plug,
+  Terminal,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -607,6 +608,27 @@ function TeamSection({
         </SidebarGroupContent>
       )}
     </SidebarGroup>
+  );
+}
+
+/** Shown in the sidebar bottom for super_admin only in non-production envs. */
+function DevToolsNavItem() {
+  const { data, isError } = useQuery<{ envMode: string }>({
+    queryKey: ["/api/dev-tools/status"],
+    retry: false,
+    staleTime: 30_000,
+  });
+  // Hide if endpoint returned 404 (production), errored, or mode is production
+  if (isError || !data || data.envMode === "production") return null;
+  return (
+    <SidebarMenuItem>
+      <SidebarMenuButton asChild tooltip="Dev Tools" data-testid="nav-dev-tools">
+        <Link href="/dev-tools">
+          <Terminal className="h-4 w-4 shrink-0 text-orange-400" />
+          <span className="group-data-[collapsible=icon]:hidden text-orange-400">Dev Tools ↗</span>
+        </Link>
+      </SidebarMenuButton>
+    </SidebarMenuItem>
   );
 }
 
@@ -1944,6 +1966,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
               <SidebarGroup className="mt-auto border-t pt-2">
                 <SidebarGroupContent>
                   <SidebarMenu>
+                    {isSuperAdmin && <DevToolsNavItem />}
                     <SidebarMenuItem>
                       <SidebarMenuButton asChild tooltip="View Website">
                         <Link href="/">

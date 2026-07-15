@@ -205,7 +205,62 @@ export async function dispatchAutomatedEmail(
     return { success: true, held: true };
   }
 
-  const outMsg = { ...msg, cc: mergedCc.length > 0 ? mergedCc : undefined };
+  // ── Dev/QA email intercept ─────────────────────────────────────────────────
+  // Applies only when APP_ENV ≠ production.  Checks system_settings:
+  //   dev_dry_run       → log the email, mark as sent, but never call SendGrid
+  //   dev_email_override → replace To: with the override address + prefix subject
+  let effectiveMsg = { ...msg };
+  try {
+    const { getEnvMode: _gEM } = await import("./envMode");
+    const _em = await _gEM();
+    if (_em !== "production") {
+      const { storage: _s2 } = await import("./storage");
+      const _dryRunSetting = await _s2.getSystemSetting("dev_dry_run").catch(() => undefined);
+      const _overrideSetting = await _s2.getSystemSetting("dev_email_override").catch(() => undefined);
+      const _dryRun = (_dryRunSetting?.value as boolean) ?? false;
+      const _overrideAddr = ((_overrideSetting?.value) as string) ?? "";
+      if (_dryRun) {
+        console.log(`[email-intercept] [DRY_RUN] ${type} → would send to ${recipients.join(", ")} (${sourceJob}) — suppressed`);
+        await storage.createCommunicationLog({
+          ...baseLog,
+          status: "dry_run",
+          sentAt: new Date(),
+          error: `[DRY_RUN] Suppressed in env_mode=${_em}. Original recipients: ${recipients.join(", ")}. Type: ${type}. Source: ${sourceJob}`,
+        } as any).catch(() => {});
+        return { success: true };
+      }
+      if (_overrideAddr) {
+        effectiveMsg = {
+          ...effectiveMsg,
+          to: _overrideAddr,
+          subject: `[${_em.toUpperCase()}] ${effectiveMsg.subject}`,
+          html: effectiveMsg.html
+            ? `${effectiveMsg.html}<hr style="margin-top:24px;border:none;border-top:1px solid #eee"><p style="font-size:11px;color:#999;font-family:monospace">[Dev intercept] Original recipient(s): ${recipients.join(", ")}</p>`
+            : effectiveMsg.html,
+          text: effectiveMsg.text
+            ? `${effectiveMsg.text}\n\n---\n[Dev intercept] Original recipient(s): ${recipients.join(", ")}`
+            : effectiveMsg.text,
+        };
+        console.log(`[email-intercept] [${_em.toUpperCase()}] ${type} redirected → ${_overrideAddr} (original: ${recipients.join(", ")})`);
+      }
+    }
+  } catch (_interceptErr) {
+    // Intercept failure: default to dry_run in non-production to avoid accidental real sends.
+    if (process.env.APP_ENV !== "production") {
+      console.warn(`[email-intercept] Intercept check failed — suppressing send as dry_run (non-production fail-safe):`, _interceptErr);
+      await storage.createCommunicationLog({
+        ...baseLog,
+        status: "dry_run",
+        sentAt: new Date(),
+        error: `[DRY_RUN fallback] Intercept check threw: ${String(_interceptErr)}`,
+      } as any).catch(() => {});
+      return { success: true };
+    }
+    console.warn(`[email-intercept] Intercept check failed (continuing real send):`, _interceptErr);
+  }
+  // ── End intercept ─────────────────────────────────────────────────────────
+
+  const outMsg = { ...effectiveMsg, cc: mergedCc.length > 0 ? mergedCc : undefined };
 
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();

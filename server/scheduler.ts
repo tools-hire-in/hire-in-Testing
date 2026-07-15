@@ -8,6 +8,7 @@ import { eq, and, lt, gt, isNull, lte, sql } from "drizzle-orm";
 import { generateAttendanceReportRun, ensureRunForMonthAndNotify } from "./attendanceReport";
 import { attendanceApprovalUrl, getPortalBaseUrl } from "./portalUrl";
 import { refreshRecentZips } from "./gsaRateService";
+import { getEnvMode } from "./envMode";
 
 import { notifyUser as notifyStudioUser } from "./studioNotifications";
 import { notifyUser } from "./notifications";
@@ -197,13 +198,188 @@ export async function runAbsentSweep(
  * Startup config migrations follow the same rule: CREATE ... IF NOT EXISTS / ensure blocks
  * are no-clobber and safe to re-run on every boot.
  */
+
+/** Entry shape for each named job in the registry. */
+export interface JobRegistryEntry {
+  name: string;
+  label: string;
+  schedule: string;
+  handler: () => Promise<void>;
+  lastTriggeredAt?: Date;
+  lastTriggeredBy?: string;
+}
+
+/**
+ * Exported registry of named scheduled jobs.
+ * Populated by startScheduler(); used by the Dev Control Center trigger endpoint.
+ * lastTriggeredAt / lastTriggeredBy are updated in-memory both on schedule fires
+ * and on manual "Run Now" triggers.
+ */
+export const JOB_REGISTRY = new Map<string, JobRegistryEntry>();
+
+/** Convenience: update the registry tracking fields and run the handler. */
+async function fireJob(name: string, triggeredBy: string): Promise<void> {
+  const entry = JOB_REGISTRY.get(name);
+  if (!entry) throw new Error(`Unknown job: ${name}`);
+  entry.lastTriggeredAt = new Date();
+  entry.lastTriggeredBy = triggeredBy;
+  await entry.handler();
+}
+
 export function startScheduler() {
+  // ─── Auto-suspend ALL cron callbacks in non-production ───────────────────
+  // Monkey-patch node-cron's schedule() so that EVERY callback auto-checks
+  // env_mode before executing. JOB_REGISTRY handlers are intentionally exempt:
+  // they are invoked directly by the Dev Control Center trigger endpoint and
+  // must run even in dev/qa.
+  //
+  // When getEnvMode() throws (DB unavailable), we default to "production" as a
+  // fail-safe so scheduled jobs always fire on production servers even when the
+  // system_settings table is temporarily unreachable.
+  const _origNodeCronSchedule = cron.schedule.bind(cron);
+  (cron as any).schedule = (
+    expression: string,
+    task: (() => void) | (() => Promise<void>),
+    options?: Parameters<typeof cron.schedule>[2],
+  ) => {
+    const guarded = async () => {
+      let envMode: string;
+      try { envMode = await getEnvMode(); } catch { envMode = "production"; }
+      if (envMode !== "production") {
+        console.log(`[scheduler][SUSPENDED](${expression}) — env_mode=${envMode}`);
+        return;
+      }
+      return (task as () => void | Promise<void>)();
+    };
+    return _origNodeCronSchedule(expression, guarded as any, options);
+  };
+
+  // ─── Named handler functions ──────────────────────────────────────────────
+  // Each handler contains the same logic as the corresponding cron callback.
+  // Extracted so that the Dev Control Center can trigger them manually.
+
+  async function handleSalaryReportGeneration() {
+    const now = new Date();
+    const year = now.getFullYear();
+    const month = now.getMonth() + 1;
+    const report = await generateMonthlySalaryReport(year, month);
+    console.log(`[scheduler] Report generated: ${report.summary.totalEmployees} employees, ₹${report.summary.totalPayable} total payable.`);
+    const existing = await db.select({ id: salaryReportRuns.id })
+      .from(salaryReportRuns)
+      .where(and(eq(salaryReportRuns.year, year), eq(salaryReportRuns.month, month)))
+      .limit(1);
+    if (existing.length > 0) {
+      await db.update(salaryReportRuns)
+        .set({ reportData: report.rows as any, adjustments: {}, status: "pending_approval", generatedAt: new Date(), approvedAt: null, approvedBy: null, emailSentAt: null })
+        .where(eq(salaryReportRuns.id, existing[0].id));
+      console.log(`[scheduler] Updated existing salary run for ${month}/${year} — status: pending_approval.`);
+    } else {
+      await db.insert(salaryReportRuns).values({ year, month, status: "pending_approval", reportData: report.rows as any, adjustments: {} as any });
+      console.log(`[scheduler] Saved salary run for ${month}/${year} — status: pending_approval.`);
+    }
+  }
+
+  async function handleAbsentSweep() {
+    const { year, month, day } = getIstDateTime();
+    const todayDate = new Date(Date.UTC(year, month - 1, day));
+    const yesterdayDate = new Date(todayDate.getTime() - 24 * 60 * 60 * 1000);
+    const todayStr = yesterdayDate.toISOString().slice(0, 10);
+    console.log(`[scheduler] Running early-morning absent sweep for ${todayStr}...`);
+    const result = await runAbsentSweep(todayStr);
+    if (result.skippedWeekend) {
+      console.log(`[scheduler] Absent sweep skipped — weekend (${todayStr})`);
+    } else if (result.skippedHoliday) {
+      console.log(`[scheduler] Absent sweep skipped — public holiday: ${result.skippedHoliday}`);
+    } else {
+      console.log(`[scheduler] Absent sweep complete for ${todayStr}: ${result.created} proposal(s) enqueued, ${result.skipped} skipped.`);
+    }
+  }
+
+  async function handleGoalAutoProgressSync() {
+    console.log("[scheduler] Running goal auto-progress sync...");
+    const { runGoalAutoProgressSync } = await import("./goalAutoProgressService");
+    const result = await runGoalAutoProgressSync();
+    console.log(
+      `[scheduler] Goal auto-progress sync complete: ${result.suggested} suggested, ` +
+      `${result.skipped} skipped, ${result.anomalyFlagged} anomaly-flagged, ` +
+      `${result.escalationFlagged} escalation-flagged, ${result.errors} errors.`,
+    );
+  }
+
+  async function handleAttendanceReportMonthEnd() {
+    const la = getLaDateTime();
+    console.log(`[scheduler] Ensuring attendance report run for ${la.month}/${la.year}...`);
+    const result = await ensureRunForMonthAndNotify(la.month, la.year);
+    console.log(`[scheduler] Attendance report ${result.created ? "created" : "reconciled"} for ${la.month}/${la.year}: run ${result.runId}, notified ${result.notified} manager(s)`);
+  }
+
+  async function handleMonthlyLeaveAccrual() {
+    const { year, month } = getIstDateTime();
+    console.log(`[scheduler] Monthly leave accrual triggered for ${month}/${year}. Running...`);
+    const result = await storage.accrueMonthlyLeaves(year, month);
+    console.log(`[scheduler] Accrual done for ${month}/${year}: ${result.usersProcessed} processed, ${result.accrualsMade} accruals made, ${result.skippedUsers.length} skipped.`);
+  }
+
+  async function handleGovernanceSyncSweep() {
+    console.log("[scheduler] Running unified governance sync sweep...");
+    const { runGovernanceSyncSweep } = await import("./governanceService");
+    const result = await runGovernanceSyncSweep();
+    console.log(
+      `[scheduler] Governance sync sweep complete: findings=${result.findingsCollected}, applied=${result.escalationsApplied}, notifications=${result.notificationsSent}`
+    );
+  }
+
+  // ─── Register jobs in JOB_REGISTRY ───────────────────────────────────────
+  JOB_REGISTRY.set("salary_report_generation", {
+    name: "salary_report_generation",
+    label: "Salary Report Generation",
+    schedule: "Last day of month, 6 PM CST",
+    handler: handleSalaryReportGeneration,
+  });
+  JOB_REGISTRY.set("monthly_leave_accrual", {
+    name: "monthly_leave_accrual",
+    label: "Monthly Leave Accrual",
+    schedule: "1st of month, 00:00 IST",
+    handler: handleMonthlyLeaveAccrual,
+  });
+  JOB_REGISTRY.set("absent_sweep", {
+    name: "absent_sweep",
+    label: "Absent Sweep",
+    schedule: "Daily 8 AM IST (targets yesterday)",
+    handler: handleAbsentSweep,
+  });
+  JOB_REGISTRY.set("goal_auto_progress_sync", {
+    name: "goal_auto_progress_sync",
+    label: "Goal Auto-Progress Sync",
+    schedule: "Daily 7 AM IST",
+    handler: handleGoalAutoProgressSync,
+  });
+  JOB_REGISTRY.set("attendance_report_month_end", {
+    name: "attendance_report_month_end",
+    label: "Attendance Report Month-End",
+    schedule: "Last day of month, 10 PM PST",
+    handler: handleAttendanceReportMonthEnd,
+  });
+  JOB_REGISTRY.set("governance_sync_sweep", {
+    name: "governance_sync_sweep",
+    label: "Governance Sync Sweep",
+    schedule: "Daily 7 AM IST",
+    handler: handleGovernanceSyncSweep,
+  });
+
   // Salary report: last day of month at 6 PM CST — generate and hold for approval
   cron.schedule("0 18 28-31 * *", async () => {
+    const _envMode = await getEnvMode();
+    if (_envMode !== "production") {
+      console.log(`[scheduler] [SUSPENDED] salary_report_generation — env_mode=${_envMode}`);
+      return;
+    }
     if (!isLastDayOfMonth()) {
       console.log("[scheduler] Not the last day of the month, skipping salary report.");
       return;
     }
+    const _entry = JOB_REGISTRY.get("salary_report_generation");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
 
     console.log("[scheduler] Last day of month detected. Generating salary report (holding for approval)...");
     try {
@@ -254,6 +430,11 @@ export function startScheduler() {
   // Salary report approval reminder: 1st of every month at 8 PM CST
   // If last month's run is still pending_approval, remind super admins
   cron.schedule("0 20 1 * *", async () => {
+    const _envMode = await getEnvMode();
+    if (_envMode !== "production") {
+      console.log(`[scheduler] [SUSPENDED] salary_approval_reminder — env_mode=${_envMode}`);
+      return;
+    }
     console.log("[scheduler] Checking for pending salary report approval...");
     try {
       const now = new Date();
@@ -316,6 +497,13 @@ export function startScheduler() {
   // are fully committed before January's EL+bonus credit is applied — all on Jan 1 IST.
   // Uses getIstDateTime() so year/month are always correct regardless of server timezone.
   cron.schedule("0 0 1 * *", async () => {
+    const _envMode = await getEnvMode();
+    if (_envMode !== "production") {
+      console.log(`[scheduler] [SUSPENDED] monthly_leave_accrual — env_mode=${_envMode}`);
+      return;
+    }
+    const _entry = JOB_REGISTRY.get("monthly_leave_accrual");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
     const { year, month } = getIstDateTime();
 
     // January: run year-end for the prior year BEFORE this month's accrual
@@ -518,6 +706,13 @@ export function startScheduler() {
   // employees punched in on the prior evening). The overnight-shift guard remains as
   // a belt-and-suspenders check for any edge case where a shift extends past 08:00.
   cron.schedule("0 8 * * *", async () => {
+    const _envMode = await getEnvMode();
+    if (_envMode !== "production") {
+      console.log(`[scheduler] [SUSPENDED] absent_sweep — env_mode=${_envMode}`);
+      return;
+    }
+    const _entry = JOB_REGISTRY.get("absent_sweep");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
     const { year, month, day } = getIstDateTime();
     // Compute yesterday's IST date (the shift start date for overnight shifts)
     const todayDate = new Date(Date.UTC(year, month - 1, day));
@@ -574,6 +769,13 @@ export function startScheduler() {
   // Goal Auto-Progress Engine: runs at 7:00 AM IST daily, before the 8:30 AM absent sweep.
   // Calculates actual progress for all auto-trackable active plan goals and updates the DB.
   cron.schedule("0 7 * * *", async () => {
+    const _envMode = await getEnvMode();
+    if (_envMode !== "production") {
+      console.log(`[scheduler] [SUSPENDED] goal_auto_progress_sync — env_mode=${_envMode}`);
+      return;
+    }
+    const _entry = JOB_REGISTRY.get("goal_auto_progress_sync");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
     console.log("[scheduler] Running goal auto-progress sync...");
     try {
       const { runGoalAutoProgressSync } = await import("./goalAutoProgressService");
@@ -637,10 +839,17 @@ export function startScheduler() {
   // Cron fires daily at 22:00 America/Los_Angeles; we generate + notify only when
   // today (in LA) is the last day of the month, for the CURRENT month.
   cron.schedule("0 22 * * *", async () => {
+    const _envMode = await getEnvMode();
+    if (_envMode !== "production") {
+      console.log(`[scheduler] [SUSPENDED] attendance_report_month_end — env_mode=${_envMode}`);
+      return;
+    }
     try {
       const la = getLaDateTime();
       if (!isLastDayOfMonthLa(la)) return;
       console.log(`[scheduler] Last day of month (PST) — ensuring attendance report run for ${la.month}/${la.year}...`);
+      const _entry = JOB_REGISTRY.get("attendance_report_month_end");
+      if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
       const result = await ensureRunForMonthAndNotify(la.month, la.year);
       console.log(`[scheduler] Attendance report ${result.created ? "created" : "reconciled"} for ${la.month}/${la.year}: run ${result.runId}, notified ${result.notified} manager(s)`);
     } catch (error) {
@@ -1368,6 +1577,13 @@ export function startScheduler() {
   // Previously split across 07:00 (governance), 08:30 (probation), and 09:00
   // (compliance sweep) crons — now consolidated to prevent triple-notification.
   cron.schedule("0 7 * * *", async () => {
+    const _envMode = await getEnvMode();
+    if (_envMode !== "production") {
+      console.log(`[scheduler] [SUSPENDED] governance_sync_sweep — env_mode=${_envMode}`);
+      return;
+    }
+    const _entry = JOB_REGISTRY.get("governance_sync_sweep");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
     console.log("[scheduler] Running unified governance sync sweep...");
     try {
       const { runGovernanceSyncSweep } = await import("./governanceService");

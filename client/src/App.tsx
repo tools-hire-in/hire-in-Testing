@@ -127,6 +127,7 @@ const PayrollSetup = lazy(() => import("@/pages/admin/payroll/PayrollSetup"));
 const CompetitiveAudit = lazy(() => import("@/pages/admin/CompetitiveAudit"));
 const Integrations = lazy(() => import("@/pages/admin/Integrations"));
 const GovernanceHub = lazy(() => import("@/pages/admin/governance/GovernanceHub"));
+const DevToolsPage = lazy(() => import("@/pages/admin/DevTools"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -469,6 +470,11 @@ function PublicRouter() {
 
       {/* Integrations Hub */}
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
+
+      {/* Dev Control Center — super_admin only, non-production environments */}
+      <Route path="/dev-tools/notifications">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
+      <Route path="/dev-tools/crons">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
+      <Route path="/dev-tools">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
 
       <Route component={NotFound} />
     </Switch>

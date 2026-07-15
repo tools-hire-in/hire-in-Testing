@@ -585,6 +585,10 @@ export async function registerRoutes(
   registerVaultRoutes(app);
   registerBulkPayrollRoutes(app);
 
+  // Dev Control Center — 404 in production (hard gate inside the router)
+  const { createDevToolsRouter } = await import("./devTools");
+  app.use("/api/dev-tools", createDevToolsRouter());
+
   // Enforce 2FA for all admin/HR API routes
   app.use("/api/admin", require2FA);
   app.use("/api/hr", require2FA);
