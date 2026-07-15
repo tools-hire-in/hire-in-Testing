@@ -48,14 +48,14 @@ import type { CanonicalSocialKit } from "@shared/studioAi";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
-const OCCASION_CATEGORY_LABELS: Record<string, string> = {
+export const OCCASION_CATEGORY_LABELS: Record<string, string> = {
   national_holiday: "Holiday", festival: "Festival",
   industry_awareness: "Awareness", fun_observance: "Observance", custom: "Custom",
 };
-const OCCASION_REGION_LABELS: Record<string, string> = {
+export const OCCASION_REGION_LABELS: Record<string, string> = {
   us: "US", india: "India", global: "Global",
 };
-const TYPE_ICON: Record<string, string> = {
+export const TYPE_ICON: Record<string, string> = {
   article: "📄", social_post: "📣", story: "⏱", reel: "🎬", carousel: "📷",
 };
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
@@ -67,10 +67,10 @@ type CalendarItem = StudioArticle & {
   publishesToInsights: boolean;
 };
 
-function ymd(d: Date) {
+export function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
-function normalizeScheduledDate(v: string | Date | null | undefined): string | null {
+export function normalizeScheduledDate(v: string | Date | null | undefined): string | null {
   if (!v) return null;
   if (v instanceof Date) return ymd(v);
   return String(v).slice(0, 10);
@@ -261,7 +261,7 @@ function PlanContentForm({ occasion, projectId, onDone }: { occasion: StudioOcca
 }
 
 // ─── Day Idea Card ─────────────────────────────────────────────────────────────
-function DayIdeaCard({
+export function DayIdeaCard({
   idea, isSelected, onClick, assignees, commentCount, canEdit, campaignMap, articleStatusMap,
 }: {
   idea: StudioContentIdea;
@@ -494,7 +494,7 @@ function MentionCommentInput({
 }
 
 // ─── Idea Detail Pane ─────────────────────────────────────────────────────────
-function IdeaDetailPane({
+export function IdeaDetailPane({
   ideaId, members, onClose,
 }: {
   ideaId: string;
@@ -1334,8 +1334,6 @@ export default function Calendar() {
   const [scope, setScope] = useState<"hireins" | "all">("all");
   const [viewMode, setViewMode] = useState<"month" | "week">("month");
   const [exportItem, setExportItem] = useState<CalendarItem | null>(null);
-  const [workspaceDate, setWorkspaceDate] = useState<string | null>(null);
-  const [workspaceInitialIdea, setWorkspaceInitialIdea] = useState<string | null>(null);
   const [cursor, setCursor] = useState(() => {
     const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1);
   });
@@ -1472,9 +1470,11 @@ export default function Calendar() {
   const monthLabel = cursor.toLocaleDateString(undefined, { month: "long", year: "numeric" });
   const weekLabel = `${weekCursor.toLocaleDateString("en-IN", { day: "numeric", month: "short" })} – ${weekEnd.toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}`;
 
-  const openWorkspace = (dateKey: string, ideaId?: string) => {
-    setWorkspaceDate(dateKey);
-    setWorkspaceInitialIdea(ideaId ?? null);
+  const goToDay = (dateKey: string, ideaId?: string) => {
+    const base = selectedProjectId
+      ? `/admin/studio/calendar/${dateKey}?projectId=${encodeURIComponent(selectedProjectId)}`
+      : `/admin/studio/calendar/${dateKey}`;
+    navigate(ideaId ? `${base}${selectedProjectId ? "&" : "?"}idea=${ideaId}` : base);
   };
 
   // Build month grid cells
@@ -1575,7 +1575,7 @@ export default function Calendar() {
                     <div
                       key={i}
                       className={`group min-h-[96px] rounded-md border p-1.5 transition-colors cursor-pointer hover:bg-muted/30 ${key === todayKey ? "border-primary" : ""}`}
-                      onClick={() => openWorkspace(key)}
+                      onClick={() => goToDay(key)}
                       data-testid={`calendar-day-${key}`}
                     >
                       <div className="mb-1 flex items-center justify-between">
@@ -1591,7 +1591,7 @@ export default function Calendar() {
                           <button
                             className="hidden rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:flex"
                             title="Open workspace for this date"
-                            onClick={(e) => { e.stopPropagation(); openWorkspace(key); }}
+                            onClick={(e) => { e.stopPropagation(); goToDay(key); }}
                             data-testid={`button-add-article-${key}`}
                           >
                             <Plus className="h-3 w-3" />
@@ -1631,7 +1631,7 @@ export default function Calendar() {
                           return (
                             <button
                               key={idea.id}
-                              onClick={(e) => { e.stopPropagation(); openWorkspace(key, idea.id); }}
+                              onClick={(e) => { e.stopPropagation(); goToDay(key, idea.id); }}
                               className="flex w-full items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[11px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
                               title={`${idea.topic}${campaignName ? ` · ${campaignName}` : ""}${isBD ? " · BD Intel" : ""}${linkedArtStatus ? ` · Article: ${linkedArtStatus}` : ""}`}
                               data-testid={`calendar-idea-${idea.id}`}
@@ -1646,7 +1646,7 @@ export default function Calendar() {
                         {/* +N more overflow */}
                         {overflowCount > 0 && (
                           <button
-                            onClick={(e) => { e.stopPropagation(); openWorkspace(key); }}
+                            onClick={(e) => { e.stopPropagation(); goToDay(key); }}
                             className="block w-full text-left px-1.5 text-[10px] text-violet-600 hover:text-violet-800 dark:text-violet-400 font-medium"
                             data-testid={`overflow-link-${key}`}
                           >
@@ -1674,7 +1674,7 @@ export default function Calendar() {
                     <div key={key} className={`rounded-md border ${key === todayKey ? "border-primary" : ""}`} data-testid={`week-day-${key}`}>
                       {/* Day header */}
                       <button
-                        onClick={() => openWorkspace(key)}
+                        onClick={() => goToDay(key)}
                         className="w-full rounded-t-md px-2 py-2 text-center hover:bg-muted/40 transition-colors"
                         data-testid={`week-day-header-${key}`}
                       >
@@ -1701,7 +1701,7 @@ export default function Calendar() {
                           return (
                             <button
                               key={idea.id}
-                              onClick={(e) => { e.stopPropagation(); openWorkspace(key, idea.id); }}
+                              onClick={(e) => { e.stopPropagation(); goToDay(key, idea.id); }}
                               className="flex w-full items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[10px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
                               title={`${idea.topic}${campaignName ? ` · ${campaignName}` : ""}${isBD ? " · BD Intel" : ""}${linkedArtStatus ? ` · Article: ${linkedArtStatus}` : ""}`}
                               data-testid={`week-idea-${idea.id}`}
@@ -1715,7 +1715,7 @@ export default function Calendar() {
                         })}
                         {dayIdeas.length > 3 && (
                           <button
-                            onClick={() => openWorkspace(key)}
+                            onClick={() => goToDay(key)}
                             className="block w-full text-left px-1.5 text-[10px] text-violet-600 hover:text-violet-800 dark:text-violet-400 font-medium"
                             data-testid={`week-overflow-${key}`}
                           >
@@ -1735,26 +1735,9 @@ export default function Calendar() {
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-violet-800 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300">✦ Planned idea</span>
           <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-current text-amber-500" /> Occasion</span>
-          <span className="text-muted-foreground/60 ml-auto">Click a day to open workspace · Click chip to open idea</span>
+          <span className="text-muted-foreground/60 ml-auto">Click a day to view its ideas</span>
         </div>
       </div>
-
-      {/* Date Workspace Sheet */}
-      <DayWorkspaceSheet
-        date={workspaceDate}
-        projectId={selectedProjectId}
-        occasions={workspaceDate ? occByDay[workspaceDate] ?? [] : []}
-        ideas={workspaceDate ? ideasByDay[workspaceDate] ?? [] : []}
-        articles={workspaceDate ? byDay[workspaceDate] ?? [] : []}
-        canCreateArticle={canCreateArticle}
-        canEdit={can("studio.edit_article")}
-        canSchedule={canSchedulePublish}
-        members={members}
-        initialIdeaId={workspaceInitialIdea}
-        campaignMap={campaignMap}
-        articleStatusMap={articleStatusMap}
-        onClose={() => { setWorkspaceDate(null); setWorkspaceInitialIdea(null); }}
-      />
 
       {/* Social kit export sheet */}
       <Sheet open={!!exportItem} onOpenChange={(open) => !open && setExportItem(null)}>

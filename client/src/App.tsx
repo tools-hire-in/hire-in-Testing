@@ -95,6 +95,7 @@ const ControlTower = lazy(() => import("@/pages/admin/ControlTower"));
 const HelpDesk = lazy(() => import("@/pages/admin/HelpDesk"));
 const HelpDeskTicket = lazy(() => import("@/pages/admin/HelpDeskTicket"));
 const StudioCalendar = lazy(() => import("@/pages/admin/studio/Calendar"));
+const StudioDayView = lazy(() => import("@/pages/admin/studio/StudioDayView"));
 const StudioTemplateSettings = lazy(() => import("@/pages/admin/studio/TemplateSettings"));
 const StudioSubscribers = lazy(() => import("@/pages/admin/studio/Subscribers"));
 const StudioAnalytics = lazy(() => import("@/pages/admin/studio/Analytics"));
@@ -398,6 +399,7 @@ function PublicRouter() {
       <Route path="/admin/studio/final-approval">{() => <LegacyStudio><StudioFinalApproval /></LegacyStudio>}</Route>
       <Route path="/admin/automated-changes">{() => <Redirect to="/admin/control-tower?tab=automated-changes" />}</Route>
       <Route path="/admin/control-tower">{() => <Suspense fallback={<AdminFallback />}><ControlTower /></Suspense>}</Route>
+      <Route path="/admin/studio/calendar/:date">{() => <LegacyStudio><StudioDayView /></LegacyStudio>}</Route>
       <Route path="/admin/studio/calendar">{() => <LegacyStudio><StudioCalendar /></LegacyStudio>}</Route>
       <Route path="/admin/studio/settings/templates">{() => <LegacyStudio><StudioTemplateSettings /></LegacyStudio>}</Route>
       <Route path="/admin/studio/subscribers">{() => <LegacyStudio><StudioSubscribers /></LegacyStudio>}</Route>
@@ -420,9 +422,11 @@ function PublicRouter() {
       <Route path="/studio/cm-review">{() => <StudioV2><StudioCMReview /></StudioV2>}</Route>
       <Route path="/studio/approvals">{() => <StudioV2><StudioApprovals /></StudioV2>}</Route>
       <Route path="/studio/final-approval">{() => <StudioV2><StudioFinalApproval /></StudioV2>}</Route>
+      <Route path="/studio/calendar/:date">{() => <StudioV2><StudioDayView /></StudioV2>}</Route>
       <Route path="/studio/calendar">{() => <StudioV2><StudioPipelineView lens="calendar" /></StudioV2>}</Route>
       <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
       <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
+      <Route path="/studio/publishing-calendar/:date">{() => <StudioV2><StudioDayView /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
       <Route path="/studio/campaigns/:id">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
       <Route path="/studio/campaigns">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
@@ -595,6 +599,7 @@ function EmployeeRouter() {
       <Route path="/admin/studio/final-approval">{() => <LegacyStudio><StudioFinalApproval /></LegacyStudio>}</Route>
       <Route path="/admin/automated-changes">{() => <Redirect to="/admin/control-tower?tab=automated-changes" />}</Route>
       <Route path="/admin/control-tower">{() => <Suspense fallback={<AdminFallback />}><ControlTower /></Suspense>}</Route>
+      <Route path="/admin/studio/calendar/:date">{() => <LegacyStudio><StudioDayView /></LegacyStudio>}</Route>
       <Route path="/admin/studio/calendar">{() => <LegacyStudio><StudioCalendar /></LegacyStudio>}</Route>
       <Route path="/admin/studio/settings/templates">{() => <LegacyStudio><StudioTemplateSettings /></LegacyStudio>}</Route>
       <Route path="/admin/studio/subscribers">{() => <LegacyStudio><StudioSubscribers /></LegacyStudio>}</Route>
@@ -617,9 +622,11 @@ function EmployeeRouter() {
       <Route path="/studio/cm-review">{() => <StudioV2><StudioCMReview /></StudioV2>}</Route>
       <Route path="/studio/approvals">{() => <StudioV2><StudioApprovals /></StudioV2>}</Route>
       <Route path="/studio/final-approval">{() => <StudioV2><StudioFinalApproval /></StudioV2>}</Route>
+      <Route path="/studio/calendar/:date">{() => <StudioV2><StudioDayView /></StudioV2>}</Route>
       <Route path="/studio/calendar">{() => <StudioV2><StudioPipelineView lens="calendar" /></StudioV2>}</Route>
       <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
       <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
+      <Route path="/studio/publishing-calendar/:date">{() => <StudioV2><StudioDayView /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
       <Route path="/studio/campaigns/:id">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
       <Route path="/studio/campaigns">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
