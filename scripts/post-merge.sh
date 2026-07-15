@@ -1,5 +1,17 @@
 #!/bin/bash
 set -e
+
+# --- Conflict guard (stage 1) ------------------------------------------------
+# Run BEFORE npm install or any DB work.
+# Detects git merge conflicts in any file and halts immediately if found.
+# A developer must manually resolve conflicts and re-run post-merge.
+bash scripts/pre-merge-conflict-check.sh "${MERGE_BRANCH:-}" || {
+  echo ""
+  echo "MERGE HALTED: conflicts detected — developer manual approval required before this merge can proceed."
+  exit 1
+}
+# -----------------------------------------------------------------------------
+
 npm install
 
 # --- Schema drift guard ------------------------------------------------------

@@ -34,6 +34,10 @@ args = "schema-drift"
 task = "workflow.run"
 args = "governance-tests"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "merge-conflict-check"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -64,6 +68,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npx tsx --test server/tests/governance.test.ts server/tests/governancePulse.test.ts"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "merge-conflict-check"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/pre-merge-conflict-check.sh"
 
 [workflows.workflow.metadata]
 isValidation = true
