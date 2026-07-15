@@ -26345,6 +26345,37 @@ export async function registerRoutes(
     }
   });
 
+  // ── Brand Asset Package ZIP ──────────────────────────────────────────────────
+  // GET /api/brand/assets.zip — bundles the static brand files from
+  // client/public/brand/ into a ZIP for one-click download. No auth required
+  // (the files are already publicly served). No new files are generated.
+  app.get("/api/brand/assets.zip", async (_req: Request, res: Response) => {
+    const { resolve } = await import("path");
+    const fs = await import("fs");
+    const archiver = (await import("archiver")).default;
+
+    const brandDir = resolve(process.cwd(), "client/public/brand");
+    const files = ["hirein-logo.svg", "hirein-logo-mark.svg", "hirein-logo-original.jpg"];
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", 'attachment; filename="hirein-brand-assets.zip"');
+
+    const archive = archiver("zip", { zlib: { level: 6 } });
+    archive.on("error", (err) => {
+      console.error("[brand-zip]", err);
+      if (!res.headersSent) res.status(500).json({ error: "Failed to create ZIP" });
+    });
+    archive.pipe(res);
+
+    for (const file of files) {
+      const filePath = resolve(brandDir, file);
+      if (fs.existsSync(filePath)) {
+        archive.file(filePath, { name: file });
+      }
+    }
+    await archive.finalize();
+  });
+
   // ── Global Express error handler ─────────────────────────────────────────────
   // Must be the last middleware registered (4-argument signature).
   // Catches any error passed via next(err) or thrown in async route handlers
