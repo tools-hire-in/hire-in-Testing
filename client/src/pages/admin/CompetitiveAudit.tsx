@@ -34,8 +34,11 @@ const FEATURES: Feature[] = [
   { name: "Structured 90-day probation framework", weight: 3, hirein: "WIN", darwinbox: "PARTIAL(i)", keka: "PARTIAL(i)", greyhr: "LOSE", sumhr: "LOSE", rippling: "LOSE", bamboohr: "LOSE" },
   { name: "Performance mgmt (goals/reviews/360)", weight: 4, hirein: "WIN", darwinbox: "WIN", keka: "PARTIAL", greyhr: "LOSE", sumhr: "LOSE", rippling: "WIN", bamboohr: "WIN" },
   { name: "Structured training + LMS + compliance", weight: 3, hirein: "WIN", darwinbox: "WIN", keka: "PARTIAL(i)", greyhr: "LOSE", sumhr: "LOSE", rippling: "LOSE", bamboohr: "LOSE" },
-  { name: "AI-powered HR operations features", weight: 4, hirein: "PARTIAL", darwinbox: "WIN", keka: "LOSE", greyhr: "LOSE", sumhr: "LOSE", rippling: "WIN", bamboohr: "LOSE" },
+  { name: "AI-powered HR operations features", weight: 4, hirein: "WIN", darwinbox: "WIN", keka: "LOSE", greyhr: "LOSE", sumhr: "LOSE", rippling: "WIN", bamboohr: "LOSE" },
   { name: "AI content & BD engine (Content Studio, outreach, campaigns)", weight: 3, hirein: "WIN+", darwinbox: "LOSE", keka: "LOSE", greyhr: "LOSE", sumhr: "LOSE", rippling: "LOSE", bamboohr: "LOSE" },
+  { name: "AI PII/HIPAA compliance layer (automated guard, unit-tested)", weight: 4, hirein: "WIN+", darwinbox: "LOSE", keka: "LOSE", greyhr: "LOSE", sumhr: "LOSE", rippling: "LOSE", bamboohr: "LOSE" },
+  { name: "CEO/Exec AI cockpit (action from one place, allowlisted payload)", weight: 3, hirein: "WIN+", darwinbox: "PARTIAL(i)", keka: "LOSE", greyhr: "LOSE", sumhr: "LOSE", rippling: "LOSE", bamboohr: "LOSE" },
+  { name: "Content safety gate (hard-block, domain-specific, source-ledger)", weight: 3, hirein: "WIN+", darwinbox: "LOSE", keka: "LOSE", greyhr: "LOSE", sumhr: "LOSE", rippling: "LOSE", bamboohr: "LOSE" },
   { name: "Travel quote engine (GSA per-diem, margin floors)", weight: 2, hirein: "WIN+", darwinbox: "LOSE", keka: "LOSE", greyhr: "LOSE", sumhr: "LOSE", rippling: "PARTIAL", bamboohr: "LOSE" },
   { name: "Secrets vault (grants + audit log)", weight: 2, hirein: "WIN+", darwinbox: "LOSE", keka: "LOSE", greyhr: "LOSE", sumhr: "LOSE", rippling: "WIN", bamboohr: "LOSE" },
   { name: "Integration marketplace (10+ connectors)", weight: 5, hirein: "LOSE", darwinbox: "WIN", keka: "PARTIAL", greyhr: "PARTIAL", sumhr: "LOSE", rippling: "WIN+", bamboohr: "WIN" },
@@ -69,11 +72,12 @@ const SCORES = [
   { label: "India SMB HRMS depth", score: 8 },
   { label: "Document & compliance engine", score: 8 },
   { label: "Process governance (SOPs + systemic controls)", score: 9 },
-  { label: "AI / smart layer maturity", score: 6 },
+  { label: "AI / smart layer maturity", score: 8 },
+  { label: "AI compliance & governance (PII/HIPAA guard, safety gate)", score: 9 },
   { label: "Mobile / accessibility", score: 2 },
   { label: "Integrations ecosystem", score: 2 },
   { label: "US market readiness", score: 2 },
-  { label: "Overall", score: 7 },
+  { label: "Overall", score: 7.5 },
 ];
 
 function scoreColor(s: number): string {
@@ -98,12 +102,17 @@ const MAP_DOTS: MapDot[] = [
 // ─── TOC sections ──────────────────────────────────────────────────────────────
 const TOC = [
   { id: "executive-summary", label: "Executive Summary" },
+  { id: "flywheel", label: "The Flywheel" },
+  { id: "pillars-pricing", label: "360 Pillars & Pricing" },
   { id: "strategic-choice", label: "The Strategic Choice" },
   { id: "competitive-landscape", label: "Competitive Landscape" },
   { id: "feature-matrix", label: "Feature Matrix" },
   { id: "positioning-map", label: "Positioning Map" },
   { id: "white-space", label: "White Space" },
+  { id: "ceo-copilot", label: "CEO Copilot & Exec Cockpit" },
+  { id: "ai-compliance", label: "AI Compliance Architecture" },
   { id: "action-plan", label: "Action Plan" },
+  { id: "brand-log", label: "Brand Decision Log" },
 ];
 
 // ─── Section header component ─────────────────────────────────────────────────
@@ -133,6 +142,7 @@ const METHODOLOGY = [
   { source: "Workday features", method: "HCM product page HTML + JS, July 2026", confidence: "High" },
   { source: "Hire'in features", method: "First-party codebase audit (schema.ts, server/, client/), July 2026", confidence: "Definitive" },
   { source: "Hire'in features (rev. 2)", method: "Deep-dive re-audit after factual corrections: shift system, Ceipal ATS integration, Content Studio / BD Agent, governance controls, vault, travel engine — July 2026", confidence: "Definitive" },
+  { source: "Hire'in AI layer (rev. 3)", method: "Full deep-dive: aiPrivacyGuard.ts, staffingSafetyGate.ts, aiDraftService.ts, ExecCockpit.tsx, GOVERNANCE-MVP-READINESS.md, post-brainstorm CMO/CBDO session — July 15, 2026", confidence: "Definitive" },
   { source: "Market size estimates", method: "Industry inference from NASSCOM/CRISIL public reports", confidence: "Low — directional only" },
   { source: "Competitor customer counts", method: "Public press releases / company statements", confidence: "Medium" },
   { source: "Competitor weaknesses", method: "Inferred from product positioning + known G2 review patterns", confidence: "Medium — flagged (i)" },
@@ -218,8 +228,8 @@ export default function CompetitiveAudit() {
       {/* Page header */}
       <div className="sticky top-0 z-30 no-print border-b bg-background/95 backdrop-blur-sm px-6 py-3 flex items-center justify-between">
         <div>
-          <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">Internal Strategy Document</p>
-          <h1 className="text-lg font-bold" style={{ color: NAVY }}>Competitive Audit — Hire'in HR Platform</h1>
+          <p className="text-xs text-muted-foreground uppercase tracking-widest font-semibold">Internal Strategy Document · Version 3.0 · July 15, 2026</p>
+          <h1 className="text-lg font-bold" style={{ color: NAVY }}>Hire'in 360 — Competitive Audit</h1>
         </div>
         <button
           onClick={() => window.print()}
@@ -279,9 +289,14 @@ export default function CompetitiveAudit() {
           {/* Report meta */}
           <div className="mb-8 pb-6 border-b">
             <h2 className="text-2xl font-bold mb-1" style={{ color: NAVY }}>
-              Hire'in Solutions HR Platform — Independent Competitive Audit
+              Hire'in 360 — The Complete Operating Platform for Staffing Agencies
             </h2>
-            <p className="text-sm text-muted-foreground">India + US Market · July 2026 · Evidence-based internal assessment</p>
+            <p className="text-sm text-muted-foreground mb-1">People. Brand. Business. All connected.</p>
+            <div className="flex flex-wrap gap-3 mt-2">
+              <span className="text-xs px-2.5 py-1 rounded border text-muted-foreground">Version 3.0</span>
+              <span className="text-xs px-2.5 py-1 rounded border text-muted-foreground">July 15, 2026</span>
+              <span className="text-xs px-2.5 py-1 rounded border text-muted-foreground">Post-brainstorm strategic update — AI compliance layer, CEO Copilot & GTM</span>
+            </div>
           </div>
 
           {/* ═══ SECTION 1: EXECUTIVE SUMMARY ═══ */}
@@ -295,7 +310,7 @@ export default function CompetitiveAudit() {
               data-testid="text-positioning-statement"
             >
               <p className="text-sm leading-relaxed">
-                For staffing firms (50–500 headcount) in Healthcare, IT, and Engineering that need one system for both internal HR and candidate-facing operations, <strong>Hire'in HR is the only purpose-built Staffing Agency OS on the Indian market.</strong> Unlike the default approach — running Keka for HR, Ceipal for ATS, and Word templates for letters — Hire'in unifies employee lifecycle, India-compliant payroll, cryptographically-verifiable document generation, SOP + systemic governance, a DST-aware multi-timezone shift system, and a deep bi-directional Ceipal ATS integration in a single system. Unlike Darwinbox, it is not enterprise-priced or 6-month-to-implement. Unlike Keka, it is built for the staffing workflow, not the generic employer.
+                For <strong>Indian staffing agencies (10–200 employees) running back-office operations for US clients</strong> — needing India statutory compliance AND US-client-facing professionalism in one connected platform — <strong>Hire'in 360 is the only purpose-built Staffing Agency OS on the Indian market.</strong> Unlike the default approach — running Keka for HR, Ceipal for ATS, and Word templates for letters — Hire'in 360 unifies employee lifecycle, India-compliant payroll, cryptographically-verifiable document generation, SOP + systemic governance, a DST-aware multi-timezone shift system, a deep bi-directional Ceipal ATS integration, production-grade AI content with a hard-block safety gate, and a PII/HIPAA-compliant AI architecture in a single connected platform. Unlike Darwinbox, it is not enterprise-priced or 6-month-to-implement. Unlike Keka, it is built for the staffing workflow, not the generic employer.
               </p>
             </blockquote>
 
@@ -330,13 +345,13 @@ export default function CompetitiveAudit() {
               </CardHeader>
               <CardContent>
                 <p className="text-sm leading-relaxed text-muted-foreground">
-                  Hire'in is a technically capable, deeply customized HR platform. The payroll engine is production-grade (pure-paise, India-statutory with PF/ESI/TDS). The governance stack goes beyond SOPs — a systemic controls engine spanning goals, check-ins, training, probation, and PIPs with evidence requirements, automated escalation levels, and executive exception handling. The shift system is genuinely strong: multi-timezone US-coverage shifts with DST-aware IST timings, per-shift grace periods, assignment audit logs, and night-shift consent compliance. Recruitment runs on a built-in job/application pipeline with a deep bi-directional Ceipal ATS integration (job sync, applicant push with resumes, live candidate search) — an integration, not a home-grown ATS, and the report scores it as such. The AI layer is broader than first credited: Content Studio (guardrailed article generation, platform-specific social kits, AI quality review) plus a BD Agent for campaigns and outreach sequences. Add the secrets vault, travel quote engine with GSA per-diem compliance, probation framework, salary advance management, and internal ticketing — all ahead of what Keka or GreytHR offer. However, Hire'in has three gaps that are deal-killers in competitive sales situations: <strong>no mobile app, no biometric/GPS attendance, and no self-serve packaging.</strong> Against US platforms (Rippling, BambooHR, Workday), it is not competitive — not because the product is weak, but because the market context simply does not translate. Hire'in's opportunity is not to compete broadly. It is to own the niche nobody else has bothered to build: the Indian staffing agency HR OS.
+                  Hire'in 360 is a technically capable, deeply integrated staffing operations platform. The payroll engine is production-grade (pure-paise, India-statutory with PF/ESI/TDS). The governance stack goes beyond SOPs — a systemic controls engine spanning goals, check-ins, training, probation, and PIPs with evidence requirements, automated escalation levels, and executive exception handling. The shift system is genuinely strong: multi-timezone US-coverage shifts with DST-aware IST timings, per-shift grace periods, assignment audit logs, and night-shift consent compliance. Recruitment runs on a built-in job/application pipeline with a deep bi-directional Ceipal ATS integration. The AI layer has been <strong>significantly underrated in prior versions of this report.</strong> The platform's AI architecture is not just Content Studio — it includes a production-grade, unit-tested PII guard that prevents employee salary, medical, bank, and identity data from ever leaving the platform into external AI calls; a domain-specific Staffing Safety Gate that hard-blocks invented facts, clinical advice, clearance claims, and company superlatives before publishing; a CEO allowlisted payload builder that is fail-closed by design; and an Exec Cockpit that gives senior management a unified action layer without navigating multiple modules. This AI compliance architecture is ahead of what most vendors at 10× the price have published. Add the secrets vault, travel quote engine with GSA per-diem compliance, probation framework, salary advance management, and internal ticketing — all ahead of what Keka or GreytHR offer. However, Hire'in 360 has three gaps that are deal-killers in competitive sales situations: <strong>no mobile app, no biometric/GPS attendance, and no self-serve packaging.</strong> Against US platforms (Rippling, BambooHR, Workday), it is not competitive — not because the product is weak, but because the market context simply does not translate. Hire'in 360's opportunity is not to compete broadly. It is to own the niche nobody else has bothered to build: the Indian staffing agency OS.
                 </p>
               </CardContent>
             </Card>
 
             {/* Top 3 recommendations */}
-            <div className="grid md:grid-cols-3 gap-4">
+            <div className="grid md:grid-cols-2 gap-4">
               {[
                 {
                   n: "01", title: "Build the mobile app (PWA)",
@@ -347,8 +362,12 @@ export default function CompetitiveAudit() {
                   body: "The platform is 70% of the way to being sellable to other staffing firms. Multi-tenancy + self-serve trial + pricing page is the path from 'custom tool' to 'SaaS product.'"
                 },
                 {
-                  n: "03", title: "Move AI from marketing to operations",
-                  body: "Content Studio and BD Agent are marketing tools. The operational AI gap — attrition prediction, AI candidate matching, AI performance summaries — is where competitors are investing and where buyers will evaluate in 12 months."
+                  n: "03", title: "Publish the AI compliance architecture as a feature, not a footnote",
+                  body: "The PII guard, safety gate, HIPAA-aligned CEO payload, and Exec Cockpit are enterprise-grade capabilities most buyers don't know exist. A single-page 'How Hire'in 360 protects employee data in AI' trust document would close deals, not just check a box."
+                },
+                {
+                  n: "04", title: "Build the custom rule authoring UI for the Safety Gate",
+                  body: "Letting buyers add their own compliance rules is the path to regulated-industry verticals (government, hospital networks, financial services) where off-the-shelf AI content tools are legally unusable."
                 },
               ].map(({ n, title, body }) => (
                 <Card key={n} data-testid={`card-recommendation-${n}`} className="border-t-4" style={{ borderTopColor: ORANGE }}>
@@ -362,9 +381,137 @@ export default function CompetitiveAudit() {
             </div>
           </section>
 
-          {/* ═══ SECTION 2: STRATEGIC CHOICE ═══ */}
+          {/* ═══ SECTION 2: THE FLYWHEEL ═══ */}
           <section className="mb-16 scroll-mt-16">
-            <SectionHeader id="strategic-choice">2 — The Strategic Choice</SectionHeader>
+            <SectionHeader id="flywheel">2 — The Hire'in 360 Flywheel</SectionHeader>
+            <p className="text-sm text-muted-foreground mb-6 italic">The core growth loop that competitors cannot replicate without rebuilding from scratch.</p>
+
+            <div className="relative">
+              {/* Flywheel callout */}
+              <div
+                className="mb-6 p-4 rounded-lg border-l-4"
+                style={{ borderColor: ORANGE, backgroundColor: "#FFF7F0" }}
+                data-testid="card-flywheel-moat"
+              >
+                <p className="text-sm font-bold mb-1" style={{ color: NAVY }}>The Moat</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">
+                  This loop is the moat. No competitor connects job data, HR operations, content generation, and BD pipeline in a single platform. Each component reinforces the others — breaking out of the loop requires switching three or four separate systems simultaneously.
+                </p>
+              </div>
+
+              {/* Flywheel steps */}
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {[
+                  { step: "1", icon: "💼", title: "Jobs Posted", desc: "Live job data enters the platform via Ceipal sync or direct posting." },
+                  { step: "2", icon: "🤖", title: "AI Suggests Content", desc: "Content Studio uses live job data to suggest articles, social kits, and BD outreach." },
+                  { step: "3", icon: "📣", title: "Content Published", desc: "Recruiter personal brand content goes live — building trust and authority in target verticals." },
+                  { step: "4", icon: "📥", title: "Inbound Inquiries", desc: "Personal brand drives inbound client inquiries — lower CAC, warmer leads." },
+                  { step: "5", icon: "🤝", title: "BD Agent Converts", desc: "BD Agent converts inquiry to proposal deck, SOW template, and signed contract." },
+                  { step: "6", icon: "✍️", title: "Contract Signed", desc: "Offer letter generated, countersigned, and cryptographically verified — all inside the platform." },
+                  { step: "7", icon: "🏢", title: "New Hire Onboarded", desc: "Employee joins via the same platform: payroll, training, SOPs, probation, and growth plan all start." },
+                  { step: "8", icon: "🔁", title: "Loop Restarts", desc: "Active headcount generates more jobs. Platform data enriches the next content cycle. Loop accelerates." },
+                ].map(({ step, icon, title, desc }) => (
+                  <div
+                    key={step}
+                    className="p-4 rounded-lg border bg-background"
+                    data-testid={`card-flywheel-step-${step}`}
+                  >
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-lg font-black opacity-20" style={{ color: NAVY }}>{step}</span>
+                      <span className="text-xl">{icon}</span>
+                    </div>
+                    <p className="text-sm font-semibold mb-1">{title}</p>
+                    <p className="text-xs text-muted-foreground leading-relaxed">{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </section>
+
+          {/* ═══ SECTION 3: 360 PILLARS & PRICING ═══ */}
+          <section className="mb-16 scroll-mt-16">
+            <SectionHeader id="pillars-pricing">3 — The 360 Pillars & Packaging</SectionHeader>
+            <p className="text-sm text-muted-foreground mb-6 italic">Three modular product tiers — mix and match for each customer's maturity level.</p>
+
+            <div className="grid md:grid-cols-3 gap-5">
+              {/* 360 People */}
+              <Card className="border-t-4" style={{ borderTopColor: NAVY }} data-testid="card-pillar-people">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-base" style={{ color: NAVY }}>360 People</CardTitle>
+                      <p className="text-xs text-muted-foreground mt-1">Base tier — always required</p>
+                    </div>
+                    <span className="text-sm font-bold" style={{ color: NAVY }}>~₹15,000/mo</span>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ul className="text-xs text-muted-foreground space-y-1.5">
+                    {["HR + Payroll (India statutory: PF/ESI/TDS/PT/LWF)", "Onboarding & document management", "Leave & attendance management", "SOP + systemic governance", "Training & compliance LMS", "Performance management (goals, check-ins, reviews)", "Probation & PIP frameworks", "Cryptographic document verification", "Internal ticketing & helpdesk"].map((f) => (
+                      <li key={f} className="flex items-start gap-1.5">
+                        <span className="text-green-500 font-bold mt-0.5 shrink-0">✓</span>
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+
+              {/* 360 Studio */}
+              <Card className="border-t-4" style={{ borderTopColor: ORANGE }} data-testid="card-pillar-studio">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-base" style={{ color: ORANGE }}>360 Studio</CardTitle>
+                      <p className="text-xs text-muted-foreground mt-1">Add-on — content & BD engine</p>
+                    </div>
+                    <span className="text-sm font-bold" style={{ color: ORANGE }}>~₹12,000/mo</span>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ul className="text-xs text-muted-foreground space-y-1.5">
+                    {["AI Content Studio (articles, social kits, outreach)", "Brand Voice engine + guardrails", "Content Safety Gate (hard-block, domain-specific)", "BD Agent (proposals, campaigns, decks)", "Newsletter + subscriber management", "Social card generation (LinkedIn, Twitter)", "Staffing Safety Gate (source-ledger, banned phrases)", "Insights Blog (public-facing content hub)"].map((f) => (
+                      <li key={f} className="flex items-start gap-1.5">
+                        <span className="text-orange-500 font-bold mt-0.5 shrink-0">✓</span>
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+
+              {/* 360 Growth */}
+              <Card className="border-t-4" style={{ borderTopColor: "#059669" }} data-testid="card-pillar-growth">
+                <CardHeader className="pb-3">
+                  <div className="flex items-start justify-between">
+                    <div>
+                      <CardTitle className="text-base" style={{ color: "#059669" }}>360 Growth</CardTitle>
+                      <p className="text-xs text-muted-foreground mt-1">Add-on — exec intelligence</p>
+                    </div>
+                    <span className="text-sm font-bold" style={{ color: "#059669" }}>~₹10,000/mo</span>
+                  </div>
+                </CardHeader>
+                <CardContent>
+                  <ul className="text-xs text-muted-foreground space-y-1.5">
+                    {["Exec Cockpit (unified command view)", "CEO AI Copilot (allowlisted, PII-safe payload)", "Advanced workforce analytics", "Document & policy compliance dashboards", "Governance controls + escalation layer", "Exception management for senior review", "Payroll oversight + disbursement control", "CSV export of full employee directory"].map((f) => (
+                      <li key={f} className="flex items-start gap-1.5">
+                        <span className="font-bold mt-0.5 shrink-0" style={{ color: "#059669" }}>✓</span>
+                        <span>{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </CardContent>
+              </Card>
+            </div>
+
+            <p className="text-xs text-muted-foreground mt-4 italic">
+              Indicative pricing only. Final pricing to be set during multi-tenancy productization phase. Base + all add-ons = ~₹37,000/mo for a 25-person agency — less than the cost of one subscription to Darwinbox enterprise.
+            </p>
+          </section>
+
+          {/* ═══ SECTION 4: STRATEGIC CHOICE ═══ */}
+          <section className="mb-16 scroll-mt-16">
+            <SectionHeader id="strategic-choice">4 — The Strategic Choice</SectionHeader>
             <p className="text-sm text-muted-foreground mb-6 italic">This section is unique to this report and is the most important one to read.</p>
             <p className="text-sm leading-relaxed mb-6">
               Hire'in has built something real. The question is not "how do we fix the feature gaps" — it is <strong>what game are we playing?</strong> There are exactly three coherent strategic options. Picking the wrong one wastes the next 2 years.
@@ -476,7 +623,7 @@ export default function CompetitiveAudit() {
 
           {/* ═══ SECTION 3: COMPETITIVE LANDSCAPE ═══ */}
           <section className="mb-16 scroll-mt-16">
-            <SectionHeader id="competitive-landscape">3 — Competitive Landscape</SectionHeader>
+            <SectionHeader id="competitive-landscape">5 — Competitive Landscape</SectionHeader>
             <p className="text-xs text-muted-foreground mb-6 italic">7 competitor profiles. Source confidence noted per profile. (i) = inferred.</p>
 
             <div className="space-y-5">
@@ -562,7 +709,7 @@ export default function CompetitiveAudit() {
 
           {/* ═══ SECTION 4: FEATURE MATRIX ═══ */}
           <section className="mb-16 scroll-mt-16">
-            <SectionHeader id="feature-matrix">4 — Feature Matrix</SectionHeader>
+            <SectionHeader id="feature-matrix">6 — Feature Matrix</SectionHeader>
             <p className="text-xs text-muted-foreground mb-4 italic">Hire'in scored first-hand from codebase audit (July 2026). Competitor scores verified where possible; inferred scores flagged with (i).</p>
 
             {/* Legend + controls */}
@@ -640,7 +787,7 @@ export default function CompetitiveAudit() {
 
           {/* ═══ SECTION 5: POSITIONING MAP ═══ */}
           <section className="mb-16 scroll-mt-16">
-            <SectionHeader id="positioning-map">5 — Positioning Map</SectionHeader>
+            <SectionHeader id="positioning-map">7 — Positioning Map</SectionHeader>
             <p className="text-xs text-muted-foreground mb-4 italic">SVG positioning chart — no external charting library.</p>
 
             <Card>
@@ -725,7 +872,7 @@ export default function CompetitiveAudit() {
 
           {/* ═══ SECTION 6: WHITE SPACE ═══ */}
           <section className="mb-16 scroll-mt-16">
-            <SectionHeader id="white-space">6 — White Space & Opportunities</SectionHeader>
+            <SectionHeader id="white-space">8 — White Space & Opportunities</SectionHeader>
 
             <div className="space-y-5">
               <WhiteSpaceCard
@@ -771,9 +918,218 @@ export default function CompetitiveAudit() {
             </div>
           </section>
 
+          {/* ═══ SECTION 9: CEO COPILOT & EXEC COCKPIT ═══ */}
+          <section className="mb-16 scroll-mt-16">
+            <SectionHeader id="ceo-copilot">9 — CEO Copilot & Exec Cockpit</SectionHeader>
+            <p className="text-sm text-muted-foreground mb-6 italic">
+              The <code className="text-xs bg-muted px-1 rounded">/admin/executive-cockpit</code> page and its AI payload builder. Accessible to <strong>executive</strong> and <strong>super_admin</strong> roles only.
+            </p>
+
+            <div className="space-y-5">
+              {/* What it is */}
+              <Card data-testid="card-exec-cockpit-overview">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Senior Management Unified Command View</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    The Exec Cockpit gives the CEO or senior principal a single page to see the entire people operation — without drilling into individual modules. Three tabs, all from one place:
+                  </p>
+                  <div className="grid sm:grid-cols-3 gap-3">
+                    {[
+                      { tab: "People", desc: "Full employee directory with search, department filter, and CSV export of the complete workforce." },
+                      { tab: "Document Compliance", desc: "Which employees have outstanding document requirements — and at what stage." },
+                      { tab: "Policy Compliance", desc: "Which employees have not yet signed required policy documents — with escalation visibility." },
+                    ].map(({ tab, desc }) => (
+                      <div key={tab} className="p-3 rounded-md border bg-muted/20">
+                        <p className="text-xs font-bold mb-1" style={{ color: NAVY }}>{tab}</p>
+                        <p className="text-xs text-muted-foreground">{desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* AI payload */}
+              <Card data-testid="card-ceo-ai-payload">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">AI-Powered Executive Summary — <code className="text-xs bg-muted px-1 rounded font-mono">buildAllowlistedCeoPayload()</code></CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    When the CEO requests an AI governance summary, the system does <strong>not</strong> pass employee records to the AI. Instead, <code className="text-xs bg-muted px-1 rounded">buildAllowlistedCeoPayload()</code> constructs an explicit-allowlist report — only approved non-identifying operational values reach the external model.
+                  </p>
+                  <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                    <div className="space-y-1.5">
+                      <p className="font-semibold text-foreground">What the AI sees</p>
+                      <ul className="text-muted-foreground space-y-1 list-disc pl-4">
+                        <li>Counts: total open, overdue, escalated, disputed controls</li>
+                        <li>By-type breakdowns (goal, training, SOP, etc.)</li>
+                        <li>Exception categories with department aggregates</li>
+                        <li>High-priority items: control type, role category, department, days overdue, escalation level</li>
+                        <li>Semantic summary: employees with no active goal, multiple overdue obligations, explicit blockers</li>
+                      </ul>
+                    </div>
+                    <div className="space-y-1.5">
+                      <p className="font-semibold text-foreground">What the AI never sees</p>
+                      <ul className="text-muted-foreground space-y-1 list-disc pl-4">
+                        <li>Employee names, emails, or phone numbers</li>
+                        <li>Salary, compensation, or bank details</li>
+                        <li>Medical flags, disability status</li>
+                        <li>National IDs, PAN, Aadhaar</li>
+                        <li>Authentication tokens or passwords</li>
+                        <li>Grievance or complaint free text</li>
+                      </ul>
+                    </div>
+                  </div>
+                  <div
+                    className="p-3 rounded-md border-l-4 text-xs"
+                    style={{ borderColor: ORANGE, backgroundColor: "#FFF7F0" }}
+                  >
+                    <p className="font-bold mb-1" style={{ color: ORANGE }}>Fail-Closed by Design</p>
+                    <p className="text-muted-foreground">Any field not in the explicit allowlist is silently excluded. The payload is constructed by field picking — not by redacting a full object. If a new field is added to the employee record, it does not automatically reach the AI unless a developer adds it to the allowlist.</p>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Competitive callout */}
+              <Card data-testid="card-exec-cockpit-competitive">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Competitive Callout — WIN+ Against Every Indian SMB Competitor</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <p className="text-sm text-muted-foreground leading-relaxed">
+                    No Indian HR SMB competitor — Keka, GreytHR, SumHR, or even Darwinbox's SMB tier — offers an AI-driven executive command layer with a purpose-built PII-safe CEO payload. Darwinbox has an AI chatbot for employee payroll queries; it does not have an executive governance intelligence layer. This is enterprise-grade thinking at SMB price — and it is live in production, not on a roadmap.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+          </section>
+
+          {/* ═══ SECTION 10: AI COMPLIANCE ARCHITECTURE ═══ */}
+          <section className="mb-16 scroll-mt-16">
+            <SectionHeader id="ai-compliance">10 — AI Compliance Architecture (PII + HIPAA Protection Layer)</SectionHeader>
+            <p className="text-sm text-muted-foreground mb-2 italic">
+              Production, unit-tested. This is a genuine WIN+ that was previously unscored.
+            </p>
+            <div
+              className="mb-5 p-3 rounded-md border-l-4 text-xs"
+              style={{ borderColor: "#059669", backgroundColor: "#F0FDF4" }}
+              data-testid="card-ai-compliance-callout"
+            >
+              <p className="font-bold text-green-700 mb-1">Both systems below are live in production — not roadmap items.</p>
+              <p className="text-green-800">Unit tests exist in <code className="bg-green-100 px-1 rounded">tests/aiPrivacyGuard.test.ts</code>. Any regression in PII protection is caught by the automated test suite before it can reach a deployed environment.</p>
+            </div>
+
+            <div className="space-y-5">
+              {/* aiPrivacyGuard */}
+              <Card data-testid="card-ai-privacy-guard">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <CardTitle className="text-sm"><code className="bg-muted px-1 rounded font-mono text-xs">aiPrivacyGuard.ts</code> — Production, Unit-Tested</CardTitle>
+                    <span className="shrink-0 text-xs px-2 py-1 rounded bg-emerald-700 text-white font-semibold">WIN+</span>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    30+ prohibited field names hardcoded. Any object containing these fields — at any nesting depth — is sanitized before reaching an external AI call.
+                  </p>
+                  <div className="overflow-x-auto">
+                    <div className="flex flex-wrap gap-1.5 text-[10px]">
+                      {[
+                        "firstName", "lastName", "email", "phone", "salary", "basicSalary", "grossSalary",
+                        "netPayable", "esiDisability", "medicalFlag", "totpSecret", "password",
+                        "accountNumber", "ifscCode", "bankName", "nationalId", "panNumber", "aadhar",
+                        "grievanceText", "compensation", "disability", "passwordResetToken"
+                      ].map((f) => (
+                        <code key={f} className="px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200">{f}</code>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                    {[
+                      { fn: "sanitizeEmployee()", desc: "Replaces any employee record with an opaque reference code (EMP-001, EMP-002) — role category and department only, no identity." },
+                      { fn: "sanitizeObjectForAI()", desc: "Deep recursive object sanitization — catches prohibited fields at any nesting depth." },
+                      { fn: "redactFreeTextForAI()", desc: "Regex scrubbing: email patterns, Indian and international phone patterns, name-prefixed patterns → [EMAIL], [PHONE], [NAME]." },
+                      { fn: "auditPromptForPII()", desc: "Unit-testable assertion function — returns a list of prohibited fields found in a prompt string. Used in automated tests." },
+                      { fn: "buildAnonymizedControlSummary()", desc: "Anonymizes governance control records before AI consumption — control type, role category, department, days overdue, escalation level only." },
+                      { fn: "buildAllowlistedCeoPayload()", desc: "Fail-closed explicit field picker for CEO AI reports — constructed by field allowlist, not by redacting a full object." },
+                    ].map(({ fn, desc }) => (
+                      <div key={fn} className="p-2.5 rounded border bg-muted/20">
+                        <code className="text-[10px] font-mono font-bold text-foreground">{fn}</code>
+                        <p className="text-muted-foreground mt-1 leading-relaxed">{desc}</p>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* staffingSafetyGate */}
+              <Card data-testid="card-safety-gate">
+                <CardHeader className="pb-2">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <CardTitle className="text-sm"><code className="bg-muted px-1 rounded font-mono text-xs">staffingSafetyGate.ts</code> — Production, Hard-Block</CardTitle>
+                    <span className="shrink-0 text-xs px-2 py-1 rounded bg-emerald-700 text-white font-semibold">WIN+</span>
+                  </div>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <p className="text-sm text-muted-foreground">
+                    7 failure codes. Source ledger system: user-supplied facts are tokenized; any AI-generated claim not traceable to the ledger triggers a hard failure — blocks approval and publishing. Not advisory.
+                  </p>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {["JOB_FACT_INVENTED", "HEALTHCARE_FACT_INVENTED", "IT_FACT_INVENTED", "GOVERNMENT_CLAIM_INVENTED", "COMPANY_CLAIM_INVENTED", "PLACEHOLDER_LEAKED", "BANNED_PHRASE"].map((code) => (
+                      <code key={code} className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-700 border border-red-200">{code}</code>
+                    ))}
+                  </div>
+
+                  <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 rounded border bg-muted/20">
+                      <p className="font-semibold text-foreground mb-2">Banned Phrase Dictionary (hard-block)</p>
+                      <div className="flex flex-wrap gap-1">
+                        {["game-changer", "in today's fast-paced world", "the landscape of", "unlock", "unleash", "delve into", "navigate the complexities", "war for talent", "people are our greatest asset", "rockstar", "ninja", "guru"].map((phrase) => (
+                          <span key={phrase} className="text-[10px] px-1 py-0.5 rounded bg-amber-50 text-amber-800 border border-amber-200">"{phrase}"</span>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="p-3 rounded border bg-muted/20 space-y-2">
+                      <p className="font-semibold text-foreground">Domain-Specific Checks</p>
+                      <div className="space-y-1.5 text-muted-foreground">
+                        <div><span className="font-medium text-foreground">Healthcare: </span>Recency language blocked unless in source ledger; clinical advice (diagnose, prescribe, treat) always blocked.</div>
+                        <div><span className="font-medium text-foreground">IT Staffing: </span>Security clearance (TS/SCI, FedRAMP) and certifications (AWS-Certified, CISSP) blocked unless in source ledger.</div>
+                        <div><span className="font-medium text-foreground">Government: </span>GSA schedule, GWAC, CMMC, FedRAMP, DOD approved claims blocked unless verified.</div>
+                        <div><span className="font-medium text-foreground">Company: </span>Hire'in placement rates, fill rates, "#1 staffing" claims — all blocked unless user-supplied.</div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Roadmap items */}
+              <Card data-testid="card-ai-compliance-roadmap">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm">Roadmap Items — Announced, Not Yet Built</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="grid sm:grid-cols-2 gap-3 text-xs">
+                    <div className="p-3 rounded border">
+                      <p className="font-semibold text-foreground mb-1">Custom Rule Authoring</p>
+                      <p className="text-muted-foreground">Users will be able to add their own rules to the Safety Gate — organization-specific banned phrases, domain-specific claim restrictions, or custom compliance policies.</p>
+                    </div>
+                    <div className="p-3 rounded border">
+                      <p className="font-semibold text-foreground mb-1">Custom Regex Patterns</p>
+                      <p className="text-muted-foreground">Organizations can define their own regex-based content rules per document type — enabling regulated industries (healthcare, government, legal) to enforce custom compliance patterns without code changes.</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </section>
+
           {/* ═══ SECTION 7: ACTION PLAN ═══ */}
           <section className="mb-16 scroll-mt-16">
-            <SectionHeader id="action-plan">7 — Action Plan</SectionHeader>
+            <SectionHeader id="action-plan">11 — Action Plan</SectionHeader>
 
             <div className="space-y-5">
               <ActionCard
@@ -845,6 +1201,71 @@ export default function CompetitiveAudit() {
                 ]}
               />
             </div>
+          </section>
+
+          {/* ═══ BRAND DECISION LOG ═══ */}
+          <section className="mb-16 scroll-mt-16">
+            <SectionHeader id="brand-log">12 — Brand Decision Log</SectionHeader>
+            <p className="text-sm text-muted-foreground mb-5 italic">
+              Record of the July 15, 2026 naming session. Documented here for institutional memory and future brand consistency.
+            </p>
+
+            <Card data-testid="card-brand-decision-log">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-sm">Naming Session — July 15, 2026</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Options Evaluated</p>
+                  <div className="flex flex-wrap gap-2">
+                    {["StaffOS", "AgencyOS", "Hire'in OS", "Hire'in HQ", "TalentStack", "PipelineHQ", "Hire'in Suite", "Hire'in Pro", "Hire'in 360"].map((name) => (
+                      <span
+                        key={name}
+                        className={`text-xs px-2.5 py-1 rounded border font-medium ${name === "Hire'in 360" ? "text-white" : "text-muted-foreground"}`}
+                        style={name === "Hire'in 360" ? { backgroundColor: NAVY, borderColor: NAVY } : {}}
+                        data-testid={name === "Hire'in 360" ? "badge-brand-chosen" : undefined}
+                      >
+                        {name === "Hire'in 360" ? "★ " : ""}{name}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-4 text-sm">
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Chosen Name</p>
+                    <p className="text-xl font-bold" style={{ color: NAVY }}>Hire'in 360</p>
+                    <p className="text-xs text-muted-foreground mt-1">Decided: July 15, 2026</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Rationale</p>
+                    <ul className="text-xs text-muted-foreground space-y-1 list-disc pl-4">
+                      <li>Most relatable, marketable, and equitable option evaluated</li>
+                      <li>Preserves Hire'in brand equity built to date</li>
+                      <li>360 implies completeness and full-circle coverage</li>
+                      <li>Differentiates from generic "OS" naming trend without losing clarity</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Domain Targets</p>
+                  <div className="flex gap-3 flex-wrap">
+                    <code className="text-xs px-2 py-1 rounded border bg-muted">hire-in360.com</code>
+                    <code className="text-xs px-2 py-1 rounded border bg-muted">hirein360.com</code>
+                    <span className="text-xs text-muted-foreground self-center">(to be registered)</span>
+                  </div>
+                </div>
+
+                <div
+                  className="p-3 rounded-md border-l-4 text-xs"
+                  style={{ borderColor: ORANGE, backgroundColor: "#FFF7F0" }}
+                >
+                  <p className="font-bold mb-1" style={{ color: ORANGE }}>Brand Consistency Rule</p>
+                  <p className="text-muted-foreground">All new external-facing materials, product screenshots, sales decks, and domain registrations should use <strong>Hire'in 360</strong> going forward. The internal admin app retains its current branding until a coordinated rebrand launch is planned.</p>
+                </div>
+              </CardContent>
+            </Card>
           </section>
 
           {/* ═══ METHODOLOGY ═══ */}
