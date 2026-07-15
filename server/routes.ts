@@ -14522,7 +14522,7 @@ export async function registerRoutes(
   });
 
   // Rollout scope read/write — super_admin/admin only.
-  app.get("/api/sops/rollout", requireAuth, requirePermission("sops.rollout"), async (_req: Request, res: Response) => {
+  app.get("/api/sops/rollout", requireAuth, requirePermission("sops.rollout", "hr", "admin"), async (_req: Request, res: Response) => {
     try {
       res.json(await getSopRolloutScope());
     } catch (error) {
@@ -14550,12 +14550,300 @@ export async function registerRoutes(
   // ── SOP Wave Rollout & Enforcement (Task #662) ───────────────────────────────
 
   // Wave board: all waves + their member SOPs + the current-calendar-week cadence count.
-  app.get("/api/sops/waves", requireAuth, requirePermission("sops.rollout"), async (_req: Request, res: Response) => {
+  app.get("/api/sops/waves", requireAuth, requirePermission("sops.rollout", "hr", "admin"), async (_req: Request, res: Response) => {
     try {
-      res.json(await sopRollout.getWavesWithSops());
+      const result = await sopRollout.getWavesWithSops();
+      // Enrich each SOP row with ack% from sop_employee_progress
+      try {
+        const ackRows = await db.execute(sql`
+          SELECT sop_master_id,
+            ROUND(
+              COUNT(*) FILTER (WHERE acknowledged_at IS NOT NULL) * 100.0
+              / NULLIF(COUNT(*), 0)
+            )::int AS ack_pct
+          FROM sop_employee_progress
+          GROUP BY sop_master_id
+        `);
+        const ackMap: Record<string, number> = {};
+        for (const r of ackRows.rows as any[]) {
+          ackMap[String(r.sop_master_id)] = Number(r.ack_pct ?? 0);
+        }
+        if (result?.waves) {
+          for (const wave of result.waves) {
+            for (const sop of wave.sops ?? []) {
+              sop.ackPct = ackMap[String(sop.sopMasterId)] ?? 0;
+            }
+          }
+        }
+      } catch { /* non-fatal — return without ack enrichment */ }
+      res.json(result);
     } catch (error) {
       console.error("SOP waves fetch error:", error);
       res.status(500).json({ error: "Failed to fetch waves" });
+    }
+  });
+
+  // Wave Impact Preview — resolves employees, timeline, training, and goal templates
+  // for a given wave before activation. Read-only; no mutations.
+  app.get("/api/sops/rollout/waves/:waveNumber/preview", requireAuth, requirePermission("sops.rollout", "hr", "admin"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber) || waveNumber < 0) {
+        return res.status(400).json({ error: "Invalid wave number" });
+      }
+
+      // Load the wave and its SOP membership
+      const waveRows = await db.execute(sql`
+        SELECT rw.wave_number, rw.name, rw.enforcement, rw.status, rw.activated_at,
+               ws.sop_master_id, ws.operational_at
+        FROM rollout_waves rw
+        LEFT JOIN wave_sops ws ON ws.wave_number = rw.wave_number
+        WHERE rw.wave_number = ${waveNumber}
+        ORDER BY ws.sop_master_id
+      `);
+      if (!waveRows.rows.length) {
+        return res.status(404).json({ error: "Wave not found" });
+      }
+
+      const waveRow = waveRows.rows[0] as any;
+      const waveName = waveRow.name as string;
+      const enforcement = waveRow.enforcement as string;
+      const masterIds: string[] = waveRows.rows
+        .map((r: any) => r.sop_master_id as string | null)
+        .filter((id): id is string => !!id);
+
+      // Fetch current SOP docs and their role assignments
+      const sopDocs = masterIds.length > 0
+        ? (await db.execute(sql`
+            SELECT sd.id, sd.sop_master_id, sd.code, sd.title, sd.learning_track_id, sd.lifecycle_status
+            FROM sop_documents sd
+            WHERE sd.sop_master_id = ANY(${masterIds}::varchar[])
+              AND sd.is_current = true
+          `)).rows as any[]
+        : [];
+
+      const sopDocMap = new Map<string, any>();
+      for (const d of sopDocs) sopDocMap.set(d.sop_master_id, d);
+
+      const roleAssignmentRows = masterIds.length > 0
+        ? (await db.execute(sql`
+            SELECT sra.sop_master_id, sra.role
+            FROM sop_role_assignments sra
+            WHERE sra.sop_master_id = ANY(${masterIds}::varchar[])
+          `)).rows as any[]
+        : [];
+
+      // Group roles by master_id
+      const rolesByMaster = new Map<string, string[]>();
+      for (const ra of roleAssignmentRows) {
+        const list = rolesByMaster.get(ra.sop_master_id) ?? [];
+        list.push(ra.role);
+        rolesByMaster.set(ra.sop_master_id, list);
+      }
+
+      // All roles targeted by any SOP in this wave
+      const allTargetRoles = Array.from(new Set(roleAssignmentRows.map((r: any) => r.role as string)));
+
+      // Resolve employees who will receive obligations
+      const employees = allTargetRoles.length > 0
+        ? (await db.execute(sql`
+            SELECT au.id, au.first_name || ' ' || au.last_name AS name,
+                   au.role, d.name AS department
+            FROM admin_users au
+            LEFT JOIN departments d ON d.id = au.department_id
+            WHERE au.is_active = true AND au.deleted_at IS NULL
+              AND au.role = ANY(${allTargetRoles}::varchar[])
+            ORDER BY au.first_name, au.last_name
+          `)).rows as any[]
+        : [];
+
+      // Fetch current ack status for employees
+      const employeeIds = employees.map((e: any) => e.id as string);
+      const progressRows = employeeIds.length > 0 && masterIds.length > 0
+        ? (await db.execute(sql`
+            SELECT sep.user_id, sep.sop_master_id, sep.acknowledged_at
+            FROM sop_employee_progress sep
+            WHERE sep.user_id = ANY(${employeeIds}::varchar[])
+              AND sep.sop_master_id = ANY(${masterIds}::varchar[])
+          `)).rows as any[]
+        : [];
+
+      // Map: userId -> Set<masterId> (acknowledged)
+      const ackedMap = new Map<string, Set<string>>();
+      const assignedMap = new Map<string, Set<string>>();
+      for (const p of progressRows) {
+        const acked = ackedMap.get(p.user_id) ?? new Set<string>();
+        if (p.acknowledged_at) acked.add(p.sop_master_id);
+        ackedMap.set(p.user_id, acked);
+        const assigned = assignedMap.get(p.user_id) ?? new Set<string>();
+        assigned.add(p.sop_master_id);
+        assignedMap.set(p.user_id, assigned);
+      }
+
+      // Grace period settings
+      const graceDaysRow = await db.execute(sql`
+        SELECT value FROM system_settings WHERE key = 'governance_sop_grace_days' LIMIT 1
+      `);
+      const graceDays = graceDaysRow.rows.length > 0
+        ? (parseInt(String((graceDaysRow.rows[0] as any).value), 10) || 15)
+        : 15;
+
+      // Build employee list with per-employee sops + ack status
+      const empList = employees.map((e: any) => {
+        const sopsToReceive = masterIds.filter((mid) => {
+          const roles = rolesByMaster.get(mid) ?? [];
+          return roles.includes(e.role);
+        }).map((mid) => sopDocMap.get(mid)?.code ?? mid);
+
+        const assigned = assignedMap.get(e.id) ?? new Set<string>();
+        const acked = ackedMap.get(e.id) ?? new Set<string>();
+        const totalAssigned = sopsToReceive.length;
+        const totalAcked = sopsToReceive.filter((code) => {
+          const mid = sopDocs.find((d: any) => d.code === code)?.sop_master_id;
+          return mid && acked.has(mid);
+        }).length;
+
+        let ackStatus: "acknowledged" | "pending" | "not_assigned" = "not_assigned";
+        if (totalAssigned > 0) {
+          ackStatus = totalAcked === totalAssigned ? "acknowledged" : "pending";
+        }
+        return {
+          userId: e.id as string,
+          name: e.name as string,
+          department: (e.department as string | null) ?? null,
+          role: e.role as string,
+          sopsToReceive,
+          ackStatus,
+        };
+      });
+
+      // Build timeline per SOP in the wave
+      const now = new Date();
+      const timeline = waveRows.rows
+        .filter((r: any) => r.sop_master_id)
+        .map((r: any) => {
+          const doc = sopDocMap.get(r.sop_master_id);
+          const operationalAt = r.operational_at ? new Date(r.operational_at) : null;
+          const graceEnd = operationalAt ? new Date(operationalAt.getTime() + graceDays * 86400000) : null;
+          const overdueNudgeBegins = graceEnd ? new Date(graceEnd.getTime() + 86400000) : null;
+          const hardLockThreshold = graceEnd && enforcement === "full"
+            ? new Date(graceEnd.getTime() + 14 * 86400000)
+            : null;
+          return {
+            sopCode: doc?.code ?? r.sop_master_id,
+            sopTitle: doc?.title ?? null,
+            activationDate: operationalAt ? operationalAt.toISOString() : null,
+            gracePeriodDays: graceDays,
+            graceEndDate: graceEnd ? graceEnd.toISOString() : null,
+            overdueNudgeBegins: overdueNudgeBegins ? overdueNudgeBegins.toISOString() : null,
+            hardLockThreshold: hardLockThreshold ? hardLockThreshold.toISOString() : null,
+            enforcement,
+          };
+        });
+
+      // Follow-up training: learning tracks linked to SOPs in this wave
+      const trackIds = Array.from(new Set(
+        sopDocs.map((d: any) => d.learning_track_id as string | null).filter((id): id is string => !!id)
+      ));
+
+      const tracks = trackIds.length > 0
+        ? (await db.execute(sql`
+            SELECT lt.id, lt.title, lt.estimated_minutes, lt.due_date
+            FROM learning_tracks lt
+            WHERE lt.id = ANY(${trackIds}::varchar[])
+          `)).rows as any[]
+        : [];
+
+      // Per-track completion counts among impacted employees
+      const trackCompletions = trackIds.length > 0 && employeeIds.length > 0
+        ? (await db.execute(sql`
+            SELECT ta.track_id, COUNT(*) AS completed_count
+            FROM track_assignments ta
+            WHERE ta.track_id = ANY(${trackIds}::varchar[])
+              AND ta.user_id = ANY(${employeeIds}::varchar[])
+              AND ta.status = 'completed'
+            GROUP BY ta.track_id
+          `)).rows as any[]
+        : [];
+
+      const completionMap = new Map<string, number>();
+      for (const tc of trackCompletions) completionMap.set(tc.track_id, Number(tc.completed_count));
+
+      // Build training list with roles
+      const training = tracks.map((t: any) => {
+        const sopsThatLink = sopDocs.filter((d: any) => d.learning_track_id === t.id);
+        const roles = Array.from(new Set(
+          sopsThatLink.flatMap((d: any) => rolesByMaster.get(d.sop_master_id) ?? [])
+        ));
+        const totalCount = employees.filter((e: any) => roles.includes(e.role)).length;
+        const completedCount = completionMap.get(t.id) ?? 0;
+        return {
+          trackId: t.id as string,
+          trackTitle: t.title as string,
+          estimatedMinutes: t.estimated_minutes ? Number(t.estimated_minutes) : null,
+          dueDate: t.due_date ? (t.due_date as Date).toISOString() : null,
+          roles,
+          completedCount,
+          totalCount,
+        };
+      });
+
+      // Goals being added — check for plan_goal_templates linked to SOPs in this wave
+      const goals: Array<{ title: string; category: string; targetMetric: string | null; roles: string[] }> = [];
+      if (masterIds.length > 0) {
+        try {
+          const goalTemplates = (await db.execute(sql`
+            SELECT pgt.title, pgt.category, pgt.target_metric,
+                   pgt.linked_sop_id, pgt.roles
+            FROM plan_goal_templates pgt
+            JOIN sop_documents sd ON sd.id = pgt.linked_sop_id
+            WHERE sd.sop_master_id = ANY(${masterIds}::varchar[])
+              AND sd.is_current = true
+          `)).rows as any[];
+
+          for (const g of goalTemplates) {
+            goals.push({
+              title: g.title as string,
+              category: g.category as string,
+              targetMetric: (g.target_metric as string | null) ?? null,
+              roles: Array.isArray(g.roles) ? g.roles : [],
+            });
+          }
+        } catch {
+          // plan_goal_templates may not have linked_sop_id — gracefully skip
+        }
+      }
+
+      // Cadence note
+      const cadenceRows = await db.execute(sql`
+        SELECT COUNT(*) AS cnt
+        FROM wave_sops
+        WHERE wave_number >= 1
+          AND operational_at >= date_trunc('week', now())
+      `);
+      const windowCount = Number((cadenceRows.rows[0] as any)?.cnt ?? 0);
+      const cadenceMax = graceDaysRow.rows.length > 0 ? 2 : 2;
+      const cadenceNote = waveNumber >= 1 && windowCount >= cadenceMax
+        ? `Cadence guardrail active: ${windowCount} of ${cadenceMax} SOPs went operational this week.`
+        : null;
+
+      const deptSet = new Set(empList.map((e) => e.department).filter(Boolean));
+
+      return res.json({
+        waveNumber,
+        waveName,
+        enforcement,
+        employees: empList,
+        totalCount: empList.length,
+        departmentCount: deptSet.size,
+        timeline,
+        training,
+        goals,
+        cadenceNote,
+      });
+    } catch (error) {
+      console.error("Wave preview error:", error);
+      res.status(500).json({ error: "Failed to build wave preview" });
     }
   });
 

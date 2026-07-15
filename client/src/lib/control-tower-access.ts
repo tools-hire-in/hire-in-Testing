@@ -24,8 +24,9 @@ export const SUPER_ADMIN_TOWER_TABS: TowerTab[] = [
   "governance",
 ];
 
+export const ADMIN_TOWER_TABS: TowerTab[] = ["governance"];
+
 export const HR_TOWER_TABS: TowerTab[] = ["data-maintenance", "governance"];
-export const ADMIN_TOWER_TABS: TowerTab[] = ["data-maintenance", "governance"];
 
 export function allowedTowerTabs(role?: string | null): TowerTab[] {
   if (role === "super_admin") return SUPER_ADMIN_TOWER_TABS;

@@ -23,6 +23,8 @@ import {
   Shield,
 } from "lucide-react";
 
+const GovernanceHub = lazy(() => import("@/pages/admin/GovernanceHub"));
+
 const FeatureFlagsSection = lazy(() =>
   import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.FeatureFlagsSection })),
 );
@@ -42,7 +44,6 @@ const AuditLogsContent = lazy(() =>
 const AllowedDomainsSection = lazy(() =>
   import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.AllowedDomainsSection })),
 );
-const GovernanceHub = lazy(() => import("@/pages/admin/governance/GovernanceHub"));
 
 import {
   type TowerTab,
@@ -141,7 +142,7 @@ const TAB_LABELS: Record<TowerTab, string> = {
   "system-settings": "System Settings",
   "user-management": "Users",
   "security": "Security",
-  "governance": "Governance Hub",
+  "governance": "Governance",
 };
 
 export default function ControlTower() {
@@ -217,11 +218,13 @@ export default function ControlTower() {
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight" data-testid="text-control-tower-title">
-                {isSuperAdmin ? "Control Tower" : "Data Maintenance"}
+                {isSuperAdmin ? "Control Tower" : role === "admin" ? "Governance Hub" : "Data Maintenance"}
               </h1>
               <p className="max-w-2xl text-sm text-muted-foreground">
                 {isSuperAdmin
                   ? "Super Admin only. One audited surface for the platform's highest-privilege controls."
+                  : role === "admin"
+                  ? "Org Pulse, SOP rollout visibility, and governance oversight."
                   : "Backfill, correction, and cleanup utilities for attendance and leave data."}
               </p>
             </div>
@@ -323,7 +326,11 @@ export default function ControlTower() {
         )}
         {tab === "governance" && (
           <Suspense fallback={<PanelFallback />}>
+<<<<<<< HEAD
             <GovernanceHub />
+=======
+            <GovernanceHub readonly={role === "hr"} />
+>>>>>>> c09c3f7 (feat: Governance Hub — 6-card Org Pulse, manager drill-downs, SOP Rollout Panel & Wave Impact Preview)
           </Suspense>
         )}
       </div>
