@@ -1,3 +1,4 @@
+- [Agent Rules](../AGENT_RULES.md) — mandatory read before any task; covers scope, preservation, DB, frontend, backend, and deletion rules.
 - [Seed data Unicode pitfall](seed-unicode-pitfall.md) — Unicode chars (×, em dash) in seed titles cause silent ON CONFLICT mismatches vs plain ASCII.
 - [Plan goal templates seed](plan-goal-templates-seed.md) — ON CONFLICT DO NOTHING; to fix existing rows use UPDATE blocks before the seed loop in server/index.ts
 - [db:push interactive prompt](db-push-interactive-prompt.md) — `_key` vs `_unique` constraint names stall db:push (aborts later stmts); long FK names oscillate (benign). Publish diffs dev-DB↔prod-DB; repair dev DB, don't add startup DDL.
