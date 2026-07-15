@@ -4388,6 +4388,13 @@ async function runStartupTasks() {
     `);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_ge_control_id ON governance_events(control_id, created_at DESC)`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_ge_actor ON governance_events(actor_id) WHERE actor_id IS NOT NULL`);
+    // Idempotently add notification_sent enum value (safe — ADD VALUE IF NOT EXISTS is PG 9.6+)
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE governance_event_type ADD VALUE IF NOT EXISTS 'notification_sent';
+      EXCEPTION WHEN duplicate_object THEN NULL;
+      END $$
+    `);
     log("Governance events table ensured");
   } catch (err) {
     console.error("[startup] Governance events table ensure error:", err);

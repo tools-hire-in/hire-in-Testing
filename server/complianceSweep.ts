@@ -1,27 +1,33 @@
 /**
- * Unified Daily Compliance Sweep Engine
+ * Compliance Sweep Engine
  *
- * Domain modules register collectors via `registerCollector(name, fn)`.
- * Each collector returns a list of ComplianceFinding objects — one per user
- * per alert. The daily sweep calls every registered collector, groups all
- * findings by userId, and dispatches exactly ONE notification per user per run:
+ * After the governance centralization refactor, this file has two roles:
  *
- *   • 1 finding for a user → notification preserves that finding's exact
- *     type / title / message / metadata (byte-for-byte identical to the old
- *     inline check-in digest behaviour).
- *   • 2+ findings for a user → a single "compliance_digest" notification whose
- *     metadata.items array contains all per-domain details.
+ *   1. collectOverdueItems(db) — PURE DETECTOR used by governanceService.
+ *      Returns GovernanceFinding[] for overdue goals, SOP acknowledgements,
+ *      and non-probation plan check-ins. Writes nothing, sends no notifications.
  *
- * Usage (from any server module):
- *   import { registerCollector } from "./complianceSweep";
- *   registerCollector("my_domain", async (flags) => { return []; });
+ *   2. registerCollector / runDailySweep — legacy dispatch infrastructure kept
+ *      for the HR check-in digest (one summary notification per HR/admin user).
+ *      This is the ONLY remaining collector; all governance escalations now
+ *      route through governanceService.applyEscalation().
  *
- * The check-in overdue digest is registered here as the built-in collector.
+ * BOUNDARY NOTE on SOP notifications:
+ *   assignSopTraining()  → fires "sop_training_assigned" once on assignment (assignment event).
+ *   collectOverdueItems() → returns GovernanceFinding for SOPs past the 15-day grace window
+ *                          (escalation event, deduped via governance_events).
+ *
+ * @deprecated source-table timestamp columns (employee_nudged_at, last_escalated_at,
+ * skip_escalated_at, manager_goal_escalated_at, overdue_nudge_sent_date,
+ * overdue_reminded_on, milestone_escalated_at) are no longer written by this file.
+ * They remain in schema for backward compatibility but are historical markers only.
  */
 
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { storage } from "./storage";
+import type { GovernanceFinding } from "@shared/governanceTypes";
+import { getPortalBaseUrl } from "./portalUrl";
 
 export interface ComplianceFinding {
   userId: string;
@@ -38,8 +44,6 @@ const collectors: Map<string, CollectorFn> = new Map();
 /**
  * Register a compliance collector. Call this from any server module during
  * startup or module load. Collectors are called once per daily sweep.
- * @param name   Unique collector name (used only for logging).
- * @param fn     Async function that returns ComplianceFinding[].
  */
 export function registerCollector(name: string, fn: CollectorFn): void {
   if (collectors.has(name)) {
@@ -50,10 +54,10 @@ export function registerCollector(name: string, fn: CollectorFn): void {
 
 /**
  * Run all registered collectors, group every finding by userId, and dispatch
- * exactly ONE notification per user per run. When a user has findings from
- * multiple collectors they are merged into a single "compliance_digest"
- * notification. This prevents notification fan-out as more domain collectors
- * are added (goals, SOPs, training, etc.).
+ * exactly ONE notification per user per run.
+ *
+ * After the governance refactor, this is ONLY called for the HR check-in digest
+ * collector. Goal and SOP escalations go through governanceService.applyEscalation().
  */
 export async function runDailySweep(): Promise<void> {
   const flags =
@@ -64,7 +68,6 @@ export async function runDailySweep(): Promise<void> {
     return;
   }
 
-  // ── Phase 1: collect all findings from every registered collector ──────────
   const byUser = new Map<string, ComplianceFinding[]>();
   const collectorStats: { name: string; count: number }[] = [];
 
@@ -82,15 +85,11 @@ export async function runDailySweep(): Promise<void> {
     }
   }
 
-  // ── Phase 2: dispatch exactly ONE notification per user ───────────────────
   let dispatched = 0;
   for (const [userId, findings] of byUser) {
     if (findings.length === 0) continue;
 
     if (findings.length === 1) {
-      // Single finding → send as-is, preserving the collector's own type /
-      // title / message / metadata exactly (byte-for-byte parity with the
-      // former inline Monday check-in digest cron).
       const f = findings[0];
       await storage.createNotification({
         userId: f.userId,
@@ -101,9 +100,6 @@ export async function runDailySweep(): Promise<void> {
         metadata: f.metadata,
       });
     } else {
-      // Multiple findings from different collectors → single merged digest.
-      // Per-domain detail is preserved inside metadata.items so the UI and
-      // future readers can still decompose the individual alerts.
       const itemCount = findings.length;
       await storage.createNotification({
         userId,
@@ -132,10 +128,10 @@ export async function runDailySweep(): Promise<void> {
   );
 }
 
-// ─── Built-in collector: check-in overdue digest ──────────────────────────────
-// Sends each HR/admin user a single in-app notification listing all check-ins
-// that are 3+ days overdue across all active plans. This mirrors exactly the
-// behavior of the former inline Monday digest cron in scheduler.ts.
+// ─── Built-in collector: check-in overdue digest (HR visibility) ──────────────
+// Sends each HR/admin user a single in-app digest listing all check-ins that
+// are 3+ days overdue across active plans. This is an HR VISIBILITY notification,
+// distinct from the per-employee governance escalation path.
 registerCollector("checkin_overdue_digest", async (_flags) => {
   const thresholdDate = new Date();
   thresholdDate.setDate(thresholdDate.getDate() - 3);
@@ -193,133 +189,28 @@ registerCollector("checkin_overdue_digest", async (_flags) => {
   }));
 });
 
-// ─── Built-in collector: overdue SOP acknowledgement nudge ───────────────────
-//
-// BOUNDARY NOTE — two distinct SOP notification paths exist; do NOT merge them:
-//
-//   1. assignSopTraining() (server/routes.ts) fires a "sop_training_assigned"
-//      in-app notification exactly ONCE when an SOP's training track is first
-//      assigned to a user.  This is an assignment event.
-//
-//   2. THIS COLLECTOR fires a daily "sop_overdue_nudge" for users who have not
-//      yet acknowledged an SOP after the SOP_ACK_GRACE_DAYS (15-day) grace
-//      period has expired.  This is an overdue reminder event.
-//
-// The dedup column `overdue_nudge_sent_date` on sop_employee_progress ensures
-// each user receives at most ONE nudge per calendar day even if multiple SOPs
-// are overdue (the sweep engine batches all findings into one notification).
-registerCollector("sop_overdue_nudge", async (_flags) => {
+// ─── Pure detector: collectOverdueItems ──────────────────────────────────────
+/**
+ * Detect all overdue governance obligations for goals, SOP acknowledgements,
+ * and non-probation plan check-ins. Returns typed GovernanceFinding[].
+ *
+ * PURE READ — writes nothing, sends no notifications. All side-effects are
+ * handled by governanceService.applyEscalation().
+ */
+export async function collectOverdueItems(): Promise<GovernanceFinding[]> {
+  const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
+  if (!flags?.notifications_enabled) return [];
+
   const todayStr = new Date().toISOString().slice(0, 10);
+  const portalBase = getPortalBaseUrl();
+  const findings: GovernanceFinding[] = [];
 
-  // Find all sop_employee_progress rows that are:
-  //   • not yet acknowledged (acknowledged_at IS NULL)
-  //   • past the 15-day grace window (wave_sops.operational_at + 15d < today)
-  //   • not already nudged today (overdue_nudge_sent_date IS NULL or < today)
-  // We join through wave_sops to derive the due date — wave_sops.operational_at
-  // is the moment the SOP became active for its wave; SOP_ACK_GRACE_DAYS (15d)
-  // after that is the acknowledgement deadline.
-  const overdueRows = (
-    await db.execute(sql`
-      SELECT
-        sep.user_id,
-        sep.sop_master_id,
-        sep.id AS progress_id,
-        sep.overdue_nudge_sent_date,
-        au.first_name || ' ' || au.last_name AS user_name
-      FROM sop_employee_progress sep
-      JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
-      JOIN admin_users au ON au.id = sep.user_id
-      WHERE sep.acknowledged_at IS NULL
-        AND ws.operational_at IS NOT NULL
-        AND ws.operational_at + INTERVAL '15 days' < NOW()
-        AND au.is_active = true
-        AND au.deleted_at IS NULL
-        AND (
-          sep.overdue_nudge_sent_date IS NULL
-          OR sep.overdue_nudge_sent_date < ${todayStr}::date
-        )
-      ORDER BY sep.user_id
-    `)
-  ).rows as any[];
-
-  if (overdueRows.length === 0) {
-    console.log("[complianceSweep] sop_overdue_nudge: no overdue SOP acknowledgements");
-    return [];
-  }
-
-  // Group overdue rows by user so we can emit one finding per user.
-  const byUser = new Map<string, { progressIds: string[]; sopCount: number; userName: string }>();
-  for (const row of overdueRows) {
-    const uid = String(row.user_id);
-    if (!byUser.has(uid)) {
-      byUser.set(uid, { progressIds: [], sopCount: 0, userName: String(row.user_name) });
-    }
-    const entry = byUser.get(uid)!;
-    entry.progressIds.push(String(row.progress_id));
-    entry.sopCount++;
-  }
-
-  // Mark all matched progress rows as nudged today with a single UPDATE that
-  // mirrors the same WHERE conditions as the SELECT above, avoiding any
-  // parameter-array issues and keeping the operation atomic.
-  await db.execute(sql`
-    UPDATE sop_employee_progress sep
-    SET overdue_nudge_sent_date = CURRENT_DATE
-    FROM wave_sops ws,
-         admin_users au
-    WHERE sep.sop_master_id = ws.sop_master_id
-      AND sep.user_id = au.id
-      AND sep.acknowledged_at IS NULL
-      AND ws.operational_at IS NOT NULL
-      AND ws.operational_at + INTERVAL '15 days' < NOW()
-      AND au.is_active = true
-      AND au.deleted_at IS NULL
-      AND (
-        sep.overdue_nudge_sent_date IS NULL
-        OR sep.overdue_nudge_sent_date < CURRENT_DATE
-      )
-  `);
-
-  console.log(
-    `[complianceSweep] sop_overdue_nudge: ${overdueRows.length} overdue SOP rows → ${byUser.size} users queued`
-  );
-
-  // Emit one ComplianceFinding per user; the sweep engine batches these with
-  // findings from other collectors into a single per-user notification.
-  const findings: ComplianceFinding[] = [];
-  for (const [userId, { sopCount }] of byUser) {
-    findings.push({
-      userId,
-      type: "sop_overdue_nudge",
-      title: `${sopCount} SOP${sopCount !== 1 ? "s" : ""} awaiting your acknowledgement`,
-      message: `You have ${sopCount} SOP${sopCount !== 1 ? "s" : ""} past their acknowledgement deadline. Please review and acknowledge them in the SOP library.`,
-      metadata: { overdueCount: sopCount, link: "/admin/sops/my-sops" },
-    });
-  }
-  return findings;
-});
-
-// ─── Built-in collector: overdue goal nudge & escalation ladder ───────────────
-// Detects performance_goals that are past targetDate with status not completed/
-// cancelled, then fires a strict 3-step one-time escalation ladder:
-//   Day 1 past targetDate → employee nudge (dedup: employee_nudged_at IS NULL)
-//   Day 3 past targetDate → manager escalation (dedup: last_escalated_at IS NULL)
-//   Day 6 past targetDate → skip-level + HR escalation (dedup: skip_escalated_at IS NULL)
-//
-// Separation of columns ensures each step fires exactly ONCE per overdue episode.
-// skip_escalated_at only fires if last_escalated_at was set in a PRIOR sweep run
-// (not the same run), so Day 3 and Day 6 are never fired together in one pass.
-registerCollector("overdue_goals_sweep", async (_flags) => {
-  const today = new Date();
-  const todayStr = today.toISOString().slice(0, 10);
-  const findings: ComplianceFinding[] = [];
-
-  // Load all overdue goals (not yet completed/cancelled, past targetDate, has a plan)
-  const overdueResult = await db.execute(sql`
+  // ── 1) Overdue performance goals ──────────────────────────────────────────
+  const goalRows = (await db.execute(sql`
     SELECT
       pg.id, pg.title, pg.progress, pg.target_date, pg.employee_id, pg.manager_id,
-      pg.plan_id, pg.employee_nudged_at, pg.last_escalated_at, pg.skip_escalated_at,
-      ep.plan_type, ep.manager_goal_escalated_at,
+      pg.plan_id,
+      ep.plan_type,
       au.first_name AS emp_first_name, au.last_name AS emp_last_name, au.email AS emp_email,
       m.first_name AS mgr_first_name, m.last_name AS mgr_last_name, m.email AS mgr_email,
       m.manager_id AS skip_manager_id
@@ -332,170 +223,128 @@ registerCollector("overdue_goals_sweep", async (_flags) => {
       AND pg.target_date < ${todayStr}
       AND pg.plan_id IS NOT NULL
       AND (pg.progress = 0 OR pg.last_progress_updated_at IS NULL OR pg.last_progress_updated_at::date <= pg.target_date::date)
-  `);
+  `)).rows as any[];
 
-  const overdue = overdueResult.rows as any[];
-  if (overdue.length === 0) {
-    console.log("[complianceSweep] overdue_goals_sweep: no overdue plan goals");
-    return [];
-  }
-
-  // Load HR/admin users for skip-level escalation recipients
-  const hrAdminResult = await db.execute(sql`
-    SELECT id, email, first_name FROM admin_users
-    WHERE role IN ('hr', 'admin', 'super_admin') AND is_active = true AND deleted_at IS NULL
-  `);
-  const hrAdmins = hrAdminResult.rows as any[];
-
-  // Dynamically import email helpers to avoid circular dependency at module load
-  const { sendPlanEscalationEmail, sendPlanOverdueReminderEmail } = await import("./email");
-
-  for (const goal of overdue) {
+  for (const goal of goalRows) {
     const targetDate = new Date(String(goal.target_date));
     const msPerDay = 86400000;
-    const daysOverdue = Math.floor((today.getTime() - targetDate.getTime()) / msPerDay);
+    const daysOverdue = Math.floor((Date.now() - targetDate.getTime()) / msPerDay);
     if (daysOverdue < 1) continue;
 
     const empName = `${goal.emp_first_name ?? ""} ${goal.emp_last_name ?? ""}`.trim() || "Employee";
-    const goalTitle = String(goal.title);
     const planType = goal.plan_type ?? "probation";
 
-    // In-loop flag: track whether Day 3 fired in THIS run so Day 6 cannot
-    // fire in the same sweep pass (prevents double-fire on first Day 6+ goal).
-    let managerEscalatedThisRun = false;
-
-    // ── Day 1: employee nudge (one-time; dedup: employee_nudged_at IS NULL) ──
-    if (daysOverdue >= 1 && !goal.employee_nudged_at) {
-      // In-app notification for the employee
-      if (goal.employee_id) {
-        findings.push({
-          userId: String(goal.employee_id),
-          type: "goal_overdue_nudge",
-          title: `Overdue goal: "${goalTitle}"`,
-          message: `Your goal "${goalTitle}" was due on ${String(goal.target_date)} and needs a progress update.`,
-          metadata: { goalId: String(goal.id), targetDate: String(goal.target_date), daysOverdue },
-        });
-      }
-      // Email the employee
-      if (goal.emp_email) {
-        try {
-          await sendPlanOverdueReminderEmail({
-            to: String(goal.emp_email),
-            managerFirstName: String(goal.emp_first_name ?? "there"),
-            employeeName: empName,
-            checkInLabel: `Goal: "${goalTitle}"`,
-            scheduledDate: String(goal.target_date),
-            daysOverdue,
-            planType: planType as any,
-          });
-        } catch (e) {
-          console.error(`[overdue_goals_sweep] Failed employee nudge email for goal ${goal.id}:`, e);
-        }
-      }
-      // Mark employee as nudged (one-time dedup)
-      await db.execute(sql`
-        UPDATE performance_goals SET employee_nudged_at = NOW() WHERE id = ${String(goal.id)}
-      `);
-      console.log(`[overdue_goals_sweep] Nudged employee ${goal.employee_id} for goal ${goal.id} (${daysOverdue}d overdue)`);
-    }
-
-    // ── Day 3: manager escalation (one-time; dedup: last_escalated_at IS NULL) ──
-    if (daysOverdue >= 3 && !goal.last_escalated_at) {
-      if (goal.manager_id && goal.mgr_email) {
-        // Email the manager
-        try {
-          await sendPlanOverdueReminderEmail({
-            to: String(goal.mgr_email),
-            managerFirstName: String(goal.mgr_first_name ?? "Manager"),
-            employeeName: empName,
-            checkInLabel: `Goal: "${goalTitle}"`,
-            scheduledDate: String(goal.target_date),
-            daysOverdue,
-            planType: planType as any,
-          });
-        } catch (e) {
-          console.error(`[overdue_goals_sweep] Failed manager email for goal ${goal.id}:`, e);
-        }
-
-        // In-app notification for the manager
-        findings.push({
-          userId: String(goal.manager_id),
-          type: "goal_overdue_manager_escalation",
-          title: `Action needed: ${empName}'s goal is overdue`,
-          message: `"${goalTitle}" is ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue with no progress update.`,
-          metadata: { goalId: String(goal.id), employeeId: String(goal.employee_id), targetDate: String(goal.target_date), daysOverdue },
-        });
-      }
-
-      // Record manager escalation (one-time dedup for Day 3; skip uses separate column)
-      await db.execute(sql`
-        UPDATE performance_goals SET last_escalated_at = NOW() WHERE id = ${String(goal.id)}
-      `);
-      if (goal.plan_id) {
-        await db.execute(sql`
-          UPDATE employee_plans SET manager_goal_escalated_at = NOW() WHERE id = ${String(goal.plan_id)}
-        `);
-      }
-      managerEscalatedThisRun = true;
-      console.log(`[overdue_goals_sweep] Escalated to manager for goal ${goal.id} (${daysOverdue}d overdue)`);
-    }
-
-    // ── Day 6: skip-level + HR escalation ────────────────────────────────────
-    // Fires once when: 6+ days overdue AND Day 3 was already sent in a PRIOR run
-    // (last_escalated_at IS NOT NULL) AND skip-level not yet sent (skip_escalated_at IS NULL)
-    // AND Day 3 did NOT just fire in this same loop iteration.
-    if (
-      daysOverdue >= 6 &&
-      goal.last_escalated_at &&
-      !goal.skip_escalated_at &&
-      !managerEscalatedThisRun
-    ) {
-      const escalationRecipients: string[] = hrAdmins.map((hr: any) => String(hr.email));
-
-      // Add skip-level manager if known
-      if (goal.skip_manager_id) {
-        const skipResult = await db.execute(sql`
-          SELECT email, first_name FROM admin_users WHERE id = ${String(goal.skip_manager_id)} AND is_active = true
-        `);
-        const skipMgr = skipResult.rows[0] as any;
-        if (skipMgr?.email) escalationRecipients.push(String(skipMgr.email));
-      }
-
-      if (escalationRecipients.length > 0) {
-        try {
-          await sendPlanEscalationEmail({
-            to: escalationRecipients,
-            employeeName: empName,
-            managerName: goal.mgr_first_name
-              ? `${goal.mgr_first_name} ${goal.mgr_last_name ?? ""}`.trim()
-              : "Unassigned",
-            reason: `Goal "${goalTitle}" is ${daysOverdue} days overdue with no progress`,
-            detail: `The goal was due on ${String(goal.target_date)} and has ${Number(goal.progress ?? 0)}% progress recorded. The employee's manager was notified on Day 3 — intervention may be needed.`,
-            planType: planType as any,
-          });
-        } catch (e) {
-          console.error(`[overdue_goals_sweep] Failed skip+HR escalation email for goal ${goal.id}:`, e);
-        }
-      }
-
-      // In-app notification for HR users
-      for (const hr of hrAdmins) {
-        findings.push({
-          userId: String(hr.id),
-          type: "goal_overdue_hr_escalation",
-          title: `Escalation: ${empName}'s goal ${daysOverdue}d overdue`,
-          message: `"${goalTitle}" has no progress update after ${daysOverdue} days. Manager notified on Day 3 — further intervention may be needed.`,
-          metadata: { goalId: String(goal.id), employeeId: String(goal.employee_id), targetDate: String(goal.target_date), daysOverdue },
-        });
-      }
-
-      // Mark skip-level escalation sent (separate dedup column)
-      await db.execute(sql`
-        UPDATE performance_goals SET skip_escalated_at = NOW() WHERE id = ${String(goal.id)}
-      `);
-      console.log(`[overdue_goals_sweep] Skip+HR escalated for goal ${goal.id} (${daysOverdue}d overdue)`);
-    }
+    findings.push({
+      entityType: "goal",
+      entityId: String(goal.id),
+      employeeId: String(goal.employee_id),
+      managerId: goal.manager_id ? String(goal.manager_id) : null,
+      skipManagerId: goal.skip_manager_id ? String(goal.skip_manager_id) : null,
+      daysOverdue,
+      ctaPath: `${portalBase}/admin/hr?tab=goals`,
+      entityTitle: String(goal.title),
+      employeeName: empName,
+      employeeEmail: goal.emp_email ? String(goal.emp_email) : undefined,
+      managerEmail: goal.mgr_email ? String(goal.mgr_email) : undefined,
+      managerFirstName: goal.mgr_first_name ? String(goal.mgr_first_name) : undefined,
+      planId: goal.plan_id ? String(goal.plan_id) : undefined,
+      planType,
+    });
   }
 
+  // ── 2) Overdue SOP acknowledgements ───────────────────────────────────────
+  // Grace period: 15 days after the SOP's wave operational_at date.
+  // Uses deadline_at when set; falls back to wave_sops.operational_at + 15d.
+  const sopRows = (await db.execute(sql`
+    SELECT
+      sep.id AS progress_id,
+      sep.user_id,
+      sep.sop_master_id,
+      au.first_name || ' ' || au.last_name AS user_name,
+      au.email AS user_email,
+      au.manager_id,
+      m.first_name AS mgr_first_name, m.email AS mgr_email,
+      m.manager_id AS skip_manager_id,
+      COALESCE(sep.deadline_at::date, ws.operational_at::date + INTERVAL '15 days')::date AS effective_deadline
+    FROM sop_employee_progress sep
+    JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+    JOIN admin_users au ON au.id = sep.user_id
+    LEFT JOIN admin_users m ON m.id = au.manager_id
+    WHERE sep.acknowledged_at IS NULL
+      AND ws.operational_at IS NOT NULL
+      AND ws.operational_at + INTERVAL '15 days' < NOW()
+      AND au.is_active = true
+      AND au.deleted_at IS NULL
+    ORDER BY sep.user_id
+  `)).rows as any[];
+
+  for (const row of sopRows) {
+    const deadline = new Date(String(row.effective_deadline));
+    const daysOverdue = Math.floor((Date.now() - deadline.getTime()) / 86400000);
+    if (daysOverdue < 1) continue;
+
+    findings.push({
+      entityType: "sop",
+      entityId: String(row.progress_id),
+      employeeId: String(row.user_id),
+      managerId: row.manager_id ? String(row.manager_id) : null,
+      skipManagerId: row.skip_manager_id ? String(row.skip_manager_id) : null,
+      daysOverdue,
+      ctaPath: `${portalBase}/admin/sops/my-sops`,
+      entityTitle: "SOP acknowledgement",
+      employeeName: String(row.user_name),
+      employeeEmail: row.user_email ? String(row.user_email) : undefined,
+      managerEmail: row.mgr_email ? String(row.mgr_email) : undefined,
+      managerFirstName: row.mgr_first_name ? String(row.mgr_first_name) : undefined,
+    });
+  }
+
+  // ── 3) Overdue non-probation plan check-ins ───────────────────────────────
+  // Probation / PIP / growth check-ins are handled by probationEngine; here we
+  // handle any scheduled check-ins that are not linked to active plans.
+  const standaloneCheckInRows = (await db.execute(sql`
+    SELECT ci.id, ci.employee_id, ci.manager_id, ci.scheduled_date, ci.check_in_type,
+           au.first_name || ' ' || au.last_name AS employee_name,
+           au.email AS employee_email,
+           m.first_name AS mgr_first_name, m.email AS mgr_email,
+           m.manager_id AS skip_manager_id
+    FROM check_ins ci
+    JOIN admin_users au ON ci.employee_id = au.id
+    LEFT JOIN admin_users m ON ci.manager_id = m.id
+    WHERE ci.check_in_type IN ('weekly', 'pip_review', 'weekly_update')
+      AND ci.status = 'scheduled'
+      AND ci.scheduled_date < ${todayStr}
+      AND ci.plan_id IS NULL
+    ORDER BY ci.scheduled_date ASC
+  `)).rows as any[];
+
+  for (const ci of standaloneCheckInRows) {
+    const daysOverdue = Math.floor(
+      (Date.now() - new Date(`${ci.scheduled_date}T00:00:00Z`).getTime()) / 86400000
+    );
+    if (daysOverdue < 1) continue;
+
+    findings.push({
+      entityType: "checkin",
+      entityId: String(ci.id),
+      employeeId: String(ci.employee_id),
+      managerId: ci.manager_id ? String(ci.manager_id) : null,
+      skipManagerId: ci.skip_manager_id ? String(ci.skip_manager_id) : null,
+      daysOverdue,
+      ctaPath: `${portalBase}/admin/hr/my-team?tab=checkins`,
+      entityTitle: (ci.check_in_type as string).replace(/_/g, " "),
+      employeeName: String(ci.employee_name),
+      employeeEmail: ci.employee_email ? String(ci.employee_email) : undefined,
+      managerEmail: ci.mgr_email ? String(ci.mgr_email) : undefined,
+      managerFirstName: ci.mgr_first_name ? String(ci.mgr_first_name) : undefined,
+    });
+  }
+
+  console.log(
+    `[complianceSweep] collectOverdueItems: ${findings.filter(f => f.entityType === "goal").length} goals, ` +
+    `${findings.filter(f => f.entityType === "sop").length} SOPs, ` +
+    `${findings.filter(f => f.entityType === "checkin").length} check-ins`
+  );
+
   return findings;
-});
+}

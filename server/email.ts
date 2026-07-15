@@ -2365,9 +2365,15 @@ export async function sendPlanOverdueReminderEmail(options: {
   scheduledDate: string;
   daysOverdue: number;
   planType?: PlanCopyType;
+  /** Deep-link CTA URL — defaults to probation check-ins page when omitted. */
+  ctaUrl?: string;
+  /** Label for the CTA button — defaults to "Complete the Check-In". */
+  ctaLabel?: string;
 }) {
   const meta = planEmailMeta(options.planType);
   const planWord = meta.label.toLowerCase();
+  const ctaUrl = options.ctaUrl ?? PROBATION_CHECKINS_URL();
+  const ctaLabel = options.ctaLabel ?? "Complete the Check-In";
   const body = `
     <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 19px;">Hi ${options.managerFirstName},</h2>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 14px;">
@@ -2376,13 +2382,13 @@ export async function sendPlanOverdueReminderEmail(options: {
     </p>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">Please complete it as soon as possible to keep the plan on track.</p>
     <div style="margin: 22px 0;">
-      <a href="${PROBATION_CHECKINS_URL()}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">Complete the Check-In</a>
+      <a href="${ctaUrl}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">${ctaLabel}</a>
     </div>`;
   return dispatchAutomatedEmail(`${options.planType ?? "probation"}_overdue_reminder`, "scheduler:plan_escalation", {
     to: options.to,
     subject: `Overdue: ${options.employeeName}'s ${options.checkInLabel} ${planWord} check-in`,
     html: probationEmailShell(`${meta.label} check-in overdue`, "#b45309", body),
-    text: `Hi ${options.managerFirstName},\n\nThe ${options.checkInLabel} ${planWord} check-in for ${options.employeeName} was due on ${options.scheduledDate} and is now ${options.daysOverdue} day(s) overdue. Please complete it as soon as possible.\n\nComplete it: ${PROBATION_CHECKINS_URL()}${SIGNOFF_TEXT}`,
+    text: `Hi ${options.managerFirstName},\n\nThe ${options.checkInLabel} ${planWord} check-in for ${options.employeeName} was due on ${options.scheduledDate} and is now ${options.daysOverdue} day(s) overdue. Please complete it as soon as possible.\n\n${ctaLabel}: ${ctaUrl}${SIGNOFF_TEXT}`,
   });
 }
 
@@ -2394,8 +2400,14 @@ export async function sendPlanEscalationEmail(options: {
   reason: string;
   detail: string;
   planType?: PlanCopyType;
+  /** Deep-link CTA URL — defaults to probation check-ins page when omitted. */
+  ctaUrl?: string;
+  /** Label for the CTA button — defaults to "Review Check-Ins". */
+  ctaLabel?: string;
 }) {
   const meta = planEmailMeta(options.planType);
+  const ctaUrl = options.ctaUrl ?? PROBATION_CHECKINS_URL();
+  const ctaLabel = options.ctaLabel ?? "Review Check-Ins";
   const body = `
     <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 19px;">${meta.label} escalation</h2>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 14px;">
@@ -2405,13 +2417,13 @@ export async function sendPlanEscalationEmail(options: {
     <p style="color: #475569; line-height: 1.6; margin: 0 0 14px;">Owning manager: <strong>${options.managerName}</strong></p>
     <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">${options.detail}</p>
     <div style="margin: 22px 0;">
-      <a href="${PROBATION_CHECKINS_URL()}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">Review Check-Ins</a>
+      <a href="${ctaUrl}" style="display: inline-block; background: #1F3A6E; color: #ffffff; text-decoration: none; padding: 12px 28px; border-radius: 6px; font-weight: 600; font-size: 14px;">${ctaLabel}</a>
     </div>`;
   return dispatchAutomatedEmail(`${options.planType ?? "probation"}_escalation`, "scheduler:plan_escalation", {
     to: options.to,
     subject: `${meta.label} escalation: ${options.employeeName}`,
     html: probationEmailShell(`${meta.label} escalation`, "#b91c1c", body),
-    text: `${meta.label} escalation\n\n${options.reason}\n\nEmployee: ${options.employeeName}\nOwning manager: ${options.managerName}\n\n${options.detail}\n\nReview check-ins: ${PROBATION_CHECKINS_URL()}${SIGNOFF_TEXT}`,
+    text: `${meta.label} escalation\n\n${options.reason}\n\nEmployee: ${options.employeeName}\nOwning manager: ${options.managerName}\n\n${options.detail}\n\n${ctaLabel}: ${ctaUrl}${SIGNOFF_TEXT}`,
   });
 }
 

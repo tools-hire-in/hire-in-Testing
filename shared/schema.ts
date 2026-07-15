@@ -4712,6 +4712,7 @@ export const governanceEventSourceEnum = pgEnum("governance_event_source", [
 export const governanceEventTypeEnum = pgEnum("governance_event_type", [
   "created", "assigned", "reassigned", "status_changed", "evidence_submitted",
   "disputed", "escalated", "closed", "reopened", "exception_recorded", "sync_updated",
+  "notification_sent",
 ]);
 
 export const governanceEvents = pgTable("governance_events", {

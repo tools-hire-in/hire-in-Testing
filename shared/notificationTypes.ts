@@ -142,6 +142,27 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
     category: "performance",
     typePrefixes: ["pip_", "probation_", "growth_"],
   },
+  {
+    key: "performance_goals",
+    label: "Performance goals",
+    description: "Goal overdue nudges, manager escalations and skip-level escalations.",
+    category: "performance",
+    typePrefixes: ["goal_"],
+  },
+  {
+    key: "governance_escalation",
+    label: "Governance escalations",
+    description: "Governance control overdue alerts, escalations and compliance digest notifications.",
+    category: "performance",
+    typePrefixes: [
+      "governance_overdue",
+      "governance_escalated",
+      "governance_",
+      "checkin_overdue_digest",
+      "compliance_digest",
+      "sop_manager_escalation",
+    ],
+  },
   // ── System ────────────────────────────────────────────────────────────────
   {
     key: "system_general",

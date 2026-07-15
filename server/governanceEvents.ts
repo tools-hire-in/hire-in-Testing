@@ -26,6 +26,7 @@ export type GovernanceEventType =
   | "evidence_submitted"
   | "disputed"
   | "escalated"
+  | "notification_sent"
   | "closed"
   | "reopened"
   | "exception_recorded"

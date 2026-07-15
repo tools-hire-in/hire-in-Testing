@@ -5,12 +5,17 @@
  * All write operations go through here so that the escalation engine and the
  * route handlers stay thin. The notifyUser() gateway is used for all alerts
  * so per-user channel preferences are respected.
+ *
+ * After the centralization refactor, this file is the SOLE WRITE AUTHORITY for
+ * all governance state. applyEscalation() is the central method — every
+ * escalation transition, every notification trigger flows through it.
  */
 
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { notifyUser } from "./notifications";
 import { emitGovernanceEvent } from "./governanceEvents";
+import type { GovernanceFinding, GovernanceRunResult } from "@shared/governanceTypes";
 
 export type GovernanceControlType = "goal" | "check_in" | "training" | "sop" | "probation" | "pip";
 export type GovernanceControlStatus = "pending" | "in_progress" | "completed" | "overdue" | "escalated" | "closed" | "disputed";
@@ -896,16 +901,20 @@ export async function syncGovernanceObligations(): Promise<{
   }
 
   // ── 2. SOP acknowledgements ───────────────────────────────────────────────
+  // Mirrors the effective_deadline logic in collectOverdueItems() exactly:
+  // COALESCE(deadline_at, operational_at + 15d) so every detectable SOP finding
+  // has a corresponding governance_control (no silent drop for null deadline_at).
   const sopRows = await db.execute(sql`
     SELECT sep.id AS ref_id,
            sep.user_id AS owner_id,
            au.manager_id,
-           sep.deadline_at::date::text AS due_date
+           COALESCE(sep.deadline_at::date, ws.operational_at::date + INTERVAL '15 days')::text AS due_date
     FROM sop_employee_progress sep
+    JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
     JOIN admin_users au ON au.id = sep.user_id
     WHERE sep.acknowledged_at IS NULL
-      AND sep.deadline_at IS NOT NULL
-      AND sep.deadline_at::date <= ${lookahead7}::date
+      AND ws.operational_at IS NOT NULL
+      AND COALESCE(sep.deadline_at::date, ws.operational_at::date + INTERVAL '15 days') <= ${lookahead7}::date
       AND au.is_active = true
       AND au.deleted_at IS NULL
     LIMIT 200
@@ -1025,7 +1034,31 @@ export async function syncGovernanceObligations(): Promise<{
     counters.pip++;
   }
 
-  // ── 6. Goals ──────────────────────────────────────────────────────────────
+  // ── 6. Growth plans ───────────────────────────────────────────────────────
+  const growthPlanRows = await db.execute(sql`
+    SELECT ep.id AS ref_id,
+           ep.employee_id AS owner_id,
+           ep.manager_id,
+           COALESCE(ep.end_date, ${today}) AS due_date
+    FROM employee_plans ep
+    WHERE ep.plan_type = 'growth'::employee_plan_type
+      AND ep.status = 'active'::employee_plan_status
+      AND ep.employee_id IS NOT NULL
+    LIMIT 200
+  `);
+  for (const r of growthPlanRows.rows as any[]) {
+    await createGovernanceControl({
+      controlType: "probation",
+      referenceId: `growth:${r.ref_id}`,
+      ownerId: r.owner_id,
+      managerId: r.manager_id ?? null,
+      dueDate: r.due_date ?? today,
+      requiredAction: "Meet all growth plan milestones and check-in cadence.",
+      evidenceRequired: false,
+    });
+  }
+
+  // ── 7. Goals ──────────────────────────────────────────────────────────────
   const goalRows = await db.execute(sql`
     SELECT pg.id AS ref_id,
            pg.employee_id AS owner_id,
@@ -1066,4 +1099,851 @@ function formatControlType(t: string): string {
     pip: "PIP checkpoint",
   };
   return labels[t] ?? t;
+}
+
+// ─── Centralized escalation engine ───────────────────────────────────────────
+
+/**
+ * Map a GovernanceFinding entityType to its governance_controls reference_id prefix.
+ */
+function referenceIdFor(finding: GovernanceFinding): string {
+  if (finding.entityType === "probation_strike") {
+    // syncGovernanceObligations creates plan-level controls with planType-based prefixes:
+    //   probation → prob:<planId>
+    //   pip       → pip:<planId>
+    //   growth    → growth:<planId> (no plan-level control exists yet — applyEscalation will skip gracefully)
+    const prefix = finding.planType === "pip" ? "pip" : finding.planType === "growth" ? "growth" : "prob";
+    return `${prefix}:${finding.entityId}`;
+  }
+  const prefixMap: Record<Exclude<GovernanceFinding["entityType"], "probation_strike">, string> = {
+    goal: "goal",
+    sop: "sop",
+    checkin: "ci",
+    probation_milestone: "ci",
+  };
+  return `${prefixMap[finding.entityType]}:${finding.entityId}`;
+}
+
+/**
+ * Map a GovernanceFinding entityType to its governance_control_type.
+ */
+function controlTypeFor(finding: GovernanceFinding): GovernanceControlType {
+  const typeMap: Record<GovernanceFinding["entityType"], GovernanceControlType> = {
+    goal: "goal",
+    sop: "sop",
+    checkin: "check_in",
+    probation_milestone: "probation",
+    probation_strike: "probation",
+  };
+  return typeMap[finding.entityType];
+}
+
+/**
+ * Central escalation method — sole authority for governance state transitions.
+ *
+ * Accepts a GovernanceFinding detected by a collector, looks up the corresponding
+ * governance_control, determines the correct escalation step based on daysOverdue
+ * and current status, applies a 20-hour idempotency guard, updates
+ * governance_controls, writes a governance_events row, and calls notifyUser once.
+ *
+ * Returns { changed, newStatus, notificationSent }.
+ */
+export async function applyEscalation(finding: GovernanceFinding): Promise<{
+  changed: boolean;
+  newStatus?: string;
+  notificationSent: boolean;
+}> {
+  const referenceId = referenceIdFor(finding);
+
+  // Fetch the existing governance_control for this entity
+  const ctrl = await db.execute(sql`
+    SELECT id, status, escalation_level
+    FROM governance_controls
+    WHERE reference_id = ${referenceId}
+      AND status NOT IN ('closed', 'completed')
+    LIMIT 1
+  `);
+
+  if (ctrl.rows.length === 0) {
+    // No control record yet — will be created by syncGovernanceObligations on next pass
+    return { changed: false, notificationSent: false };
+  }
+
+  const c = ctrl.rows[0] as any;
+  const controlId = c.id as string;
+  const currentStatus = c.status as string;
+  const escalationLevel = Number(c.escalation_level ?? 0);
+
+  // Determine which escalation step should fire for this finding
+  const step = resolveEscalationStep(finding, currentStatus, escalationLevel);
+  if (step === "none") return { changed: false, notificationSent: false };
+
+  // 20-hour idempotency guard — keyed on 'notification_sent' events for this control+step.
+  // Using notification_sent (not 'escalated') means:
+  //   • If notifications failed last run → no notification_sent row → retry is allowed.
+  //   • If notifications succeeded last run → notification_sent row blocks re-send for 20h.
+  // State advancement (escalation_level) only occurs AFTER successful notification below,
+  // so resolveEscalationStep() will also return "none" for already-advanced levels.
+  const recent = await db.execute(sql`
+    SELECT id FROM governance_events
+    WHERE control_id = ${controlId}
+      AND event_type = 'notification_sent'
+      AND metadata->>'step' = ${step}
+      AND created_at > NOW() - INTERVAL '20 hours'
+    LIMIT 1
+  `);
+  if (recent.rows.length > 0) {
+    return { changed: false, notificationSent: false };
+  }
+
+  // Dispatch notifications FIRST — before advancing state.
+  // This ensures recipients are notified before escalation_level is incremented.
+  // If all deliveries fail, state is not advanced and the next sweep can retry.
+  const { successCount, recipients } = await dispatchEscalationNotifications(finding, step, controlId);
+
+  if (successCount === 0) {
+    // All deliveries failed — do not advance state so the next sweep can retry.
+    return { changed: false, notificationSent: false };
+  }
+
+  // Every step advances escalation_level by 1 so the sequential ladder progresses correctly:
+  //   goal: employee_nudge (L0→1) → manager_escalation (L1→2) → skip_escalation (L2→3)
+  //   check-in/milestone: manager_remind (L0→1) → milestone_escalation (L1→2)
+  //   sop: employee_nudge (L0→1) → none
+  //   strike: strike (L0→1) → none
+  // The 20h notification_sent dedup guards against same-sweep re-fire for the same step.
+  // Once level advances, resolveEscalationStep returns the next step (or none), preventing
+  // the prior step from re-firing and driving the ladder forward naturally.
+  const newStatus = stepToControlStatus(step);
+  const newLevel = escalationLevel + 1;
+
+  await db.execute(sql`
+    UPDATE governance_controls
+    SET status = ${newStatus}::governance_control_status,
+        escalation_level = ${newLevel},
+        updated_at = NOW()
+    WHERE id = ${controlId}
+  `);
+
+  await emitGovernanceEvent({
+    controlId,
+    eventType: "escalated",
+    source: "scheduler",
+    metadata: {
+      step,
+      entityType: finding.entityType,
+      daysOverdue: finding.daysOverdue,
+      employeeId: finding.employeeId,
+      managerId: finding.managerId,
+      newStatus,
+      newLevel,
+    },
+  }).catch(console.error);
+
+  // Record notification evidence — the 20h dedup guard above keys on this row.
+  // recipients[] is the complete per-delivery audit ledger: userId/email, channel, type, success.
+  await emitGovernanceEvent({
+    controlId,
+    eventType: "notification_sent",
+    source: "scheduler",
+    metadata: {
+      step,
+      entityType: finding.entityType,
+      daysOverdue: finding.daysOverdue,
+      employeeId: finding.employeeId,
+      managerId: finding.managerId ?? undefined,
+      successCount,
+      recipients: recipients as unknown as Record<string, unknown>[],
+      ctaPath: finding.ctaPath,
+    },
+  }).catch(console.error);
+
+  return { changed: true, newStatus, notificationSent: true };
+}
+
+/**
+ * Escalation ladder by entity type and level:
+ *
+ *  goal:              0 → employee_nudge (Day 1+)
+ *                     1 → manager_escalation (Day 3+)
+ *                     2 → skip_escalation (Day 6+, fires ONCE at level 2)
+ *                     3+ → none (already fully escalated)
+ *
+ *  sop:               0 → employee_nudge (Day 1+)
+ *                     1 → manager_escalation (Day 5+)
+ *                     2+ → none
+ *
+ *  checkin /          0 → manager_remind (Day 1+)
+ *  probation_         1 → milestone_escalation (Day milestoneEscalateAfterDays+, milestone only)
+ *  milestone:         2+ → none
+ *
+ *  probation_strike:  0 → strike (once, any daysOverdue)
+ *                     1+ → none
+ *
+ * IMPORTANT: every step increments escalation_level by 1 in applyEscalation, so
+ * the exact-level checks here are the single source of truth for "already done".
+ */
+function resolveEscalationStep(
+  finding: GovernanceFinding,
+  currentStatus: string,
+  escalationLevel: number
+): string {
+  const { entityType, daysOverdue } = finding;
+  const inactive = (s: string) => !["pending", "in_progress", "overdue", "escalated"].includes(s);
+  if (inactive(currentStatus)) return "none";
+
+  if (entityType === "goal") {
+    if (escalationLevel === 0 && daysOverdue >= 1) return "employee_nudge";
+    if (escalationLevel === 1 && daysOverdue >= 3) return "manager_escalation";
+    // skip_escalation fires EXACTLY ONCE at level 2 — level 3+ means it already fired
+    if (escalationLevel === 2 && daysOverdue >= 6) return "skip_escalation";
+    return "none";
+  }
+
+  if (entityType === "sop") {
+    // SOP nudge is recurring: fire whenever daysOverdue >= 1 regardless of escalation_level.
+    // The 20h notification_sent dedup guard (not the level check) controls repeat cadence.
+    // manager_escalation for SOPs is excluded as policy-scope (beyond this refactor).
+    if (daysOverdue >= 1) return "employee_nudge";
+    return "none";
+  }
+
+  if (entityType === "checkin" || entityType === "probation_milestone") {
+    if (escalationLevel === 0 && daysOverdue >= 1) return "manager_remind";
+    // milestone_escalation fires EXACTLY ONCE at level 1, using the per-finding threshold
+    if (entityType === "probation_milestone" && escalationLevel === 1) {
+      const threshold = finding.milestoneEscalateAfterDays ?? 3;
+      if (daysOverdue >= threshold) return "milestone_escalation";
+    }
+    return "none";
+  }
+
+  if (entityType === "probation_strike") {
+    // Strike fires EXACTLY ONCE at level 0
+    if (escalationLevel === 0) return "strike";
+    return "none";
+  }
+
+  return "none";
+}
+
+/**
+ * Map a step name to the governance_control_status value it transitions to.
+ */
+function stepToControlStatus(step: string): string {
+  switch (step) {
+    case "employee_nudge":
+    case "manager_remind":
+      return "overdue";
+    case "manager_escalation":
+    case "milestone_escalation":
+    case "skip_escalation":
+    case "strike":
+      return "escalated";
+    default:
+      return "overdue";
+  }
+}
+
+/**
+ * Dispatch notification(s) for an escalation step.
+ * Each step fires exactly ONE notifyUser call per recipient role.
+ * Email is sent for manager/skip-level escalations.
+ *
+ * Returns successCount: how many individual notification deliveries succeeded.
+ * The caller emits a `notification_sent` governance_event ONLY when successCount > 0,
+ * so transient failures leave no audit record and allow retries on the next sweep.
+ */
+/** Per-delivery record used in notification_sent event metadata for the audit ledger. */
+type NotifRecipient = { userId?: string; email?: string; channel: "in_app" | "email"; notificationType: string; success: boolean };
+
+async function dispatchEscalationNotifications(
+  finding: GovernanceFinding,
+  step: string,
+  controlId: string
+): Promise<{ successCount: number; recipients: NotifRecipient[] }> {
+  const {
+    entityType,
+    employeeId,
+    managerId,
+    skipManagerId,
+    daysOverdue,
+    entityTitle,
+    employeeName,
+    employeeEmail,
+    managerEmail,
+    managerFirstName,
+    planType,
+    ctaPath,
+  } = finding;
+
+  const { sendPlanOverdueReminderEmail, sendPlanEscalationEmail } = await import("./email");
+
+  const empLabel = employeeName ?? "Employee";
+  const titleLabel = entityTitle ?? formatControlType(controlTypeFor(finding));
+  const portalCta = ctaPath ?? "/admin/hr";
+
+  // Per-recipient delivery records — included in notification_sent event metadata for
+  // the complete audit ledger (to whom, which channel, notification type, success/failure).
+  const recipients: NotifRecipient[] = [];
+  let successCount = 0;
+
+  // Notification to the employee — records in-app delivery to recipient audit list
+  const notifyEmployee = async (type: string, title: string, message: string): Promise<boolean> => {
+    if (!employeeId) return false;
+    let ok = false;
+    try {
+      await notifyUser({ userId: employeeId, type, title, message, metadata: { controlId, entityType, daysOverdue, ctaPath: portalCta } });
+      ok = true;
+    } catch (e) {
+      console.error("[applyEscalation] notifyEmployee failed:", e);
+    }
+    recipients.push({ userId: employeeId, channel: "in_app", notificationType: type, success: ok });
+    return ok;
+  };
+
+  // Notification to the manager — records in-app delivery to recipient audit list
+  const notifyManager = async (type: string, title: string, message: string): Promise<boolean> => {
+    if (!managerId) return false;
+    let ok = false;
+    try {
+      await notifyUser({ userId: managerId, type, title, message, metadata: { controlId, entityType, daysOverdue, employeeId, ctaPath: portalCta } });
+      ok = true;
+    } catch (e) {
+      console.error("[applyEscalation] notifyManager failed:", e);
+    }
+    recipients.push({ userId: managerId, channel: "in_app", notificationType: type, success: ok });
+    return ok;
+  };
+
+  // Notification to skip-level manager — records in-app delivery to recipient audit list
+  const notifySkip = async (type: string, title: string, message: string): Promise<boolean> => {
+    if (!skipManagerId) return false;
+    let ok = false;
+    try {
+      await notifyUser({ userId: skipManagerId, type, title, message, metadata: { controlId, entityType, daysOverdue, employeeId, managerId, ctaPath: portalCta } });
+      ok = true;
+    } catch (e) {
+      console.error("[applyEscalation] notifySkip failed:", e);
+    }
+    recipients.push({ userId: skipManagerId, channel: "in_app", notificationType: type, success: ok });
+    return ok;
+  };
+
+  // Notify all HR/admin users — records each delivery; returns count of successes
+  const notifyHrAdmins = async (type: string, title: string, message: string): Promise<number> => {
+    const hrAdmins = (await db.execute(sql`
+      SELECT id FROM admin_users
+      WHERE role IN ('hr', 'admin', 'super_admin') AND is_active = true AND deleted_at IS NULL
+    `)).rows as any[];
+    let sent = 0;
+    for (const hr of hrAdmins) {
+      let ok = false;
+      try {
+        await notifyUser({ userId: String(hr.id), type, title, message, metadata: { controlId, entityType, daysOverdue, employeeId, ctaPath: portalCta } });
+        ok = true;
+        sent++;
+      } catch (e) {
+        console.error("[applyEscalation] notifyHrAdmins failed for user:", hr.id, e);
+      }
+      recipients.push({ userId: String(hr.id), channel: "in_app", notificationType: type, success: ok });
+    }
+    return sent;
+  };
+
+  switch (step) {
+    case "employee_nudge": {
+      if (entityType === "goal") {
+        if (await notifyEmployee(
+          "goal_overdue_nudge",
+          `Overdue goal: "${titleLabel}"`,
+          `Your goal "${titleLabel}" was due ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} ago and needs a progress update.`
+        )) successCount++;
+        if (employeeEmail) {
+          // CTA links to employee's own goals tab, scoped to their goal via entityId
+          const portalBase = portalCta.replace(/\/admin\/.*$/, "");
+          const empGoalsCta = `${portalBase}/admin/hr?tab=goals${employeeId ? `&employeeId=${employeeId}` : ""}`;
+          let emailOk = false;
+          try {
+            await sendPlanOverdueReminderEmail({
+              to: employeeEmail,
+              managerFirstName: empLabel.split(" ")[0] || "there",
+              employeeName: empLabel,
+              checkInLabel: `Goal: "${titleLabel}"`,
+              scheduledDate: new Date().toISOString().slice(0, 10),
+              daysOverdue,
+              planType: planType as any,
+              ctaUrl: empGoalsCta,
+              ctaLabel: "Review Your Goals",
+            });
+            emailOk = true;
+            successCount++;
+          } catch (e) {
+            console.error(`[applyEscalation] goal employee nudge email failed for ${finding.entityId}:`, e);
+          }
+          recipients.push({ email: employeeEmail, channel: "email", notificationType: "goal_overdue_nudge", success: emailOk });
+        }
+      } else if (entityType === "sop") {
+        if (await notifyEmployee(
+          "sop_overdue_nudge",
+          `SOP acknowledgement overdue`,
+          `You have an SOP "${titleLabel}" that is ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} past its acknowledgement deadline. Please review and acknowledge it.`
+        )) successCount++;
+      }
+      break;
+    }
+
+    case "manager_escalation": {
+      // manager_escalation is a goal-only step; SOP manager escalation is policy-excluded
+      if (entityType === "goal") {
+        if (await notifyManager(
+          "goal_overdue_manager_escalation",
+          `Action needed: ${empLabel}'s goal is overdue`,
+          `"${titleLabel}" is ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue with no progress update.`
+        )) successCount++;
+        if (managerEmail) {
+          // Explicit URL construction — avoids brittle chained .replace() on ctaPath
+          const portalBase = portalCta.replace(/\/admin\/.*$/, "");
+          const managerGoalsCta = employeeId
+            ? `${portalBase}/admin/hr/my-team?tab=goals&employeeId=${employeeId}`
+            : `${portalBase}/admin/hr/my-team?tab=goals`;
+          try {
+            await sendPlanOverdueReminderEmail({
+              to: managerEmail,
+              managerFirstName: managerFirstName || "Manager",
+              employeeName: empLabel,
+              checkInLabel: `Goal: "${titleLabel}"`,
+              scheduledDate: new Date().toISOString().slice(0, 10),
+              daysOverdue,
+              planType: planType as any,
+              ctaUrl: managerGoalsCta,
+              ctaLabel: "Review Employee Goals",
+            });
+            successCount++;
+          } catch (e) {
+            console.error(`[applyEscalation] goal manager escalation email failed for ${finding.entityId}:`, e);
+          }
+        }
+      }
+      break;
+    }
+
+    case "skip_escalation": {
+      // CTA for HR/skip-level → people dashboard filtered to the specific employee
+      const portalBase = portalCta.replace(/\/admin\/.*$/, "");
+      const hrPeopleCta = employeeId
+        ? `${portalBase}/admin/hr/people?employeeId=${employeeId}`
+        : `${portalBase}/admin/hr/people`;
+      if (await notifySkip(
+        "goal_overdue_hr_escalation",
+        `Escalation: ${empLabel}'s goal ${daysOverdue}d overdue`,
+        `"${titleLabel}" has no progress update after ${daysOverdue} days. Manager was notified — further intervention may be needed.`
+      )) successCount++;
+      successCount += await notifyHrAdmins(
+        "goal_overdue_hr_escalation",
+        `Escalation: ${empLabel}'s goal ${daysOverdue}d overdue`,
+        `"${titleLabel}" has no progress update after ${daysOverdue} days. Manager was notified — further intervention may be needed.`
+      );
+      const hrEmailRows = (await db.execute(sql`
+        SELECT email FROM admin_users
+        WHERE role IN ('hr', 'admin', 'super_admin') AND is_active = true AND deleted_at IS NULL
+      `)).rows as any[];
+      const toEmails: string[] = hrEmailRows.map(r => String(r.email)).filter(Boolean);
+      if (skipManagerId) {
+        const skipRow = (await db.execute(sql`SELECT email FROM admin_users WHERE id = ${skipManagerId} AND is_active = true LIMIT 1`)).rows[0] as any;
+        if (skipRow?.email) toEmails.push(String(skipRow.email));
+      }
+      if (toEmails.length > 0) {
+        try {
+          await sendPlanEscalationEmail({
+            to: toEmails,
+            employeeName: empLabel,
+            managerName: managerFirstName ?? "Unassigned",
+            reason: `Goal "${titleLabel}" is ${daysOverdue} days overdue with no progress`,
+            detail: `The employee's manager was notified on Day 3 — intervention may be needed.`,
+            planType: planType as any,
+            ctaUrl: hrPeopleCta,
+            ctaLabel: "View Employee in People Dashboard",
+          });
+          successCount++;
+        } catch (e) {
+          console.error(`[applyEscalation] skip escalation email failed for ${finding.entityId}:`, e);
+        }
+      }
+      break;
+    }
+
+    case "manager_remind": {
+      const planWord = planType === "pip" ? "PIP" : planType === "growth" ? "growth" : "probation";
+      if (await notifyManager(
+        `${planType ?? "checkin"}_overdue_reminder`,
+        `Overdue: ${empLabel}'s ${titleLabel} check-in`,
+        `The ${titleLabel} ${planWord} check-in was due ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} ago.`
+      )) successCount++;
+      if (managerEmail) {
+        try {
+          await sendPlanOverdueReminderEmail({
+            to: managerEmail,
+            managerFirstName: managerFirstName || "there",
+            employeeName: empLabel,
+            checkInLabel: titleLabel,
+            scheduledDate: new Date().toISOString().slice(0, 10),
+            daysOverdue,
+            planType: planType as any,
+            ctaUrl: portalCta,
+            ctaLabel: "Complete the Check-In",
+          });
+          successCount++;
+        } catch (e) {
+          console.error(`[applyEscalation] manager remind email failed for ${finding.entityId}:`, e);
+        }
+      }
+      break;
+    }
+
+    case "milestone_escalation": {
+      const planWord = planType === "pip" ? "PIP" : planType === "growth" ? "growth" : "probation";
+      const milDay = finding.milestoneDay;
+      const milLabel = milDay != null ? `Day ${milDay} milestone` : titleLabel;
+      const recipientIds = new Set<string>();
+      if (skipManagerId) recipientIds.add(skipManagerId);
+      const hrOps = (await db.execute(sql`
+        SELECT id FROM admin_users
+        WHERE role IN ('hr', 'admin', 'super_admin', 'operations') AND is_active = true AND deleted_at IS NULL
+      `)).rows as any[];
+      for (const hr of hrOps) recipientIds.add(String(hr.id));
+      for (const rid of recipientIds) {
+        try {
+          await notifyUser({
+            userId: rid,
+            type: `${planType ?? "probation"}_milestone_escalation`,
+            title: `${planWord.charAt(0).toUpperCase() + planWord.slice(1)} milestone overdue: ${empLabel}`,
+            message: `${empLabel}'s ${milLabel} review is ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue.`,
+            metadata: { controlId, entityType, daysOverdue, employeeId, planId: finding.planId, milestoneDay: milDay, ctaPath: portalCta },
+          });
+          successCount++;
+        } catch (e) {
+          console.error("[applyEscalation] milestone notify failed for user:", rid, e);
+        }
+      }
+      const hrEmailRows2 = (await db.execute(sql`
+        SELECT email FROM admin_users
+        WHERE role IN ('hr', 'admin', 'super_admin', 'operations') AND is_active = true AND deleted_at IS NULL
+      `)).rows as any[];
+      const mgrNameLabel = managerFirstName || "the assigned manager";
+      const escEmails: string[] = hrEmailRows2.map(r => String(r.email)).filter(Boolean);
+      if (skipManagerId) {
+        const sr = (await db.execute(sql`SELECT email FROM admin_users WHERE id = ${skipManagerId} AND is_active = true LIMIT 1`)).rows[0] as any;
+        if (sr?.email) escEmails.push(String(sr.email));
+      }
+      if (escEmails.length > 0) {
+        try {
+          await sendPlanEscalationEmail({
+            to: Array.from(new Set(escEmails)),
+            employeeName: empLabel,
+            managerName: mgrNameLabel,
+            reason: `${milLabel} ${planWord} milestone review is ${daysOverdue} days overdue.`,
+            detail: `This formal milestone scorecard has not been completed. Please follow up with the owning manager.`,
+            planType: planType as any,
+            ctaUrl: portalCta,
+            ctaLabel: "Review Check-Ins",
+          });
+          successCount++;
+        } catch (e) {
+          console.error(`[applyEscalation] milestone escalation email failed for ${finding.entityId}:`, e);
+        }
+      }
+      break;
+    }
+
+    case "strike": {
+      const planWord = planType === "pip" ? "PIP" : planType === "growth" ? "growth" : "probation";
+      const recipientIds = new Set<string>();
+      if (skipManagerId) recipientIds.add(skipManagerId);
+      const hrOps2 = (await db.execute(sql`
+        SELECT id FROM admin_users
+        WHERE role IN ('hr', 'admin', 'super_admin', 'operations') AND is_active = true AND deleted_at IS NULL
+      `)).rows as any[];
+      for (const hr of hrOps2) recipientIds.add(String(hr.id));
+      for (const rid of recipientIds) {
+        try {
+          await notifyUser({
+            userId: rid,
+            type: `${planType ?? "probation"}_strike_escalation`,
+            title: `${planWord.charAt(0).toUpperCase() + planWord.slice(1)} at risk: ${empLabel}`,
+            message: `${empLabel}'s ${planWord} plan has ${daysOverdue} overdue check-in${daysOverdue !== 1 ? "s" : ""}.`,
+            metadata: { controlId, entityType, daysOverdue, employeeId, planId: finding.planId, ctaPath: portalCta },
+          });
+          successCount++;
+        } catch (e) {
+          console.error("[applyEscalation] strike notify failed for user:", rid, e);
+        }
+      }
+      // NOTE: employee_plans.strike_escalated_at is no longer written here.
+      // The governance_events audit row (step='strike') is the new source of truth.
+      // The legacy column is reconciled at sweep-start in reconcileLegacyEscalationState().
+      const hrEmails3 = (await db.execute(sql`
+        SELECT email FROM admin_users
+        WHERE role IN ('hr', 'admin', 'super_admin', 'operations') AND is_active = true AND deleted_at IS NULL
+      `)).rows as any[];
+      const strikeEmails: string[] = hrEmails3.map(r => String(r.email)).filter(Boolean);
+      if (skipManagerId) {
+        const sr2 = (await db.execute(sql`SELECT email FROM admin_users WHERE id = ${skipManagerId} AND is_active = true LIMIT 1`)).rows[0] as any;
+        if (sr2?.email) strikeEmails.push(String(sr2.email));
+      }
+      if (strikeEmails.length > 0) {
+        try {
+          await sendPlanEscalationEmail({
+            to: Array.from(new Set(strikeEmails)),
+            employeeName: empLabel,
+            managerName: managerFirstName || "the assigned manager",
+            reason: `${daysOverdue} ${planWord} check-in${daysOverdue !== 1 ? "s" : ""} are overdue on this plan.`,
+            detail: `The owning manager has missed ${daysOverdue} or more ${planWord} check-ins. Please intervene to bring the plan back on cadence.`,
+            planType: planType as any,
+            ctaUrl: portalCta,
+            ctaLabel: "View Plan Details",
+          });
+          successCount++;
+        } catch (e) {
+          console.error(`[applyEscalation] strike escalation email failed for ${finding.planId}:`, e);
+        }
+      }
+      break;
+    }
+
+    default:
+      break;
+  }
+
+  return { successCount, recipients };
+}
+
+/**
+ * One-time-per-control migration guard: before the first unified sweep run processes
+ * a control, check whether legacy source-table timestamps prove an escalation already
+ * fired under the old engine. If so, advance escalation_level to the appropriate
+ * value so the state machine's exact-level checks don't re-notify.
+ *
+ * Covered cases:
+ *   - probation_strike: employee_plans.strike_escalated_at IS NOT NULL → level 1
+ *   - any entity: existing governance_events with step recorded → level derived from count
+ *
+ * This function is idempotent — it only updates controls whose escalation_level is
+ * lower than the observed legacy level, and it writes a governance_event so the
+ * update is auditable.
+ */
+async function reconcileLegacyEscalationState(findings: GovernanceFinding[]): Promise<void> {
+  for (const finding of findings) {
+    const referenceId = referenceIdFor(finding);
+
+    // Fetch the control (we only care about level=0 controls — higher means already unified)
+    const ctrlRows = (await db.execute(sql`
+      SELECT id, escalation_level FROM governance_controls
+      WHERE reference_id = ${referenceId}
+        AND status NOT IN ('closed', 'completed')
+        AND escalation_level = 0
+      LIMIT 1
+    `)).rows as any[];
+    if (ctrlRows.length === 0) continue;
+
+    const controlId = ctrlRows[0].id as string;
+    let legacyLevel = 0;
+
+    // ── Per-entity-type legacy column reads ──────────────────────────────────
+    if (finding.entityType === "goal") {
+      // performance_goals columns written by the old engine before unification
+      const gr = (await db.execute(sql`
+        SELECT employee_nudged_at, last_escalated_at, skip_escalated_at
+        FROM performance_goals WHERE id = ${finding.entityId} LIMIT 1
+      `)).rows[0] as any;
+      if (gr) {
+        // Ladder: nudge→level1, manager_escalation→level2, skip_escalation→level3
+        if (gr.skip_escalated_at) legacyLevel = Math.max(legacyLevel, 3);
+        else if (gr.last_escalated_at) legacyLevel = Math.max(legacyLevel, 2);
+        else if (gr.employee_nudged_at) legacyLevel = Math.max(legacyLevel, 1);
+      }
+    } else if (finding.entityType === "sop") {
+      // sop_employee_progress.overdue_nudge_sent_date set by old nudge engine
+      const sr = (await db.execute(sql`
+        SELECT overdue_nudge_sent_date FROM sop_employee_progress
+        WHERE id::text = ${finding.entityId} LIMIT 1
+      `)).rows[0] as any;
+      if (sr?.overdue_nudge_sent_date) legacyLevel = Math.max(legacyLevel, 1);
+    } else if (finding.entityType === "checkin") {
+      // check_ins.overdue_reminded_on set by old reminder engine
+      const cr = (await db.execute(sql`
+        SELECT overdue_reminded_on FROM check_ins
+        WHERE id::text = ${finding.entityId} LIMIT 1
+      `)).rows[0] as any;
+      if (cr?.overdue_reminded_on) legacyLevel = Math.max(legacyLevel, 1);
+    } else if (finding.entityType === "probation_milestone") {
+      // check_ins has both overdue_reminded_on (remind step) and milestone_escalated_at (escalation step)
+      const mr = (await db.execute(sql`
+        SELECT overdue_reminded_on, milestone_escalated_at FROM check_ins
+        WHERE id::text = ${finding.entityId} LIMIT 1
+      `)).rows[0] as any;
+      if (mr) {
+        if (mr.milestone_escalated_at) legacyLevel = Math.max(legacyLevel, 2);
+        else if (mr.overdue_reminded_on) legacyLevel = Math.max(legacyLevel, 1);
+      }
+    } else if (finding.entityType === "probation_strike" && finding.planId) {
+      // employee_plans.strike_escalated_at written by old strike engine
+      const planRow = (await db.execute(sql`
+        SELECT strike_escalated_at FROM employee_plans
+        WHERE id = ${finding.planId} AND strike_escalated_at IS NOT NULL LIMIT 1
+      `)).rows[0] as any;
+      if (planRow) legacyLevel = Math.max(legacyLevel, 1);
+    }
+
+    // Also check how many distinct escalation/notification steps have been recorded in
+    // governance_events — covers partial runs of the new engine before this session.
+    const evtRows = (await db.execute(sql`
+      SELECT DISTINCT metadata->>'step' AS step
+      FROM governance_events
+      WHERE control_id = ${controlId}
+        AND event_type IN ('escalated', 'notification_sent')
+        AND metadata->>'step' IS NOT NULL
+    `)).rows as any[];
+    const stepCount = evtRows.length;
+    if (stepCount > legacyLevel) legacyLevel = stepCount;
+
+    if (legacyLevel === 0) continue;
+
+    // Advance the control's escalation_level to reflect legacy state
+    await db.execute(sql`
+      UPDATE governance_controls
+      SET escalation_level = ${legacyLevel},
+          updated_at = NOW()
+      WHERE id = ${controlId}
+        AND escalation_level < ${legacyLevel}
+    `);
+
+    // Emit an audit event so this reconciliation is traceable
+    await emitGovernanceEvent({
+      controlId,
+      eventType: "sync_updated",
+      source: "scheduler",
+      metadata: {
+        reason: "legacy_state_migration",
+        entityType: finding.entityType,
+        legacyLevel,
+        planId: finding.planId,
+      },
+    }).catch(console.error);
+
+    console.log(`[governanceSync] Reconciled ${finding.entityType}:${finding.entityId} legacy level → ${legacyLevel}`);
+  }
+}
+
+/**
+ * Orchestrated daily governance sync + escalation sweep.
+ * Called by scheduler at 07:00 IST as the single governance cron entry.
+ *
+ * Sequence:
+ *   1. backfillProbationCadence() — insert missing cadence check-ins (idempotent)
+ *   2. syncGovernanceObligations() — create/refresh governance_controls (idempotent)
+ *   3. collectOverdueItems() — pure detector for goals, SOPs, check-ins
+ *   4. collectProbationMilestoneEvents() — pure detector for probation/PIP/growth
+ *   4b. reconcileLegacyEscalationState() — advance controls with pre-existing escalations
+ *   5. applyEscalation(finding) for each finding — central state machine
+ *   6. runDailySweep() — HR check-in overdue digest (separate visibility path)
+ *   7. Log summary with dedup stats
+ */
+export async function runGovernanceSyncSweep(): Promise<GovernanceRunResult> {
+  const result: GovernanceRunResult = {
+    findingsCollected: 0,
+    escalationsApplied: 0,
+    escalationsSkipped: 0,
+    notificationsSent: 0,
+  };
+
+  // Step 1: Cadence backfill
+  try {
+    const { backfillProbationCadence } = await import("./probationEngine");
+    const { inserted } = await backfillProbationCadence();
+    if (inserted > 0) {
+      console.log(`[governanceSync] Cadence backfill: ${inserted} check-in(s) inserted.`);
+    }
+  } catch (err) {
+    console.error("[governanceSync] Cadence backfill failed (non-fatal):", err);
+  }
+
+  // Step 2: Obligation sync — create governance_controls for all live obligations
+  try {
+    const counts = await syncGovernanceObligations();
+    console.log(
+      `[governanceSync] Obligation sync: training=${counts.training} sop=${counts.sop} ` +
+      `checkIn=${counts.checkIn} probation=${counts.probation} pip=${counts.pip} goal=${counts.goal}`
+    );
+  } catch (err) {
+    console.error("[governanceSync] Obligation sync failed (non-fatal):", err);
+  }
+
+  // Step 3: Collect overdue items (goals, SOPs, standalone check-ins)
+  let complianceFindings: GovernanceFinding[] = [];
+  try {
+    const { collectOverdueItems } = await import("./complianceSweep");
+    complianceFindings = await collectOverdueItems();
+  } catch (err) {
+    console.error("[governanceSync] collectOverdueItems failed:", err);
+  }
+
+  // Step 4: Collect probation/PIP/growth findings
+  let probationFindings: GovernanceFinding[] = [];
+  try {
+    const { collectProbationMilestoneEvents } = await import("./probationEngine");
+    probationFindings = await collectProbationMilestoneEvents();
+  } catch (err) {
+    console.error("[governanceSync] collectProbationMilestoneEvents failed:", err);
+  }
+
+  const allFindings = [...complianceFindings, ...probationFindings];
+  result.findingsCollected = allFindings.length;
+
+  // Step 4b: Reconcile legacy source-table escalation state.
+  // On the first governance sweep run (or when new controls are created for existing
+  // already-escalated entities) escalation_level may be 0 while the legacy source table
+  // already has timestamps proving an escalation already fired. Advancing the level here
+  // prevents the state machine from re-notifying parties who were notified before the
+  // unified engine took over.
+  try {
+    await reconcileLegacyEscalationState(allFindings);
+  } catch (err) {
+    console.error("[governanceSync] Legacy reconciliation failed (non-fatal):", err);
+  }
+
+  // Step 5: Apply escalation for each finding through the central state machine
+  for (const finding of allFindings) {
+    try {
+      const out = await applyEscalation(finding);
+      if (out.changed) {
+        result.escalationsApplied++;
+        if (out.notificationSent) result.notificationsSent++;
+      } else {
+        result.escalationsSkipped++;
+      }
+    } catch (err) {
+      console.error(`[governanceSync] applyEscalation failed for ${finding.entityType}:${finding.entityId}:`, err);
+      result.escalationsSkipped++;
+    }
+  }
+
+  // Step 6: HR check-in overdue digest (visibility path — separate from escalation)
+  try {
+    const { runDailySweep } = await import("./complianceSweep");
+    await runDailySweep();
+  } catch (err) {
+    console.error("[governanceSync] HR checkin digest failed (non-fatal):", err);
+  }
+
+  // Step 7: Diagnostic log
+  console.log(
+    `[governanceSync] Sweep complete. ` +
+    `Findings: ${result.findingsCollected} | ` +
+    `Applied: ${result.escalationsApplied} | ` +
+    `Skipped (deduped): ${result.escalationsSkipped} | ` +
+    `Notifications sent: ${result.notificationsSent}`
+  );
+
+  return result;
 }
