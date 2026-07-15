@@ -4357,7 +4357,11 @@ async function runStartupTasks() {
     await db.execute(sql`
       DO $$ BEGIN
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'governance_control_type') THEN
-          CREATE TYPE governance_control_type AS ENUM ('goal','check_in','training','sop','probation','pip');
+          CREATE TYPE governance_control_type AS ENUM ('goal','check_in','training','sop','probation','pip','manager_checkin_obligation','manager_coaching_obligation');
+        ELSE
+          -- Idempotently extend the enum with Task #1107 manager obligation types
+          BEGIN ALTER TYPE governance_control_type ADD VALUE IF NOT EXISTS 'manager_checkin_obligation'; EXCEPTION WHEN duplicate_object THEN NULL; END;
+          BEGIN ALTER TYPE governance_control_type ADD VALUE IF NOT EXISTS 'manager_coaching_obligation'; EXCEPTION WHEN duplicate_object THEN NULL; END;
         END IF;
         IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'governance_control_status') THEN
           CREATE TYPE governance_control_status AS ENUM ('pending','in_progress','completed','overdue','escalated','closed','disputed');

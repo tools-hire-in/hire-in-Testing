@@ -335,6 +335,97 @@ registerCollector("pip_coaching_prompt", async (_flags) => {
   return [];
 });
 
+// ─── REMOVED: manager_coaching_obligation_sweep ───────────────────────────────
+// Previously dispatched direct notifyUser calls for overdue manager coaching
+// obligations, bypassing the shared applyEscalation() state machine.
+// Replaced by collectOverdueItems() section 4) which feeds these findings
+// through the standard governance escalation pipeline (same audit semantics,
+// 20-hour dedup guard, governance_events log, escalation_level ladder).
+// The block below is intentionally commented out so it is no longer registered.
+/* REMOVED registerCollector("manager_coaching_obligation_sweep", async (_flags) => {
+  const todayStr = new Date().toISOString().slice(0, 10);
+  const portalBase = getPortalBaseUrl();
+
+  // Find overdue manager_coaching_obligation controls whose due_date has passed
+  // and that have not yet been escalated today.
+  const overdueControls = (await db.execute(sql`
+    SELECT
+      gc.id AS control_id,
+      gc.owner_id AS manager_id,
+      gc.required_action,
+      gc.due_date,
+      gc.reference_id,
+      au.first_name || ' ' || au.last_name AS manager_name,
+      au.manager_id AS skip_manager_id
+    FROM governance_controls gc
+    JOIN admin_users au ON au.id = gc.owner_id
+    WHERE gc.control_type::text = 'manager_coaching_obligation'
+      AND gc.status IN ('pending', 'overdue')
+      AND gc.due_date IS NOT NULL
+      AND gc.due_date::date <= ${todayStr}::date
+      AND au.is_active = true
+      AND au.deleted_at IS NULL
+    ORDER BY gc.due_date ASC
+    LIMIT 50
+  `)).rows as any[];
+
+  let dispatched = 0;
+
+  for (const ctrl of overdueControls) {
+    const dedupKey = `mgr_coaching_nudge_${String(ctrl.control_id)}_${todayStr}`;
+    const alreadySent = await storage.getSystemSetting(dedupKey).catch(() => null);
+    if (alreadySent) continue;
+
+    const daysOverdue = Math.max(0, Math.floor(
+      (Date.now() - new Date(String(ctrl.due_date) + "T00:00:00Z").getTime()) / 86400000
+    ));
+
+    const planRef = String(ctrl.reference_id ?? "").replace("mgr_pip:", "");
+    const inAppMsg = `Coaching note required: ${daysOverdue > 0 ? `${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue — ` : ""}${String(ctrl.required_action ?? "Log a coaching entry for your PIP employee.")}`;
+
+    try {
+      // Direct nudge to the manager
+      await notifyUser({
+        userId: String(ctrl.manager_id),
+        type: "manager_coaching_obligation_overdue" as any,
+        title: "Coaching note overdue",
+        message: inAppMsg,
+        metadata: {
+          controlId: String(ctrl.control_id),
+          planRef,
+          daysOverdue,
+          ctaPath: `${portalBase}/admin/hr/my-team?tab=plans`,
+        },
+      });
+
+      // Skip-level escalation: notify the manager's manager
+      if (ctrl.skip_manager_id) {
+        await notifyUser({
+          userId: String(ctrl.skip_manager_id),
+          type: "manager_coaching_obligation_overdue" as any,
+          title: `Coaching obligation overdue for ${String(ctrl.manager_name)}`,
+          message: `${String(ctrl.manager_name)} has a coaching note ${daysOverdue} day${daysOverdue !== 1 ? "s" : ""} overdue for a PIP employee.`,
+          metadata: {
+            controlId: String(ctrl.control_id),
+            managerId: String(ctrl.manager_id),
+            managerName: String(ctrl.manager_name),
+            daysOverdue,
+            ctaPath: `${portalBase}/admin/hr/my-team?tab=plans`,
+          },
+        }).catch(console.error);
+      }
+
+      await storage.upsertSystemSetting(dedupKey, new Date().toISOString());
+      dispatched++;
+    } catch (err) {
+      console.error(`[complianceSweep] manager_coaching_obligation_sweep failed for control ${ctrl.control_id}:`, err);
+    }
+  }
+
+  console.log(`[complianceSweep] manager_coaching_obligation_sweep: ${dispatched} manager nudges dispatched`);
+  return [];
+}); */
+
 // ─── Pure detector: collectOverdueItems ──────────────────────────────────────
 /**
  * Detect all overdue governance obligations for goals, SOP acknowledgements,
@@ -416,8 +507,10 @@ export async function collectOverdueItems(): Promise<GovernanceFinding[]> {
   }
 
   // ── 2) Overdue SOP acknowledgements ───────────────────────────────────────
-  // Grace period: 15 days after the SOP's wave operational_at date (DB-configurable).
-  // Uses deadline_at when set; falls back to wave_sops.operational_at + 15d.
+  // Grace period: sopGraceDays after the employee's timer_started_at (DB-configurable).
+  // Deferred/queued SOPs get a full grace window from when their clock actually starts,
+  // not from the wave operational_at date. Uses deadline_at when explicitly set; otherwise
+  // COALESCE(timer_started_at, operational_at) + grace as the deadline anchor.
   // Gated by governance_nudge_sweep_enabled setting.
   if (!nudgeSweepEnabled) {
     console.log("[complianceSweep] collectOverdueItems: SOP nudge sweep disabled by governance_nudge_sweep_enabled setting");
@@ -435,15 +528,19 @@ export async function collectOverdueItems(): Promise<GovernanceFinding[]> {
           m.manager_id AS skip_manager_id,
           COALESCE(
             sep.deadline_at::date,
-            ws.operational_at::date + (${sopGraceDays} * INTERVAL '1 day')
+            COALESCE(sep.timer_started_at, ws.operational_at)::date + (${sopGraceDays} * INTERVAL '1 day')
           )::date AS effective_deadline
         FROM sop_employee_progress sep
         JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
         JOIN admin_users au ON au.id = sep.user_id
         LEFT JOIN admin_users m ON m.id = au.manager_id
         WHERE sep.acknowledged_at IS NULL
+          AND sep.timer_started_at IS NOT NULL
           AND ws.operational_at IS NOT NULL
-          AND ws.operational_at + (${sopGraceDays} * INTERVAL '1 day') < NOW()
+          AND COALESCE(
+            sep.deadline_at,
+            COALESCE(sep.timer_started_at, ws.operational_at) + (${sopGraceDays} * INTERVAL '1 day')
+          ) < NOW()
           AND au.is_active = true
           AND au.deleted_at IS NULL
         ORDER BY sep.user_id
@@ -512,10 +609,115 @@ export async function collectOverdueItems(): Promise<GovernanceFinding[]> {
     });
   }
 
+  // ── 4) Overdue manager check-in facilitation obligations ──────────────────
+  // Symmetric escalation for manager_checkin_obligation controls created in
+  // syncGovernanceObligations (3 days after each employee check-in due date).
+  // Feeds through the same applyEscalation pipeline as all other entity types.
+  const mgrCheckinOverdueRows = (await db.execute(sql`
+    SELECT
+      gc.id AS control_id,
+      gc.reference_id,
+      gc.owner_id AS manager_id,
+      gc.due_date,
+      au.manager_id AS skip_manager_id,
+      au.first_name || ' ' || au.last_name AS manager_name,
+      au.email AS manager_email,
+      sm.first_name AS skip_first_name,
+      sm.email AS skip_email
+    FROM governance_controls gc
+    JOIN admin_users au ON au.id = gc.owner_id
+    LEFT JOIN admin_users sm ON sm.id = au.manager_id
+    WHERE gc.control_type::text = 'manager_checkin_obligation'
+      AND gc.status NOT IN ('closed', 'completed')
+      AND gc.due_date IS NOT NULL
+      AND gc.due_date::date < ${todayStr}::date
+      AND au.is_active = true
+      AND au.deleted_at IS NULL
+    ORDER BY gc.due_date ASC
+    LIMIT 50
+  `).catch(() => ({ rows: [] }))).rows as any[];
+
+  for (const row of mgrCheckinOverdueRows) {
+    const daysOverdue = Math.max(1, Math.floor(
+      (Date.now() - new Date(String(row.due_date) + "T00:00:00Z").getTime()) / 86400000
+    ));
+    const entityId = String(row.reference_id ?? "").replace(/^mgr_ci:/, "");
+    findings.push({
+      entityType: "manager_checkin_obligation",
+      entityId,
+      employeeId: String(row.manager_id),
+      managerId: row.skip_manager_id ? String(row.skip_manager_id) : null,
+      skipManagerId: null,
+      daysOverdue,
+      ctaPath: `${portalBase}/admin/hr/my-team?tab=checkins`,
+      entityTitle: "Manager check-in facilitation obligation",
+      employeeName: row.manager_name ? String(row.manager_name) : undefined,
+      employeeEmail: row.manager_email ? String(row.manager_email) : undefined,
+      managerEmail: row.skip_email ? String(row.skip_email) : undefined,
+      managerFirstName: row.skip_first_name ? String(row.skip_first_name) : undefined,
+    });
+  }
+
+  // ── 5) Overdue manager coaching obligations ────────────────────────────────
+  // Feeds manager_coaching_obligation controls through the same applyEscalation
+  // pipeline as goal/SOP/checkin findings — symmetric escalation semantics,
+  // shared audit trail, 20-hour dedup guard, governance_events audit log.
+  // The "employee" in this context is the manager who owns the obligation;
+  // the "manager" field is their skip-level so the ladder (L0=nudge owner,
+  // L1=nudge skip) mirrors the standard goal/checkin ladder.
+  const mgrCoachingOverdueRows = (await db.execute(sql`
+    SELECT
+      gc.id AS control_id,
+      gc.reference_id,
+      gc.owner_id AS manager_id,
+      gc.due_date,
+      au.manager_id AS skip_manager_id,
+      au.first_name || ' ' || au.last_name AS manager_name,
+      au.email AS manager_email,
+      sm.first_name AS skip_first_name,
+      sm.email AS skip_email
+    FROM governance_controls gc
+    JOIN admin_users au ON au.id = gc.owner_id
+    LEFT JOIN admin_users sm ON sm.id = au.manager_id
+    WHERE gc.control_type::text = 'manager_coaching_obligation'
+      AND gc.status NOT IN ('closed', 'completed')
+      AND gc.due_date IS NOT NULL
+      AND gc.due_date::date < ${todayStr}::date
+      AND au.is_active = true
+      AND au.deleted_at IS NULL
+    ORDER BY gc.due_date ASC
+    LIMIT 50
+  `).catch(() => ({ rows: [] }))).rows as any[];
+
+  for (const row of mgrCoachingOverdueRows) {
+    const daysOverdue = Math.max(1, Math.floor(
+      (Date.now() - new Date(String(row.due_date) + "T00:00:00Z").getTime()) / 86400000
+    ));
+    // entityId = full reference_id (mgr_pip:... or mgr_ms:...) preserved so
+    // referenceIdFor can return it directly without re-adding a prefix.
+    const entityId = String(row.reference_id ?? "");
+    findings.push({
+      entityType: "manager_coaching_obligation",
+      entityId,
+      employeeId: String(row.manager_id),
+      managerId: row.skip_manager_id ? String(row.skip_manager_id) : null,
+      skipManagerId: null,
+      daysOverdue,
+      ctaPath: `${portalBase}/admin/hr/my-team?tab=plans`,
+      entityTitle: "Manager coaching obligation",
+      employeeName: row.manager_name ? String(row.manager_name) : undefined,
+      employeeEmail: row.manager_email ? String(row.manager_email) : undefined,
+      managerEmail: row.skip_email ? String(row.skip_email) : undefined,
+      managerFirstName: row.skip_first_name ? String(row.skip_first_name) : undefined,
+    });
+  }
+
   console.log(
     `[complianceSweep] collectOverdueItems: ${findings.filter(f => f.entityType === "goal").length} goals, ` +
     `${findings.filter(f => f.entityType === "sop").length} SOPs, ` +
-    `${findings.filter(f => f.entityType === "checkin").length} check-ins`
+    `${findings.filter(f => f.entityType === "checkin").length} check-ins, ` +
+    `${findings.filter(f => f.entityType === "manager_checkin_obligation").length} mgr-checkin, ` +
+    `${findings.filter(f => f.entityType === "manager_coaching_obligation").length} mgr-coaching`
   );
 
   return findings;

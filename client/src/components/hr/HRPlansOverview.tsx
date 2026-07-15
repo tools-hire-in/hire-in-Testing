@@ -444,12 +444,81 @@ function PlanDetailPanel({ detail, canClose, canReclassify, onClosePlan }: {
       </div>
 
       {canClose && (plan.status === "active" || plan.status === "pending") && (
-        <div className="pt-4 border-t">
+        <div className="pt-4 border-t space-y-2">
+          <PlanCoSignSection plan={plan} />
           <Button variant="destructive" onClick={onClosePlan} className="w-full" data-testid="button-close-plan">
             Close Plan &amp; Record Outcome
           </Button>
         </div>
       )}
+    </div>
+  );
+}
+
+function PlanCoSignSection({ plan }: { plan: HRPlan }) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const isManager = ["manager", "hr", "admin", "super_admin"].includes(user?.role ?? "");
+
+  // Load open check-ins for this plan (status = scheduled, date passed = due for co-sign)
+  const { data: checkIns } = useQuery<any[]>({
+    queryKey: ["/api/hr/plans", plan.id, "checkins"],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`/api/hr/plans/${plan.id}/checkins`, { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch { return []; }
+    },
+    enabled: isManager,
+  });
+
+  const today = new Date().toISOString().split("T")[0];
+  const dueForCosign = (checkIns ?? []).filter(
+    (ci: any) => ci.status === "scheduled" && ci.scheduled_date <= today
+  );
+
+  const cosignMutation = useMutation({
+    mutationFn: (checkInId: string) =>
+      fetch(`/api/hr/plans/checkins/${checkInId}/cosign`, {
+        method: "PATCH",
+        credentials: "include",
+      }).then(r => { if (!r.ok) throw new Error("Failed"); return r.json(); }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/hr/plans", plan.id, "checkins"] });
+      qc.invalidateQueries({ queryKey: ["/api/hr/plans"] });
+      toast({ title: "Check-in marked complete" });
+    },
+    onError: () => toast({ title: "Failed to co-sign check-in", variant: "destructive" }),
+  });
+
+  if (!isManager || dueForCosign.length === 0) return null;
+
+  return (
+    <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/20 p-3 space-y-2" data-testid="plan-cosign-section">
+      <p className="text-xs font-medium text-blue-800 dark:text-blue-300">
+        {dueForCosign.length} check-in{dueForCosign.length !== 1 ? "s" : ""} awaiting your facilitation sign-off
+      </p>
+      <div className="space-y-1.5">
+        {dueForCosign.map((ci: any) => (
+          <div key={ci.id} className="flex items-center justify-between gap-2" data-testid={`cosign-row-${ci.id}`}>
+            <span className="text-xs capitalize text-muted-foreground">
+              {ci.check_in_type?.replace(/_/g, " ")} — {ci.scheduled_date}
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-6 text-xs border-blue-300 text-blue-700 hover:bg-blue-100"
+              onClick={() => cosignMutation.mutate(ci.id)}
+              disabled={cosignMutation.isPending}
+              data-testid={`button-cosign-${ci.id}`}
+            >
+              Mark Complete
+            </Button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }

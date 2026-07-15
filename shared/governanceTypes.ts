@@ -17,7 +17,9 @@ export type GovernanceEntityType =
   | "sop"
   | "checkin"
   | "probation_milestone"
-  | "probation_strike";
+  | "probation_strike"
+  | "manager_coaching_obligation"
+  | "manager_checkin_obligation";
 
 /**
  * Escalation steps — the ordered stages a governance obligation progresses through.

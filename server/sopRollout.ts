@@ -412,8 +412,15 @@ async function buildAssignmentRows(userId: string, role?: string): Promise<MySop
     const enforcement = (wave?.enforcement as WaveEnforcement) ?? null;
     const acknowledgedCurrentVersion = !!p.acknowledgedAt && p.sopVersion === doc.version;
 
-    const dueAt = operational && member?.operationalAt
-      ? new Date(new Date(member.operationalAt).getTime() + sopGraceDays * 24 * 60 * 60 * 1000)
+    // Use timer_started_at as the ONLY deadline anchor. Queued SOPs (timer_started_at
+    // IS NULL) have no running clock and CANNOT be overdue — falling back to
+    // operationalAt would allow a compliance-lock on a SOP whose timer has never
+    // been activated, which violates the queue/ceiling semantics.
+    const timerAnchor: Date | null = (p as any).timerStartedAt
+      ? new Date((p as any).timerStartedAt)
+      : null;
+    const dueAt = operational && timerAnchor
+      ? new Date(timerAnchor.getTime() + sopGraceDays * 24 * 60 * 60 * 1000)
       : null;
     const overdue = !acknowledgedCurrentVersion && !!dueAt && dueAt.getTime() < now;
 
@@ -496,6 +503,17 @@ export async function getEnforceableOverdueSopsForUser(
   if (!userId) return [];
   const { enabled } = await resolveSopAccessForUser(userId, role);
   if (!enabled) return [];
+
+  // ── Circuit-breaker gate ─────────────────────────────────────────────────
+  // When the mass-lockout circuit breaker is tripped (written by syncGovernanceObligations
+  // on every sweep), we pause NEW lock activations in this enforcement path.
+  // This satisfies the safety guarantee: the CB pauses both timer starts (in sync)
+  // AND lock activations (here) whenever projected lockouts exceed the threshold.
+  try {
+    const cbSetting = await storage.getSystemSetting("sop_circuit_breaker_active");
+    if (cbSetting?.value === "true") return [];
+  } catch { /* non-fatal — proceed with enforcement if setting is unreadable */ }
+
   const rows = await buildAssignmentRows(userId);
   return rows
     .filter(isSopLockEligible)

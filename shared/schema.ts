@@ -956,6 +956,17 @@ export const performanceGoals = pgTable("performance_goals", {
   goalProgressUpdatedAt: timestamp("goal_progress_updated_at"),
   // escalationFlag: set by sync engine when progress regresses > 15 points.
   escalationFlag: boolean("escalation_flag").default(false),
+  // ── Goodhart Guard (Task #1107) ────────────────────────────────────────────
+  // The auto-progress engine PROPOSES a new value here instead of writing
+  // directly to `progress`. A manager must confirm or adjust within 96h,
+  // after which the auto-commit cron commits the suggestion. Anomaly-flagged
+  // goals (unusual spikes) require manual review and are never auto-committed.
+  suggestedProgress: integer("suggested_progress"),
+  progressPendingReview: boolean("progress_pending_review").notNull().default(false),
+  progressAnomalyFlagged: boolean("progress_anomaly_flagged").notNull().default(false),
+  suggestedProgressAt: timestamp("suggested_progress_at"),
+  progressConfirmedAt: timestamp("progress_confirmed_at"),
+  progressConfirmedBy: varchar("progress_confirmed_by").references((): any => adminUsers.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -4069,12 +4080,38 @@ export const sopEmployeeProgress = pgTable("sop_employee_progress", {
   // Optional per-employee SOP deadline (override of wave operational_at + grace days).
   // Used by governanceService syncGovernanceObligations to compute due dates.
   deadlineAt: timestamp("deadline_at"),
+  // ── SOP Wave Timer Ceiling (Task #1107) ─────────────────────────────────────
+  // timer_started_at: when the employee's acknowledgement clock started; NULL
+  //   means the SOP is queued (waiting for a slot in the concurrency ceiling).
+  // sop_timer_queue: JSONB log of queuing events for audit; entries are appended
+  //   when a SOP is deferred past the MAX_CONCURRENT_TIMERS cap or wave gate.
+  timerStartedAt: timestamp("timer_started_at"),
+  sopTimerQueue: jsonb("sop_timer_queue"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => ({
   masterUserUnique: uniqueIndex("sop_employee_progress_master_user_idx").on(table.sopMasterId, table.userId),
   userIdx: index("sop_employee_progress_user_idx").on(table.userId),
 }));
+
+// ── SOP Wave Approvals (Task #1107) ─────────────────────────────────────────
+// Waves ≥ 3 require an explicit approval record before SOP timers may start.
+// One row per wave (UNIQUE on wave_number). Schema mirrors the table created by
+// scripts/governance-trust-safety-schema.ts to prevent drizzle drift alerts.
+export const sopWaveApprovals = pgTable("sop_wave_approvals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  waveNumber: integer("wave_number").notNull().unique(),
+  approvedBy: varchar("approved_by").notNull().references(() => adminUsers.id),
+  approvedAt: timestamp("approved_at").defaultNow().notNull(),
+  riskSnapshotJson: jsonb("risk_snapshot_json"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  waveNumberIdx: index("sop_wave_approvals_wave_idx").on(table.waveNumber),
+}));
+
+export const insertSopWaveApprovalSchema = createInsertSchema(sopWaveApprovals).omit({ id: true, approvedAt: true, createdAt: true });
+export type SopWaveApproval = typeof sopWaveApprovals.$inferSelect;
 
 export const sopAuditRecords = pgTable("sop_audit_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -4684,6 +4721,7 @@ export type BdDeckAuditLog = typeof bdDeckAuditLog.$inferSelect;
 
 export const governanceControlTypeEnum = pgEnum("governance_control_type", [
   "goal", "check_in", "training", "sop", "probation", "pip",
+  "manager_checkin_obligation", "manager_coaching_obligation",
 ]);
 
 export const governanceControlStatusEnum = pgEnum("governance_control_status", [

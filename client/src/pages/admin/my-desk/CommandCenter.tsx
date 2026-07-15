@@ -200,6 +200,21 @@ export default function CommandCenter() {
   });
 
   const isManagerRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "");
+  const isManager = ["manager", "hr", "admin", "super_admin"].includes(user?.role || "");
+
+  // My own manager obligations (manager_checkin_obligation / manager_coaching_obligation
+  // where owner_id = me). Uses a dedicated endpoint so we don't conflate "my obligations"
+  // with "my team's compliance breakdown" (/manager/:id/breakdown uses manager_id = me).
+  const { data: myObligations } = useQuery<{
+    totalControls: number;
+    overdueCount: number;
+    controls: Array<{ id: string; controlType: string; status: string; dueDate: string | null; requiredAction: string | null; escalationLevel: number }>;
+  }>({
+    queryKey: ["/api/governance/my-manager-obligations"],
+    enabled: isAuthenticated && isManager,
+    refetchInterval: 120000,
+  });
+
   const today = new Date();
   const todayStr = today.toISOString().split("T")[0];
 
@@ -801,6 +816,41 @@ export default function CommandCenter() {
                 </Button>
               </div>
             )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ── My Governance Obligations — manager/HR/admin only, shown when overdue ── */}
+      {isManager && (myObligations?.overdueCount ?? 0) > 0 && (
+        <Card className="border-red-200 bg-red-50/50 dark:bg-red-950/20 dark:border-red-800 shadow-sm" data-testid="cc-mgr-obligations-card">
+          <CardHeader className="pb-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-4 w-4 text-red-600" />
+                <CardTitle className="text-sm font-semibold text-red-800 dark:text-red-300">
+                  Your Governance Obligations
+                </CardTitle>
+              </div>
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-red-700 dark:text-red-400"
+                onClick={() => setLocation("/admin/hr/my-team?tab=plans")}
+                data-testid="cc-link-mgr-obligations"
+              >
+                View Plans →
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center gap-3">
+              <span className="text-3xl font-bold font-mono leading-none text-red-700 dark:text-red-400" data-testid="cc-mgr-obligations-overdue-count">
+                {myObligations?.overdueCount}
+              </span>
+              <span className="text-xs text-red-700 dark:text-red-400">
+                {myObligations?.overdueCount === 1 ? "coaching obligation" : "coaching obligations"} overdue — log a coaching note to clear
+              </span>
+            </div>
           </CardContent>
         </Card>
       )}

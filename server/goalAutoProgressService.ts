@@ -3,7 +3,18 @@
  *
  * Daily engine that identifies which performance_goals have a known
  * auto-calculable metric type, queries the relevant table, computes
- * actual progress for the plan period, and updates progress automatically.
+ * actual progress for the plan period, and writes it as a SUGGESTION
+ * (suggested_progress) rather than directly overwriting progress.
+ *
+ * Goodhart Guard (Task #1107):
+ *   - Progress changes are written to `suggested_progress` with
+ *     `progress_pending_review = true`. The manager must confirm or adjust
+ *     before `progress` is updated.
+ *   - Velocity anomaly check: if an employee is on an active PIP or probation
+ *     AND the goal's computed value moves by more than 2× the 4-week rolling
+ *     average, the goal is flagged with `progress_anomaly_flagged = true` and
+ *     the manager is notified immediately. Anomaly-flagged goals are NEVER
+ *     auto-committed by the 48-hour fallback cron.
  *
  * Runs at 7:00 AM IST (before the 8:30 AM absent sweep).
  *
@@ -17,6 +28,8 @@
 
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { notifyUser } from "./notifications";
+import { emitGovernanceEvent } from "./governanceEvents";
 
 // ─── Metric type constants ────────────────────────────────────────────────────
 
@@ -77,10 +90,15 @@ interface GoalRow {
   goal_metric_config: Record<string, any> | null;
   goal_progress_source: string | null;
   progress: number;
+  suggested_progress: number | null;
+  progress_pending_review: boolean;
+  progress_anomaly_flagged: boolean;
   start_date: string | null;
   target_date: string | null;
   plan_start_date: string | null;
   plan_end_date: string | null;
+  plan_type: string | null;
+  manager_id: string | null;
 }
 
 /** Resolve the effective date range for a goal within its plan period. */
@@ -267,29 +285,127 @@ export async function computeGoalProgress(goal: GoalRow): Promise<number | null>
   }
 }
 
+// ─── Velocity anomaly detector ────────────────────────────────────────────────
+
+/**
+ * Compute elapsed Mon–Fri working hours (09:00–18:00 IST) between two UTC
+ * timestamps. Used to enforce the 48-working-hour auto-commit threshold.
+ */
+export function workingHoursElapsed(fromUtc: Date, toUtc: Date): number {
+  const IST_MS   = 5.5 * 3_600_000; // UTC+5:30 in ms
+  const WORK_START = 9;              // 09:00 IST
+  const WORK_END   = 18;             // 18:00 IST
+
+  if (fromUtc >= toUtc) return 0;
+
+  const fromIST = new Date(fromUtc.getTime() + IST_MS);
+  const toIST   = new Date(toUtc.getTime()   + IST_MS);
+
+  let total = 0;
+  // Walk calendar day-by-day in IST midnight boundaries
+  const day = new Date(fromIST);
+  day.setUTCHours(0, 0, 0, 0);
+
+  while (day.getTime() <= toIST.getTime()) {
+    const dow = day.getUTCDay(); // 0=Sun … 6=Sat
+    if (dow >= 1 && dow <= 5) { // Mon–Fri only
+      const wStart = new Date(day); wStart.setUTCHours(WORK_START, 0, 0, 0);
+      const wEnd   = new Date(day); wEnd.setUTCHours(WORK_END,     0, 0, 0);
+      const lo = Math.max(fromIST.getTime(), wStart.getTime());
+      const hi = Math.min(toIST.getTime(),   wEnd.getTime());
+      if (hi > lo) total += (hi - lo) / 3_600_000;
+    }
+    day.setUTCDate(day.getUTCDate() + 1);
+  }
+  return total;
+}
+
+/**
+ * Detect if this week's submission count is anomalously high compared to the
+ * 4-week rolling average of WEEKLY RAW SUBMISSION COUNTS for the same recruiter.
+ *
+ * Spec: guard fires only for `submission_count` goals on active PIP or probation
+ * plans, and only when this week's raw count > 2× the 4-week rolling average.
+ * Raw weekly counts from the `applications` table are the ground truth — NOT
+ * the computed progress% from goal_progress_snapshots, which would mask the
+ * real gaming signal.
+ *
+ * Falls back to no-anomaly when fewer than 2 prior weeks of data are available.
+ */
+async function detectVelocityAnomaly(goal: GoalRow, _newProgress: number): Promise<boolean> {
+  if (!goal.plan_type || !["pip", "probation"].includes(goal.plan_type)) return false;
+  if (goal.goal_metric_type !== "submission_count") return false;
+
+  try {
+    // This week's raw submission count (Mon 00:00 IST through now)
+    const thisWeekRes = await db.execute(sql`
+      SELECT COUNT(*)::int AS cnt
+      FROM applications
+      WHERE recruiter_id = ${goal.employee_id}
+        AND created_at >= (date_trunc('week', NOW() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata')
+        AND (ceipal_sync_status IS NULL OR ceipal_sync_status != 'failed')
+    `);
+    const weekCount = Number((thisWeekRes.rows[0] as any)?.cnt ?? 0);
+
+    // 4-week rolling average — bucket submissions by ISO week in IST, take last 4 completed weeks
+    const rollingRes = await db.execute(sql`
+      SELECT COUNT(*)::int AS week_count
+      FROM (
+        SELECT date_trunc('week', created_at AT TIME ZONE 'Asia/Kolkata') AS week_start
+        FROM applications
+        WHERE recruiter_id = ${goal.employee_id}
+          AND created_at >= NOW() - INTERVAL '28 days'
+          AND created_at < date_trunc('week', NOW() AT TIME ZONE 'Asia/Kolkata') AT TIME ZONE 'Asia/Kolkata'
+          AND (ceipal_sync_status IS NULL OR ceipal_sync_status != 'failed')
+      ) sub
+      GROUP BY week_start
+      ORDER BY week_start DESC
+      LIMIT 4
+    `);
+
+    const weekCounts = (rollingRes.rows as any[]).map(r => Number(r.week_count ?? 0));
+    if (weekCounts.length < 2) return false;
+
+    const rollingAvg = weekCounts.reduce((a, b) => a + b, 0) / weekCounts.length;
+    if (rollingAvg <= 0) return false;
+
+    return weekCount > rollingAvg * 2;
+  } catch {
+    return false;
+  }
+}
+
 // ─── Main sync function ───────────────────────────────────────────────────────
 
 export interface GoalAutoProgressSyncResult {
-  synced: number;
+  suggested: number;
   skipped: number;
+  anomalyFlagged: number;
   escalationFlagged: number;
   errors: number;
 }
 
 /**
  * Daily engine: fetch all auto-trackable active plan goals, compute progress,
- * and update the DB. Registered at 7:00 AM IST in scheduler.ts.
+ * and write as a SUGGESTION rather than directly overwriting progress.
  *
- * Overwrite rule: auto-calculated value overwrites a manual entry ONLY when the
- * difference is > 5 points — prevents constant small oscillations from clobbering
- * a manager's deliberate adjustment.
+ * Goodhart Guard:
+ *   - Writes `suggested_progress` + sets `progress_pending_review = true`.
+ *   - `progress` is NOT touched — a manager must confirm (or it auto-commits
+ *     after 48 working hours via the separate auto-commit cron).
+ *   - If velocity anomaly detected → `progress_anomaly_flagged = true` and
+ *     manager notified. Anomaly-flagged goals are EXCLUDED from auto-commit.
  *
- * Escalation rule: if progress REGRESSED by > 15 points since the last value,
- * flag the goal with escalation_flag = true for the governance engine.
+ * Skip rule: skip when manager entered manually AND diff ≤ 5 points
+ *            (prevents constant small oscillations from triggering review).
+ *
+ * Escalation rule: if progress REGRESSED by > 15 points since current progress,
+ *   flag `escalation_flag = true` for the governance engine.
  */
 export async function runGoalAutoProgressSync(): Promise<GoalAutoProgressSyncResult> {
-  let synced = 0;
+  let suggested = 0;
   let skipped = 0;
+  let anomalyFlagged = 0;
   let escalationFlagged = 0;
   let errors = 0;
 
@@ -304,10 +420,15 @@ export async function runGoalAutoProgressSync(): Promise<GoalAutoProgressSyncRes
         pg.goal_metric_config,
         pg.goal_progress_source,
         pg.progress,
+        pg.suggested_progress,
+        pg.progress_pending_review,
+        pg.progress_anomaly_flagged,
         pg.start_date,
         pg.target_date,
         ep.start_date AS plan_start_date,
-        ep.end_date   AS plan_end_date
+        ep.end_date   AS plan_end_date,
+        ep.plan_type,
+        pg.manager_id
       FROM performance_goals pg
       LEFT JOIN employee_plans ep ON ep.id = pg.plan_id
       WHERE pg.goal_metric_type IS NOT NULL
@@ -334,24 +455,50 @@ export async function runGoalAutoProgressSync(): Promise<GoalAutoProgressSyncRes
           continue;
         }
 
-        // Detect significant regression (> 15 points drop)
+        // Detect significant regression (> 15 points drop) for escalation flag
         const regressed = newProgress < currentProgress - 15;
 
-        // Update progress + source markers
+        // Detect velocity anomaly for PIP/probation plans
+        const isAnomaly = await detectVelocityAnomaly(goal, newProgress);
+
+        // ── Goodhart Guard: write suggestion, not direct progress ──────────
+        // IMPORTANT: only reset suggested_progress_at when the suggested value
+        // materially changes (> 2 points). Preserving the original timestamp
+        // ensures the 48-working-hour auto-commit fallback can fire even if
+        // the daily sync re-runs with a nearly identical suggestion.
         await db.execute(sql`
           UPDATE performance_goals
           SET
-            progress = ${newProgress},
+            suggested_progress = ${newProgress},
+            progress_pending_review = true,
+            progress_anomaly_flagged = ${isAnomaly},
+            suggested_progress_at = CASE
+              WHEN suggested_progress IS NULL
+                OR ABS(COALESCE(suggested_progress, -999::numeric) - ${newProgress}::numeric) > 2
+              THEN NOW()
+              ELSE suggested_progress_at
+            END,
             goal_progress_source = 'auto',
             goal_progress_updated_at = NOW(),
-            last_progress_updated_at = NOW(),
             updated_at = NOW()
           WHERE id = ${goal.id}
         `);
 
-        synced++;
+        suggested++;
 
-        // Optionally flag escalation on significant regression
+        // Notify manager of anomaly immediately
+        if (isAnomaly && goal.manager_id) {
+          await notifyUser({
+            userId: goal.manager_id,
+            type: "goal_progress_anomaly" as any,
+            title: "Unusual goal progress detected",
+            message: `A goal's auto-calculated progress jumped to ${newProgress}% (>2× the rolling average). Please review before confirming.`,
+            metadata: { goalId: goal.id, suggestedProgress: newProgress },
+          }).catch(console.error);
+          anomalyFlagged++;
+        }
+
+        // Flag escalation on significant regression
         if (regressed) {
           await db.execute(sql`
             UPDATE performance_goals
@@ -372,5 +519,86 @@ export async function runGoalAutoProgressSync(): Promise<GoalAutoProgressSyncRes
     errors++;
   }
 
-  return { synced, skipped, escalationFlagged, errors };
+  return { suggested, skipped, anomalyFlagged, escalationFlagged, errors };
+}
+
+/**
+ * Auto-commit cron: runs every 4 hours. Finds goals with pending review
+ * where ≥ 48 Mon–Fri working hours (09:00–18:00 IST) have elapsed since
+ * `suggested_progress_at` and no manager action has been taken.
+ * Anomaly-flagged goals are EXCLUDED — they must be manually confirmed.
+ *
+ * "48 working hours" = 48h of Mon–Fri 09:00–18:00 IST clock time,
+ * computed precisely via `workingHoursElapsed`.  The DB query uses a
+ * 48-calendar-hour lower bound to skip obviously-too-recent suggestions
+ * before the JS check runs.
+ */
+export async function runProgressAutoCommit(): Promise<{ committed: number; errors: number }> {
+  let committed = 0;
+  let errors = 0;
+  const now = new Date();
+
+  try {
+    // Initial filter: at least 48 calendar hours old (avoids iterating fresh suggestions).
+    // The precise 48-working-hour gate is enforced in JS below.
+    const pending = await db.execute(sql`
+      SELECT id, suggested_progress, manager_id, suggested_progress_at
+      FROM performance_goals
+      WHERE progress_pending_review = true
+        AND progress_anomaly_flagged = false
+        AND suggested_progress IS NOT NULL
+        AND suggested_progress_at IS NOT NULL
+        AND suggested_progress_at <= NOW() - INTERVAL '48 hours'
+    `);
+
+    for (const row of pending.rows as any[]) {
+      try {
+        const suggestedAt = new Date(row.suggested_progress_at);
+        // Precise 48-working-hour gate
+        if (workingHoursElapsed(suggestedAt, now) < 48) continue;
+
+        await db.execute(sql`
+          UPDATE performance_goals
+          SET
+            progress = ${row.suggested_progress},
+            progress_pending_review = false,
+            goal_progress_source = 'auto_committed',
+            progress_confirmed_at = NOW(),
+            progress_confirmed_by = 'system_autocommit',
+            last_progress_updated_at = NOW(),
+            updated_at = NOW()
+          WHERE id = ${row.id}
+        `);
+
+        // Emit governance event on any associated control (non-fatal)
+        db.execute(sql`
+          SELECT id FROM governance_controls
+          WHERE control_type::text = 'goal'
+            AND reference_id = ${'goal:' + String(row.id)}
+            AND status NOT IN ('closed','completed')
+          LIMIT 1
+        `).then(res => {
+          if (res.rows.length > 0) {
+            emitGovernanceEvent({
+              controlId: (res.rows[0] as any).id,
+              eventType: "status_changed",
+              source: "scheduler",
+              actorId: null,
+              metadata: { action: "auto_committed", committedValue: row.suggested_progress },
+            }).catch(console.error);
+          }
+        }).catch(() => {});
+
+        committed++;
+      } catch (e) {
+        console.error(`[goalAutoProgress] Auto-commit failed for goal ${row.id}:`, e);
+        errors++;
+      }
+    }
+  } catch (err) {
+    console.error("[goalAutoProgress] Auto-commit sweep failed:", err);
+    errors++;
+  }
+
+  return { committed, errors };
 }

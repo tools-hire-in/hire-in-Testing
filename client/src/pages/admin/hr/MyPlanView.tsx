@@ -29,6 +29,10 @@ interface PlanGoal {
   goal_metric_type?: string | null;
   goal_progress_source?: string | null;
   goal_progress_updated_at?: string | null;
+  suggested_progress?: number | null;
+  progress_pending_review?: boolean | null;
+  progress_anomaly_flagged?: boolean | null;
+  suggested_progress_at?: string | null;
 }
 
 interface CheckIn {
@@ -192,6 +196,10 @@ function GoalRow({
 }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { user } = useAuth();
+  // Only manager-capable roles can review/confirm Goodhart-guard suggestions.
+  // Employees see the pending state as informational, but cannot approve/adjust.
+  const canReview = ["manager", "hr", "admin", "super_admin"].includes(user?.role ?? "");
   const [localProgress, setLocalProgress] = useState(goal.progress);
   const [localNotes, setLocalNotes] = useState(goal.notes ?? "");
 
@@ -230,6 +238,33 @@ function GoalRow({
     training_completion: "training completions",
   };
   const sourceName = goal.goal_metric_type ? (sourceLabel[goal.goal_metric_type] ?? goal.goal_metric_type) : "system data";
+
+  // Goodhart Guard — pending review state
+  const hasPendingReview = goal.progress_pending_review && goal.suggested_progress != null;
+  const isAnomalyFlagged = !!goal.progress_anomaly_flagged;
+  const [adjProgress, setAdjProgress] = useState<number>(goal.suggested_progress ?? goal.progress);
+  const [showAdjust, setShowAdjust] = useState(false);
+
+  const confirmMutation = useMutation({
+    mutationFn: () => apiRequest("POST", `/api/hr/goals/${goal.id}/confirm-progress`, {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/hr/my-plan"] });
+      qc.invalidateQueries({ queryKey: ["/api/hr/goals/pending-review"] });
+      toast({ title: "Progress confirmed" });
+    },
+    onError: () => toast({ title: "Failed to confirm", variant: "destructive" }),
+  });
+
+  const adjustMutation = useMutation({
+    mutationFn: (progress: number) => apiRequest("POST", `/api/hr/goals/${goal.id}/adjust-progress`, { progress }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/hr/my-plan"] });
+      qc.invalidateQueries({ queryKey: ["/api/hr/goals/pending-review"] });
+      setShowAdjust(false);
+      toast({ title: "Progress adjusted" });
+    },
+    onError: () => toast({ title: "Failed to adjust", variant: "destructive" }),
+  });
 
   return (
     <div className="border rounded-lg p-3 space-y-2" data-testid={`card-goal-${goal.id}`}>
@@ -288,6 +323,94 @@ function GoalRow({
           <Badge variant="outline" className="text-xs capitalize">{goal.category}</Badge>
         </div>
       </div>
+
+      {/* Goodhart Guard — pending review banner (manager-only action) */}
+      {hasPendingReview && canReview && (
+        <div
+          className={`rounded-lg border p-2.5 space-y-2 text-xs ${
+            isAnomalyFlagged
+              ? "border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/20"
+              : "border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20"
+          }`}
+          data-testid={`goodhart-guard-${goal.id}`}
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 font-medium">
+              {isAnomalyFlagged ? (
+                <AlertCircle className="h-3.5 w-3.5 text-red-500 shrink-0" />
+              ) : (
+                <Zap className="h-3.5 w-3.5 text-amber-500 shrink-0" />
+              )}
+              <span className={isAnomalyFlagged ? "text-red-700 dark:text-red-300" : "text-amber-700 dark:text-amber-300"}>
+                {isAnomalyFlagged ? "Anomaly flagged — manual review required" : "⚡ System suggests:"}
+              </span>
+              {!isAnomalyFlagged && (
+                <span className="font-bold text-blue-600 dark:text-blue-400">{goal.suggested_progress}%</span>
+              )}
+            </div>
+            {isAnomalyFlagged && (
+              <Badge className="bg-red-100 text-red-700 border-red-200 text-[10px] shrink-0">Anomaly</Badge>
+            )}
+          </div>
+          <p className="text-muted-foreground">
+            {isAnomalyFlagged
+              ? `The system flagged an unusual progress jump to ${goal.suggested_progress}%. Review manually — auto-commit is disabled for anomaly-flagged goals.`
+              : `Current: ${goal.progress}% → Suggested: ${goal.suggested_progress}%. Confirm or adjust within 96h (then auto-committed).`
+            }
+          </p>
+          {showAdjust ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="range"
+                min={0}
+                max={100}
+                step={5}
+                value={adjProgress}
+                onChange={e => setAdjProgress(Number(e.target.value))}
+                className="flex-1 accent-primary"
+                data-testid={`slider-adjust-gg-${goal.id}`}
+              />
+              <span className="w-10 text-right font-medium">{adjProgress}%</span>
+              <Button
+                size="sm"
+                className="h-6 text-[10px] px-2"
+                onClick={() => adjustMutation.mutate(adjProgress)}
+                disabled={adjustMutation.isPending}
+                data-testid={`button-save-gg-adjust-${goal.id}`}
+              >
+                Save
+              </Button>
+              <Button size="sm" variant="ghost" className="h-6 text-[10px] px-2" onClick={() => setShowAdjust(false)}>
+                Cancel
+              </Button>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              {!isAnomalyFlagged && (
+                <Button
+                  size="sm"
+                  className="h-6 text-[10px] px-2"
+                  onClick={() => confirmMutation.mutate()}
+                  disabled={confirmMutation.isPending}
+                  data-testid={`button-confirm-gg-${goal.id}`}
+                >
+                  <CheckCircle2 className="h-3 w-3 mr-1" />
+                  Confirm {goal.suggested_progress}%
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-6 text-[10px] px-2"
+                onClick={() => { setAdjProgress(goal.suggested_progress ?? goal.progress); setShowAdjust(true); }}
+                data-testid={`button-adjust-gg-${goal.id}`}
+              >
+                Adjust &amp; Accept
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Progress slider */}
       <div className="space-y-1">

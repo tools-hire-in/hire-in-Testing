@@ -22,6 +22,7 @@ import { ObjectStorageService } from "./replit_integrations/object_storage/objec
 import { registerObjectStorageRoutes } from "./replit_integrations/object_storage/routes";
 import { registerBulkPayrollRoutes } from "./bulkPayrollRoutes";
 import { registerVaultRoutes, revokeUserVaultGrants } from "./vaultRoutes";
+import { emitGovernanceEvent } from "./governanceEvents";
 import {
   generateArticleCards,
   generateIdeaCards,
@@ -11929,6 +11930,309 @@ export async function registerRoutes(
     }
   });
 
+  // ─── Goodhart Guard: Goal Progress Confirm / Adjust ─────────────────────────
+  // Managers confirm or adjust the system-suggested progress for a goal.
+  // These endpoints clear the pending-review flag and write to `progress`.
+
+  // Confirm: accept the suggested_progress as-is
+  app.post("/api/hr/goals/:goalId/confirm-progress", requireAuth, requirePermission("hr.plans.goals.confirm", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { goalId } = req.params;
+      const actor = req.session.userId!;
+      const actorRole = req.session.role as string;
+
+      const goalRow = await db.execute(sql`
+        SELECT id, suggested_progress, progress_pending_review, manager_id
+        FROM performance_goals
+        WHERE id = ${goalId}
+      `);
+      if (goalRow.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
+      const g = goalRow.rows[0] as any;
+
+      // Ownership gate: managers may only confirm goals they manage.
+      // HR, admin, and super_admin can confirm any goal.
+      if (actorRole === "manager" && g.manager_id !== actor) {
+        return res.status(403).json({ error: "You can only confirm goals assigned to your team" });
+      }
+
+      if (!g.progress_pending_review) return res.status(400).json({ error: "No pending progress suggestion for this goal" });
+      if (g.suggested_progress === null || g.suggested_progress === undefined) return res.status(400).json({ error: "No suggested progress value" });
+
+      await db.execute(sql`
+        UPDATE performance_goals
+        SET
+          progress = ${g.suggested_progress},
+          progress_pending_review = false,
+          progress_anomaly_flagged = false,
+          goal_progress_source = 'auto_confirmed',
+          progress_confirmed_at = NOW(),
+          progress_confirmed_by = ${actor},
+          last_progress_updated_at = NOW(),
+          updated_at = NOW()
+        WHERE id = ${goalId}
+      `);
+
+      await storage.createAuditLog({ actorId: actor, targetId: goalId, action: "goal_progress_confirmed", changes: { confirmedValue: g.suggested_progress } });
+
+      // Emit governance event on associated control (non-fatal)
+      db.execute(sql`
+        SELECT id FROM governance_controls
+        WHERE control_type::text = 'goal' AND reference_id = ${'goal:' + goalId}
+          AND status NOT IN ('closed','completed') LIMIT 1
+      `).then(res2 => {
+        if (res2.rows.length > 0) {
+          emitGovernanceEvent({ controlId: (res2.rows[0] as any).id, eventType: "status_changed", actorId: actor, source: "user", metadata: { action: "progress_confirmed", confirmedValue: g.suggested_progress } }).catch(console.error);
+        }
+      }).catch(() => {});
+
+      res.json({ ok: true, progress: g.suggested_progress });
+    } catch (error) {
+      console.error("Confirm goal progress error:", error);
+      res.status(500).json({ error: "Failed to confirm progress" });
+    }
+  });
+
+  // Adjust: override the suggested_progress with a manager-supplied value
+  app.post("/api/hr/goals/:goalId/adjust-progress", requireAuth, requirePermission("hr.plans.goals.adjust", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { goalId } = req.params;
+      const actor = req.session.userId!;
+      const actorRole = req.session.role as string;
+      const { progress, notes } = req.body as { progress: number; notes?: string };
+
+      if (typeof progress !== "number" || progress < 0 || progress > 100) {
+        return res.status(400).json({ error: "progress must be an integer 0–100" });
+      }
+
+      const goalRow = await db.execute(sql`
+        SELECT id, manager_id FROM performance_goals WHERE id = ${goalId}
+      `);
+      if (goalRow.rows.length === 0) return res.status(404).json({ error: "Goal not found" });
+
+      // Ownership gate: managers may only adjust goals they manage.
+      const g = goalRow.rows[0] as any;
+      if (actorRole === "manager" && g.manager_id !== actor) {
+        return res.status(403).json({ error: "You can only adjust goals assigned to your team" });
+      }
+
+      await db.execute(sql`
+        UPDATE performance_goals
+        SET
+          progress = ${Math.round(progress)},
+          progress_pending_review = false,
+          progress_anomaly_flagged = false,
+          progress_confirmed_at = NOW(),
+          progress_confirmed_by = ${actor},
+          goal_progress_source = 'manual',
+          last_progress_updated_at = NOW(),
+          notes = COALESCE(${notes ?? null}, notes),
+          updated_at = NOW()
+        WHERE id = ${goalId}
+      `);
+
+      await storage.createAuditLog({ actorId: actor, targetId: goalId, action: "goal_progress_adjusted", changes: { adjustedValue: Math.round(progress), notes: notes ?? null } });
+
+      // Emit governance event on associated control (non-fatal)
+      db.execute(sql`
+        SELECT id FROM governance_controls
+        WHERE control_type::text = 'goal' AND reference_id = ${'goal:' + goalId}
+          AND status NOT IN ('closed','completed') LIMIT 1
+      `).then(res2 => {
+        if (res2.rows.length > 0) {
+          emitGovernanceEvent({ controlId: (res2.rows[0] as any).id, eventType: "status_changed", actorId: actor, source: "user", metadata: { action: "progress_adjusted", adjustedValue: Math.round(progress) } }).catch(console.error);
+        }
+      }).catch(() => {});
+
+      res.json({ ok: true, progress: Math.round(progress) });
+    } catch (error) {
+      console.error("Adjust goal progress error:", error);
+      res.status(500).json({ error: "Failed to adjust progress" });
+    }
+  });
+
+  // GET pending-review goals for the current manager (or all, for admin/HR)
+  app.get("/api/hr/goals/pending-review", requireAuth, requirePermission("hr.plans.goals.pendingReview", "super_admin", "admin", "hr", "manager"), async (req: Request, res: Response) => {
+    try {
+      const actorId = req.session.userId!;
+      const role = req.session.role;
+      const isManagerOnly = role === "manager";
+
+      const rows = await db.execute(sql`
+        SELECT pg.id, pg.title, pg.progress, pg.suggested_progress, pg.suggested_progress_at,
+               pg.progress_anomaly_flagged, pg.plan_id, pg.manager_id,
+               emp.first_name || ' ' || emp.last_name AS employee_name
+        FROM performance_goals pg
+        JOIN admin_users emp ON emp.id = pg.employee_id
+        WHERE pg.progress_pending_review = true
+          AND pg.suggested_progress IS NOT NULL
+          ${isManagerOnly ? sql`AND pg.manager_id = ${actorId}` : sql``}
+        ORDER BY pg.progress_anomaly_flagged DESC, pg.suggested_progress_at ASC
+        LIMIT 100
+      `);
+
+      res.json({ goals: rows.rows });
+    } catch (error) {
+      console.error("Pending review goals error:", error);
+      res.status(500).json({ error: "Failed to fetch pending review goals" });
+    }
+  });
+
+  // ─── SOP Wave Approval Gate (Task #1107) ─────────────────────────────────────
+  // Waves ≥ 3 require an explicit approval record before SOPs can go operational.
+
+  app.get("/api/sops/waves/pending-approval", requireAuth, requirePermission("sops.rollout"), async (req: Request, res: Response) => {
+    try {
+      const rows = await db.execute(sql`
+        SELECT rw.wave_number, rw.name, rw.status, rw.enforcement,
+               COUNT(ws.id) AS sop_count,
+               COUNT(ws.id) FILTER (WHERE ws.operational_at IS NOT NULL) AS operational_count,
+               wa.approved_by, wa.approved_at, wa.notes, wa.risk_snapshot_json,
+               COUNT(DISTINCT sep.user_id) AS in_scope_employees,
+               COUNT(DISTINCT sep.user_id) FILTER (WHERE sep.acknowledged_at IS NULL AND ws.operational_at IS NOT NULL) AS pending_acks,
+               COUNT(DISTINCT sep.user_id) FILTER (WHERE sep.timer_started_at IS NOT NULL AND sep.acknowledged_at IS NULL) AS active_timers,
+               COUNT(DISTINCT sep.user_id) FILTER (
+                 WHERE sep.acknowledged_at IS NULL
+                   AND sep.timer_started_at IS NOT NULL
+                   AND sep.timer_started_at < NOW() - INTERVAL '7 days'
+               ) AS estimated_misses
+        FROM rollout_waves rw
+        LEFT JOIN wave_sops ws ON ws.wave_number = rw.wave_number
+        LEFT JOIN sop_wave_approvals wa ON wa.wave_number = rw.wave_number
+        LEFT JOIN sop_employee_progress sep ON sep.sop_master_id = ws.sop_master_id
+        WHERE rw.wave_number >= 3
+        GROUP BY rw.wave_number, rw.name, rw.status, rw.enforcement, wa.approved_by, wa.approved_at, wa.notes, wa.risk_snapshot_json
+        ORDER BY rw.wave_number
+      `);
+
+      const waves = (rows.rows as any[]).map(r => {
+        let storedSnapshot: Record<string, any> | null = null;
+        try {
+          storedSnapshot = r.risk_snapshot_json
+            ? (typeof r.risk_snapshot_json === "string" ? JSON.parse(r.risk_snapshot_json) : r.risk_snapshot_json)
+            : null;
+        } catch { storedSnapshot = null; }
+        return {
+          waveNumber: r.wave_number,
+          name: r.name,
+          status: r.status,
+          enforcement: r.enforcement,
+          sopCount: Number(r.sop_count),
+          operationalCount: Number(r.operational_count),
+          approved: !!r.approved_by,
+          approvedBy: r.approved_by ?? null,
+          approvedAt: r.approved_at ?? null,
+          approvalNotes: r.notes ?? null,
+          riskSnapshot: storedSnapshot ?? {
+            inScopeEmployees: Number(r.in_scope_employees ?? 0),
+            pendingAcks: Number(r.pending_acks ?? 0),
+            activeTimers: Number(r.active_timers ?? 0),
+            estimatedMisses: Number(r.estimated_misses ?? 0),
+          },
+        };
+      });
+
+      res.json({ waves });
+    } catch (error) {
+      console.error("Wave pending approval error:", error);
+      res.status(500).json({ error: "Failed to fetch wave approval status" });
+    }
+  });
+
+  app.post("/api/sops/waves/:waveNumber/approve", requireAuth, requirePermission("sops.rollout"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber) || waveNumber < 3) {
+        return res.status(400).json({ error: "Only waves ≥ 3 require explicit approval" });
+      }
+
+      // Wave approval is a super_admin-only operation — no other role can sign off
+      if (req.session.role !== "super_admin") {
+        return res.status(403).json({ error: "Wave approval requires super_admin role" });
+      }
+
+      const actor = req.session.userId!;
+      const { notes, riskAcknowledged } = req.body as { notes?: string; riskAcknowledged?: boolean };
+
+      if (!riskAcknowledged) {
+        return res.status(400).json({ error: "Risk acknowledgement required (riskAcknowledged: true)" });
+      }
+
+      // Check wave exists
+      const waveRow = await db.execute(sql`
+        SELECT wave_number, name, status FROM rollout_waves WHERE wave_number = ${waveNumber}
+      `);
+      if (waveRow.rows.length === 0) return res.status(404).json({ error: "Wave not found" });
+
+      // Snapshot current compliance posture for the audit record.
+      // Captures in-scope scope, completion rate from the prior wave, and a
+      // forward-looking estimate of employees likely to miss this wave.
+      const snapshot = await db.execute(sql`
+        SELECT
+          COUNT(DISTINCT sep.user_id) AS in_scope_employees,
+          COUNT(*) FILTER (WHERE sep.acknowledged_at IS NULL AND ws.operational_at IS NOT NULL) AS pending_acks,
+          COUNT(*) FILTER (WHERE sep.acknowledged_at IS NOT NULL) AS completed_acks,
+          COUNT(DISTINCT sep.user_id) FILTER (
+            WHERE sep.timer_started_at IS NOT NULL AND sep.acknowledged_at IS NULL
+          ) AS employees_with_active_timer,
+          COUNT(*) FILTER (
+            WHERE sep.acknowledged_at IS NULL
+              AND sep.timer_started_at IS NOT NULL
+              AND sep.timer_started_at < NOW() - INTERVAL '7 days'
+          ) AS estimated_misses
+        FROM sop_employee_progress sep
+        JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+        WHERE ws.wave_number = ${waveNumber}
+      `);
+      const snap = snapshot.rows[0] as any;
+
+      // Prior wave completion rate (% completed)
+      const priorSnap = await db.execute(sql`
+        SELECT
+          COUNT(*) FILTER (WHERE sep.acknowledged_at IS NOT NULL) * 100.0
+            / NULLIF(COUNT(*), 0) AS prior_completion_rate
+        FROM sop_employee_progress sep
+        JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+        WHERE ws.wave_number = ${waveNumber - 1}
+      `);
+      const priorCompletionRate = Number((priorSnap.rows[0] as any)?.prior_completion_rate ?? null) || null;
+
+      await db.execute(sql`
+        INSERT INTO sop_wave_approvals (wave_number, approved_by, risk_snapshot_json, notes)
+        VALUES (
+          ${waveNumber},
+          ${actor},
+          ${JSON.stringify({
+            inScopeEmployees: Number(snap?.in_scope_employees ?? 0),
+            pendingAcks: Number(snap?.pending_acks ?? 0),
+            completedAcks: Number(snap?.completed_acks ?? 0),
+            employeesWithActiveTimer: Number(snap?.employees_with_active_timer ?? 0),
+            estimatedMisses: Number(snap?.estimated_misses ?? 0),
+            priorWaveCompletionRate: priorCompletionRate,
+            approvedAt: new Date().toISOString(),
+          })}::jsonb,
+          ${notes ?? null}
+        )
+        ON CONFLICT (wave_number) DO UPDATE
+          SET approved_by = EXCLUDED.approved_by,
+              approved_at = NOW(),
+              risk_snapshot_json = EXCLUDED.risk_snapshot_json,
+              notes = EXCLUDED.notes
+      `);
+
+      await storage.createAuditLog({
+        actorId: actor,
+        targetId: String(waveNumber),
+        action: "sop_wave_approved",
+        changes: { waveNumber, notes: notes ?? null, riskAcknowledged: true },
+      });
+
+      res.json({ ok: true, waveNumber, message: `Wave ${waveNumber} approved` });
+    } catch (error) {
+      console.error("SOP wave approval error:", error);
+      res.status(500).json({ error: "Failed to approve wave" });
+    }
+  });
+
   // ==========================================
   // OFFER LETTER ADDENDUMS
   // ==========================================
@@ -14883,6 +15187,20 @@ export async function registerRoutes(
     try {
       const waveNumber = Number(req.params.waveNumber);
       if (!Number.isInteger(waveNumber)) return res.status(400).json({ error: "Invalid wave number" });
+
+      // Waves ≥ 3 require prior super_admin approval before they can be activated.
+      // This is the enforcement gate — the approval record must exist in sop_wave_approvals.
+      if (waveNumber >= 3) {
+        const approval = await db.execute(sql`
+          SELECT id FROM sop_wave_approvals WHERE wave_number = ${waveNumber} LIMIT 1
+        `);
+        if (approval.rows.length === 0) {
+          return res.status(403).json({
+            error: `Wave ${waveNumber} requires super_admin risk approval before activation. Call POST /api/sops/waves/${waveNumber}/approve first.`,
+          });
+        }
+      }
+
       await sopRollout.activateWave(waveNumber, req.session.userId!);
 
       // Activating a wave publishes its approved SOPs into the training-
@@ -15850,6 +16168,59 @@ export async function registerRoutes(
       });
 
       const updatedProgress = await storage.setSopAcknowledged(doc.sopMasterId, doc.version, userId, contentHash, now);
+
+      // ── SOP timer queue release ──────────────────────────────────────────
+      // After acknowledgment, a timer slot opens for this user. If they have
+      // any SOPs waiting in the queue (timer_started_at IS NULL, sop_timer_queue
+      // IS NOT NULL), start the oldest-queued one now so the ceiling's slot is
+      // filled immediately rather than waiting for the next governance sweep.
+      try {
+        const maxTimersSetting = await db.execute(sql`
+          SELECT value FROM system_settings WHERE key = 'max_concurrent_sop_timers' LIMIT 1
+        `).catch(() => ({ rows: [] }));
+        const maxConcurrentTimers = Math.max(1, Number((maxTimersSetting.rows[0] as any)?.value ?? 3));
+
+        const activeTimerCount = await db.execute(sql`
+          SELECT COUNT(*)::int AS cnt FROM sop_employee_progress
+          WHERE user_id = ${userId} AND timer_started_at IS NOT NULL AND acknowledged_at IS NULL
+        `);
+        const activeCnt = Number((activeTimerCount.rows[0] as any)?.cnt ?? 0);
+
+        if (activeCnt < maxConcurrentTimers) {
+          // Release the next queued SOP (by earliest queued_at in the JSONB array).
+          // Wave approval gate is enforced here too: waves ≥ 3 must have an explicit
+          // approval record in sop_wave_approvals before the timer can start, mirroring
+          // the same gate in syncGovernanceObligations — so a queued SOP from an
+          // unapproved wave can never start even when a slot opens up on acknowledgment.
+          await db.execute(sql`
+            UPDATE sop_employee_progress
+            SET timer_started_at = NOW(),
+                sop_timer_queue   = NULL,
+                updated_at        = NOW()
+            WHERE id = (
+              SELECT sep.id
+              FROM sop_employee_progress sep
+              JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+              WHERE sep.user_id         = ${userId}
+                AND sep.timer_started_at IS NULL
+                AND sep.sop_timer_queue  IS NOT NULL
+                AND sep.acknowledged_at  IS NULL
+                -- Wave approval gate: wave < 3 always allowed; wave ≥ 3 needs an approval row
+                AND (
+                  ws.wave_number < 3
+                  OR EXISTS (
+                    SELECT 1 FROM sop_wave_approvals swa
+                    WHERE swa.wave_number = ws.wave_number
+                  )
+                )
+              ORDER BY (sep.sop_timer_queue->0->>'queued_at')::timestamp ASC NULLS LAST
+              LIMIT 1
+            )
+          `);
+        }
+      } catch (queueReleaseErr) {
+        console.error("[sop_acknowledge] Queue release failed (non-fatal):", queueReleaseErr);
+      }
 
       // Advance only when every CURRENTLY-impacted user has acknowledged THIS
       // version. Acknowledgment is version-bound: a prior-version ack (older

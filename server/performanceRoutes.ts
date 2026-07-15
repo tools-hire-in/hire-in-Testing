@@ -1,5 +1,6 @@
 import type { Express, Request, Response } from "express";
 import { db } from "./db";
+import { emitGovernanceEvent } from "./governanceEvents";
 import {
   performanceGoals, goalMilestones, checkIns, reviewCycles, reviews, performanceFeedback,
   systemSettings, adminUsers, auditLogs, sopDocuments,
@@ -3310,6 +3311,30 @@ export function registerPerformanceRoutes(app: Express) {
       row.author_name = (authorResult.rows[0] as any)?.author_name ?? null;
 
       await createAuditLog(userId, "plan_coaching_note_added", { planId, employeeId: plan.employee_id, id: row.id as string | undefined });
+
+      // Close manager_coaching_obligation ONLY when the author is the plan's manager.
+      // HR/admin notes do not satisfy the manager's own obligation — this preserves
+      // accountability and prevents non-manager entries from hiding manager non-performance.
+      if (userId === String(plan.manager_id)) {
+        const mcoRef = `mgr_pip:${planId}`;
+        const mcoUpdateResult = await db.execute(sql`
+          UPDATE governance_controls
+          SET status = 'completed', closed_at = NOW(), updated_at = NOW()
+          WHERE reference_id = ${mcoRef}
+            AND control_type::text = 'manager_coaching_obligation'
+            AND status NOT IN ('completed', 'closed')
+          RETURNING id
+        `).catch(() => ({ rows: [] }));
+        if (mcoUpdateResult.rows.length > 0) {
+          emitGovernanceEvent({
+            controlId: (mcoUpdateResult.rows[0] as any).id,
+            eventType: "closed",
+            actorId: userId,
+            source: "user",
+            metadata: { planId, action: "coaching_note_logged", entryDate, authorIsManager: true },
+          }).catch(() => {});
+        }
+      }
 
       // Notify the employee that a coaching note was recorded (gated by plan-notification flag)
       await notifyPlan(plan.employee_id, "coaching_note_added",

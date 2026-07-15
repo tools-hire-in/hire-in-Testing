@@ -322,6 +322,220 @@ export function registerGovernanceRoutes(app: Express): void {
     }
   });
 
+  // ── Manager Obligations — controls where managers are the owners ──────────
+  // Returns governance_controls of type manager_checkin_obligation or
+  // manager_coaching_obligation, joined to the manager's name.
+  // Access: super_admin, admin, hr.
+  app.get("/api/governance/manager-obligations", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const role = req.session.role as string;
+    if (!["super_admin", "admin", "hr"].includes(role)) return res.status(403).json({ error: "Insufficient permissions" });
+    try {
+      const rows = await db.execute(sql`
+        SELECT
+          gc.id,
+          gc.control_type,
+          gc.due_date,
+          gc.status,
+          gc.required_action,
+          gc.reference_id,
+          CONCAT(au.first_name, ' ', au.last_name) AS manager_name
+        FROM governance_controls gc
+        LEFT JOIN admin_users au ON au.id = gc.owner_id
+        WHERE gc.control_type IN ('manager_checkin_obligation', 'manager_coaching_obligation')
+          AND gc.status NOT IN ('completed', 'closed')
+        ORDER BY
+          CASE gc.status WHEN 'escalated' THEN 0 WHEN 'overdue' THEN 1 ELSE 2 END ASC,
+          gc.due_date ASC
+        LIMIT 200
+      `);
+      return res.json({ rows: rows.rows });
+    } catch (err) {
+      console.error("[governance] GET /manager-obligations failed:", err);
+      return res.status(500).json({ error: "Failed to fetch manager obligations" });
+    }
+  });
+
+  // ── My Manager Obligations — manager's OWN obligations (owner_id = self) ───
+  // Returns governance_controls of type manager_checkin_obligation or
+  // manager_coaching_obligation where the CURRENT USER is the owner (not the
+  // manager of the team). This is distinct from /manager-obligations (HR view
+  // of all managers) and from /manager/:id/breakdown (team compliance data).
+  // Access: manager, hr, admin, super_admin.
+  app.get("/api/governance/my-manager-obligations", async (req: Request, res: Response) => {
+    const session = getSession(req, res);
+    if (!session) return;
+    const allowed = ["manager", "hr", "admin", "super_admin", "operations"];
+    if (!allowed.includes(session.role)) return res.status(403).json({ error: "Access denied" });
+    try {
+      const rows = await db.execute(sql`
+        SELECT
+          gc.id,
+          gc.control_type    AS "controlType",
+          gc.due_date        AS "dueDate",
+          gc.status,
+          gc.required_action AS "requiredAction",
+          gc.reference_id    AS "referenceId",
+          gc.escalation_level AS "escalationLevel"
+        FROM governance_controls gc
+        WHERE gc.owner_id = ${session.userId}
+          AND gc.control_type IN ('manager_checkin_obligation', 'manager_coaching_obligation')
+          AND gc.status NOT IN ('completed', 'closed')
+        ORDER BY
+          CASE gc.status WHEN 'escalated' THEN 0 WHEN 'overdue' THEN 1 ELSE 2 END ASC,
+          gc.due_date ASC
+        LIMIT 100
+      `);
+      const controls = rows.rows as any[];
+      const overdueCount = controls.filter((c) => c.status === "overdue" || c.status === "escalated").length;
+      return res.json({ totalControls: controls.length, overdueCount, controls });
+    } catch (err) {
+      console.error("[governance] GET /my-manager-obligations failed:", err);
+      return res.status(500).json({ error: "Failed to fetch your manager obligations" });
+    }
+  });
+
+  // ── Manager KPI Table — per-manager check-in and coaching metrics ──────────
+  // Returns per-manager: % on-time check-ins, avg coaching lag (days from
+  // check-in due-date to first coaching entry), plan review rate (plans with
+  // at least one coaching entry in last 30 days / total active plans).
+  // Access: super_admin, admin, hr.
+  app.get("/api/governance/manager-kpis", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const role = req.session.role as string;
+    if (!["super_admin", "admin", "hr"].includes(role)) return res.status(403).json({ error: "Insufficient permissions" });
+    try {
+      const rows = await db.execute(sql`
+        WITH mgr_checkins AS (
+          SELECT
+            ci.manager_id,
+            COUNT(*)::int                                                       AS total_checkins,
+            COUNT(*) FILTER (
+              WHERE ci.status = 'completed' AND ci.completed_at IS NOT NULL
+                AND ci.completed_at::date <= ci.scheduled_date + INTERVAL '1 day'
+            )::int                                                              AS on_time_checkins,
+            ROUND(
+              AVG(
+                CASE WHEN ci.status = 'completed' AND ci.completed_at IS NOT NULL
+                     THEN GREATEST(0, EXTRACT(EPOCH FROM (ci.completed_at - ci.scheduled_date)) / 86400)
+                END
+              )::numeric, 1
+            )                                                                   AS avg_completion_lag_days
+          FROM check_ins ci
+          WHERE ci.scheduled_date >= CURRENT_DATE - INTERVAL '90 days'
+            AND ci.manager_id IS NOT NULL
+          GROUP BY ci.manager_id
+        ),
+        mgr_plans AS (
+          SELECT
+            ep.manager_id,
+            COUNT(DISTINCT ep.id)::int                             AS active_plans,
+            COUNT(DISTINCT ep.id) FILTER (
+              WHERE EXISTS (
+                SELECT 1 FROM coaching_log_entries cle
+                WHERE cle.plan_id = ep.id
+                  AND cle.created_at >= CURRENT_DATE - INTERVAL '30 days'
+              )
+            )::int                                                 AS reviewed_plans
+          FROM employee_plans ep
+          WHERE ep.status = 'active' AND ep.manager_id IS NOT NULL
+          GROUP BY ep.manager_id
+        )
+        SELECT
+          au.id                                                           AS manager_id,
+          au.first_name || ' ' || au.last_name                           AS manager_name,
+          COALESCE(mc.total_checkins, 0)                                  AS total_checkins,
+          COALESCE(mc.on_time_checkins, 0)                               AS on_time_checkins,
+          CASE WHEN COALESCE(mc.total_checkins, 0) > 0
+               THEN ROUND((mc.on_time_checkins::numeric / mc.total_checkins) * 100, 1)
+               ELSE NULL END                                             AS on_time_pct,
+          mc.avg_completion_lag_days,
+          COALESCE(mp.active_plans, 0)                                   AS active_plans,
+          COALESCE(mp.reviewed_plans, 0)                                 AS reviewed_plans,
+          CASE WHEN COALESCE(mp.active_plans, 0) > 0
+               THEN ROUND((mp.reviewed_plans::numeric / mp.active_plans) * 100, 1)
+               ELSE NULL END                                             AS plan_review_rate_pct
+        FROM admin_users au
+        LEFT JOIN mgr_checkins mc ON mc.manager_id = au.id
+        LEFT JOIN mgr_plans mp ON mp.manager_id = au.id
+        WHERE au.is_active = true
+          AND au.deleted_at IS NULL
+          AND au.role IN ('manager', 'hr', 'admin', 'super_admin')
+          AND (mc.total_checkins > 0 OR mp.active_plans > 0)
+        ORDER BY COALESCE(on_time_pct, 0) ASC, manager_name ASC
+        LIMIT 100
+      `);
+      return res.json({ managers: rows.rows });
+    } catch (err) {
+      console.error("[governance] GET /manager-kpis failed:", err);
+      return res.status(500).json({ error: "Failed to fetch manager KPIs" });
+    }
+  });
+
+  // ── Plan check-in co-sign (manager marks facilitation complete) ──────────
+  // PATCH /api/hr/plans/checkins/:id/cosign
+  // Manager marks a scheduled check-in as completed from their side.
+  // Creates a brief coaching log entry noting the facilitation.
+  app.patch("/api/hr/plans/checkins/:id/cosign", async (req: Request, res: Response) => {
+    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+    const role = req.session.role as string;
+    if (!["manager", "hr", "admin", "super_admin"].includes(role)) return res.status(403).json({ error: "Insufficient permissions" });
+    const checkInId = req.params.id;
+    try {
+      // Load check-in and verify manager owns it
+      const ciRows = await db.execute(sql`
+        SELECT id, employee_id, manager_id, scheduled_date, status, plan_id
+        FROM check_ins WHERE id = ${checkInId} LIMIT 1
+      `);
+      const ci = (ciRows.rows[0] as any);
+      if (!ci) return res.status(404).json({ error: "Check-in not found" });
+      if (ci.status === "completed") return res.status(400).json({ error: "Check-in already completed" });
+      // Manager ownership check: only the assigned manager, HR, or Admin can co-sign
+      if (role === "manager" && String(ci.manager_id) !== req.session.userId) {
+        return res.status(403).json({ error: "You can only co-sign check-ins you are responsible for" });
+      }
+      // Mark check-in completed
+      await db.execute(sql`
+        UPDATE check_ins
+        SET status = 'completed', completed_at = NOW(), updated_at = NOW()
+        WHERE id = ${checkInId}
+      `);
+      // Close the corresponding manager_checkin_obligation governance control
+      const closedCtrlRows = await db.execute(sql`
+        UPDATE governance_controls
+        SET status = 'completed', closed_at = NOW(), updated_at = NOW()
+        WHERE reference_id = ${'mgr_ci:' + checkInId}
+          AND control_type::text = 'manager_checkin_obligation'
+          AND status NOT IN ('completed', 'closed')
+        RETURNING id
+      `);
+      // Emit governance event for the closure (audit trail parity with other completion paths)
+      if (closedCtrlRows.rows.length > 0) {
+        emitGovernanceEvent({
+          controlId: (closedCtrlRows.rows[0] as any).id,
+          eventType: "closed",
+          actorId: req.session.userId,
+          source: "user",
+          metadata: { checkInId, action: "manager_cosign", completedAt: new Date().toISOString() },
+        }).catch(() => {});
+      }
+      // Auto-create a brief coaching log entry so there is an audit record
+      if (ci.plan_id) {
+        await db.execute(sql`
+          INSERT INTO coaching_log_entries (plan_id, author_id, note, entry_type, created_at)
+          VALUES (${ci.plan_id}, ${req.session.userId},
+                  ${'Check-in facilitated on ' + new Date().toLocaleDateString("en-IN") + ' (co-signed by manager).'},
+                  'check_in', NOW())
+          ON CONFLICT DO NOTHING
+        `);
+      }
+      return res.json({ success: true });
+    } catch (err) {
+      console.error("[governance] PATCH /hr/plans/checkins/:id/cosign failed:", err);
+      return res.status(500).json({ error: "Failed to co-sign check-in" });
+    }
+  });
+
   // ── Action Required — urgency-ranked overdue items ────────────────────────
   // Returns overdue/escalated controls ordered by escalation_level DESC, due_date ASC.
   // Access: hr, admin, super_admin, executive.

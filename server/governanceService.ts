@@ -13,12 +13,13 @@
 
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { storage } from "./storage";
 import { notifyUser } from "./notifications";
 import { emitGovernanceEvent } from "./governanceEvents";
 import { buildSopNudgePayload } from "./contextualNotifications";
 import type { GovernanceFinding, GovernanceRunResult } from "@shared/governanceTypes";
 
-export type GovernanceControlType = "goal" | "check_in" | "training" | "sop" | "probation" | "pip";
+export type GovernanceControlType = "goal" | "check_in" | "training" | "sop" | "probation" | "pip" | "manager_checkin_obligation" | "manager_coaching_obligation";
 export type GovernanceControlStatus = "pending" | "in_progress" | "completed" | "overdue" | "escalated" | "closed" | "disputed";
 
 export interface CreateControlOpts {
@@ -162,7 +163,7 @@ export async function createGovernanceControl(opts: CreateControlOpts): Promise<
   if (opts.referenceId) {
     const existing = await db.execute(sql`
       SELECT id FROM governance_controls
-      WHERE control_type = ${opts.controlType}::governance_control_type
+      WHERE control_type::text = ${opts.controlType}
         AND reference_id = ${opts.referenceId}
         AND status NOT IN ('closed', 'completed')
       LIMIT 1
@@ -183,7 +184,7 @@ export async function createGovernanceControl(opts: CreateControlOpts): Promise<
     INSERT INTO governance_controls
       (control_type, reference_id, owner_id, manager_id, due_date, required_action, evidence_required, status)
     VALUES
-      (${opts.controlType}::governance_control_type,
+      (${opts.controlType}::text::governance_control_type,
        ${opts.referenceId ?? null},
        ${opts.ownerId},
        ${opts.managerId ?? null},
@@ -868,10 +869,94 @@ export async function syncGovernanceObligations(): Promise<{
   probation: number;
   pip: number;
   goal: number;
+  managerObligations: number;
 }> {
   const today = new Date().toISOString().slice(0, 10);
   const lookahead7 = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
-  const counters = { training: 0, sop: 0, checkIn: 0, probation: 0, pip: 0, goal: 0 };
+  const counters = { training: 0, sop: 0, checkIn: 0, probation: 0, pip: 0, goal: 0, managerObligations: 0 };
+
+  // ── SOP concurrent timer ceiling + mass-lockout circuit breaker ────────────
+  // MAX_CONCURRENT_TIMERS: how many SOPs each employee can have actively "on the
+  // clock" at the same time. Excess SOPs are queued in sop_timer_queue.
+  // MAX_LOCKOUT_PCT: if more than this % of active employees currently have at
+  // least one EXPIRED-and-unacknowledged timer (compliance lock applied), the
+  // circuit breaker trips — no new timers are STARTED this cycle, preventing
+  // the sweep from adding to an already-overloaded compliance debt.
+  const ceilingSetting = await db.execute(sql`
+    SELECT key, value FROM system_settings WHERE key IN ('max_concurrent_sop_timers', 'max_concurrent_lockout_pct')
+  `).catch(() => ({ rows: [] }));
+  const settingMap = Object.fromEntries((ceilingSetting.rows as any[]).map(r => [r.key, r.value]));
+  const MAX_CONCURRENT_TIMERS = Number(settingMap["max_concurrent_sop_timers"] ?? 3);
+  const MAX_LOCKOUT_PCT = Number(settingMap["max_concurrent_lockout_pct"] ?? 15);
+
+  // Predict employees who would be NEWLY locked within the next 24 hours:
+  // active (running, unacknowledged) timers whose deadline falls in [NOW, NOW+24h).
+  // This forward-looking measurement lets the circuit breaker pause new timer
+  // STARTS before the lock wave lands, rather than after the damage is done.
+  const lockoutCheck = await db.execute(sql`
+    SELECT
+      COUNT(DISTINCT au.id) FILTER (
+        WHERE about_to_lock.cnt > 0
+      )::int AS would_be_newly_locked,
+      COUNT(DISTINCT au.id)::int AS total_active
+    FROM admin_users au
+    LEFT JOIN LATERAL (
+      SELECT COUNT(*) AS cnt
+      FROM sop_employee_progress sep
+      JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+      WHERE sep.user_id = au.id
+        AND sep.timer_started_at IS NOT NULL
+        AND sep.acknowledged_at IS NULL
+        AND COALESCE(
+              sep.deadline_at,
+              CASE WHEN sep.timer_started_at IS NOT NULL
+                   THEN (sep.timer_started_at::date + INTERVAL '15 days')::timestamp
+                   ELSE (ws.operational_at::date + INTERVAL '15 days')::timestamp END
+            ) >= NOW()
+        AND COALESCE(
+              sep.deadline_at,
+              CASE WHEN sep.timer_started_at IS NOT NULL
+                   THEN (sep.timer_started_at::date + INTERVAL '15 days')::timestamp
+                   ELSE (ws.operational_at::date + INTERVAL '15 days')::timestamp END
+            ) < NOW() + INTERVAL '24 hours'
+    ) about_to_lock ON TRUE
+    WHERE au.is_active = true AND au.deleted_at IS NULL
+  `).catch(() => ({ rows: [{ would_be_newly_locked: 0, total_active: 1 }] }));
+  const { would_be_newly_locked, total_active } = (lockoutCheck.rows[0] as any) ?? { would_be_newly_locked: 0, total_active: 1 };
+  const currentLockoutPct = total_active > 0 ? (would_be_newly_locked / total_active) * 100 : 0;
+  const circuitBreakerTripped = currentLockoutPct >= MAX_LOCKOUT_PCT;
+  // Persist the circuit-breaker state so the compliance enforcement path (lock
+  // activation in getEnforceableOverdueSopsForUser) can gate new lock activations.
+  // Written ON EVERY sweep so it self-clears on the next cycle that doesn't trip.
+  await storage.upsertSystemSetting(
+    "sop_circuit_breaker_active",
+    circuitBreakerTripped ? "true" : "false"
+  ).catch(() => {});
+
+  if (circuitBreakerTripped) {
+    console.warn(
+      `[governanceSync] ⚡ SOP lockout circuit breaker TRIPPED: ${would_be_newly_locked}/${total_active} employees would enter compliance-lock within 24 h (${currentLockoutPct.toFixed(1)}% ≥ ${MAX_LOCKOUT_PCT}%). New timer activations and new lock activations suspended this cycle.`
+    );
+    // Dispatch a deduplicated HR alert so the team can act before the wave lands.
+    const cbDedupKey = `circuit_breaker_alert_${new Date().toISOString().slice(0, 10)}`;
+    const alreadyAlerted = await storage.getSystemSetting(cbDedupKey).catch(() => null);
+    if (!alreadyAlerted) {
+      const hrUsers = await db.execute(sql`
+        SELECT id FROM admin_users
+        WHERE role IN ('super_admin', 'hr') AND is_active = true AND deleted_at IS NULL
+      `).catch(() => ({ rows: [] }));
+      for (const hr of hrUsers.rows as any[]) {
+        await notifyUser({
+          userId: String(hr.id),
+          type: "sop_lockout_circuit_breaker" as any,
+          title: "⚡ SOP lockout circuit breaker tripped",
+          message: `${would_be_newly_locked} employee${would_be_newly_locked !== 1 ? "s" : ""} (${currentLockoutPct.toFixed(1)}% of active workforce) would enter compliance-lock within the next 24 hours. New SOP timer activations are paused this cycle. Review the wave rollout cadence.`,
+          metadata: { wouldBeNewlyLocked: would_be_newly_locked, totalActive: total_active, lockoutPct: currentLockoutPct, maxPct: MAX_LOCKOUT_PCT },
+        }).catch(console.error);
+      }
+      await storage.upsertSystemSetting(cbDedupKey, new Date().toISOString()).catch(() => {});
+    }
+  }
 
   // ── 1. Training ───────────────────────────────────────────────────────────
   const trainingRows = await db.execute(sql`
@@ -901,26 +986,132 @@ export async function syncGovernanceObligations(): Promise<{
     counters.training++;
   }
 
-  // ── 2. SOP acknowledgements ───────────────────────────────────────────────
-  // Mirrors the effective_deadline logic in collectOverdueItems() exactly:
-  // COALESCE(deadline_at, operational_at + 15d) so every detectable SOP finding
-  // has a corresponding governance_control (no silent drop for null deadline_at).
-  const sopRows = await db.execute(sql`
+  // ── 2. SOP acknowledgements — two-phase: activation then obligation creation ─
+  //
+  // PHASE 1: Activate timers for ALL operational, unacked SOPs that have no timer
+  // yet. Timer activation is decoupled from deadline proximity — timers start at
+  // wave-activation time, subject to ceiling / circuit-breaker / wave-approval
+  // gates. No deadline lookahead filter here, so we don't delay timer start to
+  // day-8 of a 15-day window (which was the previous bug).
+  //
+  // PHASE 2: Create governance controls only for SOPs whose timer IS already
+  // running AND whose deadline falls within the lookahead window. This way the
+  // obligation appears when it is actionable, not when the timer first starts.
+
+  // Build per-user active-timer counts from the full live DB (not just in-scope rows).
+  const activeTimerCountRows = await db.execute(sql`
+    SELECT sep.user_id, COUNT(*) AS cnt
+    FROM sop_employee_progress sep
+    JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+    WHERE sep.acknowledged_at IS NULL
+      AND sep.timer_started_at IS NOT NULL
+      AND ws.operational_at IS NOT NULL
+    GROUP BY sep.user_id
+  `);
+  const timerCountByUser = new Map<string, number>();
+  for (const row of activeTimerCountRows.rows as any[]) {
+    timerCountByUser.set(String(row.user_id), Number(row.cnt));
+  }
+
+  // ── Phase 1: Activate timers ───────────────────────────────────────────────
+  const sopTimerCandidates = await db.execute(sql`
     SELECT sep.id AS ref_id,
            sep.user_id AS owner_id,
-           au.manager_id,
-           COALESCE(sep.deadline_at::date, ws.operational_at::date + INTERVAL '15 days')::text AS due_date
+           sep.sop_timer_queue,
+           ws.wave_number,
+           ws.name
     FROM sop_employee_progress sep
     JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
     JOIN admin_users au ON au.id = sep.user_id
     WHERE sep.acknowledged_at IS NULL
       AND ws.operational_at IS NOT NULL
-      AND COALESCE(sep.deadline_at::date, ws.operational_at::date + INTERVAL '15 days') <= ${lookahead7}::date
+      AND sep.timer_started_at IS NULL
       AND au.is_active = true
       AND au.deleted_at IS NULL
     LIMIT 200
   `);
-  for (const r of sopRows.rows as any[]) {
+
+  for (const r of sopTimerCandidates.rows as any[]) {
+    const userTimerCount = timerCountByUser.get(String(r.owner_id)) ?? 0;
+
+    // Wave ≥ 3 approval gate: unapproved waves hold timer activation
+    if (r.wave_number >= 3) {
+      const approval = await db.execute(sql`
+        SELECT id FROM sop_wave_approvals WHERE wave_number = ${r.wave_number} LIMIT 1
+      `).catch(() => ({ rows: [] }));
+      if (approval.rows.length === 0) {
+        await db.execute(sql`
+          UPDATE sop_employee_progress
+          SET sop_timer_queue = COALESCE(sop_timer_queue, '[]'::jsonb) || to_jsonb(now())
+          WHERE id = ${r.ref_id}
+            AND (sop_timer_queue IS NULL OR NOT sop_timer_queue @> to_jsonb(id))
+        `).catch(() => {});
+        const alertKey = `wave_held_approval_alert_${r.wave_number}_${today}`;
+        const alreadyAlerted = await storage.getSystemSetting(alertKey).catch(() => null);
+        if (!alreadyAlerted) {
+          await storage.upsertSystemSetting(alertKey, "sent").catch(() => {});
+          const hrAdmins = await db.execute(sql`
+            SELECT id FROM admin_users
+            WHERE role IN ('super_admin', 'hr')
+              AND is_active = true AND deleted_at IS NULL
+            LIMIT 50
+          `).catch(() => ({ rows: [] }));
+          for (const u of hrAdmins.rows as any[]) {
+            notifyUser({
+              userId: u.id,
+              type: "governance_wave_held",
+              title: `⏸ Wave ${r.wave_number} held — approval required`,
+              message: `SOP Wave ${r.wave_number} (${r.name ?? ""}) has not been approved. New SOP timer activations for this wave are paused until a super_admin approves it. Review the wave and its risk snapshot before approving.`,
+              metadata: { waveNumber: r.wave_number },
+            }).catch(() => {});
+          }
+        }
+        continue;
+      }
+    }
+
+    // Concurrent ceiling: queue if user already at max active timers
+    if (userTimerCount >= MAX_CONCURRENT_TIMERS) {
+      await db.execute(sql`
+        UPDATE sop_employee_progress
+        SET sop_timer_queue = COALESCE(sop_timer_queue, '[]'::jsonb) || jsonb_build_object('queued_at', now()::text, 'ref_id', ${r.ref_id})
+        WHERE id = ${r.ref_id}
+      `).catch(() => {});
+      continue;
+    }
+
+    // Circuit breaker: pause new timer activations when lockout % too high
+    if (circuitBreakerTripped) continue;
+
+    // Activate the timer now
+    await db.execute(sql`
+      UPDATE sop_employee_progress SET timer_started_at = NOW() WHERE id = ${r.ref_id}
+    `).catch(() => {});
+    timerCountByUser.set(String(r.owner_id), userTimerCount + 1);
+  }
+
+  // ── Phase 2: Create governance controls for SOPs with running timers approaching deadline ─
+  // Only SOPs with timer_started_at IS NOT NULL are eligible — queued SOPs
+  // (no timer) cannot be overdue and must not generate a governance obligation.
+  const sopControlRows = await db.execute(sql`
+    SELECT sep.id AS ref_id,
+           sep.user_id AS owner_id,
+           au.manager_id,
+           COALESCE(sep.deadline_at::date, sep.timer_started_at::date + INTERVAL '15 days')::text AS due_date,
+           ws.wave_number
+    FROM sop_employee_progress sep
+    JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+    JOIN admin_users au ON au.id = sep.user_id
+    WHERE sep.acknowledged_at IS NULL
+      AND ws.operational_at IS NOT NULL
+      AND sep.timer_started_at IS NOT NULL
+      AND COALESCE(sep.deadline_at::date, sep.timer_started_at::date + INTERVAL '15 days') <= ${lookahead7}::date
+      AND au.is_active = true
+      AND au.deleted_at IS NULL
+    LIMIT 200
+  `);
+
+  for (const r of sopControlRows.rows as any[]) {
     await createGovernanceControl({
       controlType: "sop",
       referenceId: `sop:${r.ref_id}`,
@@ -957,6 +1148,27 @@ export async function syncGovernanceObligations(): Promise<{
       evidenceRequired: false,
     });
     counters.checkIn++;
+
+    // ── Manager Obligation Tracking (Task #1107) ──────────────────────────
+    // For every employee check-in obligation, create a symmetric manager
+    // obligation due 3 days after the check-in date. This ensures managers
+    // are held accountable for facilitating the meeting AND completing their
+    // notes / coaching entry within 3 working days.
+    if (r.manager_id) {
+      const ciDate = new Date(r.due_date);
+      ciDate.setDate(ciDate.getDate() + 3);
+      const managerDueDate = ciDate.toISOString().slice(0, 10);
+      await createGovernanceControl({
+        controlType: "manager_checkin_obligation" as any,
+        referenceId: `mgr_ci:${r.ref_id}`,
+        ownerId: r.manager_id,
+        managerId: null,
+        dueDate: managerDueDate,
+        requiredAction: "Facilitate and document the scheduled employee check-in within 3 days.",
+        evidenceRequired: true,
+      });
+      counters.managerObligations++;
+    }
   }
 
   // ── 4a. Probation milestone check-ins ────────────────────────────────────
@@ -983,6 +1195,23 @@ export async function syncGovernanceObligations(): Promise<{
       evidenceRequired: false,
     });
     counters.probation++;
+
+    // Manager coaching obligation: due 3 days after the milestone
+    if (r.manager_id) {
+      const mDate = new Date(r.due_date);
+      mDate.setDate(mDate.getDate() + 3);
+      const mDue = mDate.toISOString().slice(0, 10);
+      await createGovernanceControl({
+        controlType: "manager_coaching_obligation" as any,
+        referenceId: `mgr_ms:${r.ref_id}`,
+        ownerId: r.manager_id,
+        managerId: null,
+        dueDate: mDue,
+        requiredAction: "Log coaching notes after the probation milestone review within 3 days.",
+        evidenceRequired: true,
+      });
+      counters.managerObligations++;
+    }
   }
 
   // ── 4b. Probation plans ───────────────────────────────────────────────────
@@ -1033,6 +1262,50 @@ export async function syncGovernanceObligations(): Promise<{
       evidenceRequired: true,
     });
     counters.pip++;
+  }
+
+  // ── 5b. Manager coaching obligations from PIP coaching gaps ──────────────
+  // Distinct from milestone-triggered coaching obligations (4a above).
+  // For active PIP plans where the manager has not logged a coaching entry in
+  // ≥ coaching_gap_days (or ever), create a manager_coaching_obligation so the
+  // governance sweep can escalate if ignored.  The threshold is configurable via
+  // the 'coaching_gap_days' system setting (fallback: 5 days) and intentionally
+  // mirrors the pip_coaching_prompt compliance collector so the two signals stay aligned.
+  const coachingGapSetting = await db.execute(sql`
+    SELECT value FROM system_settings WHERE key = 'coaching_gap_days' LIMIT 1
+  `).catch(() => ({ rows: [] }));
+  const COACHING_GAP_DAYS = Math.max(1, Number((coachingGapSetting.rows[0] as any)?.value ?? 5));
+
+  // Only manager-authored entries count — HR/admin notes do not satisfy the
+  // manager's coaching obligation. Filter cle.author_id = ep.manager_id.
+  const pipCoachingGapRows = await db.execute(sql`
+    SELECT ep.id AS ref_id,
+           ep.employee_id,
+           ep.manager_id,
+           (NOW()::date + INTERVAL '3 days')::text AS due_date,
+           EXTRACT(EPOCH FROM (NOW() - COALESCE(MAX(cle.created_at), ep.start_date::timestamp))) / 86400 AS gap_days
+    FROM employee_plans ep
+    LEFT JOIN coaching_log_entries cle ON cle.plan_id = ep.id AND cle.author_id = ep.manager_id
+    WHERE ep.plan_type = 'pip'::employee_plan_type
+      AND ep.status = 'active'::employee_plan_status
+      AND ep.manager_id IS NOT NULL
+      AND ep.employee_id IS NOT NULL
+    GROUP BY ep.id, ep.employee_id, ep.manager_id, ep.start_date
+    HAVING EXTRACT(EPOCH FROM (NOW() - COALESCE(MAX(cle.created_at), ep.start_date::timestamp))) / 86400 >= ${COACHING_GAP_DAYS}
+    LIMIT 100
+  `).catch(() => ({ rows: [] }));
+  for (const r of pipCoachingGapRows.rows as any[]) {
+    const gapDays = Math.round(Number(r.gap_days ?? 5));
+    await createGovernanceControl({
+      controlType: "manager_coaching_obligation" as any,
+      referenceId: `mgr_pip:${r.ref_id}`,
+      ownerId: r.manager_id,
+      managerId: null,
+      dueDate: r.due_date,
+      requiredAction: `Log a coaching note for PIP employee — ${gapDays} day${gapDays !== 1 ? "s" : ""} since last coaching entry.`,
+      evidenceRequired: true,
+    });
+    counters.managerObligations++;
   }
 
   // ── 6. Growth plans ───────────────────────────────────────────────────────
@@ -1098,6 +1371,8 @@ function formatControlType(t: string): string {
     sop: "SOP acknowledgement",
     probation: "probation milestone",
     pip: "PIP checkpoint",
+    manager_checkin_obligation: "manager check-in facilitation",
+    manager_coaching_obligation: "manager coaching log",
   };
   return labels[t] ?? t;
 }
@@ -1116,7 +1391,17 @@ function referenceIdFor(finding: GovernanceFinding): string {
     const prefix = finding.planType === "pip" ? "pip" : finding.planType === "growth" ? "growth" : "prob";
     return `${prefix}:${finding.entityId}`;
   }
-  const prefixMap: Record<Exclude<GovernanceFinding["entityType"], "probation_strike">, string> = {
+  // manager_coaching_obligation: entityId IS the full reference_id (mgr_pip:... or mgr_ms:...)
+  // as stored in governance_controls.reference_id — return it directly to avoid prefix mangling.
+  if (finding.entityType === "manager_coaching_obligation") {
+    return finding.entityId;
+  }
+  // manager_checkin_obligation reference IDs use the mgr_ci: prefix established
+  // in syncGovernanceObligations manager obligation tracking block.
+  if (finding.entityType === "manager_checkin_obligation") {
+    return `mgr_ci:${finding.entityId}`;
+  }
+  const prefixMap: Record<Exclude<GovernanceFinding["entityType"], "probation_strike" | "manager_coaching_obligation" | "manager_checkin_obligation">, string> = {
     goal: "goal",
     sop: "sop",
     checkin: "ci",
@@ -1135,6 +1420,8 @@ function controlTypeFor(finding: GovernanceFinding): GovernanceControlType {
     checkin: "check_in",
     probation_milestone: "probation",
     probation_strike: "probation",
+    manager_coaching_obligation: "manager_coaching_obligation",
+    manager_checkin_obligation: "manager_checkin_obligation",
   };
   return typeMap[finding.entityType];
 }
@@ -1322,6 +1609,23 @@ function resolveEscalationStep(
   if (entityType === "probation_strike") {
     // Strike fires EXACTLY ONCE at level 0
     if (escalationLevel === 0) return "strike";
+    return "none";
+  }
+
+  // manager_coaching_obligation: owner IS the manager — escalation ladder is:
+  //   L0 → employee_nudge  (nudges the manager, who is the "owner")
+  //   L1 → manager_escalation (nudges the manager's own manager / skip-level)
+  if (entityType === "manager_coaching_obligation") {
+    if (escalationLevel === 0 && daysOverdue >= 1) return "employee_nudge";
+    if (escalationLevel === 1 && daysOverdue >= 3) return "manager_escalation";
+    return "none";
+  }
+
+  // manager_checkin_obligation: same ladder as manager_coaching_obligation.
+  // The owner is the manager who must facilitate the check-in.
+  if (entityType === "manager_checkin_obligation") {
+    if (escalationLevel === 0 && daysOverdue >= 1) return "employee_nudge";
+    if (escalationLevel === 1 && daysOverdue >= 3) return "manager_escalation";
     return "none";
   }
 

@@ -579,9 +579,9 @@ export function startScheduler() {
       const { runGoalAutoProgressSync } = await import("./goalAutoProgressService");
       const result = await runGoalAutoProgressSync();
       console.log(
-        `[scheduler] Goal auto-progress sync complete: ${result.synced} synced, ` +
-        `${result.skipped} skipped, ${result.escalationFlagged} escalation-flagged, ` +
-        `${result.errors} errors.`,
+        `[scheduler] Goal auto-progress sync complete: ${result.suggested} suggested, ` +
+        `${result.skipped} skipped, ${result.anomalyFlagged} anomaly-flagged, ` +
+        `${result.escalationFlagged} escalation-flagged, ${result.errors} errors.`,
       );
 
       // Write a durable audit log entry for traceability.
@@ -595,8 +595,9 @@ export function startScheduler() {
           await db.execute(sql`
             INSERT INTO audit_logs (actor_id, action, changes)
             VALUES (${actorId}, 'goal_auto_progress_sync', ${JSON.stringify({
-              synced: result.synced,
+              suggested: result.suggested,
               skipped: result.skipped,
+              anomalyFlagged: result.anomalyFlagged,
               escalationFlagged: result.escalationFlagged,
               errors: result.errors,
               triggeredBy: "scheduler",
@@ -613,6 +614,21 @@ export function startScheduler() {
   }, {
     timezone: "Asia/Kolkata",
   });
+
+  // Goodhart Guard: auto-commit stale suggested progress every 4 hours.
+  // Commits suggested_progress → progress for goals pending > 96 calendar hours
+  // where no manager has acted. Anomaly-flagged goals are excluded.
+  cron.schedule("0 */4 * * *", async () => {
+    try {
+      const { runProgressAutoCommit } = await import("./goalAutoProgressService");
+      const result = await runProgressAutoCommit();
+      if (result.committed > 0 || result.errors > 0) {
+        console.log(`[scheduler] Goal progress auto-commit: ${result.committed} committed, ${result.errors} errors.`);
+      }
+    } catch (err) {
+      console.error("[scheduler] Goal progress auto-commit failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
 
   // Admin route to update shift grace period: handled in routes.ts
   // (PATCH /api/hr/admin/shifts/:id/grace-period)
