@@ -22573,7 +22573,7 @@ export async function registerRoutes(
         const projectId = typeof req.query.projectId === "string" && req.query.projectId
           ? req.query.projectId
           : null;
-        const rows = await storage.getStudioContentIdeas(projectId);
+        const rows = await storage.getStudioContentIdeas({ projectId: projectId ?? undefined });
         res.json(rows);
       } catch (error) {
         console.error("Get content ideas error:", error);

@@ -69,6 +69,11 @@ type CalendarItem = StudioArticle & {
 function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }
+function normalizeScheduledDate(v: string | Date | null | undefined): string | null {
+  if (!v) return null;
+  if (v instanceof Date) return ymd(v);
+  return String(v).slice(0, 10);
+}
 function fmtDate(d?: string | null): string {
   if (!d) return "—";
   try { return new Date(`${d}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" }); }
@@ -1240,13 +1245,15 @@ export default function Calendar() {
   });
   const ideasByDay: Record<string, StudioContentIdea[]> = {};
   for (const idea of contentIdeas ?? []) {
-    if (!idea.scheduledDate) continue;
-    (ideasByDay[String(idea.scheduledDate)] ??= []).push(idea);
+    const key = normalizeScheduledDate(idea.scheduledDate as string | Date | null | undefined);
+    if (!key) continue;
+    (ideasByDay[key] ??= []).push(idea);
   }
 
   const hasIdeasThisMonth = (contentIdeas ?? []).some((idea) => {
-    if (!idea.scheduledDate) return false;
-    const d = new Date(`${idea.scheduledDate}T00:00:00`);
+    const ds = normalizeScheduledDate(idea.scheduledDate as string | Date | null | undefined);
+    if (!ds) return false;
+    const d = new Date(`${ds}T00:00:00`);
     return d >= monthStart && d <= monthEnd;
   });
 

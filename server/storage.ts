@@ -214,6 +214,19 @@ import {
 } from "@shared/schema";
 import { COMMUNICATION_POLICY_KEY, resolveCommunicationPolicy } from "@shared/communications";
 
+function ymdStr(d: Date): string {
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+function normalizeIdeaDates<T extends { scheduledDate?: string | Date | null }>(row: T): T {
+  if (row.scheduledDate instanceof Date) {
+    return { ...row, scheduledDate: ymdStr(row.scheduledDate) };
+  }
+  if (typeof row.scheduledDate === "string" && row.scheduledDate.length > 10) {
+    return { ...row, scheduledDate: row.scheduledDate.slice(0, 10) };
+  }
+  return row;
+}
+
 export interface StudioAnalytics {
   range: { dateFrom: string | null; dateTo: string | null };
   workflow: {
@@ -631,7 +644,6 @@ export interface IStorage {
   createStudioOccasion(data: InsertStudioOccasion): Promise<StudioOccasion>;
   updateStudioOccasion(id: string, updates: Partial<InsertStudioOccasion>): Promise<StudioOccasion | undefined>;
   getStudioContentIdea(id: string): Promise<StudioContentIdea | undefined>;
-  getStudioContentIdeas(projectId?: string | null): Promise<StudioContentIdea[]>;
   createStudioContentIdea(data: InsertStudioContentIdea): Promise<StudioContentIdea>;
   updateStudioContentIdea(id: string, updates: Partial<InsertStudioContentIdea>): Promise<StudioContentIdea | undefined>;
 
@@ -4135,16 +4147,17 @@ export class DatabaseStorage implements IStorage {
         ),
       );
     }
-    return await db
+    const rows = await db
       .select()
       .from(studioContentIdeas)
       .where(conditions.length ? and(...conditions) : undefined)
       .orderBy(asc(studioContentIdeas.scheduledDate), desc(studioContentIdeas.createdAt));
+    return rows.map(normalizeIdeaDates);
   }
 
   async getStudioContentIdea(id: string): Promise<StudioContentIdea | undefined> {
     const [row] = await db.select().from(studioContentIdeas).where(eq(studioContentIdeas.id, id));
-    return row;
+    return row ? normalizeIdeaDates(row) : undefined;
   }
 
   async getStudioContentIdeaByArticle(articleId: string): Promise<StudioContentIdea | undefined> {
@@ -5017,15 +5030,18 @@ export class DatabaseStorage implements IStorage {
 
   async getStudioContentIdea(id: string): Promise<StudioContentIdea | undefined> {
     const [row] = await db.select().from(studioContentIdeas).where(eq(studioContentIdeas.id, id));
-    return row;
+    return row ? normalizeIdeaDates(row) : undefined;
   }
 
-  async getStudioContentIdeas(projectId?: string | null): Promise<StudioContentIdea[]> {
+  async getStudioContentIdeas(filters: { projectId?: string; includeArchived?: boolean } = {}): Promise<StudioContentIdea[]> {
     const base = db.select().from(studioContentIdeas);
-    const rows = projectId
-      ? await base.where(eq(studioContentIdeas.projectId, projectId))
-      : await base;
-    return rows.sort((a, b) => (a.scheduledDate ?? "9999").localeCompare(b.scheduledDate ?? "9999"));
+    const conditions: any[] = [];
+    if (!filters.includeArchived) conditions.push(isNull(studioContentIdeas.archivedAt));
+    if (filters.projectId) conditions.push(eq(studioContentIdeas.projectId, filters.projectId));
+    const rows = await base.where(conditions.length ? and(...conditions) : undefined);
+    return rows
+      .map(normalizeIdeaDates)
+      .sort((a, b) => (a.scheduledDate ?? "9999").localeCompare(b.scheduledDate ?? "9999"));
   }
 
   async createStudioContentIdea(data: InsertStudioContentIdea): Promise<StudioContentIdea> {
