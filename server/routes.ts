@@ -20257,14 +20257,25 @@ export async function registerRoutes(
     raw: Record<string, string>;
   };
 
-  /** Parse + validate a CSV export of the team's planning template. */
-  const parseImportRows = async (csv: string): Promise<{
+  /** Parse + validate a CSV export of the team's planning template.
+   * When `fieldMapping` is provided (detected-column-name → system-field-key),
+   * it is used directly instead of the HEADER_ALIASES auto-detection, preserving
+   * backward-compat for callers that omit it.
+   */
+  const parseImportRows = async (csv: string, fieldMapping?: Record<string, string>): Promise<{
     headerError?: string;
     results: ImportRowResult[];
   }> => {
     const grid = parseCsv(csv);
     if (!grid.length) return { headerError: "The file is empty.", results: [] };
-    const headerMap: (string | null)[] = grid[0].map((h) => HEADER_ALIASES[normalizeHeader(h)] ?? null);
+    let headerMap: (string | null)[];
+    if (fieldMapping && Object.keys(fieldMapping).length > 0) {
+      // Explicit mapping from wizard — use it directly.
+      headerMap = grid[0].map((h) => fieldMapping[h] || null);
+    } else {
+      // Fallback auto-detection via HEADER_ALIASES.
+      headerMap = grid[0].map((h) => HEADER_ALIASES[normalizeHeader(h)] ?? null);
+    }
     if (!headerMap.includes("topic")) {
       return { headerError: "Could not find a Topic/Title column in the file header.", results: [] };
     }
@@ -20459,6 +20470,51 @@ export async function registerRoutes(
   };
 
   app.post(
+    "/api/studio/import/content-calendar/parse-headers",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const { csvText, sourceFormat, sheetUsed, dataRowCount, error: inputError } = resolveImportInput(req.body);
+        if (inputError) return res.status(400).json({ error: inputError });
+        const grid = parseCsv(csvText);
+        if (!grid.length) return res.status(400).json({ error: "The file is empty." });
+        const detectedColumns: string[] = grid[0];
+        const sampleRow = grid[1] ?? [];
+        const sampleValues: Record<string, string> = {};
+        detectedColumns.forEach((col, idx) => { sampleValues[col] = (sampleRow[idx] ?? "").trim(); });
+        const suggestedMapping: Record<string, string> = {};
+        for (const col of detectedColumns) {
+          const mapped = HEADER_ALIASES[normalizeHeader(col)];
+          if (mapped) suggestedMapping[col] = mapped;
+        }
+        const systemFields = [
+          { key: "topic", label: "Topic / Title", required: true, description: "Main topic or title of the content piece" },
+          { key: "date", label: "Scheduled Date", required: true, description: "Date when the content is planned for publication" },
+          { key: "contentType", label: "Post Type", required: false, description: "Type of content (Post, Article, Story)" },
+          { key: "channels", label: "Channels / Platform", required: false, description: "Distribution channels e.g. Instagram, LinkedIn" },
+          { key: "pillar", label: "Pillar / Category", required: false, description: "Content pillar or category" },
+          { key: "brief", label: "Details / Brief", required: false, description: "Description or brief for the content" },
+          { key: "referenceLink", label: "Reference Link", required: false, description: "Source or reference URL" },
+          { key: "captionCopy", label: "Caption / Copy", required: false, description: "The actual post caption or copy" },
+          { key: "requirement", label: "Requirement", required: false, description: "Creative or production requirements" },
+          { key: "creativeLink", label: "Final Creative Link", required: false, description: "Link to the final creative asset" },
+          { key: "status", label: "Status", required: false, description: "Workflow status" },
+          { key: "storyContent", label: "Story Content", required: false, description: "Content for story format" },
+          { key: "storyReference", label: "Story Reference", required: false, description: "Reference for story format" },
+          { key: "storyCreativeLink", label: "Story Creative Link", required: false, description: "Creative link for story format" },
+          { key: "assigneeEmail", label: "Assignee Email", required: false, description: "Email of the assigned team member" },
+          { key: "dueDate", label: "Due Date", required: false, description: "Internal deadline for the content" },
+        ];
+        res.json({ detectedColumns, sampleValues, systemFields, suggestedMapping, sourceFormat, sheetUsed, dataRowCount });
+      } catch (error: any) {
+        console.error("Parse headers error:", error);
+        res.status(400).json({ error: error?.message || "Failed to parse file headers" });
+      }
+    },
+  );
+
+  app.post(
     "/api/studio/import/content-calendar/preview",
     requireAuth,
     requirePermission("studio.create_article", "marketing_manager", "content_editor"),
@@ -20467,7 +20523,8 @@ export async function registerRoutes(
         const { csvText, sourceFormat, sheetUsed, dataRowCount, error: inputError } = resolveImportInput(req.body);
         if (inputError) return res.status(400).json({ error: inputError });
         const skipQualityAudit = req.body?.skipQualityAudit === true;
-        const { headerError, results } = await parseImportRows(csvText);
+        const fieldMapping = req.body?.fieldMapping && typeof req.body.fieldMapping === "object" ? req.body.fieldMapping as Record<string, string> : undefined;
+        const { headerError, results } = await parseImportRows(csvText, fieldMapping);
         if (headerError) return res.status(400).json({ error: headerError });
         const valid = results.filter((r) => !r.errors.length);
         const invalid = results.filter((r) => r.errors.length);
@@ -20529,7 +20586,8 @@ export async function registerRoutes(
         const fileName = typeof req.body?.fileName === "string" ? req.body.fileName : "import.csv";
         const projErr = await assertPipelineProject(projectId, { forWrite: true });
         if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
-        const { headerError, results } = await parseImportRows(csvText);
+        const commitFieldMapping = req.body?.fieldMapping && typeof req.body.fieldMapping === "object" ? req.body.fieldMapping as Record<string, string> : undefined;
+        const { headerError, results } = await parseImportRows(csvText, commitFieldMapping);
         if (headerError) return res.status(400).json({ error: headerError });
         const valid = results.filter((r) => !r.errors.length);
         const invalid = results.filter((r) => r.errors.length);

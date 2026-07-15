@@ -394,6 +394,8 @@ function QuickCreateDialog({
 
 // ── Import wizard ───────────────────────────────────────────────────────────
 type QualityScore = "high" | "medium" | "needs_work";
+type WizardStep = "upload" | "mapping" | "review";
+type SystemFieldDef = { key: string; label: string; required: boolean; description: string };
 
 const QUALITY_BADGE: Record<QualityScore, { label: string; className: string; icon: JSX.Element }> = {
   high: {
@@ -413,6 +415,12 @@ const QUALITY_BADGE: Record<QualityScore, { label: string; className: string; ic
   },
 };
 
+const WIZARD_STEPS: { key: WizardStep; label: string }[] = [
+  { key: "upload", label: "Upload" },
+  { key: "mapping", label: "Map Fields" },
+  { key: "review", label: "Review & Import" },
+];
+
 function ImportWizardDialog({
   open,
   onOpenChange,
@@ -423,31 +431,102 @@ function ImportWizardDialog({
   projectId: string;
 }) {
   const { toast } = useToast();
+
+  // Tab: import wizard vs past imports
   const [tab, setTab] = useState<"import" | "batches">("import");
+
+  // Wizard step
+  const [step, setStep] = useState<WizardStep>("upload");
+
+  // File state
   const [csv, setCsv] = useState("");
   const [excelB64, setExcelB64] = useState<string | null>(null);
   const [fileName, setFileName] = useState("import.csv");
+  const [showPasteArea, setShowPasteArea] = useState(false);
+
+  // From parse-headers response
+  const [detectedColumns, setDetectedColumns] = useState<string[]>([]);
+  const [sampleValues, setSampleValues] = useState<Record<string, string>>({});
+  const [systemFields, setSystemFields] = useState<SystemFieldDef[]>([]);
+  const [suggestedMapping, setSuggestedMapping] = useState<Record<string, string>>({});
+  const [fieldMapping, setFieldMapping] = useState<Record<string, string>>({});
+  const [fileInfo, setFileInfo] = useState<{ sourceFormat: string; sheetUsed: string | null; dataRowCount: number } | null>(null);
+
+  // Review state
   const [preview, setPreview] = useState<any | null>(null);
   const [skipQualityAudit, setSkipQualityAudit] = useState(false);
   const [showFlaggedOnly, setShowFlaggedOnly] = useState(false);
   const [expandedRows, setExpandedRows] = useState<Set<number>>(new Set());
+
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const hasInput = excelB64 !== null || csv.trim().length > 0;
+  // Reset the wizard when the dialog closes
+  useEffect(() => {
+    if (!open) {
+      setStep("upload");
+      setCsv("");
+      setExcelB64(null);
+      setFileName("import.csv");
+      setShowPasteArea(false);
+      setDetectedColumns([]);
+      setSampleValues({});
+      setSystemFields([]);
+      setSuggestedMapping({});
+      setFieldMapping({});
+      setFileInfo(null);
+      setPreview(null);
+      setSkipQualityAudit(false);
+      setShowFlaggedOnly(false);
+      setExpandedRows(new Set());
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }, [open]);
 
+  // ── Past imports ──
   const { data: batches } = useQuery<StudioImportBatch[]>({
     queryKey: ["/api/studio/import/batches", { projectId }],
     enabled: open && tab === "batches" && !!projectId,
   });
 
-  const buildPayload = () =>
+  // ── Payload builders ──
+  const buildParsePayload = () =>
+    excelB64 !== null ? { fileData: excelB64, fileName } : { csv };
+
+  const buildPreviewPayload = () =>
     excelB64 !== null
-      ? { fileData: excelB64, fileName, skipQualityAudit }
-      : { csv, skipQualityAudit };
+      ? { fileData: excelB64, fileName, skipQualityAudit, fieldMapping }
+      : { csv, skipQualityAudit, fieldMapping };
+
+  const buildCommitPayload = () =>
+    excelB64 !== null
+      ? { fileData: excelB64, fileName, skipQualityAudit, fieldMapping, projectId }
+      : { csv, skipQualityAudit, fieldMapping, projectId, fileName };
+
+  // ── Mutations ──
+  const parseHeadersMutation = useMutation({
+    mutationFn: async (payload: Record<string, unknown>) => {
+      const res = await apiRequest("POST", "/api/studio/import/content-calendar/parse-headers", payload);
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error((b as any).error || "Failed to read file");
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setDetectedColumns(data.detectedColumns ?? []);
+      setSampleValues(data.sampleValues ?? {});
+      setSystemFields(data.systemFields ?? []);
+      setSuggestedMapping(data.suggestedMapping ?? {});
+      setFieldMapping({ ...(data.suggestedMapping ?? {}) });
+      setFileInfo({ sourceFormat: data.sourceFormat, sheetUsed: data.sheetUsed, dataRowCount: data.dataRowCount });
+      setStep("mapping");
+    },
+    onError: (e: Error) => toast({ title: "Couldn't read file", description: e.message, variant: "destructive" }),
+  });
 
   const previewMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/studio/import/content-calendar/preview", buildPayload());
+      const res = await apiRequest("POST", "/api/studio/import/content-calendar/preview", buildPreviewPayload());
       return res.json();
     },
     onSuccess: (data) => { setPreview(data); setShowFlaggedOnly(false); setExpandedRows(new Set()); },
@@ -456,14 +535,10 @@ function ImportWizardDialog({
 
   const commitMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/studio/import/content-calendar/commit", {
-        ...buildPayload(),
-        projectId,
-        fileName,
-      });
+      const res = await apiRequest("POST", "/api/studio/import/content-calendar/commit", buildCommitPayload());
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/studio/import/batches"] });
@@ -471,11 +546,6 @@ function ImportWizardDialog({
         title: "Import complete",
         description: `${data.createdIdeas} idea(s) created from ${data.validRows} row(s).`,
       });
-      setCsv("");
-      setExcelB64(null);
-      setPreview(null);
-      setShowFlaggedOnly(false);
-      setExpandedRows(new Set());
       onOpenChange(false);
     },
     onError: (e: Error) => toast({ title: "Import failed", description: e.message, variant: "destructive" }),
@@ -486,7 +556,7 @@ function ImportWizardDialog({
       const res = await apiRequest("POST", `/api/studio/import/${batchId}/rollback`, {});
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/studio/import/batches"] });
@@ -495,6 +565,7 @@ function ImportWizardDialog({
     onError: (e: Error) => toast({ title: "Rollback failed", description: e.message, variant: "destructive" }),
   });
 
+  // ── File reading + immediate parse-headers call ──
   const handleFile = (f: File) => {
     setFileName(f.name);
     setPreview(null);
@@ -507,34 +578,146 @@ function ImportWizardDialog({
         const bytes = new Uint8Array(buf);
         let binary = "";
         for (let i = 0; i < bytes.byteLength; i++) binary += String.fromCharCode(bytes[i]);
-        setExcelB64(btoa(binary));
+        const b64 = btoa(binary);
+        setExcelB64(b64);
         setCsv("");
+        parseHeadersMutation.mutate({ fileData: b64, fileName: f.name });
       };
       reader.readAsArrayBuffer(f);
     } else {
       const reader = new FileReader();
       reader.onload = () => {
-        setCsv(String(reader.result || ""));
+        const text = String(reader.result || "");
+        setCsv(text);
         setExcelB64(null);
+        parseHeadersMutation.mutate({ csv: text });
       };
       reader.readAsText(f);
     }
   };
 
-  const formatBadge = preview
-    ? preview.sourceFormat === "excel"
-      ? `Excel · ${preview.sheetUsed ?? "Sheet1"} · ${preview.dataRowCount} row(s) found`
-      : `CSV · ${preview.dataRowCount} row(s) found`
-    : excelB64 !== null
-      ? `Excel · ${fileName}`
-      : null;
+  // ── Wizard helpers ──
+  const requiredFields = systemFields.filter((f) => f.required);
+  const mappedSystemKeys = Object.values(fieldMapping).filter(Boolean);
+  const unmappedRequired = requiredFields.filter((f) => !mappedSystemKeys.includes(f.key));
+  const canContinueFromMapping = unmappedRequired.length === 0;
+
+  const goToReview = () => {
+    setPreview(null);
+    setStep("review");
+    // Auto-trigger preview immediately
+    setTimeout(() => previewMutation.mutate(), 0);
+  };
+
+  const stepIndex = WIZARD_STEPS.findIndex((s) => s.key === step);
+
+  // ── Quality audit panel (shared between old API and step 3) ──
+  const renderQualityPanel = () => {
+    if (!preview) return null;
+    return (
+      <div className="space-y-3 rounded-md border p-3 text-sm" data-testid="panel-import-preview">
+        <div className="flex flex-wrap items-center gap-2 pb-2 border-b">
+          <span className="flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 className="h-3.5 w-3.5" />
+            {preview.validCount - (preview.flaggedCount ?? 0)} ready
+          </span>
+          {(preview.flaggedCount ?? 0) > 0 && (
+            <span className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {preview.flaggedCount} need attention
+            </span>
+          )}
+          {preview.invalidCount > 0 && (
+            <span className="flex items-center gap-1 text-xs font-medium text-red-600">
+              <AlertTriangle className="h-3.5 w-3.5" />
+              {preview.invalidCount} have errors
+            </span>
+          )}
+          {preview.sourceFormat === "excel" && preview.sheetUsed && (
+            <span className="ml-auto text-muted-foreground text-xs">({preview.sheetUsed})</span>
+          )}
+          {(preview.flaggedCount ?? 0) > 0 && !preview.skipQualityAudit && (
+            <button
+              className="ml-auto flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
+              onClick={() => setShowFlaggedOnly((v) => !v)}
+              data-testid="button-show-flagged-only"
+            >
+              <Filter className="h-3 w-3" />
+              {showFlaggedOnly ? "Show all" : "Show flagged only"}
+            </button>
+          )}
+        </div>
+        {preview.balanceWarning && (
+          <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-400" data-testid="panel-balance-warning">
+            <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+            {preview.balanceWarning}
+          </div>
+        )}
+        {!preview.skipQualityAudit && (() => {
+          const validRows = (preview.rows ?? []).filter((r: any) => !r.errors.length);
+          const displayRows = showFlaggedOnly
+            ? validRows.filter((r: any) => r.qualityScore === "needs_work" || r.qualityScore === "medium")
+            : validRows;
+          if (!displayRows.length) return null;
+          return (
+            <div className="space-y-1.5">
+              {displayRows.map((r: any) => {
+                const qs: QualityScore = r.qualityScore ?? "high";
+                const cfg = QUALITY_BADGE[qs];
+                const isExpanded = expandedRows.has(r.rowNumber);
+                const hasFlags = r.qualityFlags?.length > 0;
+                return (
+                  <div key={r.rowNumber} className="rounded-md border bg-muted/20 px-2 py-1.5" data-testid={`row-quality-${r.rowNumber}`}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-muted-foreground w-10 shrink-0">Row {r.rowNumber}</span>
+                      <span className="flex-1 text-xs font-medium truncate">{r.ideas?.[0]?.topic || "—"}</span>
+                      <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cfg.className}`} data-testid={`badge-quality-${r.rowNumber}`}>
+                        {cfg.icon} {cfg.label}
+                      </span>
+                      {hasFlags && (
+                        <button
+                          className="text-muted-foreground hover:text-foreground"
+                          onClick={() => setExpandedRows((prev) => {
+                            const next = new Set(prev);
+                            isExpanded ? next.delete(r.rowNumber) : next.add(r.rowNumber);
+                            return next;
+                          })}
+                          data-testid={`button-expand-row-${r.rowNumber}`}
+                        >
+                          <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                        </button>
+                      )}
+                    </div>
+                    {isExpanded && hasFlags && (
+                      <ul className="mt-1.5 ml-12 space-y-0.5 list-disc list-inside" data-testid={`list-flags-${r.rowNumber}`}>
+                        {r.qualityFlags.map((f: string, i: number) => (
+                          <li key={i} className="text-[10px] text-muted-foreground">{f}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+        {preview.rows?.filter((r: any) => r.errors.length).slice(0, 8).map((r: any) => (
+          <p key={r.rowNumber} className="text-xs text-red-600" data-testid={`text-import-error-${r.rowNumber}`}>
+            Row {r.rowNumber}: {r.errors.join("; ")}
+          </p>
+        ))}
+      </div>
+    );
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import content plan</DialogTitle>
         </DialogHeader>
+
+        {/* Tab switcher */}
         <div className="flex gap-2 border-b pb-2">
           <Button size="sm" variant={tab === "import" ? "default" : "ghost"} onClick={() => setTab("import")} data-testid="tab-import">
             Import
@@ -545,189 +728,374 @@ function ImportWizardDialog({
         </div>
 
         {tab === "import" ? (
-          <div className="space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <Button size="sm" variant="outline" onClick={() => fileRef.current?.click()} data-testid="button-pick-file">
-                <Upload className="mr-1.5 h-4 w-4" />
-                Choose file
-              </Button>
-              <input
-                ref={fileRef}
-                type="file"
-                accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
-                className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
-                data-testid="input-file-upload"
-              />
-              <div className="flex items-center gap-1">
-                <a href="/api/studio/import/template" download data-testid="link-template-csv">
-                  <Button size="sm" variant="ghost">
-                    <Download className="mr-1.5 h-4 w-4" />
-                    CSV template
-                  </Button>
-                </a>
-                <a href="/api/studio/import/template?format=xlsx" download data-testid="link-template-xlsx">
-                  <Button size="sm" variant="ghost">
-                    <Download className="mr-1.5 h-4 w-4" />
-                    Excel template
-                  </Button>
-                </a>
-              </div>
-              {formatBadge && (
-                <Badge variant="secondary" className="text-xs" data-testid="badge-detected-format">
-                  {formatBadge}
-                </Badge>
-              )}
-            </div>
-            {excelB64 !== null ? (
-              <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="panel-excel-loaded">
-                <span className="flex-1 text-muted-foreground truncate">{fileName} loaded — click Preview to validate</span>
-                <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => { setExcelB64(null); setPreview(null); if (fileRef.current) fileRef.current.value = ""; }} data-testid="button-clear-excel">
-                  Clear
-                </Button>
-              </div>
-            ) : (
-              <Textarea
-                rows={6}
-                value={csv}
-                onChange={(e) => { setCsv(e.target.value); setPreview(null); }}
-                placeholder="…or paste CSV content here"
-                className="font-mono text-xs"
-                data-testid="input-import-csv"
-              />
-            )}
-            <div className="flex flex-wrap items-center gap-2">
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!hasInput || previewMutation.isPending}
-                onClick={() => previewMutation.mutate()}
-                data-testid="button-preview-import"
-              >
-                {previewMutation.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-                Preview
-              </Button>
-              <Button
-                size="sm"
-                disabled={!preview || preview.validCount === 0 || commitMutation.isPending}
-                onClick={() => commitMutation.mutate()}
-                data-testid="button-commit-import"
-              >
-                {commitMutation.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
-                Import {preview ? `${preview.ideaCount} idea(s)` : ""}
-              </Button>
-              <label className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground select-none" data-testid="label-skip-quality-audit">
-                <Checkbox
-                  checked={skipQualityAudit}
-                  onCheckedChange={(v) => { setSkipQualityAudit(!!v); setPreview(null); }}
-                  data-testid="checkbox-skip-quality-audit"
-                />
-                Skip quality audit — commit all valid rows immediately
-              </label>
-            </div>
-            {preview && (
-              <div className="space-y-3 rounded-md border p-3 text-sm" data-testid="panel-import-preview">
-                {/* Summary bar */}
-                <div className="flex flex-wrap items-center gap-2 pb-2 border-b">
-                  <span className="flex items-center gap-1 text-xs font-medium text-emerald-700 dark:text-emerald-400">
-                    <CheckCircle2 className="h-3.5 w-3.5" />
-                    {preview.validCount - (preview.flaggedCount ?? 0)} ready
-                  </span>
-                  {(preview.flaggedCount ?? 0) > 0 && (
-                    <span className="flex items-center gap-1 text-xs font-medium text-amber-700 dark:text-amber-400">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      {preview.flaggedCount} need attention
+          <div className="space-y-4">
+            {/* Step indicator */}
+            <div className="flex items-center" data-testid="wizard-step-indicator">
+              {WIZARD_STEPS.map((s, i) => (
+                <div key={s.key} className="flex items-center">
+                  <div className={`flex items-center gap-1.5 text-xs font-medium ${i === stepIndex ? "text-primary" : i < stepIndex ? "text-emerald-600 dark:text-emerald-400" : "text-muted-foreground"}`}>
+                    <span className={`flex h-5 w-5 items-center justify-center rounded-full text-[10px] font-bold shrink-0 ${i === stepIndex ? "bg-primary text-primary-foreground" : i < stepIndex ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
+                      {i < stepIndex ? "✓" : i + 1}
                     </span>
-                  )}
-                  {preview.invalidCount > 0 && (
-                    <span className="flex items-center gap-1 text-xs font-medium text-red-600">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      {preview.invalidCount} have errors
-                    </span>
-                  )}
-                  {preview.sourceFormat === "excel" && preview.sheetUsed && (
-                    <span className="ml-auto text-muted-foreground text-xs">({preview.sheetUsed})</span>
-                  )}
-                  {(preview.flaggedCount ?? 0) > 0 && !preview.skipQualityAudit && (
-                    <button
-                      className="ml-auto flex items-center gap-1 text-xs text-muted-foreground underline-offset-2 hover:underline"
-                      onClick={() => setShowFlaggedOnly((v) => !v)}
-                      data-testid="button-show-flagged-only"
-                    >
-                      <Filter className="h-3 w-3" />
-                      {showFlaggedOnly ? "Show all" : "Show flagged only"}
-                    </button>
+                    {s.label}
+                  </div>
+                  {i < WIZARD_STEPS.length - 1 && (
+                    <div className={`mx-2 h-px w-8 shrink-0 ${i < stepIndex ? "bg-emerald-300 dark:bg-emerald-700" : "bg-border"}`} />
                   )}
                 </div>
+              ))}
+            </div>
 
-                {/* Pillar balance warning */}
-                {preview.balanceWarning && (
-                  <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-400" data-testid="panel-balance-warning">
-                    <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
-                    {preview.balanceWarning}
+            {/* ── Step 1: Upload ── */}
+            {step === "upload" && (
+              <div className="space-y-3">
+                {/* File already loaded — show resume card when navigating back from step 2 */}
+                {fileInfo ? (
+                  <div className="space-y-3" data-testid="panel-upload-resume">
+                    <div className="flex items-center gap-3 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/20 px-4 py-3" data-testid="panel-file-loaded-resume">
+                      <CheckCircle2 className="h-5 w-5 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate">{fileName}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {fileInfo.sourceFormat === "excel" ? "Excel" : "CSV"}
+                          {fileInfo.sheetUsed ? ` · ${fileInfo.sheetUsed}` : ""}
+                          {" "}· {fileInfo.dataRowCount} row{fileInfo.dataRowCount !== 1 ? "s" : ""} · {detectedColumns.length} column{detectedColumns.length !== 1 ? "s" : ""} detected
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => setStep("mapping")}
+                        data-testid="button-continue-to-mapping"
+                      >
+                        Continue to mapping
+                        <ChevronRight className="ml-1 h-4 w-4" />
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          setFileInfo(null);
+                          setDetectedColumns([]);
+                          setSampleValues({});
+                          setSystemFields([]);
+                          setSuggestedMapping({});
+                          setFieldMapping({});
+                          setCsv("");
+                          setExcelB64(null);
+                          if (fileRef.current) fileRef.current.value = "";
+                        }}
+                        data-testid="button-change-file"
+                      >
+                        Change file
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Fresh upload — no file loaded yet */
+                  <>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => fileRef.current?.click()}
+                        disabled={parseHeadersMutation.isPending}
+                        data-testid="button-pick-file"
+                      >
+                        {parseHeadersMutation.isPending
+                          ? <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+                          : <Upload className="mr-1.5 h-4 w-4" />
+                        }
+                        {parseHeadersMutation.isPending ? "Reading file…" : "Choose file"}
+                      </Button>
+                      <input
+                        ref={fileRef}
+                        type="file"
+                        accept=".csv,.xlsx,.xls,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+                        className="hidden"
+                        onChange={(e) => e.target.files?.[0] && handleFile(e.target.files[0])}
+                        data-testid="input-file-upload"
+                      />
+                      <a href="/api/studio/import/template" download data-testid="link-template-csv">
+                        <Button size="sm" variant="ghost">
+                          <Download className="mr-1.5 h-4 w-4" />
+                          CSV template
+                        </Button>
+                      </a>
+                      <a href="/api/studio/import/template?format=xlsx" download data-testid="link-template-xlsx">
+                        <Button size="sm" variant="ghost">
+                          <Download className="mr-1.5 h-4 w-4" />
+                          Excel template
+                        </Button>
+                      </a>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground">
+                      Accepts .csv or .xlsx. After selecting a file, you'll map columns to fields before importing.
+                    </p>
+
+                    {/* Paste CSV toggle — collapsed by default */}
+                    <button
+                      className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                      onClick={() => setShowPasteArea((v) => !v)}
+                      data-testid="button-toggle-paste"
+                    >
+                      {showPasteArea ? "Hide paste area" : "…or paste CSV instead"}
+                    </button>
+                    {showPasteArea && (
+                      <div className="space-y-2">
+                        <Textarea
+                          rows={5}
+                          value={csv}
+                          onChange={(e) => setCsv(e.target.value)}
+                          placeholder="Paste CSV content here…"
+                          className="font-mono text-xs"
+                          data-testid="input-import-csv"
+                        />
+                        <Button
+                          size="sm"
+                          disabled={!csv.trim() || parseHeadersMutation.isPending}
+                          onClick={() => {
+                            setExcelB64(null);
+                            parseHeadersMutation.mutate({ csv });
+                          }}
+                          data-testid="button-parse-pasted-csv"
+                        >
+                          {parseHeadersMutation.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                          Continue
+                          <ChevronRight className="ml-1.5 h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Step 2: Field Mapping ── */}
+            {step === "mapping" && (
+              <div className="space-y-3">
+                {/* File info pill */}
+                {fileInfo && (
+                  <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="panel-file-loaded">
+                    <span className="flex-1 truncate text-muted-foreground text-xs">
+                      {fileName}
+                      {fileInfo.sourceFormat === "excel" ? ` · Excel${fileInfo.sheetUsed ? ` · ${fileInfo.sheetUsed}` : ""}` : " · CSV"}
+                      {" "}· {fileInfo.dataRowCount} row{fileInfo.dataRowCount !== 1 ? "s" : ""}
+                    </span>
+                    <button
+                      className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:underline"
+                      onClick={() => { setStep("upload"); setPreview(null); }}
+                      data-testid="button-change-file"
+                    >
+                      Change file
+                    </button>
                   </div>
                 )}
 
-                {/* Per-row quality scores */}
-                {!preview.skipQualityAudit && (() => {
-                  const validRows = (preview.rows ?? []).filter((r: any) => !r.errors.length);
-                  const displayRows = showFlaggedOnly
-                    ? validRows.filter((r: any) => r.qualityScore === "needs_work" || r.qualityScore === "medium")
-                    : validRows;
-                  if (!displayRows.length) return null;
-                  return (
-                    <div className="space-y-1.5">
-                      {displayRows.map((r: any) => {
-                        const qs: QualityScore = r.qualityScore ?? "high";
-                        const cfg = QUALITY_BADGE[qs];
-                        const isExpanded = expandedRows.has(r.rowNumber);
-                        const hasFlags = r.qualityFlags?.length > 0;
+                {/* Required-field status chips */}
+                <div className="flex flex-wrap items-center gap-2" data-testid="panel-required-fields-status">
+                  {requiredFields.map((f) => {
+                    const isMapped = mappedSystemKeys.includes(f.key);
+                    return (
+                      <span
+                        key={f.key}
+                        className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border ${isMapped ? "bg-emerald-50 text-emerald-700 border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-800" : "bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800"}`}
+                        data-testid={`chip-required-${f.key}`}
+                      >
+                        {isMapped
+                          ? <CheckCircle2 className="h-3 w-3" />
+                          : <AlertTriangle className="h-3 w-3" />
+                        }
+                        {f.label}
+                      </span>
+                    );
+                  })}
+                  <span className="text-[11px] text-muted-foreground">— required fields</span>
+                </div>
+
+                {/* Mapping table */}
+                <div className="rounded-md border overflow-hidden" data-testid="table-field-mapping">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead className="text-xs w-[45%]">Your column</TableHead>
+                        <TableHead className="text-xs">Maps to</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {detectedColumns.map((col) => {
+                        const sample = sampleValues[col] ?? "";
+                        const current = fieldMapping[col] ?? "";
+                        const isRequiredField = current !== "" && requiredFields.some((f) => f.key === current);
+                        const isUnmapped = current === "";
+                        // Highlight rows that map to required fields (positive) or rows that are skipped
+                        // while required fields still need a home (amber nudge).
+                        const rowAmber = isUnmapped && unmappedRequired.length > 0;
                         return (
-                          <div key={r.rowNumber} className="rounded-md border bg-muted/20 px-2 py-1.5" data-testid={`row-quality-${r.rowNumber}`}>
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs text-muted-foreground w-10 shrink-0">Row {r.rowNumber}</span>
-                              <span className="flex-1 text-xs font-medium truncate">{r.ideas?.[0]?.topic || "—"}</span>
-                              <span className={`flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold ${cfg.className}`} data-testid={`badge-quality-${r.rowNumber}`}>
-                                {cfg.icon} {cfg.label}
-                              </span>
-                              {hasFlags && (
-                                <button
-                                  className="text-muted-foreground hover:text-foreground"
-                                  onClick={() => setExpandedRows((prev) => {
-                                    const next = new Set(prev);
-                                    isExpanded ? next.delete(r.rowNumber) : next.add(r.rowNumber);
-                                    return next;
-                                  })}
-                                  data-testid={`button-expand-row-${r.rowNumber}`}
-                                >
-                                  <ChevronDown className={`h-3.5 w-3.5 transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                                </button>
+                          <TableRow
+                            key={col}
+                            className={rowAmber ? "bg-amber-50/40 dark:bg-amber-950/10" : ""}
+                            data-testid={`row-mapping-${col}`}
+                          >
+                            <TableCell className="py-2 align-top">
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-xs font-medium">{col}</span>
+                                {isRequiredField && (
+                                  <span className="rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 px-1.5 py-0 text-[9px] font-semibold leading-4">
+                                    required
+                                  </span>
+                                )}
+                              </div>
+                              {sample && (
+                                <div className="mt-0.5 max-w-[180px] truncate text-[10px] text-muted-foreground">{sample}</div>
                               )}
-                            </div>
-                            {isExpanded && hasFlags && (
-                              <ul className="mt-1.5 ml-12 space-y-0.5 list-disc list-inside" data-testid={`list-flags-${r.rowNumber}`}>
-                                {r.qualityFlags.map((f: string, i: number) => (
-                                  <li key={i} className="text-[10px] text-muted-foreground">{f}</li>
-                                ))}
-                              </ul>
-                            )}
-                          </div>
+                            </TableCell>
+                            <TableCell className="py-2">
+                              <Select
+                                value={current || "__skip__"}
+                                onValueChange={(v) =>
+                                  setFieldMapping((prev) => ({ ...prev, [col]: v === "__skip__" ? "" : v }))
+                                }
+                              >
+                                <SelectTrigger
+                                  className={`h-7 text-xs ${isUnmapped && unmappedRequired.length > 0 ? "border-amber-300 dark:border-amber-700 text-muted-foreground" : current === "" ? "text-muted-foreground" : ""}`}
+                                  data-testid={`select-mapping-${col}`}
+                                >
+                                  <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="__skip__">
+                                    <span className="text-muted-foreground">— Skip this column —</span>
+                                  </SelectItem>
+                                  {systemFields.map((f) => (
+                                    <SelectItem key={f.key} value={f.key}>
+                                      {f.label}{f.required ? " *" : ""}
+                                    </SelectItem>
+                                  ))}
+                                </SelectContent>
+                              </Select>
+                            </TableCell>
+                          </TableRow>
                         );
                       })}
-                    </div>
-                  );
-                })()}
+                    </TableBody>
+                  </Table>
+                </div>
 
-                {/* Field errors */}
-                {preview.rows?.filter((r: any) => r.errors.length).slice(0, 8).map((r: any) => (
-                  <p key={r.rowNumber} className="text-xs text-red-600" data-testid={`text-import-error-${r.rowNumber}`}>
-                    Row {r.rowNumber}: {r.errors.join("; ")}
-                  </p>
-                ))}
+                {/* Required-field warning */}
+                {unmappedRequired.length > 0 && (
+                  <div className="flex items-center gap-2 rounded-md bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-xs text-amber-700 dark:text-amber-400" data-testid="panel-required-unmapped">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    Required field{unmappedRequired.length > 1 ? "s" : ""} not mapped:{" "}
+                    {unmappedRequired.map((f) => f.label).join(", ")}
+                  </div>
+                )}
+
+                <div className="flex items-center justify-between gap-2">
+                  <button
+                    className="text-xs text-muted-foreground underline-offset-2 hover:underline"
+                    onClick={() => setFieldMapping({ ...suggestedMapping })}
+                    data-testid="button-reset-mapping"
+                  >
+                    Reset to suggestions
+                  </button>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setStep("upload")}
+                      data-testid="button-back-to-upload"
+                    >
+                      <ChevronLeft className="mr-1 h-4 w-4" />
+                      Back
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={!canContinueFromMapping}
+                      onClick={goToReview}
+                      data-testid="button-continue-to-review"
+                    >
+                      Continue
+                      <ChevronRight className="ml-1 h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ── Step 3: Review & Import ── */}
+            {step === "review" && (
+              <div className="space-y-3">
+                {/* File info pill */}
+                {fileInfo && (
+                  <div className="flex items-center gap-2 rounded-md border bg-muted/40 px-3 py-2 text-sm" data-testid="panel-file-info-review">
+                    <span className="flex-1 truncate text-muted-foreground text-xs">
+                      {fileName} · {fileInfo.dataRowCount} row{fileInfo.dataRowCount !== 1 ? "s" : ""}
+                    </span>
+                    <button
+                      className="shrink-0 text-xs text-muted-foreground underline-offset-2 hover:underline"
+                      onClick={() => { setStep("mapping"); setPreview(null); }}
+                      data-testid="button-edit-mapping"
+                    >
+                      Edit mapping
+                    </button>
+                  </div>
+                )}
+
+                {/* Loading */}
+                {previewMutation.isPending && (
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground" data-testid="text-preview-loading">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Validating rows…
+                  </div>
+                )}
+
+                {/* Quality audit panel */}
+                {renderQualityPanel()}
+
+                {/* Controls */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setStep("mapping"); setPreview(null); }}
+                    data-testid="button-back-to-mapping"
+                  >
+                    <ChevronLeft className="mr-1 h-4 w-4" />
+                    Back
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={!preview || preview.validCount === 0 || commitMutation.isPending}
+                    onClick={() => commitMutation.mutate()}
+                    data-testid="button-commit-import"
+                  >
+                    {commitMutation.isPending && <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />}
+                    Import {preview ? `${preview.ideaCount} idea(s)` : ""}
+                  </Button>
+                  <label
+                    className="ml-auto flex cursor-pointer items-center gap-1.5 text-xs text-muted-foreground select-none"
+                    data-testid="label-skip-quality-audit"
+                  >
+                    <Checkbox
+                      checked={skipQualityAudit}
+                      onCheckedChange={(v) => {
+                        setSkipQualityAudit(!!v);
+                        setPreview(null);
+                        setTimeout(() => previewMutation.mutate(), 0);
+                      }}
+                      data-testid="checkbox-skip-quality-audit"
+                    />
+                    Skip quality audit
+                  </label>
+                </div>
               </div>
             )}
           </div>
         ) : (
+          /* ── Past imports tab (unchanged) ── */
           <div className="space-y-2">
             {!batches?.length && <p className="text-sm text-muted-foreground">No imports yet.</p>}
             {batches?.map((b) => (
