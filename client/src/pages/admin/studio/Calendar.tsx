@@ -33,6 +33,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Loader2, ChevronLeft, ChevronRight, Download, Sparkles, Plus,
   Calendar as CalIcon, Star, ImageIcon, MessageSquare, Eye, Check, X, RefreshCw,
+  ExternalLink, Rocket,
 } from "lucide-react";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { useStudioProject } from "./useStudioProject";
@@ -463,9 +464,16 @@ function IdeaDetailPane({
   const canEdit = can("studio.edit_article");
   const canReview = can("studio.review_article");
 
+  const [, navigate] = useLocation();
+
   const { data: idea, isLoading } = useQuery<StudioContentIdea & { comments: StudioIdeaComment[] }>({
     queryKey: ["/api/studio/content-ideas", ideaId],
     enabled: !!ideaId,
+  });
+
+  const { data: linkedArticle } = useQuery<{ id: string; status: string; title: string }>({
+    queryKey: ["/api/admin/studio/articles", idea?.linkedArticleId],
+    enabled: !!idea?.linkedArticleId,
   });
 
   const { data: watchers = [] } = useQuery<{ id: string; ideaId: string; userId: string; createdAt: string }[]>({
@@ -531,6 +539,19 @@ function IdeaDetailPane({
     onSuccess: invalidate,
   });
 
+  const promoteMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/studio/content-ideas/${ideaId}/promote`, {});
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Failed to promote"); }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      invalidate();
+      toast({ title: data.article?.contentType === "article" ? "Promoted to article draft" : "Draft created — generate Social Kit from the editor" });
+    },
+    onError: (e: Error) => toast({ title: "Couldn't promote", description: e.message, variant: "destructive" }),
+  });
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -546,6 +567,8 @@ function IdeaDetailPane({
   const editActions = nextStates.filter((s) => !["approved", "rejected", "changes_requested"].includes(s));
   const dayOfWeek = idea.scheduledDate ? WEEKDAYS_LONG[new Date(`${idea.scheduledDate}T00:00:00`).getDay()] : "—";
   const watcherUserIds = new Set(watchers.map((w) => w.userId));
+  const promotable = idea.status === "approved" && !idea.linkedArticleId && canEdit;
+  const showActionStrip = (canReview || canEdit) && (reviewActions.length > 0 || editActions.length > 0 || promotable || !!idea.linkedArticleId);
 
   const autoSave = (field: string) => (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const val = e.target.value.trim() || null;
@@ -556,9 +579,11 @@ function IdeaDetailPane({
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Approval action strip */}
-      {(canReview || canEdit) && (reviewActions.length > 0 || editActions.length > 0) && (
+      {showActionStrip && (
         <div className="flex flex-wrap items-center gap-2 border-b px-4 py-3 bg-muted/30">
-          <span className="text-xs font-medium text-muted-foreground mr-1">Move to:</span>
+          {(reviewActions.length > 0 || editActions.length > 0) && (
+            <span className="text-xs font-medium text-muted-foreground mr-1">Move to:</span>
+          )}
           {canReview && reviewActions.map((s) => (
             <Button
               key={s}
@@ -586,6 +611,41 @@ function IdeaDetailPane({
               {STATUS_LABELS[s] ?? s}
             </Button>
           ))}
+          {promotable && (
+            <Button
+              size="sm"
+              className="h-7 text-xs ml-auto"
+              onClick={() => promoteMutation.mutate()}
+              disabled={promoteMutation.isPending}
+              data-testid="button-promote-idea"
+            >
+              {promoteMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Rocket className="mr-1 h-3 w-3" />}
+              Promote to article
+            </Button>
+          )}
+          {idea.linkedArticleId && (
+            <div className="ml-auto flex items-center gap-2">
+              {linkedArticle && (
+                <Badge
+                  variant="secondary"
+                  className={`text-[10px] ${STATUS_BADGE_CLASS[linkedArticle.status] ?? ""}`}
+                  data-testid="badge-linked-article-status"
+                >
+                  {STATUS_LABELS[linkedArticle.status] ?? linkedArticle.status}
+                </Badge>
+              )}
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => navigate(`/admin/studio/articles/${idea.linkedArticleId}/edit`)}
+                data-testid="button-open-linked-article"
+              >
+                <ExternalLink className="mr-1 h-3 w-3" />
+                Open article
+              </Button>
+            </div>
+          )}
         </div>
       )}
 

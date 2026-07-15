@@ -74,6 +74,7 @@ import {
   BookOpen,
   HelpCircle,
   DollarSign,
+  ExternalLink,
 } from "lucide-react";
 import {
   Dialog,
@@ -94,7 +95,7 @@ import {
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import { ForcePublishButton } from "./ForcePublishButton";
 import { ArticleRegenPanel } from "./ArticleRegenPanel";
-import type { StudioArticle, StudioArticleVersion, StudioAuthorProfile } from "@shared/schema";
+import type { StudioArticle, StudioArticleVersion, StudioAuthorProfile, StudioContentIdea } from "@shared/schema";
 import { cardVariantsForLayout, cardBudget, type CardBudget } from "@shared/socialCards";
 
 // CMO Copilot v2.1 — simplified generation format options.
@@ -250,6 +251,7 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [form, setForm] = useState<EditorState | null>(null);
   const [dirty, setDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const [ideaBannerOpen, setIdeaBannerOpen] = useState(true);
 
   // AI generation modal state.
   const [genOpen, setGenOpen] = useState(false);
@@ -315,6 +317,12 @@ function ArticleEditorInner({ id }: { id: string }) {
   const { data: article, isLoading } = useQuery<StudioArticle>({
     queryKey: ["/api/admin/studio/articles", id],
     enabled: !!id,
+  });
+
+  const linkedIdeaId = (article as any)?.linkedIdeaId as string | undefined;
+  const { data: originIdea } = useQuery<StudioContentIdea>({
+    queryKey: ["/api/studio/content-ideas", linkedIdeaId],
+    enabled: !!linkedIdeaId,
   });
 
   // If the article already has body content, lock the Generate Draft button so
@@ -1119,6 +1127,60 @@ function ArticleEditorInner({ id }: { id: string }) {
           }}
           onDismiss={() => setAiError(null)}
         />
+      )}
+
+      {originIdea && (
+        <div className="rounded-md border border-indigo-200 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-950/30" data-testid="banner-originated-from-idea">
+          <button
+            className="flex w-full items-center gap-2 px-4 py-2.5 text-left text-sm font-medium text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100/60 dark:hover:bg-indigo-900/30 transition-colors"
+            onClick={() => setIdeaBannerOpen((v) => !v)}
+            data-testid="button-toggle-idea-banner"
+          >
+            <BookOpen className="h-4 w-4 shrink-0" />
+            <span className="flex-1">Originated from idea: {originIdea.topic}</span>
+            {ideaBannerOpen ? <ChevronUp className="h-4 w-4 shrink-0" /> : <ChevronDown className="h-4 w-4 shrink-0" />}
+          </button>
+          {ideaBannerOpen && (
+            <div className="border-t border-indigo-200 dark:border-indigo-800 px-4 py-3 text-xs space-y-2">
+              {originIdea.pillar && (
+                <div>
+                  <span className="font-medium text-indigo-700 dark:text-indigo-400">Pillar: </span>
+                  <span className="text-muted-foreground capitalize">{originIdea.pillar}</span>
+                </div>
+              )}
+              {originIdea.brief && (
+                <div>
+                  <span className="font-medium text-indigo-700 dark:text-indigo-400">Brief: </span>
+                  <span className="text-muted-foreground">{originIdea.brief}</span>
+                </div>
+              )}
+              {(originIdea.channels as string[] | null)?.length ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="font-medium text-indigo-700 dark:text-indigo-400">Channels:</span>
+                  {(originIdea.channels as string[]).map((c) => (
+                    <Badge key={c} variant="secondary" className="text-[10px]">{c}</Badge>
+                  ))}
+                </div>
+              ) : null}
+              {originIdea.scheduledDate && (
+                <div>
+                  <span className="font-medium text-indigo-700 dark:text-indigo-400">Planned for: </span>
+                  <span className="text-muted-foreground">{new Date(`${originIdea.scheduledDate}T00:00:00`).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
+                </div>
+              )}
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 text-xs text-indigo-700 dark:text-indigo-400 hover:text-indigo-900 px-2"
+                onClick={() => setLocation(studioPath(`?idea=${originIdea.id}`))}
+                data-testid="button-view-origin-idea"
+              >
+                <ExternalLink className="mr-1 h-3 w-3" />
+                View in Pipeline
+              </Button>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_320px]">

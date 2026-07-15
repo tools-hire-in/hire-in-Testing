@@ -798,6 +798,11 @@ export function IdeaPeek({
     enabled: !!ideaId,
   });
 
+  const { data: linkedArticle } = useQuery<{ id: string; status: string; title: string }>({
+    queryKey: ["/api/admin/studio/articles", idea?.linkedArticleId],
+    enabled: !!idea?.linkedArticleId,
+  });
+
   // Performance entries
   type PerfEntry = {
     id: string; platform: string; measuredAt: string;
@@ -1275,15 +1280,26 @@ export function IdeaPeek({
                 </a>
               )}
               {idea.linkedArticleId && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => navigate(studioPath(`/articles/${idea.linkedArticleId}/edit`))}
-                  data-testid="button-open-linked-article"
-                >
-                  <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
-                  Open linked article
-                </Button>
+                <div className="flex items-center gap-2 flex-wrap" data-testid="panel-linked-article">
+                  {linkedArticle && (
+                    <Badge
+                      variant="secondary"
+                      className={`text-[10px] ${STATUS_CLASS[linkedArticle.status] ?? ""}`}
+                      data-testid="badge-linked-article-status"
+                    >
+                      {STATUS_LABEL[linkedArticle.status] ?? linkedArticle.status}
+                    </Badge>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => navigate(studioPath(`/articles/${idea.linkedArticleId}/edit`))}
+                    data-testid="button-open-linked-article"
+                  >
+                    <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+                    Open article
+                  </Button>
+                </div>
               )}
 
               {isSocialIdea && onOpenGallery && (

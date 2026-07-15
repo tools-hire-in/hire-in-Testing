@@ -41,6 +41,7 @@ import {
   insertStudioIdeaCommentSchema,
   insertStudioAuthorProfileSchema,
   studioArticles,
+  studioAuthorProfiles,
   performanceGoals,
   type PerformanceGoal,
   type StudioArticle,
@@ -19000,7 +19001,7 @@ export async function registerRoutes(
   );
 
   /** Structured AI context for a promoted idea — never article body. */
-  const buildBrief = async (idea: any): Promise<string> => {
+  const buildBrief = async (idea: any, isSocial: boolean): Promise<string> => {
     const lines: string[] = [
       `Topic: ${idea.topic}`,
     ];
@@ -19009,6 +19010,11 @@ export async function registerRoutes(
       lines.push(`Channels: ${idea.channels.join(", ")}`);
     }
     if (idea.brief?.trim()) lines.push(`Brief: ${idea.brief.trim()}`);
+    // For non-social ideas: include caption/copy as additional writer context
+    // (social articles get captionCopy as bodyMarkdown; articles get it in the brief).
+    if (!isSocial && idea.captionCopy?.trim()) {
+      lines.push(`Copy notes: ${idea.captionCopy.trim()}`);
+    }
     if (idea.referenceLink?.trim()) lines.push(`Reference: ${idea.referenceLink.trim()}`);
     if (idea.requirement?.trim()) lines.push(`Requirement: ${idea.requirement.trim()}`);
     try {
@@ -19060,11 +19066,46 @@ export async function registerRoutes(
             articleId: idea.linkedArticleId,
           });
         }
-        const generationBrief = await buildBrief(idea);
         // Editorial ideas become article drafts; Social/Story ideas route into
         // the existing Social Kit flow by creating a draft record of the same
         // content type (the editor exposes Generate Social Kit for those).
         const isSocial = typeCfg.family === "social";
+        const generationBrief = await buildBrief(idea, isSocial);
+
+        // Best-effort: find the author profile for the assigned user in this project.
+        let resolvedAuthorProfileId: string | undefined;
+        if (idea.assignedToUserId) {
+          try {
+            const [profile] = await db
+              .select({ id: studioAuthorProfiles.id })
+              .from(studioAuthorProfiles)
+              .where(
+                and(
+                  eq(studioAuthorProfiles.userId, idea.assignedToUserId),
+                  eq(studioAuthorProfiles.projectId, idea.projectId),
+                ),
+              )
+              .limit(1);
+            resolvedAuthorProfileId = profile?.id;
+          } catch {
+            // non-fatal — author can be set manually in the editor
+          }
+        }
+
+        // Convert YYYY-MM-DD scheduled date to midnight UTC timestamp.
+        const scheduledAt = idea.scheduledDate
+          ? new Date(`${idea.scheduledDate}T00:00:00.000Z`)
+          : undefined;
+
+        // Snapshot key idea-planner context into a durable JSONB field so the
+        // ArticleEditor can surface it without re-querying the idea record.
+        const ideaContext = {
+          ...(idea.pillar ? { pillar: idea.pillar } : {}),
+          ...(idea.bdIntelMetadata ? { bdIntelMetadata: idea.bdIntelMetadata } : {}),
+          ...(idea.captionCopy ? { captionCopy: idea.captionCopy } : {}),
+          ...(Array.isArray(idea.channels) && idea.channels.length ? { channels: idea.channels } : {}),
+        };
+
         const article = await storage.createStudioArticle({
           projectId: idea.projectId,
           title: idea.topic,
@@ -19074,6 +19115,10 @@ export async function registerRoutes(
           ...(isSocial && idea.captionCopy ? { bodyMarkdown: idea.captionCopy } : {}),
           readTimeMinutes: 1,
           createdBy: req.session.userId,
+          linkedIdeaId: idea.id,
+          ideaContext: Object.keys(ideaContext).length ? ideaContext : null,
+          ...(scheduledAt ? { scheduledAt } : {}),
+          ...(resolvedAuthorProfileId ? { authorProfileId: resolvedAuthorProfileId } : {}),
         } as any);
         await storage.updateStudioContentIdea(idea.id, {
           linkedArticleId: article.id,

@@ -2842,6 +2842,13 @@ export const studioArticles = pgTable("studio_articles", {
   safetyReviewResult: varchar("safety_review_result"), // PASS | REVISE | BLOCK
   safetyFailuresJsonb: jsonb("safety_failures_jsonb"),  // [{code, sentence, reason, missingSource, recommendedCorrection, autoCorrectSafe}]
   generationV1Markdown: text("generation_v1_markdown"), // initial accepted version for editing-effort tracking
+  // Back-link to the content idea that was promoted to create this article.
+  // NULL for articles created directly (not via promotion).
+  linkedIdeaId: varchar("linked_idea_id"),
+  // Structured snapshot of key idea context preserved at promotion time:
+  // { pillar, bdIntelMetadata, captionCopy, channels }.
+  // Lets the ArticleEditor surface full planner context without re-querying the idea.
+  ideaContext: jsonb("idea_context"),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
