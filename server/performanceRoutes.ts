@@ -338,7 +338,8 @@ export async function ensurePlanFromDocument(opts: {
   `);
   const plan = result.rows[0] as EmployeePlan;
 
-  const checkInSchedule = generatePlanCheckIns(plan.id, employeeId, managerId, planType, startDate, endDate);
+  const cadenceOpts = await fetchPlanCadenceSettings();
+  const checkInSchedule = generatePlanCheckIns(plan.id, employeeId, managerId, planType, startDate, endDate, cadenceOpts);
   for (const ci of checkInSchedule) {
     await db.execute(sql`
       INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status)
@@ -386,6 +387,26 @@ export async function ensureGrowthPlanFromAddendum(opts: {
   return ensurePlanFromDocument({ ...opts, planType: "growth" });
 }
 
+// ── Cadence settings helper ───────────────────────────────────────────────────
+// Single shared fetch so every generatePlanCheckIns call site uses DB-backed
+// intervals. Falls back to the historical hardcoded defaults (7 days each) on
+// any DB error so plan creation never blocks on a settings read failure.
+export async function fetchPlanCadenceSettings(): Promise<{ pipCheckInDays: number; growthCheckInDays: number }> {
+  let pipCheckInDays = 7;
+  let growthCheckInDays = 7;
+  try {
+    const [pipSetting, growthSetting] = await Promise.all([
+      storage.getSystemSetting("governance_pip_checkin_days"),
+      storage.getSystemSetting("governance_growth_checkin_days"),
+    ]);
+    const pipVal = pipSetting?.value !== undefined ? parseInt(String(pipSetting.value), 10) : NaN;
+    const growthVal = growthSetting?.value !== undefined ? parseInt(String(growthSetting.value), 10) : NaN;
+    if (!Number.isNaN(pipVal) && pipVal > 0) pipCheckInDays = pipVal;
+    if (!Number.isNaN(growthVal) && growthVal > 0) growthCheckInDays = growthVal;
+  } catch { /* use defaults */ }
+  return { pipCheckInDays, growthCheckInDays };
+}
+
 export function generatePlanCheckIns(
   planId: string,
   employeeId: string,
@@ -393,11 +414,15 @@ export function generatePlanCheckIns(
   planType: string,
   startDate: string,
   endDate: string,
+  opts: { pipCheckInDays?: number; growthCheckInDays?: number } = {},
 ): { employeeId: string; managerId: string | null; planId: string; checkInType: string; scheduledDate: string; status: string }[] {
   const schedule: { employeeId: string; managerId: string | null; planId: string; checkInType: string; scheduledDate: string; status: string }[] = [];
   const start = new Date(startDate);
   const end = new Date(endDate);
   const msPerDay = 86400000;
+
+  const pipInterval = opts.pipCheckInDays && opts.pipCheckInDays > 0 ? opts.pipCheckInDays : 7;
+  const growthInterval = opts.growthCheckInDays && opts.growthCheckInDays > 0 ? opts.growthCheckInDays : 7;
 
   const addDays = (from: Date, days: number) => new Date(from.getTime() + days * msPerDay);
   const fmt = (d: Date) => d.toISOString().split("T")[0];
@@ -411,24 +436,25 @@ export function generatePlanCheckIns(
     // 1/7/15/45/75) are lightweight PULSE check-ins typed "weekly".
     PROBATION_CADENCE_DAYS.forEach(day => push(addDays(start, day), cadenceCheckInType(day)));
   } else if (planType === "pip") {
-    // Weekly PIP review every 7 days for the full duration
-    let cur = addDays(start, 7);
+    // PIP review every `pipInterval` days for the full duration (DB-configurable, default 7)
+    let cur = addDays(start, pipInterval);
     while (cur <= end) {
       schedule.push({ employeeId, managerId, planId, checkInType: "pip_review", scheduledDate: fmt(cur), status: "scheduled" });
-      cur = addDays(cur, 7);
+      cur = addDays(cur, pipInterval);
     }
   } else if (planType === "growth") {
     // Milestone check-ins at days 30, 60, 90
     const milestoneDays = new Set([30, 60, 90]);
     milestoneDays.forEach(day => push(addDays(start, day), "milestone"));
-    // Weekly updates every 7 days (skip days that coincide with milestone days)
-    let cur = addDays(start, 7);
+    // Periodic updates every `growthInterval` days (DB-configurable, default 7)
+    // Skip days that coincide with milestone days
+    let cur = addDays(start, growthInterval);
     while (cur <= end) {
       const dayOffset = Math.round((cur.getTime() - start.getTime()) / msPerDay);
       if (!milestoneDays.has(dayOffset)) {
         push(cur, "weekly_update");
       }
-      cur = addDays(cur, 7);
+      cur = addDays(cur, growthInterval);
     }
   }
   return schedule;
@@ -1134,9 +1160,11 @@ export function registerPerformanceRoutes(app: Express) {
       if (linkedPlan) {
         const existingCi = await db.execute(sql`SELECT id FROM check_ins WHERE plan_id = ${planId} LIMIT 1`);
         if (existingCi.rows.length === 0) {
+          const ciCadenceOpts = await fetchPlanCadenceSettings();
           const ciSchedule = generatePlanCheckIns(
             linkedPlan.id, linkedPlan.employee_id, linkedPlan.manager_id,
-            linkedPlan.plan_type, linkedPlan.start_date, linkedPlan.end_date
+            linkedPlan.plan_type, linkedPlan.start_date, linkedPlan.end_date,
+            ciCadenceOpts,
           );
           for (const ci of ciSchedule) {
             await db.execute(sql`
@@ -2475,8 +2503,10 @@ export function registerPerformanceRoutes(app: Express) {
       const plan = result.rows[0] as EmployeePlan;
 
       // Generate check-in schedule
+      const directCadenceOpts = await fetchPlanCadenceSettings();
       const checkInSchedule = generatePlanCheckIns(
-        plan.id, employee_id, manager_id || null, plan_type, start_date, end_date
+        plan.id, employee_id, manager_id || null, plan_type, start_date, end_date,
+        directCadenceOpts,
       );
       for (const ci of checkInSchedule) {
         await db.execute(sql`

@@ -3524,6 +3524,29 @@ async function runStartupTasks() {
     console.error("Feature flag defaults seed error (non-fatal):", err);
   }
 
+  // Seed governance cadence settings as individual system_settings rows.
+  // ON CONFLICT DO NOTHING ensures existing admin overrides are never clobbered.
+  // Defaults match the old hardcoded constants exactly so behaviour is unchanged
+  // until an admin changes a value via the Governance Settings UI.
+  try {
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES
+        ('governance_sop_grace_days',                    '15'::jsonb),
+        ('governance_sop_cadence_max_per_week',          '2'::jsonb),
+        ('governance_pip_checkin_days',                  '7'::jsonb),
+        ('governance_growth_checkin_days',               '7'::jsonb),
+        ('governance_escalation_probation_first_hours',  '24'::jsonb),
+        ('governance_escalation_probation_second_hours', '72'::jsonb),
+        ('governance_goal_coaching_threshold_days',      '5'::jsonb),
+        ('governance_nudge_sweep_enabled',               '"true"'::jsonb)
+      ON CONFLICT (key) DO NOTHING
+    `);
+    log("Governance cadence settings seeded");
+  } catch (err) {
+    console.error("Governance cadence settings seed error (non-fatal):", err);
+  }
+
   // One-time patch: rename "90-day performance plan" → "90-day growth plan" in the
   // stored addendum clause sentence. Only updates the row if it still has the old wording.
   try {

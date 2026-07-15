@@ -16,6 +16,22 @@ import { storage } from "./storage";
 import { rolloutWaves, waveSops, sopDocuments, sopRoleAssignments } from "@shared/schema";
 import { and, eq, gte, inArray, sql } from "drizzle-orm";
 
+// ── Governance cadence helpers ────────────────────────────────────────────────
+// Read a numeric governance setting from system_settings at call time, falling
+// back to the supplied constant when the key is missing or unreadable. This
+// keeps the hardcoded constants as a safe fallback so behaviour is identical if
+// no one has ever changed the setting.
+async function getGovernanceIntSetting(key: string, fallback: number): Promise<number> {
+  try {
+    const row = await storage.getSystemSetting(key);
+    if (row?.value !== undefined && row.value !== null) {
+      const n = parseInt(String(row.value), 10);
+      if (!Number.isNaN(n) && n > 0) return n;
+    }
+  } catch { /* ignore — use fallback */ }
+  return fallback;
+}
+
 // Lifecycle states at which a SOP is "live enough" to create employee obligations.
 const IMPACTING_STATUSES = ["published", "training_assigned", "acknowledged", "active"];
 
@@ -208,7 +224,8 @@ export async function getWavesWithSops(): Promise<{ waves: WaveView[]; cadence: 
     };
   });
 
-  return { waves: views, cadence: { windowCount: await cadenceWindowCount(), max: CADENCE_MAX_PER_WEEK } };
+  const cadenceMax = await getGovernanceIntSetting("governance_sop_cadence_max_per_week", CADENCE_MAX_PER_WEEK);
+  return { waves: views, cadence: { windowCount: await cadenceWindowCount(), max: cadenceMax } };
 }
 
 // Start of the current calendar week (Monday 00:00 local time).
@@ -289,8 +306,9 @@ export async function activateSop(
   if (member.operationalAt) return { ok: true }; // already operational — idempotent
 
   const windowCount = await cadenceWindowCount();
+  const cadenceMax = await getGovernanceIntSetting("governance_sop_cadence_max_per_week", CADENCE_MAX_PER_WEEK);
   let overridden = false;
-  if (waveNumber >= 1 && windowCount >= CADENCE_MAX_PER_WEEK) {
+  if (waveNumber >= 1 && windowCount >= cadenceMax) {
     if (!force) return { ok: false, cadenceBlocked: true, windowCount };
     overridden = true;
   }
@@ -380,6 +398,7 @@ async function buildAssignmentRows(userId: string, role?: string): Promise<MySop
     return list.slice().sort((a, b) => a.waveNumber - b.waveNumber)[0]; // launch wave
   };
 
+  const sopGraceDays = await getGovernanceIntSetting("governance_sop_grace_days", SOP_ACK_GRACE_DAYS);
   const now = Date.now();
   const rows: MySopAssignment[] = [];
   for (const p of progress) {
@@ -394,7 +413,7 @@ async function buildAssignmentRows(userId: string, role?: string): Promise<MySop
     const acknowledgedCurrentVersion = !!p.acknowledgedAt && p.sopVersion === doc.version;
 
     const dueAt = operational && member?.operationalAt
-      ? new Date(new Date(member.operationalAt).getTime() + SOP_ACK_GRACE_DAYS * 24 * 60 * 60 * 1000)
+      ? new Date(new Date(member.operationalAt).getTime() + sopGraceDays * 24 * 60 * 60 * 1000)
       : null;
     const overdue = !acknowledgedCurrentVersion && !!dueAt && dueAt.getTime() < now;
 

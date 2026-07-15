@@ -125,7 +125,7 @@ import {
 import { generateHrLetterPdf } from "./hrLetterPdf";
 import { generateSopMbrPdf } from "./sopMbrPdf";
 import { registerOnboardingRoutes } from "./onboardingRoutes";
-import { registerPerformanceRoutes, ensureGrowthPlanFromAddendum, ensurePlanFromDocument, resolveAttachedPlanGoals, seedPlanGoals, generatePlanCheckIns, normalizeGoalCategory, type AttachablePlanType } from "./performanceRoutes";
+import { registerPerformanceRoutes, ensureGrowthPlanFromAddendum, ensurePlanFromDocument, resolveAttachedPlanGoals, seedPlanGoals, generatePlanCheckIns, fetchPlanCadenceSettings, normalizeGoalCategory, type AttachablePlanType } from "./performanceRoutes";
 import { registerContractRoutes } from "./contractRoutes";
 import { registerPraiseRoutes, seedPraiseBadgeTypes } from "./praiseRoutes";
 import { registerPolicySigningRoutes } from "./policySigningRoutes";
@@ -13116,8 +13116,10 @@ export async function registerRoutes(
 
           // Generate the SOP check-in schedule for this plan type from the actual
           // joining date (probation = Day 1/7/15/30/45/60/75/90 milestones).
+          const onboardingCadenceOpts = await fetchPlanCadenceSettings();
           const checkInSchedule = generatePlanCheckIns(
             pendingPlan.id, newUser.id, newUser.managerId ?? null, planType, joiningDate, endDateStr,
+            onboardingCadenceOpts,
           );
           for (const ci of checkInSchedule) {
             await db.execute(sql`
@@ -14344,13 +14346,29 @@ export async function registerRoutes(
 
   app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
-      const ALLOWED_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance", "studio_v2_enabled", "enforce_probation_leave_gate"];
+      const BOOLEAN_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance", "studio_v2_enabled", "enforce_probation_leave_gate"];
+      const GOVERNANCE_INT_KEYS = ["governance_sop_grace_days", "governance_sop_cadence_max_per_week", "governance_pip_checkin_days", "governance_growth_checkin_days", "governance_escalation_probation_first_hours", "governance_escalation_probation_second_hours", "governance_goal_coaching_threshold_days"];
+      const GOVERNANCE_BOOL_STR_KEYS = ["governance_nudge_sweep_enabled"];
+      const ALLOWED_FLAGS = [...BOOLEAN_FLAGS, ...GOVERNANCE_INT_KEYS, ...GOVERNANCE_BOOL_STR_KEYS];
       const updates = req.body as Record<string, unknown>;
       const validated: Record<string, boolean> = {};
+      const governanceSaved: Record<string, unknown> = {};
       for (const [key, value] of Object.entries(updates)) {
         if (!ALLOWED_FLAGS.includes(key)) continue;
-        if (typeof value !== "boolean") continue;
-        validated[key] = value;
+        if (GOVERNANCE_BOOL_STR_KEYS.includes(key)) {
+          if (typeof value !== "boolean" && value !== "true" && value !== "false") continue;
+          const normalized = value === true || value === "true" ? "true" : "false";
+          await storage.upsertSystemSetting(key, normalized, req.session.userId);
+          governanceSaved[key] = normalized;
+        } else if (GOVERNANCE_INT_KEYS.includes(key)) {
+          const n = parseInt(String(value), 10);
+          if (Number.isNaN(n) || n < 0) continue;
+          await storage.upsertSystemSetting(key, n, req.session.userId);
+          governanceSaved[key] = n;
+        } else {
+          if (typeof value !== "boolean") continue;
+          validated[key] = value;
+        }
       }
       const existing = await storage.getSystemSetting("feature_flags");
       const currentFlags = (existing?.value as Record<string, boolean>) || {
@@ -14359,10 +14377,68 @@ export async function registerRoutes(
       };
       const merged = { ...currentFlags, ...validated };
       await storage.upsertSystemSetting("feature_flags", merged, req.session.userId);
-      res.json(merged);
+      res.json({ ...merged, ...governanceSaved });
     } catch (error) {
       console.error("Update feature flags error:", error);
       res.status(500).json({ error: "Failed to update feature flags" });
+    }
+  });
+
+  // ── Governance cadence settings — GET + PATCH ────────────────────────────────
+  // Individual system_settings rows (not inside feature_flags JSON) that control
+  // governance enforcement cadence. Readable by any authenticated super_admin;
+  // writable by super_admin only. The UI for this lives in the Governance Hub
+  // Settings panel (upcoming). These keys are intentionally separate from the
+  // boolean feature-flags endpoint because they carry integer/string values.
+  const GOVERNANCE_SETTING_KEYS = [
+    "governance_sop_grace_days",
+    "governance_sop_cadence_max_per_week",
+    "governance_pip_checkin_days",
+    "governance_growth_checkin_days",
+    "governance_escalation_probation_first_hours",
+    "governance_escalation_probation_second_hours",
+    "governance_goal_coaching_threshold_days",
+    "governance_nudge_sweep_enabled",
+  ] as const;
+
+  app.get("/api/system/governance-settings", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (_req: Request, res: Response) => {
+    try {
+      const result: Record<string, unknown> = {};
+      for (const key of GOVERNANCE_SETTING_KEYS) {
+        const row = await storage.getSystemSetting(key);
+        result[key] = row?.value ?? null;
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Get governance settings error:", error);
+      res.status(500).json({ error: "Failed to read governance settings" });
+    }
+  });
+
+  app.patch("/api/system/governance-settings", requireAuth, requirePermission("system.featureFlags", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const updates = req.body as Record<string, unknown>;
+      const saved: Record<string, unknown> = {};
+      for (const [key, value] of Object.entries(updates)) {
+        if (!(GOVERNANCE_SETTING_KEYS as readonly string[]).includes(key)) continue;
+        // boolean-string setting
+        if (key === "governance_nudge_sweep_enabled") {
+          if (typeof value !== "boolean" && value !== "true" && value !== "false") continue;
+          const normalized = value === true || value === "true" ? "true" : "false";
+          await storage.upsertSystemSetting(key, normalized, req.session.userId);
+          saved[key] = normalized;
+        } else {
+          // integer settings
+          const n = parseInt(String(value), 10);
+          if (Number.isNaN(n) || n < 0) continue;
+          await storage.upsertSystemSetting(key, n, req.session.userId);
+          saved[key] = n;
+        }
+      }
+      res.json(saved);
+    } catch (error) {
+      console.error("Update governance settings error:", error);
+      res.status(500).json({ error: "Failed to update governance settings" });
     }
   });
 

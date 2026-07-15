@@ -201,6 +201,23 @@ export async function collectOverdueItems(): Promise<GovernanceFinding[]> {
   const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
   if (!flags?.notifications_enabled) return [];
 
+  // Read DB-backed governance cadence settings (fall back to hardcoded defaults)
+  let goalCoachingThresholdDays = 5;
+  let sopGraceDays = 15;
+  let nudgeSweepEnabled = true;
+  try {
+    const [threshSetting, sopGraceSetting, nudgeSetting] = await Promise.all([
+      storage.getSystemSetting("governance_goal_coaching_threshold_days"),
+      storage.getSystemSetting("governance_sop_grace_days"),
+      storage.getSystemSetting("governance_nudge_sweep_enabled"),
+    ]);
+    const threshVal = threshSetting?.value !== undefined ? parseInt(String(threshSetting.value), 10) : NaN;
+    if (!Number.isNaN(threshVal) && threshVal >= 0) goalCoachingThresholdDays = threshVal;
+    const sopGraceVal = sopGraceSetting?.value !== undefined ? parseInt(String(sopGraceSetting.value), 10) : NaN;
+    if (!Number.isNaN(sopGraceVal) && sopGraceVal > 0) sopGraceDays = sopGraceVal;
+    if (nudgeSetting?.value !== undefined) nudgeSweepEnabled = String(nudgeSetting.value) !== "false";
+  } catch { /* use defaults */ }
+
   const todayStr = new Date().toISOString().slice(0, 10);
   const portalBase = getPortalBaseUrl();
   const findings: GovernanceFinding[] = [];
@@ -229,7 +246,7 @@ export async function collectOverdueItems(): Promise<GovernanceFinding[]> {
     const targetDate = new Date(String(goal.target_date));
     const msPerDay = 86400000;
     const daysOverdue = Math.floor((Date.now() - targetDate.getTime()) / msPerDay);
-    if (daysOverdue < 1) continue;
+    if (daysOverdue < goalCoachingThresholdDays) continue;
 
     const empName = `${goal.emp_first_name ?? ""} ${goal.emp_last_name ?? ""}`.trim() || "Employee";
     const planType = goal.plan_type ?? "probation";
@@ -253,30 +270,39 @@ export async function collectOverdueItems(): Promise<GovernanceFinding[]> {
   }
 
   // ── 2) Overdue SOP acknowledgements ───────────────────────────────────────
-  // Grace period: 15 days after the SOP's wave operational_at date.
+  // Grace period: 15 days after the SOP's wave operational_at date (DB-configurable).
   // Uses deadline_at when set; falls back to wave_sops.operational_at + 15d.
-  const sopRows = (await db.execute(sql`
-    SELECT
-      sep.id AS progress_id,
-      sep.user_id,
-      sep.sop_master_id,
-      au.first_name || ' ' || au.last_name AS user_name,
-      au.email AS user_email,
-      au.manager_id,
-      m.first_name AS mgr_first_name, m.email AS mgr_email,
-      m.manager_id AS skip_manager_id,
-      COALESCE(sep.deadline_at::date, ws.operational_at::date + INTERVAL '15 days')::date AS effective_deadline
-    FROM sop_employee_progress sep
-    JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
-    JOIN admin_users au ON au.id = sep.user_id
-    LEFT JOIN admin_users m ON m.id = au.manager_id
-    WHERE sep.acknowledged_at IS NULL
-      AND ws.operational_at IS NOT NULL
-      AND ws.operational_at + INTERVAL '15 days' < NOW()
-      AND au.is_active = true
-      AND au.deleted_at IS NULL
-    ORDER BY sep.user_id
-  `)).rows as any[];
+  // Gated by governance_nudge_sweep_enabled setting.
+  if (!nudgeSweepEnabled) {
+    console.log("[complianceSweep] collectOverdueItems: SOP nudge sweep disabled by governance_nudge_sweep_enabled setting");
+  }
+  const sopRows = nudgeSweepEnabled
+    ? (await db.execute(sql`
+        SELECT
+          sep.id AS progress_id,
+          sep.user_id,
+          sep.sop_master_id,
+          au.first_name || ' ' || au.last_name AS user_name,
+          au.email AS user_email,
+          au.manager_id,
+          m.first_name AS mgr_first_name, m.email AS mgr_email,
+          m.manager_id AS skip_manager_id,
+          COALESCE(
+            sep.deadline_at::date,
+            ws.operational_at::date + (${sopGraceDays} * INTERVAL '1 day')
+          )::date AS effective_deadline
+        FROM sop_employee_progress sep
+        JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+        JOIN admin_users au ON au.id = sep.user_id
+        LEFT JOIN admin_users m ON m.id = au.manager_id
+        WHERE sep.acknowledged_at IS NULL
+          AND ws.operational_at IS NOT NULL
+          AND ws.operational_at + (${sopGraceDays} * INTERVAL '1 day') < NOW()
+          AND au.is_active = true
+          AND au.deleted_at IS NULL
+        ORDER BY sep.user_id
+      `)).rows as any[]
+    : [];
 
   for (const row of sopRows) {
     const deadline = new Date(String(row.effective_deadline));
