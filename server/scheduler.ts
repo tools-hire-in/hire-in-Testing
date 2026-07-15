@@ -1476,6 +1476,65 @@ export function startScheduler() {
     }
   }, { timezone: "Asia/Kolkata" });
 
+  // ── Recruiter daily activity nudge — 5:30 PM IST (12:00 UTC) ────────────────
+  // Sends an in-app notification to active recruiter/operations users who have NOT
+  // logged any activity today (calls or screens both = 0 or no row for today).
+  cron.schedule("0 12 * * 1-5", async () => {
+    try {
+      const today = (() => {
+        const istOffsetMs = (5 * 60 + 30) * 60 * 1000;
+        return new Date(Date.now() + istOffsetMs).toISOString().split("T")[0];
+      })();
+
+      // Find active recruiter/operations users
+      const recruiterRoles = ["operations", "recruiter", "manager"];
+      const activeUsers = await db
+        .select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, role: adminUsers.role })
+        .from(adminUsers)
+        .where(and(isNull(adminUsers.deletedAt), eq(adminUsers.isActive, true)));
+
+      const recruiters = activeUsers.filter((u) => recruiterRoles.includes(u.role || ""));
+
+      if (recruiters.length === 0) return;
+
+      // Find those who already logged today
+      const { recruiterActivityLogs } = await import("@shared/schema");
+      const { inArray } = await import("drizzle-orm");
+      const logged = await db
+        .select({ recruiterId: recruiterActivityLogs.recruiterId })
+        .from(recruiterActivityLogs)
+        .where(
+          and(
+            inArray(recruiterActivityLogs.recruiterId, recruiters.map((r) => r.id)),
+            sql`${recruiterActivityLogs.logDate} = ${today}::date`,
+          ),
+        );
+
+      const loggedIds = new Set(logged.map((l) => l.recruiterId));
+      const needsNudge = recruiters.filter((r) => !loggedIds.has(r.id));
+
+      if (needsNudge.length === 0) return;
+
+      const { notifyUser } = await import("./notifications");
+      let sent = 0;
+      for (const user of needsNudge) {
+        try {
+          await notifyUser({
+            userId: user.id,
+            type: "recruiter_activity_daily_nudge",
+            title: "Don't forget to log today's activity",
+            message: "You haven't logged your calls and screens yet today. Tap to update your daily activity.",
+            link: "/admin/my-desk?tab=pipeline",
+          });
+          sent++;
+        } catch (_) {}
+      }
+      console.log(`[scheduler] Recruiter activity nudge sent to ${sent}/${needsNudge.length} recruiter(s).`);
+    } catch (err) {
+      console.error("[scheduler] Recruiter activity nudge failed:", err);
+    }
+  }, { timezone: "UTC" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -1491,4 +1550,5 @@ export function startScheduler() {
   console.log("  - Salary change promotion: daily at 00:30 IST → applies future-dated salary changes that became effective");
   console.log("  - Unified governance sync sweep (07:00 IST): cadence backfill → obligation sync → collectOverdueItems → collectProbationMilestoneEvents → applyEscalation (deduped) → HR checkin digest");
   console.log("  - CEO governance exception report: Mondays at 08:00 IST → anonymized AI summary emailed to super_admin/executive");
+  console.log("  - Recruiter activity nudge: Mon-Fri at 5:30 PM IST → in-app nudge to recruiters who haven't logged today");
 }

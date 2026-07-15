@@ -16,6 +16,7 @@ const Attendance = lazy(() => import("@/pages/admin/hr/Attendance"));
 const LeaveManagement = lazy(() => import("@/pages/admin/hr/LeaveManagement"));
 const HolidayCalendar = lazy(() => import("@/pages/admin/hr/HolidayCalendar"));
 const SalarySlips = lazy(() => import("@/pages/admin/hr/SalarySlips"));
+const MyPipeline = lazy(() => import("@/pages/admin/my-desk/MyPipeline"));
 
 const TABS = [
   "time-card",
@@ -23,6 +24,7 @@ const TABS = [
   "leave-calendar",
   "payslips",
   "my-sops",
+  "pipeline",
 ] as const;
 type Tab = typeof TABS[number];
 
@@ -32,6 +34,7 @@ const TAB_LABELS: Record<Tab, string> = {
   "leave-calendar": "Holiday Calendar",
   "payslips": "Payslips",
   "my-sops": "My SOPs",
+  "pipeline": "My Pipeline",
 };
 
 // Legacy tab slugs → new consolidated destinations.
@@ -369,6 +372,13 @@ export default function MyDesk() {
           {/* ── MY SOPs — reachable even when compliance-locked ── */}
           {activeTab === "my-sops" && (
             <MySops />
+          )}
+
+          {/* ── MY PIPELINE — recruiter submission tracker ── */}
+          {activeTab === "pipeline" && !isComplianceLocked && (
+            <Suspense fallback={<TabFallback />}>
+              <MyPipeline />
+            </Suspense>
           )}
 
           {/* ── Compliance-locked interstitial ── */}

@@ -27,6 +27,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import OnboardingChecklist from "@/components/admin/OnboardingChecklist";
+import RecruiterActivityWidget from "./RecruiterActivityWidget";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -703,6 +704,9 @@ export default function CommandCenter() {
           </Card>
         )}
       </div>
+
+      {/* ── Recruiter Daily Activity — recruiter/operations/manager roles ── */}
+      <RecruiterActivityWidget />
 
       {/* ── Team Pulse — manager/HR/admin only ── */}
       {isManagerRole && teamTodayData && teamTodayData.totalCount > 0 && (

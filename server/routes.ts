@@ -141,6 +141,7 @@ import { registerSalaryAdvanceRoutes, applyAdvanceRecoveriesForRun, applyCredits
 import { registerAttendanceExceptionRoutes, createExceptionForShortDay, checkEscalationTiers } from "./attendanceExceptionRoutes";
 import { registerTravelRoutes } from "./travelRoutes";
 import { registerIntegrationsRoutes } from "./integrationsRoutes";
+import { registerRecruiterRoutes, getAutoRecruiterIdFromSession } from "./recruiterRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 import { registerTrainingCatalogRoutes } from "./trainingCatalogRoutes";
 import { registerGovernanceRoutes } from "./governanceRoutes";
@@ -1447,8 +1448,31 @@ export async function registerRoutes(
       if (!result.success) {
         return res.status(400).json({ error: "Invalid application data", details: result.error.issues });
       }
-      
-      const application = await storage.createApplication(result.data);
+
+      // Auto-attribute to the submitting recruiter/operations/manager if authenticated.
+      // HR/admin/super_admin must pass recruiterId explicitly when submitting internally.
+      const autoRecruiterId = getAutoRecruiterIdFromSession((req as any).session);
+      const sessionUserId: string | undefined = (req as any).session?.userId;
+      const sessionRole: string | undefined = (req as any).session?.role;
+
+      let applicationData = result.data;
+      if (autoRecruiterId) {
+        // Recruiter/operations/manager — auto-attribute to self (default current user)
+        applicationData = { ...result.data, recruiterId: autoRecruiterId };
+      } else if (sessionUserId && ["super_admin", "admin", "hr"].includes(sessionRole || "")) {
+        // Authenticated HR/admin — recruiterId must be supplied explicitly.
+        // HR/admin may submit on behalf of a recruiter; they must specify which one.
+        // To override (document unattributed submission), pass recruiterId: null explicitly.
+        if (result.data.recruiterId === undefined) {
+          return res.status(400).json({
+            error: "recruiterId is required for internal submissions",
+            detail: "HR/admin must specify which recruiter owns this submission. Pass the recruiter's user ID, or recruiterId: null to mark as unattributed.",
+          });
+        }
+      }
+      // Unauthenticated (public applicant form) — recruiterId may be null
+
+      const application = await storage.createApplication(applicationData);
       res.status(201).json(application);
 
       pushApplicantToCeipal(application.id).then((syncResult) => {
@@ -25568,7 +25592,11 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   registerSalaryAdvanceRoutes(app);
   registerAttendanceExceptionRoutes(app);
   registerTravelRoutes(app);
+<<<<<<< HEAD
   registerIntegrationsRoutes(app);
+=======
+  registerRecruiterRoutes(app);
+>>>>>>> da4880e (Task #1115 — Recruiter Activity & Conversion Tracker)
   registerTrainingCatalogRoutes(app);
   registerGovernanceRoutes(app);
   registerSalaryStructureRoutes(app, requirePermission);

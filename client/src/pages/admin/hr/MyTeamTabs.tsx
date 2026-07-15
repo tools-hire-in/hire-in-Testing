@@ -9,8 +9,9 @@ import TrainingProgress from "./TrainingProgress";
 import AttendanceApproval from "./AttendanceApproval";
 import TicketApprovalsTab from "./TicketApprovalsTab";
 import TeamSopCompliance from "./TeamSopCompliance";
+import TeamFunnel from "./TeamFunnel";
 
-const TABS = ["overview", "attendance", "exceptions", "leave-approvals", "training-progress", "attendance-approval", "approvals", "sop-compliance"] as const;
+const TABS = ["overview", "attendance", "exceptions", "leave-approvals", "training-progress", "attendance-approval", "approvals", "sop-compliance", "pipeline"] as const;
 type Tab = typeof TABS[number];
 
 // Legacy nested-param aliases → current single-level section values.
@@ -25,6 +26,7 @@ const SECTION_HEADERS: Partial<Record<Tab, { title: string; desc: string }>> = {
   exceptions: { title: "Exception Review", desc: "Short-day and attendance exceptions awaiting review" },
   "attendance-approval": { title: "Month-End Approval", desc: "Review and approve monthly attendance reports" },
   approvals: { title: "Request Approvals", desc: "Pending team requests awaiting your action" },
+  pipeline: { title: "Team Pipeline", desc: "Submission conversion funnel for your recruitment team" },
 };
 
 export default function MyTeamTabs() {
@@ -88,6 +90,7 @@ export default function MyTeamTabs() {
           {activeTab === "attendance-approval" && <AttendanceApproval />}
           {activeTab === "approvals" && <TicketApprovalsTab />}
           {activeTab === "sop-compliance" && <TeamSopCompliance />}
+          {activeTab === "pipeline" && <TeamFunnel />}
         </div>
       </div>
     </AdminLayout>

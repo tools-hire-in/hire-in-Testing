@@ -5,6 +5,7 @@ import {
   systemSettings, adminUsers, auditLogs, sopDocuments,
   type PerformanceGoal, type GoalMilestone, type CheckIn, type ReviewCycle, type Review, type PerformanceFeedback,
 } from "@shared/schema";
+import { computeGoalProgress, classifyGoalMetricType, AUTO_TRACKABLE_METRIC_TYPES } from "./goalAutoProgressService";
 import { resolveRoles } from "@shared/accessControl";
 import { eq, and, or, inArray, sql, desc, asc, isNull, isNotNull } from "drizzle-orm";
 import { DatabaseStorage } from "./storage";
@@ -771,19 +772,65 @@ async function getAccessibleGoal(userId: string, role: string, goalId: string): 
   return null;
 }
 
-// Recomputes a goal's progress from milestone completion when auto-progress is enabled.
-// Progress only; status remains a manual field.
+// Recomputes a goal's progress. Two paths:
+// 1. Milestone-based: autoProgressFromMilestones=true — counts completed milestones.
+// 2. Recruiter-activity-based: sourceRef starts with "recruiter_metric:" — delegates to
+//    goalAutoProgressService (call_volume / interview_conversion / placement_count).
 async function recomputeGoalProgress(goalId: string): Promise<void> {
   const [goal] = await db.select().from(performanceGoals).where(eq(performanceGoals.id, goalId));
-  if (!goal || !goal.autoProgressFromMilestones) return;
-  const milestones = await db.select().from(goalMilestones).where(eq(goalMilestones.goalId, goalId));
-  if (milestones.length === 0) return;
-  const doneCount = milestones.filter(m => m.done).length;
-  const progress = Math.round((doneCount / milestones.length) * 100);
-  await db.update(performanceGoals)
-    .set({ progress, updatedAt: new Date() })
-    .where(eq(performanceGoals.id, goalId));
+  if (!goal) return;
+
+  // ── Path 1: milestone-based auto-progress ────────────────────────────────
+  if (goal.autoProgressFromMilestones) {
+    const milestones = await db.select().from(goalMilestones).where(eq(goalMilestones.goalId, goalId));
+    if (milestones.length === 0) return;
+    const doneCount = milestones.filter(m => m.done).length;
+    const progress = Math.round((doneCount / milestones.length) * 100);
+    await db.update(performanceGoals)
+      .set({ progress, updatedAt: new Date() })
+      .where(eq(performanceGoals.id, goalId));
+    return;
+  }
+
+  // ── Path 2: recruiter-metric auto-progress ───────────────────────────────
+  // sourceRef format: "recruiter_metric:<type>:<target>"
+  //   type   = call_volume | interview_conversion | placement_count
+  //   target = numeric denominator for percentage calculation:
+  //            • call_volume / placement_count: period target (e.g. 200 calls)
+  //            • interview_conversion: leave empty or 100 (already a percentage)
+  if (goal.sourceRef?.startsWith("recruiter_metric:")) {
+    const parts = goal.sourceRef.split(":");   // ["recruiter_metric", type, optionalTarget]
+    const metricType = parts[1] ?? "";
+    const targetNum = parts[2] ? parseInt(parts[2], 10) : null;
+
+    if (!AUTO_TRACKABLE_METRIC_TYPES.includes(metricType as any)) return;
+
+    const periodFrom = goal.startDate ?? new Date().toISOString().split("T")[0];
+    const periodTo = goal.targetDate ?? new Date().toISOString().split("T")[0];
+    const result = await computeGoalProgress(metricType, goal.employeeId, periodFrom, periodTo);
+    if (result === null) return;
+
+    let progress: number;
+    if (metricType === "interview_conversion") {
+      // result.actual is already a percentage 0-100
+      progress = Math.min(100, Math.max(0, result.actual));
+    } else if (targetNum && targetNum > 0) {
+      // call_volume / placement_count: normalise against stored target
+      progress = Math.min(100, Math.max(0, Math.round((result.actual / targetNum) * 100)));
+    } else {
+      // No target denominator stored — store raw count capped at 100 and log
+      console.warn(`[autoProgress] goal ${goalId} (${metricType}) has no target in sourceRef; storing raw actual=${result.actual}`);
+      progress = Math.min(100, result.actual);
+    }
+
+    await db.update(performanceGoals)
+      .set({ progress, updatedAt: new Date() })
+      .where(eq(performanceGoals.id, goalId));
+  }
 }
+
+// Exported so recruiterRoutes can trigger recomputation after activity/stage updates.
+export { recomputeGoalProgress };
 
 export function registerPerformanceRoutes(app: Express) {
 

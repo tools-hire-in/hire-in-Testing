@@ -179,6 +179,14 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
     category: "performance",
     typePrefixes: ["pip_coaching_prompt_contextual"],
   },
+  // ── Recruitment ───────────────────────────────────────────────────────────
+  {
+    key: "recruiter_activity",
+    label: "Recruiter activity nudges",
+    description: "End-of-day reminders to log your call and screen counts.",
+    category: "hr",
+    typePrefixes: ["recruiter_activity_"],
+  },
   // ── System ────────────────────────────────────────────────────────────────
   {
     key: "system_general",

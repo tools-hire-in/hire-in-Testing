@@ -126,6 +126,12 @@ export const applications = pgTable("applications", {
   status: varchar("status").notNull().default("new"),
   ceipalSyncStatus: varchar("ceipal_sync_status").default("pending"),
   ceipalApplicantId: varchar("ceipal_applicant_id"),
+  // Task #1115 — Recruiter ownership & submission stage pipeline
+  recruiterId: varchar("recruiter_id"),
+  stage: varchar("stage").notNull().default("submitted"),
+  stageUpdatedAt: timestamp("stage_updated_at"),
+  stageUpdatedBy: varchar("stage_updated_by"),
+  placementDate: date("placement_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -4786,3 +4792,42 @@ export const integrationSettings = pgTable("integration_settings", {
 });
 
 export type IntegrationSetting = typeof integrationSettings.$inferSelect;
+
+// ── Recruiter Activity & Conversion Tracker ──────────────────────────────────
+// Task #1115 — daily call log, submission stage pipeline, team funnel view
+
+export const recruiterActivityLogs = pgTable("recruiter_activity_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  recruiterId: varchar("recruiter_id").notNull().references(() => adminUsers.id),
+  logDate: date("log_date").notNull(),
+  callsMade: integer("calls_made").notNull().default(0),
+  screensConducted: integer("screens_conducted").notNull().default(0),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  unique("uq_recruiter_activity_date").on(table.recruiterId, table.logDate),
+  index("idx_recruiter_activity_recruiter").on(table.recruiterId),
+  index("idx_recruiter_activity_date").on(table.logDate),
+]);
+
+export const insertRecruiterActivityLogSchema = createInsertSchema(recruiterActivityLogs).omit({ id: true, createdAt: true, updatedAt: true });
+export type RecruiterActivityLog = typeof recruiterActivityLogs.$inferSelect;
+export type InsertRecruiterActivityLog = z.infer<typeof insertRecruiterActivityLogSchema>;
+
+export const applicationStageHistory = pgTable("application_stage_history", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  applicationId: varchar("application_id").notNull().references(() => applications.id, { onDelete: "cascade" }),
+  fromStage: varchar("from_stage"),
+  toStage: varchar("to_stage").notNull(),
+  changedBy: varchar("changed_by").references(() => adminUsers.id),
+  changedAt: timestamp("changed_at").defaultNow(),
+  notes: text("notes"),
+}, (table) => [
+  index("idx_stage_history_application").on(table.applicationId),
+  index("idx_stage_history_changed_at").on(table.changedAt),
+]);
+
+export const insertApplicationStageHistorySchema = createInsertSchema(applicationStageHistory).omit({ id: true, changedAt: true });
+export type ApplicationStageHistory = typeof applicationStageHistory.$inferSelect;
+export type InsertApplicationStageHistory = z.infer<typeof insertApplicationStageHistorySchema>;
