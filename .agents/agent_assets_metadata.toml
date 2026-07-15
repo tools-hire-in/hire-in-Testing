@@ -30,3 +30,9 @@ id = "Dt_KtfuG50KHF13-ID8JY"
 uri = "file://docs/ai-governance-audit/GOVERNANCE-MVP-READINESS.md"
 type = "text"
 title = "Governance MVP — Readiness Scan"
+
+[[outputs]]
+id = "br3pUX8-_2d6jhnxWgrtc"
+uri = "file://docs/qa/HIS_QA_Test_Pack.csv"
+type = "table"
+title = "HIS QA Test Pack — Regression + New Features + Decision Coverage"
