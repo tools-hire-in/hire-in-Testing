@@ -21,7 +21,7 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { ClipboardList, AlertCircle, ArrowUp, ArrowDown, ArrowUpDown, MessageSquarePlus, Zap, PenLine } from "lucide-react";
+import { ClipboardList, AlertCircle, ArrowUp, ArrowDown, ArrowUpDown, MessageSquarePlus, Zap, PenLine, HelpCircle } from "lucide-react";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface HRPlan {
@@ -181,9 +181,69 @@ function CoachingLogSection({ planId, entries }: { planId: string; entries: Coac
   );
 }
 
-function PlanDetailPanel({ detail, canClose, onClosePlan }: {
+const METRIC_TYPE_LABELS: Record<string, string> = {
+  submission_count: "Submission Count",
+  ats_compliance: "ATS Compliance",
+  attendance_consistency: "Attendance Consistency",
+  sop_completion: "SOP Completion",
+  training_completion: "Training Completion",
+  manual: "Manual (no auto-track)",
+};
+
+const ALL_METRIC_TYPES = Object.keys(METRIC_TYPE_LABELS);
+
+function GoalMetricTypeSelect({ goalId, currentType, planId }: {
+  goalId: string;
+  currentType: string | null | undefined;
+  planId: string;
+}) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+
+  const updateMetric = useMutation({
+    mutationFn: (metricType: string) =>
+      apiRequest("POST", `/api/hr/goals/${goalId}/metric-type`, { metricType }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/hr/plans", planId] });
+      toast({ title: "Metric type updated" });
+    },
+    onError: async (err: any) => {
+      let msg = "Failed to update metric type";
+      try { const b = await err.response?.json?.(); msg = b?.error ?? msg; } catch {}
+      toast({ title: msg, variant: "destructive" });
+    },
+  });
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap mt-1.5" data-testid={`metric-type-row-${goalId}`}>
+      <span className="text-[10px] text-muted-foreground font-medium uppercase tracking-wide">Metric type:</span>
+      <Select
+        value={currentType ?? ""}
+        onValueChange={(val) => { if (val) updateMetric.mutate(val); }}
+        disabled={updateMetric.isPending}
+      >
+        <SelectTrigger
+          className="h-6 text-xs w-48 border-dashed"
+          data-testid={`select-metric-type-${goalId}`}
+        >
+          <SelectValue placeholder="Assign metric type…" />
+        </SelectTrigger>
+        <SelectContent>
+          {ALL_METRIC_TYPES.map(t => (
+            <SelectItem key={t} value={t} className="text-xs" data-testid={`option-metric-${t}-${goalId}`}>
+              {METRIC_TYPE_LABELS[t]}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function PlanDetailPanel({ detail, canClose, canReclassify, onClosePlan }: {
   detail: PlanDetail;
   canClose: boolean;
+  canReclassify: boolean;
   onClosePlan: () => void;
 }) {
   const { plan, goals, checkIns } = detail;
@@ -263,19 +323,63 @@ function PlanDetailPanel({ detail, canClose, onClosePlan }: {
 
       {goals.length > 0 && (
         <div>
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Goals ({goals.length})</p>
+          <div className="flex items-center gap-2 mb-2">
+            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Goals ({goals.length})</p>
+            {(() => {
+              const unclassified = goals.filter((g: any) => !g.goal_metric_type || g.goal_metric_type === "manual").length;
+              return unclassified > 0 ? (
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <span
+                        className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border font-medium cursor-default bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-300"
+                        data-testid="badge-unclassified-count"
+                      >
+                        <HelpCircle className="h-2.5 w-2.5" /> {unclassified} unclassified
+                      </span>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-xs text-xs">
+                      {unclassified} goal{unclassified !== 1 ? "s" : ""} have no auto-trackable metric type yet. Use the dropdown on each goal to assign one.
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              ) : null;
+            })()}
+          </div>
           <div className="space-y-2">
             {goals.map((g: any) => {
               const isAutoTracked = g.goal_metric_type && g.goal_metric_type !== "manual";
               const isSystemVerified = isAutoTracked && g.goal_progress_source === "auto";
+              const needsClassification = !g.goal_metric_type || g.goal_metric_type === "manual";
               const lastUpdated = g.goal_progress_updated_at
                 ? new Date(g.goal_progress_updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
                 : null;
               return (
-                <div key={g.id} className="border rounded-lg p-3 space-y-1.5" data-testid={`card-goal-detail-${g.id}`}>
+                <div
+                  key={g.id}
+                  className={`border rounded-lg p-3 space-y-1.5 ${needsClassification ? "border-orange-200 bg-orange-50/30 dark:border-orange-800/50 dark:bg-orange-950/10" : ""}`}
+                  data-testid={`card-goal-detail-${g.id}`}
+                >
                   <div className="flex justify-between items-start gap-2">
                     <p className="text-sm font-medium">{g.title}</p>
-                    <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex items-center gap-1 shrink-0 flex-wrap justify-end">
+                      {needsClassification && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border font-medium cursor-default bg-orange-50 border-orange-200 text-orange-700 dark:bg-orange-950/30 dark:border-orange-800 dark:text-orange-300"
+                                data-testid={`badge-needs-classification-${g.id}`}
+                              >
+                                <AlertCircle className="h-2.5 w-2.5" /> Needs classification
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs text-xs">
+                              This goal has no auto-trackable metric type. Assign one to enable system progress tracking.
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
                       {isAutoTracked && (
                         <TooltipProvider>
                           <Tooltip>
@@ -320,6 +424,13 @@ function PlanDetailPanel({ detail, canClose, onClosePlan }: {
                   </div>
                   {g.notes && (
                     <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">{g.notes}</p>
+                  )}
+                  {canReclassify && (
+                    <GoalMetricTypeSelect
+                      goalId={g.id}
+                      currentType={g.goal_metric_type}
+                      planId={plan.id}
+                    />
                   )}
                 </div>
               );
@@ -483,6 +594,7 @@ export function HRPlansOverview() {
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const canClose = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const canReclassify = ["super_admin", "admin", "hr"].includes(user?.role || "");
 
   const plansQuery = useQuery<HRPlan[]>({ queryKey: ["/api/hr/plans"] });
 
@@ -752,12 +864,14 @@ export function HRPlansOverview() {
             <PlanDetailPanel
               detail={{ ...detailQuery.data, plan: { ...detailQuery.data.plan, ...selectedPlan } }}
               canClose={canClose}
+              canReclassify={canReclassify}
               onClosePlan={() => setShowCloseModal(true)}
             />
           ) : selectedPlan ? (
             <PlanDetailPanel
               detail={{ plan: selectedPlan, goals: [], checkIns: [] }}
               canClose={canClose}
+              canReclassify={canReclassify}
               onClosePlan={() => setShowCloseModal(true)}
             />
           ) : null}
