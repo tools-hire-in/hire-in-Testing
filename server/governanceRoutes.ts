@@ -312,6 +312,109 @@ export function registerGovernanceRoutes(app: Express): void {
     }
   });
 
+  // ── Action Required — urgency-ranked overdue items ────────────────────────
+  // Returns overdue/escalated controls ordered by escalation_level DESC, due_date ASC.
+  // Access: hr, admin, super_admin, executive.
+  app.get("/api/governance/action-required", async (req: Request, res: Response) => {
+    const session = checkPermission(req, res, "governance.hr");
+    if (!session) return;
+    try {
+      const rows = await db.execute(sql`
+        SELECT
+          gc.id,
+          gc.control_type         AS "controlType",
+          gc.reference_id         AS "referenceId",
+          gc.owner_id             AS "ownerId",
+          gc.manager_id           AS "managerId",
+          gc.due_date             AS "dueDate",
+          gc.status,
+          gc.escalation_level     AS "escalationLevel",
+          gc.required_action      AS "requiredAction",
+          o.first_name || ' ' || o.last_name AS "ownerName",
+          o.email                 AS "ownerEmail",
+          m.first_name || ' ' || m.last_name AS "managerName"
+        FROM governance_controls gc
+        JOIN admin_users o ON o.id = gc.owner_id
+        LEFT JOIN admin_users m ON m.id = gc.manager_id
+        WHERE gc.status IN ('overdue', 'escalated')
+        ORDER BY gc.escalation_level DESC, gc.due_date ASC
+        LIMIT 100
+      `);
+      res.json(rows.rows);
+    } catch (err) {
+      console.error("[governance] GET /action-required failed:", err);
+      res.status(500).json({ error: "Failed to fetch action-required items" });
+    }
+  });
+
+  // ── Manager breakdown — compliance summary for a manager's team ───────────
+  // Access: the manager themselves, or hr/admin/super_admin/executive.
+  app.get("/api/governance/manager/:id/breakdown", async (req: Request, res: Response) => {
+    const session = getSession(req, res);
+    if (!session) return;
+    const { id: managerId } = req.params as { id: string };
+
+    const isHrOrAbove = ["hr", "admin", "super_admin", "executive"].includes(session.role);
+    const isSelf      = session.userId === managerId;
+    const isManager   = session.role === "manager";
+
+    if (!isHrOrAbove && !(isManager && isSelf)) {
+      return res.status(403).json({ error: "Access denied" });
+    }
+
+    try {
+      const rows = await db.execute(sql`
+        SELECT
+          COUNT(*)                                                        AS "totalControls",
+          COUNT(*) FILTER (WHERE gc.status IN ('overdue','escalated'))   AS "overdueCount",
+          COUNT(*) FILTER (WHERE gc.status IN ('completed','closed'))    AS "completedCount",
+          COUNT(*) FILTER (WHERE gc.status IN ('pending','in_progress')) AS "pendingCount",
+          COUNT(DISTINCT gc.owner_id)                                    AS "directReportCount",
+          ROUND(
+            100.0 * COUNT(*) FILTER (WHERE gc.status IN ('completed','closed'))
+            / NULLIF(COUNT(*), 0)
+          , 1)                                                            AS "complianceRate"
+        FROM governance_controls gc
+        WHERE gc.manager_id = ${managerId}
+          AND gc.status NOT IN ('closed', 'completed')
+          OR (gc.manager_id = ${managerId} AND gc.status IN ('closed', 'completed'))
+      `);
+
+      const summary = rows.rows[0] as any ?? {
+        totalControls: 0, overdueCount: 0, completedCount: 0,
+        pendingCount: 0, directReportCount: 0, complianceRate: null,
+      };
+
+      const byOwner = await db.execute(sql`
+        SELECT
+          gc.owner_id             AS "ownerId",
+          o.first_name || ' ' || o.last_name AS "ownerName",
+          COUNT(*)                AS "total",
+          COUNT(*) FILTER (WHERE gc.status IN ('overdue','escalated')) AS "overdue",
+          COUNT(*) FILTER (WHERE gc.status IN ('completed','closed'))  AS "completed"
+        FROM governance_controls gc
+        JOIN admin_users o ON o.id = gc.owner_id
+        WHERE gc.manager_id = ${managerId}
+        GROUP BY gc.owner_id, o.first_name, o.last_name
+        ORDER BY overdue DESC, total DESC
+      `);
+
+      res.json({
+        managerId,
+        totalControls:     Number(summary.totalControls ?? 0),
+        overdueCount:      Number(summary.overdueCount ?? 0),
+        completedCount:    Number(summary.completedCount ?? 0),
+        pendingCount:      Number(summary.pendingCount ?? 0),
+        directReportCount: Number(summary.directReportCount ?? 0),
+        complianceRate:    summary.complianceRate !== null ? Number(summary.complianceRate) : null,
+        byEmployee:        byOwner.rows,
+      });
+    } catch (err) {
+      console.error("[governance] GET /manager/:id/breakdown failed:", err);
+      res.status(500).json({ error: "Failed to build manager breakdown" });
+    }
+  });
+
   // ── Single control detail (owner, manager, or HR) ─────────────────────────
   // Row-level: owner can read their own; manager can read their team member's;
   // HR/admin/executive can read any.

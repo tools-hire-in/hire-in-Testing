@@ -30,6 +30,10 @@ args = "Start application"
 task = "workflow.run"
 args = "schema-drift"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "governance-tests"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -49,6 +53,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "bash scripts/check-schema-drift.sh"
+
+[workflows.workflow.metadata]
+isValidation = true
+
+[[workflows.workflow]]
+name = "governance-tests"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsx --test server/tests/governance.test.ts server/tests/governancePulse.test.ts"
 
 [workflows.workflow.metadata]
 isValidation = true
