@@ -27580,19 +27580,20 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   });
 
   // ── Ceipal Update Compliance Routes ─────────────────────────────────────────
-  // POST /api/ceipal/update-log — record recruiter's punch-out response
+  // POST /api/ceipal/update-log — record Ceipal-eligible user's punch-out response
   app.post("/api/ceipal/update-log", requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role!;
-      if (userRole !== "recruiter") {
-        return res.status(403).json({ error: "Only recruiters use the Ceipal update checkpoint" });
+      const ceipalEligibleRoles = ["recruiter", "operations", "account_manager"];
+      if (!ceipalEligibleRoles.includes(userRole)) {
+        return res.status(403).json({ error: "Only Ceipal-eligible roles use the Ceipal update checkpoint" });
       }
 
       const { status, deferredReason, commitmentTime } = req.body;
-      const validStatuses = ["confirmed", "deferred", "skipped"];
+      const validStatuses = ["confirmed", "confirmed_unverified", "deferred", "skipped"];
       if (!status || !validStatuses.includes(status)) {
-        return res.status(400).json({ error: "Invalid status. Must be: confirmed | deferred | skipped" });
+        return res.status(400).json({ error: "Invalid status. Must be: confirmed | confirmed_unverified | deferred | skipped" });
       }
 
       const { recordCeipalUpdateLog } = await import("./ceipalCompliance");
@@ -27613,13 +27614,14 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     }
   });
 
-  // GET /api/ceipal/verify-today-update — background verification (recruiter calls this after saying "yes")
+  // GET /api/ceipal/verify-today-update — background verification (Ceipal-eligible user calls this after saying "yes")
   app.get("/api/ceipal/verify-today-update", requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = req.session.userId!;
       const userRole = req.session.role!;
-      if (userRole !== "recruiter") {
-        return res.status(403).json({ error: "Only recruiters can verify Ceipal updates" });
+      const ceipalEligibleRoles = ["recruiter", "operations", "account_manager"];
+      if (!ceipalEligibleRoles.includes(userRole)) {
+        return res.status(403).json({ error: "Only Ceipal-eligible roles can verify Ceipal updates" });
       }
 
       const currentUser = await storage.getAdminUser(userId);

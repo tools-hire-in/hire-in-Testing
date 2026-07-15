@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Clock, SkipForward, ExternalLink, AlertCircle, Loader2, Lock } from "lucide-react";
+import { CheckCircle2, Clock, ExternalLink, Loader2, PartyPopper } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -11,10 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
 
 interface CeipalComplianceModalProps {
   open: boolean;
@@ -28,46 +26,32 @@ interface TodayStatus {
   consecutiveSkips: number;
 }
 
-type Step = "question" | "deferred" | "done";
-
-const SKIP_LOCK_THRESHOLD = 3;
+type Step = "question" | "success" | "deferred";
 
 export default function CeipalComplianceModal({ open, onClose }: CeipalComplianceModalProps) {
-  const { toast } = useToast();
   const [step, setStep] = useState<Step>("question");
   const [deferredReason, setDeferredReason] = useState("");
-  const [commitmentTime, setCommitmentTime] = useState("");
-  const [doneMessage, setDoneMessage] = useState<{ title: string; body: string; variant: "green" | "blue" | "amber" }>({
-    title: "", body: "", variant: "green",
-  });
 
   const { data: todayStatus } = useQuery<TodayStatus>({
     queryKey: ["/api/ceipal/today-status"],
     enabled: open,
   });
 
-  // Skip lock: after 3+ consecutive skips, recruiter must answer (cannot dismiss)
-  const skipLocked = (todayStatus?.consecutiveSkips ?? 0) >= SKIP_LOCK_THRESHOLD;
-
-  // Reset step when modal opens
   useEffect(() => {
     if (open) {
       setStep("question");
       setDeferredReason("");
-      setCommitmentTime("");
     }
   }, [open]);
 
-  // Record log (non-verifying path: deferred/skipped)
   const logMutation = useMutation({
-    mutationFn: (body: { status: string; deferredReason?: string; commitmentTime?: string }) =>
+    mutationFn: (body: { status: string; deferredReason?: string }) =>
       apiRequest("POST", "/api/ceipal/update-log", body),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/ceipal/today-status"] });
     },
   });
 
-  // Background verification — fire-and-forget; does NOT block modal
   const verifyMutation = useMutation({
     mutationFn: () => apiRequest("GET", "/api/ceipal/verify-today-update"),
     onSettled: () => {
@@ -77,105 +61,50 @@ export default function CeipalComplianceModal({ open, onClose }: CeipalComplianc
   });
 
   function handleYes() {
-    // 1. Close the modal immediately — don't block the recruiter
-    setDoneMessage({
-      title: "Got it — verifying your Ceipal activity in the background",
-      body: "We'll check your submissions and job updates. Your confirmation is already saved.",
-      variant: "green",
-    });
-    // 2. Log a provisional "confirmed_unverified" so the day is marked answered
     logMutation.mutate({ status: "confirmed_unverified" });
-    // 3. Run verification in background (result overwrites the log via route)
     verifyMutation.mutate();
-    // 4. Close modal right away (don't wait for verify)
-    onClose();
+    setStep("success");
+    setTimeout(() => onClose(), 1800);
   }
 
   async function handleDeferred() {
-    if (!deferredReason.trim()) {
-      toast({ title: "Please tell us why", description: "Add a brief note about what's holding it up.", variant: "destructive" });
-      return;
-    }
-    const timeStr = commitmentTime
-      ? new Date(`${new Date().toISOString().split("T")[0]}T${commitmentTime}:00`).toISOString()
-      : undefined;
-    await logMutation.mutateAsync({ status: "deferred", deferredReason: deferredReason.trim(), commitmentTime: timeStr });
-    onClose();
-  }
-
-  async function handleSkip() {
-    if (skipLocked) return; // guard — button is already hidden
-    await logMutation.mutateAsync({ status: "skipped" });
+    if (!deferredReason.trim() || !deferredReason.trim().includes(" ") && deferredReason.trim().split(/\s+/).length < 1) return;
+    if (!deferredReason.trim()) return;
+    await logMutation.mutateAsync({ status: "deferred", deferredReason: deferredReason.trim() });
     onClose();
   }
 
   function handleOpenChange(v: boolean) {
     if (!v) {
-      if (skipLocked) {
-        // Skip-locked: cannot dismiss without answering
-        toast({
-          title: "Please answer before closing",
-          description: "You've skipped 3 or more days in a row. Please choose 'Yes' or 'Not yet' before closing.",
-          variant: "destructive",
-        });
-        return;
-      }
-      // Normal dismiss at question step → treated as skipped
-      if (step === "question") {
-        logMutation.mutate({ status: "skipped" });
-      }
-      onClose();
+      return;
     }
   }
 
   const isWorking = logMutation.isPending;
-
-  // Default "+2 hours from now" commitment time suggestion
-  const suggestedTime = (() => {
-    const d = new Date();
-    d.setHours(d.getHours() + 2);
-    return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
-  })();
+  const canSubmitDeferred = deferredReason.trim().split(/\s+/).filter(Boolean).length >= 1;
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogContent
         className="max-w-md"
         data-testid="ceipal-compliance-modal"
-        // Prevent backdrop close when skip-locked
-        onInteractOutside={skipLocked ? (e) => e.preventDefault() : undefined}
-        onEscapeKeyDown={skipLocked ? (e) => e.preventDefault() : undefined}
+        onInteractOutside={(e) => e.preventDefault()}
+        onEscapeKeyDown={(e) => e.preventDefault()}
       >
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base font-semibold">
             <img src="/favicon.ico" alt="" className="w-4 h-4 opacity-70" />
             Quick Ceipal Check-in
-            {skipLocked && (
-              <Badge variant="destructive" className="text-xs ml-auto flex items-center gap-1">
-                <Lock className="h-2.5 w-2.5" />
-                Response required
-              </Badge>
-            )}
           </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
-            {skipLocked
-              ? "You've skipped the last 3+ days. Please answer before closing."
-              : "Before you head out — did you update Ceipal today?"}
+            {step === "question" && "Before you head out — did you update Ceipal today?"}
+            {step === "success" && "Your response has been recorded."}
+            {step === "deferred" && "No worries — please leave a reason before you go."}
           </DialogDescription>
         </DialogHeader>
 
-        {/* ── Step: main question ── */}
         {step === "question" && (
           <div className="space-y-4 pt-1">
-            {skipLocked && (
-              <div className="flex items-start gap-2.5 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 p-3 text-sm">
-                <Lock className="h-4 w-4 text-red-500 mt-0.5 shrink-0" />
-                <p className="text-red-800 dark:text-red-300">
-                  You've skipped this check-in {todayStatus?.consecutiveSkips ?? 3}+ days in a row.
-                  Please answer to continue — this ensures your work is captured in Ceipal.
-                </p>
-              </div>
-            )}
             <p className="text-sm text-foreground leading-relaxed">
               Did you add any submissions, update candidate profiles, or work on job records in Ceipal today?
             </p>
@@ -198,21 +127,8 @@ export default function CeipalComplianceModal({ open, onClose }: CeipalComplianc
                 data-testid="ceipal-btn-not-yet"
               >
                 <Clock className="h-4 w-4 text-amber-500 shrink-0" />
-                Not yet — I'll do it soon
+                No, I haven't updated yet
               </Button>
-              {!skipLocked && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="w-full text-muted-foreground text-xs justify-center"
-                  onClick={handleSkip}
-                  disabled={isWorking}
-                  data-testid="ceipal-btn-skip"
-                >
-                  <SkipForward className="h-3 w-3 mr-1" />
-                  Skip for today
-                </Button>
-              )}
             </div>
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground pt-1">
               <ExternalLink className="h-3 w-3 shrink-0" />
@@ -228,49 +144,61 @@ export default function CeipalComplianceModal({ open, onClose }: CeipalComplianc
           </div>
         )}
 
-        {/* ── Step: deferred (commitment) ── */}
+        {step === "success" && (
+          <div className="flex flex-col items-center gap-3 py-4 text-center" data-testid="ceipal-success-screen">
+            <PartyPopper className="h-10 w-10 text-green-500" />
+            <div className="space-y-1">
+              <p className="font-semibold text-foreground">Great work! Your update has been logged.</p>
+              <p className="text-sm text-muted-foreground">Keep it up! 🎉 This window will close automatically.</p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              className="mt-2"
+              onClick={onClose}
+              data-testid="ceipal-btn-done"
+            >
+              Done
+            </Button>
+          </div>
+        )}
+
         {step === "deferred" && (
           <div className="space-y-4 pt-1">
-            <p className="text-sm text-foreground">
-              No problem — what's holding it up? We'll remind you first thing in the morning.
-            </p>
-            <div className="space-y-3">
-              <div>
-                <Label htmlFor="defer-reason" className="text-xs font-medium">Reason <span className="text-red-500">*</span></Label>
-                <Textarea
-                  id="defer-reason"
-                  placeholder="e.g. Waiting on candidate feedback, updating after client call…"
-                  value={deferredReason}
-                  onChange={e => setDeferredReason(e.target.value)}
-                  className="mt-1 text-sm h-20 resize-none"
-                  data-testid="ceipal-input-reason"
-                />
-              </div>
-              <div>
-                <Label htmlFor="defer-time" className="text-xs font-medium">
-                  I'll do it by (optional — default: +2 hours)
-                </Label>
-                <Input
-                  id="defer-time"
-                  type="time"
-                  value={commitmentTime || suggestedTime}
-                  onChange={e => setCommitmentTime(e.target.value)}
-                  className="mt-1 text-sm"
-                  data-testid="ceipal-input-commitment-time"
-                />
-              </div>
+            <div className="rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-200 leading-relaxed">
+              Please go update Ceipal first, then come back and confirm. If you truly cannot update today, leave a reason below and submit.
+            </div>
+            <div>
+              <Label htmlFor="defer-reason" className="text-xs font-medium">
+                Reason <span className="text-red-500">*</span>
+              </Label>
+              <Textarea
+                id="defer-reason"
+                placeholder="e.g. Waiting on candidate feedback, will update after client call…"
+                value={deferredReason}
+                onChange={(e) => setDeferredReason(e.target.value)}
+                className="mt-1 text-sm h-20 resize-none"
+                data-testid="ceipal-input-reason"
+              />
+              {!canSubmitDeferred && deferredReason.length > 0 && (
+                <p className="mt-1 text-xs text-red-500">Please enter a reason before submitting.</p>
+              )}
             </div>
             <div className="flex gap-2 justify-end pt-1">
               <Button variant="ghost" size="sm" onClick={() => setStep("question")} disabled={isWorking}>
-                Back
+                Go back &amp; update Ceipal
               </Button>
               <Button
                 size="sm"
                 onClick={handleDeferred}
-                disabled={isWorking || !deferredReason.trim()}
+                disabled={isWorking || !canSubmitDeferred}
                 data-testid="ceipal-btn-confirm-defer"
               >
-                {logMutation.isPending ? <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Saving…</> : "Save & Close"}
+                {logMutation.isPending ? (
+                  <><Loader2 className="h-3 w-3 animate-spin mr-1" /> Saving…</>
+                ) : (
+                  "Submit & Close"
+                )}
               </Button>
             </div>
           </div>
@@ -280,7 +208,7 @@ export default function CeipalComplianceModal({ open, onClose }: CeipalComplianc
   );
 }
 
-// ── Recruiter discipline card (shown on Command Center for recruiters) ─────────
+// ── Ceipal discipline card (shown on Command Center for eligible roles) ─────────
 
 interface CeipalComplianceCardProps {
   className?: string;

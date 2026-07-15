@@ -119,9 +119,9 @@ export default function CommandCenter() {
   const [countdownDismissed, setCountdownDismissed] = useState(false);
   const [ceipalModalOpen, setCeipalModalOpen] = useState(false);
 
-  const isRecruiter = user?.role === "recruiter";
+  const isCeipalEligible = ["recruiter", "operations", "account_manager"].includes(user?.role || "");
 
-  // Check if recruiter has already answered today's Ceipal checkpoint
+  // Check if Ceipal-eligible user has already answered today's checkpoint
   const { data: ceipalTodayStatus } = useQuery<{
     hasAnsweredToday: boolean;
     status: string | null;
@@ -129,13 +129,13 @@ export default function CommandCenter() {
     consecutiveSkips: number;
   }>({
     queryKey: ["/api/ceipal/today-status"],
-    enabled: isAuthenticated && isRecruiter,
+    enabled: isAuthenticated && isCeipalEligible,
     staleTime: 30000,
   });
 
   // Open modal if ?ceipal=1 is in the URL (e.g. from morning reminder notification CTA)
   useEffect(() => {
-    if (!isRecruiter) return;
+    if (!isCeipalEligible) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("ceipal") === "1" && ceipalTodayStatus && !ceipalTodayStatus.hasAnsweredToday && ceipalTodayStatus.promptEnabled !== false) {
       setCeipalModalOpen(true);
@@ -144,7 +144,7 @@ export default function CommandCenter() {
       url.searchParams.delete("ceipal");
       window.history.replaceState({}, "", url.toString());
     }
-  }, [isRecruiter, ceipalTodayStatus]);
+  }, [isCeipalEligible, ceipalTodayStatus]);
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/hr/dashboard-stats"],
@@ -311,8 +311,8 @@ export default function CommandCenter() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/dashboard-stats"] });
       toast({ title: "Punched Out", description: "See you next shift!" });
-      // Show Ceipal checkpoint for recruiters who haven't answered today
-      if (isRecruiter && ceipalTodayStatus?.promptEnabled !== false && !ceipalTodayStatus?.hasAnsweredToday) {
+      // Show Ceipal checkpoint for eligible roles who haven't answered today
+      if (isCeipalEligible && ceipalTodayStatus?.promptEnabled !== false && !ceipalTodayStatus?.hasAnsweredToday) {
         setTimeout(() => setCeipalModalOpen(true), 600);
       }
     },
@@ -771,8 +771,8 @@ export default function CommandCenter() {
       {/* ── Recruiter Daily Activity — recruiter/operations/manager roles ── */}
       <RecruiterActivityWidget />
 
-      {/* ── Ceipal update compliance card (recruiter only) ── */}
-      {isRecruiter && <CeipalComplianceCard />}
+      {/* ── Ceipal update compliance card (recruiter / operations / account_manager) ── */}
+      {isCeipalEligible && <CeipalComplianceCard />}
 
       {/* ── Team Pulse — manager/HR/admin only ── */}
       {isManagerRole && teamTodayData && teamTodayData.totalCount > 0 && (

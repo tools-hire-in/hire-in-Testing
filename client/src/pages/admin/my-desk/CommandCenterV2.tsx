@@ -31,6 +31,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
 import { BreakChips, type BreakStatus } from "./CommandCenter";
+import CeipalComplianceModal, { CeipalComplianceCard } from "@/components/admin/CeipalComplianceModal";
 
 const TARGET_HOURS = 9;
 const NAVY = "#1F3A6E";
@@ -176,7 +177,9 @@ export default function CommandCenterV2() {
   const { toast } = useToast();
   const [liveMs, setLiveMs] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [ceipalModalOpen, setCeipalModalOpen] = useState(false);
 
+  const isCeipalEligible = ["recruiter", "operations", "account_manager"].includes(user?.role || "");
   const isManagerRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "");
   const isResolverRole = ["super_admin", "admin", "hr", "operations"].includes(user?.role || "");
 
@@ -323,6 +326,17 @@ export default function CommandCenterV2() {
     refetchInterval: 30000,
   });
 
+  const { data: ceipalTodayStatus } = useQuery<{
+    hasAnsweredToday: boolean;
+    status: string | null;
+    promptEnabled: boolean;
+    consecutiveSkips: number;
+  }>({
+    queryKey: ["/api/ceipal/today-status"],
+    enabled: isAuthenticated && isCeipalEligible,
+    staleTime: 30000,
+  });
+
   /* ── Mutations ── */
   const punchInMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hr/attendance/punch-in"),
@@ -338,6 +352,9 @@ export default function CommandCenterV2() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/dashboard-stats"] });
       toast({ title: "Punched Out", description: "See you next shift!" });
+      if (isCeipalEligible && ceipalTodayStatus?.promptEnabled !== false && !ceipalTodayStatus?.hasAnsweredToday) {
+        setTimeout(() => setCeipalModalOpen(true), 600);
+      }
     },
     onError: (err: any) => toast({ title: "Error", description: err.message || "Failed to punch out", variant: "destructive" }),
   });
@@ -461,6 +478,12 @@ export default function CommandCenterV2() {
 
   return (
     <div className="space-y-5" data-testid="command-center-v2">
+      {/* Ceipal compliance modal (recruiter / operations / account_manager) */}
+      <CeipalComplianceModal
+        open={ceipalModalOpen}
+        onClose={() => setCeipalModalOpen(false)}
+      />
+
       {/* ── Hero banner ── */}
       <div
         className="relative overflow-hidden rounded-2xl px-6 py-5 text-white shadow-sm"
@@ -842,6 +865,9 @@ export default function CommandCenterV2() {
               </CardContent>
             </Card>
           )}
+
+          {/* Ceipal update rate card (recruiter / operations / account_manager) */}
+          {isCeipalEligible && <CeipalComplianceCard />}
 
           {/* Awareness — upcoming holidays */}
           <Card className="shadow-sm" data-testid="ccv2-awareness-card">
