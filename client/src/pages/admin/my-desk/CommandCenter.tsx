@@ -29,6 +29,8 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import OnboardingChecklist from "@/components/admin/OnboardingChecklist";
 import RecruiterActivityWidget from "./RecruiterActivityWidget";
+import CopilotPanel from "@/components/ceo/CopilotPanel";
+import CompanyGoalStrip from "@/components/ceo/CompanyGoalStrip";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -357,6 +359,9 @@ export default function CommandCenter() {
         open={ceipalModalOpen}
         onClose={() => setCeipalModalOpen(false)}
       />
+
+      {/* CEO: Company Goal Strip — super_admin only */}
+      <CompanyGoalStrip />
 
       {/* Greeting */}
       <div>
@@ -861,6 +866,9 @@ export default function CommandCenter() {
           </CardContent>
         </Card>
       )}
+
+      {/* CEO Copilot — fixed right-side panel, super_admin only */}
+      <CopilotPanel />
     </div>
   );
 }

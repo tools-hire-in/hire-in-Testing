@@ -4868,3 +4868,43 @@ export const ceipalUpdateLogs = pgTable("ceipal_update_logs", {
 export const insertCeipalUpdateLogSchema = createInsertSchema(ceipalUpdateLogs).omit({ id: true, createdAt: true });
 export type CeipalUpdateLog = typeof ceipalUpdateLogs.$inferSelect;
 export type InsertCeipalUpdateLog = z.infer<typeof insertCeipalUpdateLogSchema>;
+
+// ── Goal Copilot tables ───────────────────────────────────────────────────────
+
+export const copilotConversations = pgTable("copilot_conversations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  role: varchar("role").notNull(),
+  content: text("content").notNull(),
+  intentDetected: varchar("intent_detected"),
+  contextSnapshotJson: jsonb("context_snapshot_json"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export const companyFinancialTargets = pgTable("company_financial_targets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  goalId: varchar("goal_id"),
+  label: varchar("label").notNull(),
+  quarter: varchar("quarter"),
+  year: integer("year"),
+  targetAmount: numeric("target_amount", { precision: 14, scale: 2 }),
+  actualAmount: numeric("actual_amount", { precision: 14, scale: 2 }),
+  currency: varchar("currency").notNull().default("INR"),
+  notes: text("notes"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const companyGoalActions = pgTable("company_goal_actions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  goalId: varchar("goal_id"),
+  title: varchar("title").notNull(),
+  description: text("description"),
+  assignedTo: varchar("assigned_to"),
+  dueDate: date("due_date"),
+  completedAt: timestamp("completed_at"),
+  createdBy: varchar("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
