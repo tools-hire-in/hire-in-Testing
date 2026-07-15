@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
+import OpenAI from "openai";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
@@ -22690,6 +22691,349 @@ export async function registerRoutes(
       } catch (error: any) {
         console.error("Update studio occasion error:", error);
         res.status(400).json({ error: error?.message || "Failed to update occasion" });
+      }
+    },
+  );
+
+  // ── Social Job Post Generator ────────────────────────────────────────────
+  // POST /api/studio/jobs/:jobId/generate-social
+  // Generates LinkedIn, Instagram, and Facebook captions for a given active job.
+  // Each caption is run through the Staffing Safety Gate before being persisted.
+  const socialIdeaCache = new Map<string, { data: any; fetchedAt: number }>();
+
+  app.post(
+    "/api/studio/jobs/:jobId/generate-social",
+    requireAuth,
+    requirePermission("studio.generate_ai_draft", "admin", "hr", "operations", "recruiter", "manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const { jobId } = req.params;
+        const [job] = await db.select().from(jobs).where(eq(jobs.id, jobId)).limit(1);
+        if (!job) return res.status(404).json({ error: "Job not found" });
+
+        const portalBase = getPortalBaseUrl(req);
+        const jobUrl = `${portalBase}/jobs#${job.id}`;
+
+        const jobFacts = [
+          job.title,
+          job.specialty ? `Specialty: ${job.specialty}` : null,
+          job.department ? `Department: ${job.department}` : null,
+          job.city || job.state ? `Location: ${[job.city, job.state].filter(Boolean).join(", ")}` : null,
+          job.jobType ? `Type: ${job.jobType}` : null,
+          job.duration ? `Duration: ${job.duration}` : null,
+          job.facility ? `Facility: ${job.facility}` : null,
+        ].filter(Boolean).join(". ");
+
+        const descSnippet = (job.description ?? "").substring(0, 600);
+        const requirementsSnippet = (job.requirements ?? "").substring(0, 300);
+
+        const openaiClient = new OpenAI({
+          apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+          baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        });
+
+        const model = "gpt-5-mini";
+
+        const systemPrompt = `You are a professional recruitment marketing copywriter for Hire'in Solutions, a staffing firm. 
+Write platform-optimised social media captions for job postings. Follow these rules strictly:
+- DO NOT invent any compensation figures, salary ranges, hourly rates, or pay amounts that were not provided.
+- DO NOT use urgency language (urgent, ASAP, apply now, deadline) unless explicitly provided.
+- DO NOT use banned phrases: game-changer, unleash, unlock, delve into, dive into, rockstar, ninja, guru, work hard play hard, war for talent, dream job.
+- DO NOT claim any certification, clearance, or company performance metric that was not provided.
+- Write concise, engaging, professional copy grounded only in the supplied job facts.
+- Always include the provided application URL in LinkedIn and Facebook captions.`;
+
+        const schema = {
+          type: "object",
+          properties: {
+            linkedin: { type: "string" },
+            instagram: { type: "string" },
+            facebook: { type: "string" },
+          },
+          required: ["linkedin", "instagram", "facebook"],
+          additionalProperties: false,
+        };
+
+        const userPrompt = `Generate three social media captions for this job:
+
+JOB FACTS:
+${jobFacts}
+
+DESCRIPTION SNIPPET:
+${descSnippet}
+
+${requirementsSnippet ? `REQUIREMENTS:\n${requirementsSnippet}\n` : ""}
+APPLICATION URL: ${jobUrl}
+
+LINKEDIN caption: Professional tone, 3 short paragraphs, ends with the application URL, 3–5 relevant hashtags. 150-700 characters.
+INSTAGRAM REELS caption: Punchy hook line, bullet highlights (role, location, type), "apply link in bio", 8–10 hashtags. 100-500 characters total.
+FACEBOOK GROUP caption: Conversational and friendly tone, full role details, direct application URL included. 100-600 characters.
+
+Return JSON with keys: linkedin, instagram, facebook.`;
+
+        let completion: any;
+        try {
+          completion = await openaiClient.chat.completions.create({
+            model,
+            max_completion_tokens: 1200,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: userPrompt },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "social_captions",
+                strict: true,
+                schema,
+              },
+            },
+          });
+        } catch (aiErr: any) {
+          console.error("[social-posts] AI call failed:", aiErr?.message);
+          return res.status(502).json({ error: "AI provider error — please try again shortly." });
+        }
+
+        const content = completion.choices?.[0]?.message?.content;
+        if (!content) return res.status(502).json({ error: "AI returned no content." });
+
+        let captions: { linkedin: string; instagram: string; facebook: string };
+        try {
+          captions = JSON.parse(content);
+        } catch {
+          return res.status(502).json({ error: "AI returned malformed JSON." });
+        }
+
+        // Run each caption through the Staffing Safety Gate.
+        // Hard failures (invented compensation, clinical claims, banned phrases) block
+        // the caption from being stored or shown. Only passing captions are persisted.
+        const userSuppliedFacts = jobFacts + " " + descSnippet + " " + requirementsSnippet;
+        const domain: "HEALTHCARE_STAFFING" | "IT_STAFFING" | "GENERAL_STAFFING" =
+          job.specialty?.toLowerCase().includes("health") || job.department?.toLowerCase().includes("health")
+            ? "HEALTHCARE_STAFFING"
+            : job.department?.toLowerCase().includes("it") || job.specialty?.toLowerCase().includes("it")
+            ? "IT_STAFFING"
+            : "GENERAL_STAFFING";
+
+        const evaluated: Record<string, { text: string | null; pass: boolean; blocked: boolean; failures: any[] }> = {};
+        for (const [platform, text] of Object.entries(captions) as [string, string][]) {
+          const gateResult = runStaffingSafetyGate({
+            generatedText: text,
+            userSuppliedFacts,
+            contentGoal: "JOB_MARKETING",
+            domain,
+          });
+          evaluated[platform] = {
+            text: gateResult.pass ? text : null,  // block failed captions — do not expose unsafe text
+            pass: gateResult.pass,
+            blocked: !gateResult.pass,
+            failures: gateResult.failures,
+          };
+        }
+
+        // Only persist captions that passed all safety checks.
+        const persistCaptions: Record<string, string> = {};
+        for (const [platform, result] of Object.entries(evaluated)) {
+          if (result.pass && result.text) {
+            persistCaptions[platform] = result.text;
+          }
+        }
+
+        const captionsWithMeta = {
+          linkedin: evaluated["linkedin"]?.text ?? null,
+          instagram: evaluated["instagram"]?.text ?? null,
+          facebook: evaluated["facebook"]?.text ?? null,
+          generatedAt: new Date().toISOString(),
+          gateResults: Object.fromEntries(
+            Object.entries(evaluated).map(([p, r]) => [p, { pass: r.pass, blocked: r.blocked, failures: r.failures }])
+          ),
+        };
+
+        // Persist only the captions that cleared the gate (partial persist is fine).
+        if (Object.keys(persistCaptions).length > 0) {
+          await db.update(jobs)
+            .set({ socialCaptions: captionsWithMeta, updatedAt: new Date() })
+            .where(eq(jobs.id, jobId));
+        }
+
+        res.json(captionsWithMeta);
+      } catch (err: any) {
+        console.error("[social-posts] generate error:", err);
+        res.status(500).json({ error: err?.message || "Failed to generate social captions" });
+      }
+    },
+  );
+
+  // GET /api/studio/jobs/:jobId/social-captions — retrieve persisted captions for a job
+  app.get(
+    "/api/studio/jobs/:jobId/social-captions",
+    requireAuth,
+    requirePermission("studio.view", "admin", "hr", "operations", "recruiter", "manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const { jobId } = req.params;
+        const [job] = await db.select({ id: jobs.id, socialCaptions: jobs.socialCaptions }).from(jobs).where(eq(jobs.id, jobId)).limit(1);
+        if (!job) return res.status(404).json({ error: "Job not found" });
+        res.json(job.socialCaptions ?? null);
+      } catch (err: any) {
+        res.status(500).json({ error: err?.message || "Failed to fetch captions" });
+      }
+    },
+  );
+
+  // GET /api/studio/job-idea-suggestions
+  // Groups active jobs by specialty/department, generates 1 article topic suggestion per top cluster,
+  // and resolves the "best recruiter to ask" hint. Cached in-memory for 4 hours.
+  app.get(
+    "/api/studio/job-idea-suggestions",
+    requireAuth,
+    requirePermission("studio.view", "admin", "hr", "operations", "recruiter", "manager"),
+    async (req: Request, res: Response) => {
+      const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
+      const CACHE_KEY = "job-idea-suggestions";
+      const cached = socialIdeaCache.get(CACHE_KEY);
+      if (cached && Date.now() - cached.fetchedAt < CACHE_TTL_MS) {
+        return res.json(cached.data);
+      }
+
+      try {
+        const activeJobs = await db
+          .select({
+            id: jobs.id,
+            title: jobs.title,
+            specialty: jobs.specialty,
+            department: jobs.department,
+            city: jobs.city,
+            state: jobs.state,
+          })
+          .from(jobs)
+          .where(eq(jobs.isActive, true))
+          .limit(200);
+
+        if (activeJobs.length === 0) {
+          return res.json([]);
+        }
+
+        // Group by specialty/department cluster
+        const clusterMap = new Map<string, { label: string; jobs: typeof activeJobs; count: number }>();
+        for (const job of activeJobs) {
+          const key = (job.specialty || job.department || "General Staffing").trim();
+          if (!clusterMap.has(key)) {
+            clusterMap.set(key, { label: key, jobs: [], count: 0 });
+          }
+          const cluster = clusterMap.get(key)!;
+          cluster.jobs.push(job);
+          cluster.count++;
+        }
+
+        // Sort by volume, take top 5
+        const topClusters = [...clusterMap.values()]
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 5);
+
+        // Resolve "best recruiter" — find HR/recruiter/manager whose department matches the cluster
+        const allStaff = await db
+          .select({ id: adminUsers.id, firstName: adminUsers.firstName, lastName: adminUsers.lastName, role: adminUsers.role, departmentId: adminUsers.departmentId })
+          .from(adminUsers)
+          .where(and(
+            isNull(adminUsers.deletedAt),
+            inArray(adminUsers.role, ["hr" as any, "recruiter" as any, "manager" as any, "operations" as any]),
+          ));
+
+        const allDepts = await db.select({ id: departments.id, name: departments.name }).from(departments);
+        const deptNameById = new Map(allDepts.map((d) => [d.id, d.name]));
+
+        function resolveRecruiter(clusterLabel: string): string | null {
+          const lower = clusterLabel.toLowerCase();
+          for (const u of allStaff) {
+            const deptName = u.departmentId ? (deptNameById.get(u.departmentId) ?? "").toLowerCase() : "";
+            if (deptName && lower.includes(deptName.substring(0, 4))) {
+              return `${u.firstName} ${u.lastName}`.trim();
+            }
+          }
+          // Fallback: first recruiter role
+          const recruiter = allStaff.find((u) => u.role === "recruiter") ?? allStaff.find((u) => u.role === "hr") ?? null;
+          return recruiter ? `${recruiter.firstName} ${recruiter.lastName}`.trim() : null;
+        }
+
+        // Generate AI topic suggestions (one lightweight call for all clusters)
+        const openaiClient = new OpenAI({
+          apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+          baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        });
+
+        const clusterSummary = topClusters.map((c) => {
+          const sampleLocations = [...new Set(c.jobs.slice(0, 3).map((j) => j.state).filter(Boolean))].join(", ");
+          return `${c.count} open ${c.label} roles${sampleLocations ? " in " + sampleLocations : ""}`;
+        }).join("; ");
+
+        const suggestionSchema = {
+          type: "object",
+          properties: {
+            suggestions: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  articleTitle: { type: "string" },
+                  angle: { type: "string" },
+                  cluster: { type: "string" },
+                },
+                required: ["articleTitle", "angle", "cluster"],
+                additionalProperties: false,
+              },
+            },
+          },
+          required: ["suggestions"],
+          additionalProperties: false,
+        };
+
+        let suggestions: { articleTitle: string; angle: string; cluster: string }[] = [];
+        try {
+          const completion = await openaiClient.chat.completions.create({
+            model: "gpt-5-mini",
+            max_completion_tokens: 800,
+            messages: [
+              {
+                role: "system",
+                content: "You are a staffing-industry content strategist. Given open job clusters, suggest thought-leadership article topics a staffing agency should write. Each suggestion must be grounded in the real jobs data, not invented statistics.",
+              },
+              {
+                role: "user",
+                content: `Current open job clusters: ${clusterSummary}\n\nFor each of the top ${topClusters.length} clusters, suggest one specific article topic. Return JSON with a "suggestions" array. Each item: articleTitle (catchy, specific), angle (one sentence explaining the content hook), cluster (the specialty/department label).`,
+              },
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: { name: "job_idea_suggestions", strict: true, schema: suggestionSchema },
+            },
+          });
+          const parsed = JSON.parse(completion.choices?.[0]?.message?.content ?? "{}");
+          suggestions = parsed.suggestions ?? [];
+        } catch (aiErr: any) {
+          console.warn("[job-ideas] AI suggestion failed:", aiErr?.message);
+          // Fallback: generate basic topic titles without AI
+          suggestions = topClusters.map((c) => ({
+            articleTitle: `What you need to know about ${c.label} staffing in 2026`,
+            angle: `A practical guide for candidates and employers navigating ${c.label} opportunities.`,
+            cluster: c.label,
+          }));
+        }
+
+        // Merge suggestions with recruiter hints and job counts
+        const result = suggestions.slice(0, 5).map((s) => ({
+          articleTitle: s.articleTitle,
+          angle: s.angle,
+          cluster: s.cluster,
+          jobCount: clusterMap.get(s.cluster)?.count ?? topClusters.find((c) => c.label.toLowerCase().includes(s.cluster.toLowerCase()))?.count ?? 0,
+          bestRecruiter: resolveRecruiter(s.cluster),
+        }));
+
+        socialIdeaCache.set(CACHE_KEY, { data: result, fetchedAt: Date.now() });
+        res.json(result);
+      } catch (err: any) {
+        console.error("[job-ideas] error:", err);
+        res.status(500).json({ error: err?.message || "Failed to generate job idea suggestions" });
       }
     },
   );

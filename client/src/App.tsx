@@ -100,6 +100,7 @@ const StudioSubscribers = lazy(() => import("@/pages/admin/studio/Subscribers"))
 const StudioAnalytics = lazy(() => import("@/pages/admin/studio/Analytics"));
 const StudioAccess = lazy(() => import("@/pages/admin/studio/StudioAccess"));
 const StudioBrandKit = lazy(() => import("@/pages/admin/studio/BrandKit"));
+const StudioSocialPosts = lazy(() => import("@/pages/admin/studio/SocialPosts"));
 const StudioPipelineView = lazy(() => import("@/pages/studio/PipelineView"));
 const StudioCampaignsView = lazy(() => import("@/pages/studio/CampaignsView"));
 const StudioBrandVoiceView = lazy(() => import("@/pages/studio/BrandVoiceView"));
@@ -399,6 +400,7 @@ function PublicRouter() {
       <Route path="/admin/studio/brand-kit">{() => <LegacyStudio><StudioBrandKit /></LegacyStudio>}</Route>
       <Route path="/admin/studio/guide">{() => <LegacyStudio><StudioGuide /></LegacyStudio>}</Route>
       <Route path="/admin/studio/feedback-insights">{() => <LegacyStudio><StudioFeedbackInsights /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/social-posts">{() => <LegacyStudio><StudioSocialPosts /></LegacyStudio>}</Route>
       <Route path="/admin/studio">{() => <LegacyStudio><Studio /></LegacyStudio>}</Route>
 
       {/* Studio v2 — standalone /studio shell (Task #906, studio_v2_enabled) */}
@@ -423,6 +425,7 @@ function PublicRouter() {
       <Route path="/studio/bd-templates">{() => <StudioV2><StudioBdTemplatesView /></StudioV2>}</Route>
       <Route path="/studio/bd-guide">{() => <StudioV2><StudioBdGuideView /></StudioV2>}</Route>
       <Route path="/studio/feedback-insights">{() => <StudioV2><StudioFeedbackInsights /></StudioV2>}</Route>
+      <Route path="/studio/social-posts">{() => <StudioV2><StudioSocialPosts /></StudioV2>}</Route>
       <Route path="/studio/settings/brand-voice">{() => <StudioV2><StudioBrandVoiceView /></StudioV2>}</Route>
       <Route path="/studio/settings/templates">{() => <StudioV2><StudioTemplateSettings /></StudioV2>}</Route>
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
@@ -583,6 +586,7 @@ function EmployeeRouter() {
       <Route path="/admin/studio/brand-kit">{() => <LegacyStudio><StudioBrandKit /></LegacyStudio>}</Route>
       <Route path="/admin/studio/guide">{() => <LegacyStudio><StudioGuide /></LegacyStudio>}</Route>
       <Route path="/admin/studio/feedback-insights">{() => <LegacyStudio><StudioFeedbackInsights /></LegacyStudio>}</Route>
+      <Route path="/admin/studio/social-posts">{() => <LegacyStudio><StudioSocialPosts /></LegacyStudio>}</Route>
       <Route path="/admin/studio">{() => <LegacyStudio><Studio /></LegacyStudio>}</Route>
 
       {/* Studio v2 — standalone /studio shell (Task #906, studio_v2_enabled) */}
@@ -607,6 +611,7 @@ function EmployeeRouter() {
       <Route path="/studio/bd-templates">{() => <StudioV2><StudioBdTemplatesView /></StudioV2>}</Route>
       <Route path="/studio/bd-guide">{() => <StudioV2><StudioBdGuideView /></StudioV2>}</Route>
       <Route path="/studio/feedback-insights">{() => <StudioV2><StudioFeedbackInsights /></StudioV2>}</Route>
+      <Route path="/studio/social-posts">{() => <StudioV2><StudioSocialPosts /></StudioV2>}</Route>
       <Route path="/studio/settings/brand-voice">{() => <StudioV2><StudioBrandVoiceView /></StudioV2>}</Route>
       <Route path="/studio/settings/templates">{() => <StudioV2><StudioTemplateSettings /></StudioV2>}</Route>
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>

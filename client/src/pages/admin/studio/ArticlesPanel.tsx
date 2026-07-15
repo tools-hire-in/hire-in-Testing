@@ -62,11 +62,15 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
   const [createOpen, setCreateOpen] = useState(
     () => new URLSearchParams(window.location.search).get("new") === "1" && canCreate
   );
-  const [newTitle, setNewTitle] = useState("");
+  const [newTitle, setNewTitle] = useState(
+    () => new URLSearchParams(window.location.search).get("title") ?? ""
+  );
   const [newType, setNewType] = useState("quick_take");
   const [newAudience, setNewAudience] = useState("");
   const [newContentGoal, setNewContentGoal] = useState("");
-  const [newBrief, setNewBrief] = useState("");
+  const [newBrief, setNewBrief] = useState(
+    () => new URLSearchParams(window.location.search).get("brief") ?? ""
+  );
   const [newDomain, setNewDomain] = useState("");
   const [newPlannedDate, setNewPlannedDate] = useState("");
 

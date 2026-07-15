@@ -44,6 +44,7 @@ import {
   Calculator,
   Wrench,
   Sparkles,
+  Share2,
   ChevronDown,
   Wallet,
   CalendarCheck,
@@ -718,6 +719,7 @@ function ContentStudioSection({
     { href: "/admin/studio/authors", label: "Authors", icon: Users, roles: [] },
     ...(hasManageAuthorsAccess ? [{ href: "/admin/studio/access", label: "Studio Access", icon: ShieldCheck, roles: [] }] : []),
     { href: "/admin/studio/brand-kit", label: "Brand Kit", icon: Palette, roles: [] },
+    { href: "/admin/studio/social-posts", label: "Social Posts", icon: Share2, roles: [] },
   ];
 
   const isStudioActive = location.startsWith("/admin/studio");

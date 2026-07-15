@@ -46,6 +46,12 @@ import {
   BarChart2,
   Users,
   GitBranch,
+  ChevronDown,
+  ChevronUp,
+  Briefcase,
+  Lightbulb,
+  Share2,
+  UserCircle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { StudioProject, StudioBrandSettings, StudioContentIdea } from "@shared/schema";
@@ -264,6 +270,105 @@ function ContentPulseCard({ projectId }: { projectId: string }) {
           </div>
         )}
       </CardContent>
+    </Card>
+  );
+}
+
+interface JobIdeaSuggestion {
+  articleTitle: string;
+  angle: string;
+  cluster: string;
+  jobCount: number;
+  bestRecruiter: string | null;
+}
+
+function OpenJobsIdeasPanel() {
+  const [open, setOpen] = useState(false);
+  const { data, isLoading } = useQuery<JobIdeaSuggestion[]>({
+    queryKey: ["/api/studio/job-idea-suggestions"],
+    enabled: open,
+    staleTime: 4 * 60 * 60 * 1000,
+  });
+
+  return (
+    <Card data-testid="card-open-jobs-ideas">
+      <CardHeader
+        className="cursor-pointer select-none pb-3"
+        onClick={() => setOpen((o) => !o)}
+        data-testid="button-toggle-job-ideas"
+      >
+        <CardTitle className="flex items-center justify-between text-base">
+          <span className="flex items-center gap-2">
+            <Briefcase className="h-4 w-4 text-primary" />
+            From Your Open Jobs
+            <span className="text-xs font-normal text-muted-foreground">
+              AI-suggested article topics based on active job clusters
+            </span>
+          </span>
+          {open ? (
+            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+          ) : (
+            <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          )}
+        </CardTitle>
+      </CardHeader>
+      {open && (
+        <CardContent className="pt-0">
+          {isLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+            </div>
+          ) : !data?.length ? (
+            <p className="py-4 text-center text-sm text-muted-foreground" data-testid="text-job-ideas-empty">
+              No active job clusters found — post some jobs to unlock AI topic suggestions here.
+            </p>
+          ) : (
+            <div className="divide-y">
+              {data.map((s, i) => (
+                <div key={i} className="flex items-start gap-4 py-4 first:pt-0 last:pb-0" data-testid={`row-job-idea-${i}`}>
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10">
+                    <Lightbulb className="h-4 w-4 text-primary" />
+                  </div>
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <p className="font-medium text-sm leading-snug" data-testid={`text-idea-title-${i}`}>
+                      {s.articleTitle}
+                    </p>
+                    <p className="text-xs text-muted-foreground">{s.angle}</p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      <Badge variant="secondary" className="gap-1 text-[11px]">
+                        <Briefcase className="h-3 w-3" />
+                        {s.cluster}
+                        {s.jobCount > 0 && (
+                          <span className="ml-1 rounded-full bg-primary/15 px-1.5 text-[10px] font-semibold">
+                            {s.jobCount}
+                          </span>
+                        )}
+                      </Badge>
+                      {s.bestRecruiter && (
+                        <Badge variant="outline" className="gap-1 text-[11px]">
+                          <UserCircle className="h-3 w-3" />
+                          Ask {s.bestRecruiter}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                  <a
+                    href={`/admin/studio?tab=articles&new=1&title=${encodeURIComponent(s.articleTitle)}&brief=${encodeURIComponent(s.angle)}`}
+                    className="shrink-0"
+                    data-testid={`link-job-idea-use-${i}`}
+                    title="Pre-fill a new article brief with this idea"
+                  >
+                    <Button size="sm" variant="outline" className="h-8 gap-1.5 text-xs">
+                      <Lightbulb className="h-3.5 w-3.5" />
+                      Use this idea
+                    </Button>
+                  </a>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      )}
     </Card>
   );
 }
@@ -978,6 +1083,7 @@ export default function Studio() {
                 <ContentPipelineSummaryCard projectId={selectedProjectId} />
                 <TriageCard projectId={selectedProjectId} />
                 <ContentPulseCard projectId={selectedProjectId} />
+                <OpenJobsIdeasPanel />
               </>
             )}
           </TabsContent>
