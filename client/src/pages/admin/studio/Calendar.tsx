@@ -1653,6 +1653,26 @@ export default function Calendar() {
                             +{overflowCount} more
                           </button>
                         )}
+                        {/* Status breakdown chip strip */}
+                        {dayIdeas.length > 0 && (() => {
+                          const groups: Record<string, number> = {};
+                          for (const idea of dayIdeas) groups[idea.status] = (groups[idea.status] || 0) + 1;
+                          const entries = Object.entries(groups).sort((a, b) => b[1] - a[1]).slice(0, 3);
+                          return (
+                            <div className="mt-0.5 flex flex-wrap gap-0.5" data-testid={`status-chips-${key}`}>
+                              {entries.map(([status, count]) => (
+                                <span
+                                  key={status}
+                                  className={`rounded px-1 py-0.5 text-[9px] font-medium leading-none ${STATUS_BADGE_CLASS[status] ?? "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"}`}
+                                  title={`${count} ${STATUS_LABELS[status] ?? status}`}
+                                  data-testid={`status-chip-${key}-${status}`}
+                                >
+                                  ● {count} {STATUS_LABELS[status] ?? status}
+                                </span>
+                              ))}
+                            </div>
+                          );
+                        })()}
                       </div>
                     </div>
                   );

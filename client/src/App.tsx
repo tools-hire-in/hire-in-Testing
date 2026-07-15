@@ -427,6 +427,7 @@ function PublicRouter() {
       <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
       <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar/:date">{() => <StudioV2><StudioDayView /></StudioV2>}</Route>
+      <Route path="/studio/day_board">{() => <StudioV2><StudioPipelineView lens="day_board" /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
       <Route path="/studio/campaigns/:id">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
       <Route path="/studio/campaigns">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
@@ -627,6 +628,7 @@ function EmployeeRouter() {
       <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
       <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar/:date">{() => <StudioV2><StudioDayView /></StudioV2>}</Route>
+      <Route path="/studio/day_board">{() => <StudioV2><StudioPipelineView lens="day_board" /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
       <Route path="/studio/campaigns/:id">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
       <Route path="/studio/campaigns">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>

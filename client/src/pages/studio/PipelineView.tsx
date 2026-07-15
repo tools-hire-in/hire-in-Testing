@@ -81,7 +81,7 @@ import {
   Upload,
 } from "lucide-react";
 
-type Lens = "calendar" | "board" | "table";
+type Lens = "calendar" | "board" | "table" | "day_board";
 
 const STATUS_LABEL: Record<string, string> = {
   suggested: "Suggested",
@@ -758,6 +758,177 @@ function ImportWizardDialog({
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+// ── Day Board Lens ───────────────────────────────────────────────────────────
+function DayBoardLens({
+  ideas,
+  date,
+  onDateChange,
+  onCardClick,
+  articleStatusMap,
+}: {
+  ideas: StudioContentIdea[];
+  date: string;
+  onDateChange: (d: string) => void;
+  onCardClick: (id: string) => void;
+  articleStatusMap: Record<string, string>;
+}) {
+  const { toast } = useToast();
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverCol, setDragOverCol] = useState<string | null>(null);
+
+  const { data: assignees = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/studio/assignees"],
+  });
+
+  const dayIdeas = ideas.filter((i) => i.scheduledDate === date);
+
+  const statusMutation = useMutation({
+    mutationFn: async ({ id, to }: { id: string; to: string }) => {
+      const res = await apiRequest("PATCH", `/api/studio/content-ideas/${id}`, { status: to });
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Failed"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
+      toast({ title: "Status updated" });
+    },
+    onError: (e: Error) => toast({ title: "Couldn't change status", description: e.message, variant: "destructive" }),
+  });
+
+  const prevDay = () => {
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() - 1);
+    onDateChange(toISODate(d));
+  };
+  const nextDay = () => {
+    const d = new Date(`${date}T00:00:00`);
+    d.setDate(d.getDate() + 1);
+    onDateChange(toISODate(d));
+  };
+
+  const visibleCols = BOARD_COLUMNS.filter((col) => dayIdeas.some((i) => i.status === col));
+  const displayCols = visibleCols.length > 0 ? visibleCols : [BOARD_COLUMNS[1]];
+
+  return (
+    <div className="space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="icon" variant="outline" className="h-8 w-8" onClick={prevDay} data-testid="button-day-board-prev">
+          <ChevronLeft className="h-4 w-4" />
+        </Button>
+        <Input
+          type="date"
+          value={date}
+          onChange={(e) => e.target.value && onDateChange(e.target.value)}
+          className="h-8 w-40"
+          data-testid="input-day-board-date"
+        />
+        <Button size="icon" variant="outline" className="h-8 w-8" onClick={nextDay} data-testid="button-day-board-next">
+          <ChevronRight className="h-4 w-4" />
+        </Button>
+        <span className="text-sm text-muted-foreground">
+          {new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+        </span>
+        <Badge variant="secondary" className="ml-auto">
+          {dayIdeas.length} idea{dayIdeas.length !== 1 ? "s" : ""}
+        </Badge>
+      </div>
+
+      {dayIdeas.length === 0 ? (
+        <div className="flex h-48 items-center justify-center rounded-md border border-dashed text-muted-foreground">
+          <div className="text-center">
+            <CalendarDays className="mx-auto mb-2 h-8 w-8 opacity-30" />
+            <p className="text-sm">No ideas scheduled for this day</p>
+            <p className="mt-1 text-xs">Navigate to another date or add ideas from the Table lens.</p>
+          </div>
+        </div>
+      ) : (
+        <div className="flex gap-3 overflow-x-auto pb-2" data-testid="day-board-columns">
+          {displayCols.map((col) => {
+            const colIdeas = dayIdeas.filter((i) => i.status === col);
+            const isOver = dragOverCol === col;
+            return (
+              <div
+                key={col}
+                className={`w-56 shrink-0 rounded-md border transition-colors ${isOver ? "border-primary bg-primary/5" : "bg-muted/30"}`}
+                onDragOver={(e) => { e.preventDefault(); setDragOverCol(col); }}
+                onDragLeave={(e) => {
+                  if (!e.currentTarget.contains(e.relatedTarget as Node)) setDragOverCol(null);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setDragOverCol(null);
+                  const id = e.dataTransfer.getData("ideaId");
+                  const fromStatus = e.dataTransfer.getData("fromStatus");
+                  if (id && fromStatus !== col) statusMutation.mutate({ id, to: col });
+                }}
+                data-testid={`day-board-column-${col}`}
+              >
+                <div className="flex items-center justify-between border-b px-2 py-1.5">
+                  <span className="text-xs font-semibold">{STATUS_LABEL[col]}</span>
+                  <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">{colIdeas.length}</Badge>
+                </div>
+                <div className="min-h-12 space-y-1.5 p-1.5">
+                  {colIdeas.map((idea) => {
+                    const linkedArtStatus = idea.linkedArticleId ? articleStatusMap[idea.linkedArticleId] : null;
+                    const assignee = assignees.find((a) => a.id === idea.assignedToUserId);
+                    const initials = assignee ? assignee.name.split(" ").map((n) => n[0]).join("").toUpperCase().slice(0, 2) : null;
+                    const channels = (idea.channels as string[] | null) ?? [];
+                    return (
+                      <button
+                        key={idea.id}
+                        draggable
+                        onDragStart={(e) => {
+                          e.dataTransfer.setData("ideaId", idea.id);
+                          e.dataTransfer.setData("fromStatus", idea.status);
+                          setDraggingId(idea.id);
+                        }}
+                        onDragEnd={() => { setDraggingId(null); setDragOverCol(null); }}
+                        onClick={() => onCardClick(idea.id)}
+                        className={`w-full rounded-md border bg-background p-2 text-left text-xs shadow-sm hover:border-primary/40 cursor-grab active:cursor-grabbing transition-opacity ${draggingId === idea.id ? "opacity-40" : ""}`}
+                        data-testid={`day-board-card-${idea.id}`}
+                      >
+                        <p className="font-medium leading-snug">{TYPE_ICON[idea.contentType] || ""} {idea.topic}</p>
+                        <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+                          {channels.slice(0, 2).map((c) => (
+                            <span key={c} className="rounded bg-slate-100 px-1 py-0.5 dark:bg-slate-800 dark:text-slate-300">{c}</span>
+                          ))}
+                          {idea.origin === "bd_agent" && (
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-400" data-testid={`badge-bd-${idea.id}`}>
+                              ⚡ BD
+                            </span>
+                          )}
+                          {idea.linkedArticleId && (
+                            <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_CLASS[linkedArtStatus ?? ""] ?? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400"}`} data-testid={`badge-article-${idea.id}`}>
+                              📰 {linkedArtStatus ? STATUS_LABEL[linkedArtStatus] ?? linkedArtStatus : "Article"}
+                            </span>
+                          )}
+                          {(idea as any).needsAttention && (
+                            <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" data-testid={`badge-needs-attention-${idea.id}`}>
+                              <AlertTriangle className="h-2.5 w-2.5" /> Review
+                            </span>
+                          )}
+                        </div>
+                        {initials && (
+                          <div className="mt-1.5 flex items-center justify-end">
+                            <div className="h-5 w-5 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[9px] font-bold dark:bg-indigo-900/40 dark:text-indigo-300">
+                              {initials}
+                            </div>
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -1509,6 +1680,7 @@ export default function PipelineView({ lens }: { lens: Lens }) {
   const [createOpen, setCreateOpen] = useState(false);
   const [createDate, setCreateDate] = useState<string | undefined>(undefined);
   const [importOpen, setImportOpen] = useState(false);
+  const [dayBoardDate, setDayBoardDate] = useState(() => toISODate(new Date()));
   const [showBacklog, setShowBacklog] = useState(true);
   const [campaignFilter, setCampaignFilter] = useState<string | null>(null);
   const [dateFilter, setDateFilter] = useState<string | null>(null);
@@ -1701,6 +1873,7 @@ export default function PipelineView({ lens }: { lens: Lens }) {
           <LensButton value="calendar" icon={CalendarDays} label="Calendar" />
           <LensButton value="board" icon={Columns3} label="Board" />
           <LensButton value="table" icon={Table2} label="Table" />
+          <LensButton value="day_board" icon={CalendarDays} label="Day Board" />
           <div className="mx-1 h-6 w-px bg-border" />
           <Input
             value={search}
@@ -1881,6 +2054,16 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                   </CardContent>
                 </Card>
               </div>
+            )}
+
+            {lens === "day_board" && (
+              <DayBoardLens
+                ideas={ideas ?? []}
+                date={dayBoardDate}
+                onDateChange={setDayBoardDate}
+                onCardClick={(id) => setPeekId(id)}
+                articleStatusMap={articleStatusMap}
+              />
             )}
 
             {lens === "board" && (
