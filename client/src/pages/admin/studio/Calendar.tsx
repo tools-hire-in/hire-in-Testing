@@ -65,7 +65,16 @@ type CalendarItem = StudioArticle & {
   authorName: string | null;
   projectName: string | null;
   publishesToInsights: boolean;
+  lastRejectionReason?: string | null;
 };
+
+/** Returns the display-key to use for STATUS_LABELS / STATUS_BADGE_CLASS.
+ *  Draft articles that were rejected get the virtual "needs_revision" key
+ *  so they render differently from fresh drafts. */
+export function artDisplayKey(a: { status: string; lastRejectionReason?: string | null }): string {
+  if (a.status === "draft" && a.lastRejectionReason) return "needs_revision";
+  return a.status;
+}
 
 export function ymd(d: Date) {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
@@ -670,10 +679,10 @@ export function IdeaDetailPane({
               {linkedArticle && (
                 <Badge
                   variant="secondary"
-                  className={`text-[10px] ${STATUS_BADGE_CLASS[linkedArticle.status] ?? ""}`}
+                  className={`text-[10px] ${STATUS_BADGE_CLASS[artDisplayKey(linkedArticle)] ?? ""}`}
                   data-testid="badge-linked-article-status"
                 >
-                  {STATUS_LABELS[linkedArticle.status] ?? linkedArticle.status}
+                  {STATUS_LABELS[artDisplayKey(linkedArticle)] ?? linkedArticle.status}
                 </Badge>
               )}
               <Button
@@ -1440,7 +1449,9 @@ export default function Calendar() {
   });
   const articleStatusMap = useMemo(() => {
     const m: Record<string, string> = {};
-    for (const a of linkedArticlesPage?.items ?? []) m[a.id] = a.status;
+    for (const a of linkedArticlesPage?.items ?? []) {
+      m[a.id] = artDisplayKey(a as { status: string; lastRejectionReason?: string | null });
+    }
     return m;
   }, [linkedArticlesPage]);
 
@@ -1601,8 +1612,10 @@ export default function Calendar() {
                       <div className="space-y-0.5">
                         {/* Article chips */}
                         {dayItems.map((a) => {
-                          const isDraftPlanned = a.status === "draft";
-                          const readyToExport = !isDraftPlanned && !a.publishesToInsights;
+                          const displayKey = artDisplayKey(a);
+                          const isNeedsRevision = displayKey === "needs_revision";
+                          const isDraftPlanned = a.status === "draft" && !isNeedsRevision;
+                          const readyToExport = !isDraftPlanned && !isNeedsRevision && !a.publishesToInsights && a.status !== "draft";
                           return (
                             <button
                               key={a.id}
@@ -1614,9 +1627,9 @@ export default function Calendar() {
                               className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] hover-elevate ${
                                 isDraftPlanned ? "border border-dashed bg-gray-50 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400"
                                 : readyToExport ? "border border-dashed bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
-                                : STATUS_BADGE_CLASS[a.status] ?? ""
+                                : STATUS_BADGE_CLASS[displayKey] ?? ""
                               }`}
-                              title={isDraftPlanned ? `${a.title} — Planned Draft` : readyToExport ? `${a.title} — Ready to Export` : `${a.title} — ${a.status}`}
+                              title={isDraftPlanned ? `${a.title} — Planned Draft` : isNeedsRevision ? `${a.title} — Needs revision: ${a.lastRejectionReason}` : readyToExport ? `${a.title} — Ready to Export` : `${a.title} — ${a.status}`}
                               data-testid={`calendar-item-${a.id}`}
                             >
                               {isDraftPlanned ? `· ${a.title}` : readyToExport ? `⇩ ${a.title}` : a.title}
@@ -1708,7 +1721,8 @@ export default function Calendar() {
                           <button
                             key={a.id}
                             onClick={(e) => { e.stopPropagation(); navigate(`/admin/studio/articles/${a.id}/edit`); }}
-                            className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] ${STATUS_BADGE_CLASS[a.status] ?? ""}`}
+                            className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] ${STATUS_BADGE_CLASS[artDisplayKey(a)] ?? ""}`}
+                            title={artDisplayKey(a) === "needs_revision" ? `${a.title} — Needs revision` : a.title}
                             data-testid={`week-item-${a.id}`}
                           >
                             {a.title}

@@ -410,13 +410,20 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                       {getStudioContentType(a.contentType)?.label ?? a.contentType}
                     </TableCell>
                     <TableCell onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
-                      <Badge
-                        variant="secondary"
-                        className={STATUS_BADGE_CLASS[a.status] ?? ""}
-                        data-testid={`badge-status-${a.id}`}
-                      >
-                        {STATUS_LABELS[a.status] ?? a.status}
-                      </Badge>
+                      {(() => {
+                        const isRejected = a.status === "draft" && !!(a as any).lastRejectionReason;
+                        const displayKey = isRejected ? "needs_revision" : a.status;
+                        return (
+                          <Badge
+                            variant="secondary"
+                            className={STATUS_BADGE_CLASS[displayKey] ?? ""}
+                            data-testid={`badge-status-${a.id}`}
+                            title={isRejected ? ((a as any).lastRejectionReason as string) : undefined}
+                          >
+                            {STATUS_LABELS[displayKey] ?? a.status}
+                          </Badge>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       {a.authorName ?? "—"}

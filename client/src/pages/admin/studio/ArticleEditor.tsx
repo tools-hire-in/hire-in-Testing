@@ -252,6 +252,7 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [dirty, setDirty] = useState(false);
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [ideaBannerOpen, setIdeaBannerOpen] = useState(true);
+  const [rejectionBannerDismissed, setRejectionBannerDismissed] = useState(false);
 
   // AI generation modal state.
   const [genOpen, setGenOpen] = useState(false);
@@ -975,13 +976,19 @@ function ArticleEditorInner({ id }: { id: string }) {
           </button>
           <ChevronRight className="h-3 w-3" />
           <span className="truncate font-medium text-foreground">{form.title || "Untitled"}</span>
-          <Badge
-            variant="secondary"
-            className={STATUS_BADGE_CLASS[article.status] ?? ""}
-            data-testid="badge-article-status"
-          >
-            {STATUS_LABELS[article.status] ?? article.status}
-          </Badge>
+          {(() => {
+            const hasRejection = article.status === "draft" && !!(article as any).lastRejection;
+            const displayKey = hasRejection ? "needs_revision" : article.status;
+            return (
+              <Badge
+                variant="secondary"
+                className={STATUS_BADGE_CLASS[displayKey] ?? ""}
+                data-testid="badge-article-status"
+              >
+                {STATUS_LABELS[displayKey] ?? article.status}
+              </Badge>
+            );
+          })()}
           {articleCostData && articleCostData.totalCostUsd > 0 && (
             <span
               className="inline-flex items-center gap-1 rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700"
@@ -1144,6 +1151,51 @@ function ArticleEditorInner({ id }: { id: string }) {
           onDismiss={() => setAiError(null)}
         />
       )}
+
+      {/* Rejection callout banner — shown to the author when their article was sent back */}
+      {(() => {
+        const lastRejection = (article as any).lastRejection as {
+          reason: string | null;
+          rejectedAt: string | null;
+          rejectedByName: string | null;
+          stage: string | null;
+        } | null;
+        if (!lastRejection || rejectionBannerDismissed) return null;
+        return (
+          <div
+            className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 p-4 dark:border-amber-700 dark:bg-amber-950/30"
+            data-testid="banner-rejection"
+          >
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600 dark:text-amber-400" />
+            <div className="flex-1 space-y-1">
+              <p className="text-sm font-semibold text-amber-800 dark:text-amber-300">
+                Sent back for revision
+                {lastRejection.stage ? ` — ${lastRejection.stage}` : ""}
+              </p>
+              {lastRejection.reason && (
+                <p className="text-sm text-amber-700 dark:text-amber-400" data-testid="text-rejection-reason">
+                  {lastRejection.reason}
+                </p>
+              )}
+              <p className="text-xs text-amber-600 dark:text-amber-500">
+                {lastRejection.rejectedByName ? `by ${lastRejection.rejectedByName}` : ""}
+                {lastRejection.rejectedByName && lastRejection.rejectedAt ? " · " : ""}
+                {lastRejection.rejectedAt
+                  ? new Date(lastRejection.rejectedAt).toLocaleString()
+                  : ""}
+              </p>
+            </div>
+            <button
+              onClick={() => setRejectionBannerDismissed(true)}
+              className="shrink-0 text-amber-500 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-200"
+              aria-label="Dismiss rejection notice"
+              data-testid="button-dismiss-rejection-banner"
+            >
+              <XCircle className="h-4 w-4" />
+            </button>
+          </div>
+        );
+      })()}
 
       {originIdea && (
         <div className="rounded-md border border-indigo-200 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-950/30" data-testid="banner-originated-from-idea">

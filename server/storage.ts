@@ -3955,6 +3955,24 @@ export class DatabaseStorage implements IStorage {
       .select({
         article: studioArticles,
         authorName: studioAuthorProfiles.displayName,
+        lastRejectionReason: sql<string | null>`(
+          SELECT metadata->>'reason' FROM studio_audit_events
+          WHERE article_id = ${studioArticles.id}
+            AND (
+              event_type IN ('marketing_rejected', 'final_rejected', 'review_changes_requested', 'review_declined')
+              OR (event_type = 'status_changed' AND metadata->>'via' IN ('cm_decision') AND metadata->>'to' = 'draft')
+            )
+          ORDER BY created_at DESC LIMIT 1
+        )`,
+        lastRejectedAt: sql<Date | null>`(
+          SELECT created_at FROM studio_audit_events
+          WHERE article_id = ${studioArticles.id}
+            AND (
+              event_type IN ('marketing_rejected', 'final_rejected', 'review_changes_requested', 'review_declined')
+              OR (event_type = 'status_changed' AND metadata->>'via' IN ('cm_decision') AND metadata->>'to' = 'draft')
+            )
+          ORDER BY created_at DESC LIMIT 1
+        )`,
       })
       .from(studioArticles)
       .leftJoin(
@@ -3967,7 +3985,12 @@ export class DatabaseStorage implements IStorage {
       .offset((page - 1) * pageSize);
 
     return {
-      items: rows.map((r) => ({ ...r.article, authorName: r.authorName ?? null })),
+      items: rows.map((r) => ({
+        ...r.article,
+        authorName: r.authorName ?? null,
+        lastRejectionReason: r.lastRejectionReason ?? null,
+        lastRejectedAt: r.lastRejectedAt ?? null,
+      })),
       total,
     };
   }
@@ -5385,6 +5408,15 @@ export class DatabaseStorage implements IStorage {
         authorName: studioAuthorProfiles.displayName,
         projectName: studioProjects.name,
         publishesToInsights: studioProjects.publishesToInsights,
+        lastRejectionReason: sql<string | null>`(
+          SELECT metadata->>'reason' FROM studio_audit_events
+          WHERE article_id = ${studioArticles.id}
+            AND (
+              event_type IN ('marketing_rejected', 'final_rejected', 'review_changes_requested', 'review_declined')
+              OR (event_type = 'status_changed' AND metadata->>'via' IN ('cm_decision') AND metadata->>'to' = 'draft')
+            )
+          ORDER BY created_at DESC LIMIT 1
+        )`,
       })
       .from(studioArticles)
       .leftJoin(studioAuthorProfiles, eq(studioArticles.authorProfileId, studioAuthorProfiles.id))
@@ -5395,6 +5427,7 @@ export class DatabaseStorage implements IStorage {
       authorName: r.authorName ?? null,
       projectName: r.projectName ?? null,
       publishesToInsights: r.publishesToInsights ?? false,
+      lastRejectionReason: r.lastRejectionReason ?? null,
     }));
   }
 

@@ -18014,7 +18014,54 @@ export async function registerRoutes(
       try {
         const article = await storage.getStudioArticle(req.params.id);
         if (!article) return res.status(404).json({ error: "Article not found" });
-        res.json(article);
+        // Enrich with last-rejection info for the author's editor view.
+        // Only relevant while article is in draft; cleared implicitly when it moves to in_review.
+        let lastRejection: {
+          reason: string | null;
+          rejectedAt: string | null;
+          rejectedByName: string | null;
+          stage: string | null;
+        } | null = null;
+        if (article.status === "draft") {
+          const REJECTION_TYPES = new Set([
+            "marketing_rejected",
+            "final_rejected",
+            "review_changes_requested",
+            "review_declined",
+          ]);
+          const events = await storage.getStudioAuditEvents(article.id);
+          const lastRejectionEvent = events.find(
+            (e) =>
+              REJECTION_TYPES.has(e.eventType) ||
+              (e.eventType === "status_changed" &&
+                (e.metadata as any)?.via === "cm_decision" &&
+                (e.metadata as any)?.to === "draft"),
+          );
+          if (lastRejectionEvent) {
+            const meta = (lastRejectionEvent.metadata ?? {}) as Record<string, any>;
+            let rejectedByName: string | null = null;
+            if (lastRejectionEvent.actorUserId) {
+              try {
+                const actor = await storage.getAdminUser(lastRejectionEvent.actorUserId);
+                rejectedByName = actor ? userDisplayName(actor) : null;
+              } catch {}
+            }
+            const stageMap: Record<string, string> = {
+              marketing_rejected: "Marketing",
+              final_rejected: "Final sign-off",
+              review_changes_requested: "Peer review",
+              review_declined: "Peer review",
+              status_changed: "CM Review",
+            };
+            lastRejection = {
+              reason: meta.reason ?? null,
+              rejectedAt: lastRejectionEvent.createdAt?.toISOString?.() ?? null,
+              rejectedByName,
+              stage: stageMap[lastRejectionEvent.eventType] ?? null,
+            };
+          }
+        }
+        res.json({ ...article, lastRejection });
       } catch (error) {
         console.error("Get studio article error:", error);
         res.status(500).json({ error: "Failed to fetch article" });
@@ -22756,6 +22803,21 @@ export async function registerRoutes(
             eventType: "status_changed",
             metadata: { from: article.status, to: "draft", reason: reason.trim(), via: "cm_decision" },
           } as any);
+          // Notify the article's author (createdBy) that their article was sent back.
+          try {
+            if (article.createdBy) {
+              await storage.createNotification({
+                userId: article.createdBy,
+                type: "studio_cm_review_rejected",
+                title: "Article sent back for revision",
+                message: `"${article.title}" was sent back during CM review: ${reason.trim()}`,
+                isRead: false,
+                metadata: { articleId: article.id, stage: "cm_review" },
+              });
+            }
+          } catch (notifyErr) {
+            console.error("Studio CM reject notification error:", notifyErr);
+          }
           return res.json(updated);
         }
 

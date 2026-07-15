@@ -1,5 +1,6 @@
 export const STATUS_LABELS: Record<string, string> = {
   draft: "Draft",
+  needs_revision: "Needs revision",
   in_review: "In Review",
   pending_cm_review: "CM Review",
   pending_author: "Author Sign-Off",
@@ -15,6 +16,7 @@ export const STATUS_LABELS: Record<string, string> = {
 
 export const STATUS_BADGE_CLASS: Record<string, string> = {
   draft: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
+  needs_revision: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
   in_review: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
   pending_cm_review: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300",
   pending_author: "bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-300",

@@ -15,7 +15,7 @@ import { usePermissions } from "@/hooks/use-permissions";
 import { useToast } from "@/hooks/use-toast";
 import {
   DayIdeaCard, IdeaDetailPane, ymd, normalizeScheduledDate,
-  OCCASION_REGION_LABELS,
+  OCCASION_REGION_LABELS, artDisplayKey,
 } from "./Calendar";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -158,7 +158,9 @@ export default function StudioDayView() {
   });
   const articleStatusMap = useMemo(() => {
     const m: Record<string, string> = {};
-    for (const a of linkedArticlesPage?.items ?? []) m[a.id] = a.status;
+    for (const a of linkedArticlesPage?.items ?? []) {
+      m[a.id] = artDisplayKey(a as { status: string; lastRejectionReason?: string | null });
+    }
     return m;
   }, [linkedArticlesPage]);
 
