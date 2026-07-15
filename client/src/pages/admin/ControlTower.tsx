@@ -20,6 +20,7 @@ import {
   Loader2,
   Radar,
   ShieldCheck,
+  Shield,
 } from "lucide-react";
 
 const FeatureFlagsSection = lazy(() =>
@@ -41,6 +42,7 @@ const AuditLogsContent = lazy(() =>
 const AllowedDomainsSection = lazy(() =>
   import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.AllowedDomainsSection })),
 );
+const GovernanceHub = lazy(() => import("@/pages/admin/governance/GovernanceHub"));
 
 import {
   type TowerTab,
@@ -120,6 +122,12 @@ const PANELS: ControlPanel[] = [
     description: "Manage allowed login email domains and authentication settings.",
     icon: ShieldCheck,
   },
+  {
+    key: "governance",
+    label: "Governance Hub",
+    description: "Configure enforcement cadence for SOPs, PIPs, growth plans, and probation escalations.",
+    icon: Shield,
+  },
 ];
 
 const TAB_LABELS: Record<TowerTab, string> = {
@@ -133,6 +141,7 @@ const TAB_LABELS: Record<TowerTab, string> = {
   "system-settings": "System Settings",
   "user-management": "Users",
   "security": "Security",
+  "governance": "Governance Hub",
 };
 
 export default function ControlTower() {
@@ -310,6 +319,11 @@ export default function ControlTower() {
         {tab === "security" && (
           <Suspense fallback={<PanelFallback />}>
             <AllowedDomainsSection />
+          </Suspense>
+        )}
+        {tab === "governance" && (
+          <Suspense fallback={<PanelFallback />}>
+            <GovernanceHub />
           </Suspense>
         )}
       </div>

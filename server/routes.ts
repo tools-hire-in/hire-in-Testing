@@ -14424,14 +14424,37 @@ export async function registerRoutes(
     "governance_nudge_sweep_enabled",
   ] as const;
 
-  app.get("/api/system/governance-settings", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (_req: Request, res: Response) => {
+  app.get("/api/system/governance-settings", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin", "hr"), async (_req: Request, res: Response) => {
     try {
-      const result: Record<string, unknown> = {};
+      const rows: Array<{ key: string; value: unknown; updatedAt: Date | null; updatedBy: string | null }> = [];
       for (const key of GOVERNANCE_SETTING_KEYS) {
         const row = await storage.getSystemSetting(key);
-        result[key] = row?.value ?? null;
+        rows.push({ key, value: row?.value ?? null, updatedAt: row?.updatedAt ?? null, updatedBy: row?.updatedBy ?? null });
       }
-      res.json(result);
+      // Resolve updatedBy user IDs → display names in one shot
+      const userIds = [...new Set(rows.map(r => r.updatedBy).filter(Boolean) as string[])];
+      const nameMap: Record<string, string> = {};
+      if (userIds.length > 0) {
+        try {
+          const users = await storage.getAdminUsers();
+          for (const u of users) {
+            if (userIds.includes(u.id)) {
+              const name = [u.firstName, u.lastName].filter(Boolean).join(" ").trim() || u.email || u.id;
+              nameMap[u.id] = name;
+            }
+          }
+        } catch { /* non-fatal — fall back to raw IDs */ }
+      }
+      const values: Record<string, unknown> = {};
+      const meta: Record<string, { updatedAt: string | null; updatedByName: string | null }> = {};
+      for (const r of rows) {
+        values[r.key] = r.value;
+        meta[r.key] = {
+          updatedAt: r.updatedAt ? r.updatedAt.toISOString() : null,
+          updatedByName: r.updatedBy ? (nameMap[r.updatedBy] ?? r.updatedBy) : null,
+        };
+      }
+      res.json({ values, meta });
     } catch (error) {
       console.error("Get governance settings error:", error);
       res.status(500).json({ error: "Failed to read governance settings" });

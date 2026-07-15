@@ -8,7 +8,8 @@ export type TowerTab =
   | "data-maintenance"
   | "system-settings"
   | "user-management"
-  | "security";
+  | "security"
+  | "governance";
 
 export const SUPER_ADMIN_TOWER_TABS: TowerTab[] = [
   "overview",
@@ -20,12 +21,15 @@ export const SUPER_ADMIN_TOWER_TABS: TowerTab[] = [
   "data-maintenance",
   "user-management",
   "security",
+  "governance",
 ];
 
-export const HR_TOWER_TABS: TowerTab[] = ["data-maintenance"];
+export const HR_TOWER_TABS: TowerTab[] = ["data-maintenance", "governance"];
+export const ADMIN_TOWER_TABS: TowerTab[] = ["data-maintenance", "governance"];
 
 export function allowedTowerTabs(role?: string | null): TowerTab[] {
   if (role === "super_admin") return SUPER_ADMIN_TOWER_TABS;
+  if (role === "admin") return ADMIN_TOWER_TABS;
   if (role === "hr") return HR_TOWER_TABS;
   return [];
 }
