@@ -201,18 +201,30 @@ export async function teardownGovernanceTestHierarchy(): Promise<void> {
       ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID}
     )
   `);
+  const IDS = [GC_CEO_ID, GC_VP_ID, GC_MGR_ID, GC_REC_A_ID, GC_REC_B_ID, GC_HR_ID];
+
   // Delete all auto-populated rows that FK back to admin_users before deleting test users.
   // The startup/cron/sweep code creates rows in these tables for any active user it finds.
   // Order matters: children before parents where there are FK chains.
   // section_acknowledgements / track_completions reference track_assignments.id — delete first.
   for (const [table, col] of [
     ["section_acknowledgements", "user_id"],
+    ["section_progress", "user_id"],
     ["track_completions", "user_id"],
-    ["track_assignments", "user_id"],
+    ["ceipal_update_logs", "user_id"],
     ["attendance", "user_id"],
     ["break_records", "user_id"],
     ["sop_employee_progress", "user_id"],
-    ["ceipal_update_logs", "user_id"],
+    ["notification_preferences", "user_id"],
+    ["leave_balances", "user_id"],
+    ["leave_accruals", "user_id"],
+    ["leave_requests", "user_id"],
+    ["coaching_log_entries", "employee_id"],
+    ["coaching_log_entries", "author_id"],
+    ["training_extension_requests", "user_id"],
+    ["training_extension_requests", "requested_by_id"],
+    ["training_extension_requests", "endorsed_by_id"],
+    ["training_extension_requests", "resolved_by_id"],
   ] as [string, string][]) {
     await db.execute(sql`
       DELETE FROM ${sql.raw(table)}
@@ -220,11 +232,34 @@ export async function teardownGovernanceTestHierarchy(): Promise<void> {
         ${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID},
         ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID}
       )
-    `);
+    `).catch(() => {});
   }
+
+  // track_assignments: user_id has a FK, and assigned_by/exception_granted_by_id also FK to admin_users
+  await db.execute(sql`
+    DELETE FROM track_assignments
+    WHERE user_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+       OR assigned_by IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+       OR exception_granted_by_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+
   // audit_logs has two FK columns pointing to admin_users
-  await db.execute(sql`DELETE FROM audit_logs WHERE actor_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})`);
-  await db.execute(sql`DELETE FROM audit_logs WHERE target_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})`);
+  await db.execute(sql`DELETE FROM audit_logs WHERE actor_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})`).catch(() => {});
+  await db.execute(sql`DELETE FROM audit_logs WHERE target_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})`).catch(() => {});
+
+  // Final safety sweep: nullify any remaining FK references before the admin_users delete.
+  // Some tables FK on non-user_id columns (assigned_by, manager_id, etc.) and may be recreated
+  // by concurrent startup/sweep code between the per-table deletes above and the final delete below.
+  await db.execute(sql`
+    UPDATE track_assignments
+    SET assigned_by = NULL
+    WHERE assigned_by IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+  await db.execute(sql`
+    UPDATE track_assignments
+    SET exception_granted_by_id = NULL
+    WHERE exception_granted_by_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
 
   await db.execute(sql`
     DELETE FROM admin_users

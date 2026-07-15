@@ -1018,8 +1018,7 @@ export async function syncGovernanceObligations(): Promise<{
     SELECT sep.id AS ref_id,
            sep.user_id AS owner_id,
            sep.sop_timer_queue,
-           ws.wave_number,
-           ws.name
+           ws.wave_number
     FROM sop_employee_progress sep
     JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
     JOIN admin_users au ON au.id = sep.user_id
@@ -1061,7 +1060,7 @@ export async function syncGovernanceObligations(): Promise<{
               userId: u.id,
               type: "governance_wave_held",
               title: `⏸ Wave ${r.wave_number} held — approval required`,
-              message: `SOP Wave ${r.wave_number} (${r.name ?? ""}) has not been approved. New SOP timer activations for this wave are paused until a super_admin approves it. Review the wave and its risk snapshot before approving.`,
+              message: `SOP Wave ${r.wave_number} has not been approved. New SOP timer activations for this wave are paused until a super_admin approves it. Review the wave and its risk snapshot before approving.`,
               metadata: { waveNumber: r.wave_number },
             }).catch(() => {});
           }

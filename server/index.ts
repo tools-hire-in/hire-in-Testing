@@ -48,6 +48,7 @@ app.get("/healthz", (_req, res) => {
 
 app.use(
   express.json({
+    limit: "20mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
