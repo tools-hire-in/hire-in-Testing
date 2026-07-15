@@ -146,6 +146,7 @@ import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 import { registerTrainingCatalogRoutes } from "./trainingCatalogRoutes";
 import { registerGovernanceRoutes } from "./governanceRoutes";
 import { registerCopilotRoutes } from "./copilotRoutes";
+import { registerCeoRoutes } from "./ceoRoutes";
 import { registerSalaryStructureRoutes, seedDefaultSalaryStructure, getPtCustomSlabs } from "./salaryStructureRoutes";
 import { computeComponentsFromGross, computeIndiaStatutory, type StructureRule } from "./salaryEngine";
 import { salaryStructures, salaryStructureRules, trainingSopLinks, roleTrainingRules, systemSettings } from "@shared/schema";
@@ -25603,6 +25604,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   registerTrainingCatalogRoutes(app);
   registerGovernanceRoutes(app);
   registerCopilotRoutes(app);
+  registerCeoRoutes(app);
   registerSalaryStructureRoutes(app, requirePermission);
 
   // ==========================================================================

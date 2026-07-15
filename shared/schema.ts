@@ -1788,6 +1788,10 @@ export const contracts = pgTable("contracts", {
   marginPerHour: varchar("margin_per_hour"),
   paymentTermsDays: integer("payment_terms_days"), // e.g. 30 for Net 30
   billingFrequency: varchar("billing_frequency"), // weekly | bi_weekly | monthly | milestone
+  // CEO rate intelligence fields (Task #1118)
+  specialty: varchar("specialty"), // Healthcare | IT | Engineering | Professional Services | Other
+  billRate: numeric("bill_rate"), // $/hr bill rate
+  payRate: numeric("pay_rate"),   // $/hr pay rate (optional)
   notes: text("notes"),
   status: contractStatusEnum("status").notNull().default("draft"),
   signingToken: varchar("signing_token").unique(),
@@ -1875,6 +1879,25 @@ export type Contract = typeof contracts.$inferSelect;
 export type InsertContract = z.infer<typeof insertContractSchema>;
 export type ContractInvoice = typeof contractInvoices.$inferSelect;
 export type InsertContractInvoice = z.infer<typeof insertContractInvoiceSchema>;
+
+// CEO rate targets — CEO sets quarterly/annual bill-rate benchmarks per specialty
+export const rateTargets = pgTable("rate_targets", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  specialty: varchar("specialty").notNull(), // Healthcare | IT | Engineering | Professional Services | Other
+  targetBillRateUsd: numeric("target_bill_rate_usd").notNull(),
+  periodType: varchar("period_type").notNull(), // quarterly | annual
+  periodLabel: varchar("period_label").notNull(), // e.g. "Q3 2026" | "2026"
+  setBy: varchar("set_by").references(() => adminUsers.id),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRateTargetSchema = createInsertSchema(rateTargets).omit({
+  id: true,
+  createdAt: true,
+});
+export type RateTarget = typeof rateTargets.$inferSelect;
+export type InsertRateTarget = z.infer<typeof insertRateTargetSchema>;
 
 // ==========================================
 // SHIFT SYSTEM

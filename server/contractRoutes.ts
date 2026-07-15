@@ -330,7 +330,9 @@ export function registerContractRoutes(app: Express) {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       const { clientName, clientId, candidateName, candidateRole,
-        paymentTermsDays, billingFrequency, notes } = req.body;
+        paymentTermsDays, billingFrequency, notes,
+        specialty, billRate, payRate,
+        contractStartDate, contractEndDate } = req.body;
       if (!clientName) return res.status(400).json({ error: "Client name required" });
 
       const ext = path.extname(req.file.originalname).toLowerCase();
@@ -354,12 +356,19 @@ export function registerContractRoutes(app: Express) {
         variableValues: {},
         docxPath: null,
         uploadedDocPath,
+        contractStartDate: contractStartDate || null,
+        contractEndDate: contractEndDate || null,
+        netMarginPerContract: req.body.marginPerHour ? Number(req.body.marginPerHour) : null,
         paymentTermsDays: paymentTermsDays ? Number(paymentTermsDays) : null,
         billingFrequency: billingFrequency || null,
         notes: notes || null,
         status: "countersigned",
         createdBy: req.session!.userId,
-      });
+        // Rate intelligence fields
+        ...(specialty ? { specialty } : {}),
+        ...(billRate ? { billRate: billRate } : {}),
+        ...(payRate ? { payRate: payRate } : {}),
+      } as any);
 
       res.status(201).json(contract);
     } catch (e: any) { res.status(500).json({ error: e.message }); }

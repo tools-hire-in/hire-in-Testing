@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, FileText, X } from "lucide-react";
+import { Loader2, Upload, FileText, X, DollarSign } from "lucide-react";
 import type { ContractClient } from "@shared/schema";
 
 interface Props {
@@ -14,6 +14,8 @@ interface Props {
   onClose: () => void;
   onCreated: () => void;
 }
+
+const SPECIALTIES = ["Healthcare", "IT", "Engineering", "Professional Services", "Other"];
 
 export default function ImportContract({ clients, onClose, onCreated }: Props) {
   const { toast } = useToast();
@@ -29,12 +31,31 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
   const [paymentTerms, setPaymentTerms] = useState("");
   const [billingFreq, setBillingFreq] = useState("");
   const [notes, setNotes] = useState("");
+  const [specialty, setSpecialty] = useState("");
+  const [billRate, setBillRate] = useState("");
+  const [payRate, setPayRate] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleClientChange = (id: string) => {
     setClientId(id);
     const client = clients.find(c => c.id === id);
     if (client) setClientName(client.name);
+  };
+
+  // Auto-calculate margin when both rates are entered
+  const handleBillRateChange = (val: string) => {
+    setBillRate(val);
+    if (val && payRate) {
+      const calc = parseFloat(val) - parseFloat(payRate);
+      if (!isNaN(calc) && calc >= 0) setMargin(calc.toFixed(2));
+    }
+  };
+  const handlePayRateChange = (val: string) => {
+    setPayRate(val);
+    if (billRate && val) {
+      const calc = parseFloat(billRate) - parseFloat(val);
+      if (!isNaN(calc) && calc >= 0) setMargin(calc.toFixed(2));
+    }
   };
 
   const handleSubmit = async () => {
@@ -55,6 +76,9 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
       if (paymentTerms) formData.append("paymentTermsDays", paymentTerms);
       if (billingFreq) formData.append("billingFrequency", billingFreq);
       if (notes) formData.append("notes", notes);
+      if (specialty) formData.append("specialty", specialty);
+      if (billRate) formData.append("billRate", billRate);
+      if (payRate) formData.append("payRate", payRate);
 
       const res = await fetch("/api/contracts/import", {
         method: "POST",
@@ -149,7 +173,7 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
               <Input
                 value={candidateName}
                 onChange={e => setCandidateName(e.target.value)}
-                placeholder="Placed candidate name"
+                placeholder='Name or "Multiple" for MSA'
                 data-testid="input-candidate-name-import"
               />
             </div>
@@ -162,22 +186,65 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
                 data-testid="input-candidate-role-import"
               />
             </div>
+
+            {/* Specialty — key for rate intelligence */}
+            <div className="space-y-1.5 col-span-2">
+              <Label className="flex items-center gap-1.5">
+                Specialty / Department
+                <span className="text-[10px] text-primary font-medium bg-primary/10 px-1.5 py-0.5 rounded">Rate Dashboard</span>
+              </Label>
+              <Select value={specialty} onValueChange={setSpecialty}>
+                <SelectTrigger data-testid="select-specialty-import">
+                  <SelectValue placeholder="Select specialty..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {SPECIALTIES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Rate fields */}
             <div className="space-y-1.5">
-              <Label>Contract Start Date</Label>
-              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} data-testid="input-start-date-import" />
+              <Label className="flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5 text-green-600" />
+                Bill Rate ($/hr)
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="e.g. 150.00"
+                value={billRate}
+                onChange={e => handleBillRateChange(e.target.value)}
+                data-testid="input-bill-rate-import"
+              />
             </div>
             <div className="space-y-1.5">
-              <Label>Contract End Date</Label>
-              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid="input-end-date-import" />
+              <Label className="flex items-center gap-1.5">
+                <DollarSign className="h-3.5 w-3.5 text-blue-600" />
+                Pay Rate ($/hr)
+              </Label>
+              <Input
+                type="number"
+                step="0.01"
+                placeholder="e.g. 120.00"
+                value={payRate}
+                onChange={e => handlePayRateChange(e.target.value)}
+                data-testid="input-pay-rate-import"
+              />
             </div>
             <div className="space-y-1.5">
               <Label>Margin Per Hour ($)</Label>
               <Input
-                placeholder="e.g. 15.00"
+                type="number"
+                step="0.01"
+                placeholder="Auto-calculated from rates"
                 value={margin}
                 onChange={e => setMargin(e.target.value)}
                 data-testid="input-margin-import"
               />
+              {billRate && payRate && (
+                <p className="text-[11px] text-muted-foreground">Auto-calculated from bill − pay rate</p>
+              )}
             </div>
             <div className="space-y-1.5">
               <Label>Payment Terms (days)</Label>
@@ -189,6 +256,16 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
                 data-testid="input-payment-terms-import"
               />
             </div>
+
+            <div className="space-y-1.5">
+              <Label>Contract Start Date</Label>
+              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} data-testid="input-start-date-import" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Contract End Date</Label>
+              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid="input-end-date-import" />
+            </div>
+
             <div className="space-y-1.5 col-span-2">
               <Label>Billing Frequency</Label>
               <Select value={billingFreq} onValueChange={setBillingFreq}>

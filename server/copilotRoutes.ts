@@ -19,6 +19,7 @@ import {
   buildContextForIntent,
   buildSystemPrompt,
 } from "./goalCopilotContextService";
+import { buildCeoReportData } from "./governanceService";
 
 const openai = new OpenAI({
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -98,7 +99,25 @@ export function registerCopilotRoutes(app: Express): void {
       context = { intent, quarter: "current quarter", quarterStart: "", quarterEnd: "", today: new Date().toISOString().slice(0, 10) };
     }
 
-    const systemPrompt = buildSystemPrompt(context as any);
+    // Inject CEO exception report into system prompt (best-effort)
+    let ceoExceptionContext = "";
+    try {
+      const ceoReport = await buildCeoReportData();
+      if (ceoReport && typeof ceoReport === "object") {
+        const cats = (ceoReport as any).exceptionCategories ?? [];
+        if (cats.length > 0) {
+          const lines = cats
+            .slice(0, 8)
+            .map((c: any) => `• ${c.title ?? c.category ?? "Unknown"}: ${c.count ?? 0} item(s)`)
+            .join("\n");
+          ceoExceptionContext = `\n\n## System Exceptions (Governance)\n${lines}`;
+        }
+      }
+    } catch {
+      // non-blocking
+    }
+
+    const systemPrompt = buildSystemPrompt(context as any) + ceoExceptionContext;
 
     // Build message history (cap at 20 turns)
     const historyMessages = conversationHistory.slice(-20).map((m) => ({

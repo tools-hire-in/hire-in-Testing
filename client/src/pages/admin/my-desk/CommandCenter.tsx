@@ -31,6 +31,7 @@ import OnboardingChecklist from "@/components/admin/OnboardingChecklist";
 import RecruiterActivityWidget from "./RecruiterActivityWidget";
 import CopilotPanel from "@/components/ceo/CopilotPanel";
 import CompanyGoalStrip from "@/components/ceo/CompanyGoalStrip";
+import RateIntelligenceCard from "@/components/ceo/RateIntelligenceCard";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -362,6 +363,9 @@ export default function CommandCenter() {
 
       {/* CEO: Company Goal Strip — super_admin only */}
       <CompanyGoalStrip />
+
+      {/* CEO: Rate Intelligence Dashboard — super_admin only */}
+      <RateIntelligenceCard />
 
       {/* Greeting */}
       <div>
