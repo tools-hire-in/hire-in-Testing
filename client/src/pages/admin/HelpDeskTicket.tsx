@@ -594,27 +594,35 @@ export default function HelpDeskTicket() {
                 <CardContent className="space-y-3">
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Update Status</p>
-                    <Select value={newStatus} onValueChange={setNewStatus}>
-                      <SelectTrigger className="h-8 text-sm" data-testid="select-update-status">
-                        <SelectValue placeholder="Change status…" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {resolverStatuses.filter(s => s !== ticket.status).map(s => (
-                          <SelectItem key={s} value={s}>{STATUS_CONFIG[s]?.label || s}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {newStatus && (
-                      <Button className="w-full mt-2 h-8 text-sm" size="sm" onClick={() => statusMutation.mutate({ status: newStatus })} disabled={statusMutation.isPending} data-testid="button-update-status">
-                        {statusMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : null}
-                        Confirm Update
-                      </Button>
+                    {ticket.status === "pending_approval" ? (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-2 py-1.5">
+                        Awaiting manager approval — status changes are locked until approved.
+                      </p>
+                    ) : (
+                      <>
+                        <Select value={newStatus} onValueChange={setNewStatus}>
+                          <SelectTrigger className="h-8 text-sm" data-testid="select-update-status">
+                            <SelectValue placeholder="Change status…" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {resolverStatuses.filter(s => s !== ticket.status).map(s => (
+                              <SelectItem key={s} value={s}>{STATUS_CONFIG[s]?.label || s}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {newStatus && (
+                          <Button className="w-full mt-2 h-8 text-sm" size="sm" onClick={() => statusMutation.mutate({ status: newStatus })} disabled={statusMutation.isPending} data-testid="button-update-status">
+                            {statusMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin mr-2" /> : null}
+                            Confirm Update
+                          </Button>
+                        )}
+                      </>
                     )}
                   </div>
                   <Separator />
                   <div>
                     <p className="text-xs text-muted-foreground mb-1">Assign To</p>
-                    <Select onValueChange={(v) => statusMutation.mutate({ assignedToId: v, status: "in_progress" })}>
+                    <Select onValueChange={(v) => statusMutation.mutate({ assignedToId: v })}>
                       <SelectTrigger className="h-8 text-sm" data-testid="select-assign-resolver">
                         <SelectValue placeholder="Assign resolver…" />
                       </SelectTrigger>

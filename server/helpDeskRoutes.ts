@@ -997,7 +997,7 @@ export function registerHelpDeskRoutes(app: Express) {
       const role = req.session.role || "employee";
       if (!RESOLVER_ROLES.includes(role) && role !== "manager") return res.status(403).json({ message: "Forbidden" });
       const users = await storage.getAdminUsers();
-      const resolvers = users.filter(u => RESOLVER_ROLES.includes(u.role || ""));
+      const resolvers = users.filter(u => RESOLVER_ROLES.includes(u.role || "") || u.role === "manager");
       return res.json(resolvers.map(u => ({ id: u.id, firstName: u.firstName, lastName: u.lastName, role: u.role })));
     } catch {
       return res.status(500).json({ message: "Internal server error" });

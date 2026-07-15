@@ -76,10 +76,16 @@ function SecretFormDialog({
   });
 
   const saveMutation = useMutation({
-    mutationFn: (data: typeof form) =>
-      existing
-        ? apiRequest("PATCH", `/api/secrets/${existing.id}`, data)
-        : apiRequest("POST", `/api/vaults/${vaultId}/secrets`, data),
+    mutationFn: (data: typeof form) => {
+      if (existing) {
+        const patch: Record<string, unknown> = { ...data };
+        if (!patch.password) delete patch.password;
+        if (!patch.username) delete patch.username;
+        if (!patch.notes) delete patch.notes;
+        return apiRequest("PATCH", `/api/secrets/${existing.id}`, patch);
+      }
+      return apiRequest("POST", `/api/vaults/${vaultId}/secrets`, data);
+    },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/vaults/${vaultId}/secrets`] });
       queryClient.invalidateQueries({ queryKey: ["/api/my-vault-access"] });
