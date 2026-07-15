@@ -187,6 +187,13 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
     category: "hr",
     typePrefixes: ["recruiter_activity_"],
   },
+  {
+    key: "ceipal_compliance",
+    label: "Ceipal update reminders",
+    description: "Morning reminders about unresolved Ceipal update commitments, and manager alerts for missed updates.",
+    category: "hr",
+    typePrefixes: ["ceipal_morning_reminder", "ceipal_manager_alert", "ceipal_"],
+  },
   // ── System ────────────────────────────────────────────────────────────────
   {
     key: "system_general",

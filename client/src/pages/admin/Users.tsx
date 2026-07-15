@@ -152,7 +152,7 @@ export default function AdminUsers() {
 
   const [editOpen, setEditOpen] = useState(false);
   const [editUser, setEditUser] = useState<AdminUser | null>(null);
-  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "", salary: "", attendanceExempt: false, trainingExempt: false, employeeCategory: "experienced", employmentType: "Full-time / Regular" });
+  const [editForm, setEditForm] = useState({ firstName: "", lastName: "", designation: "", departmentId: "", joiningDate: "", salary: "", attendanceExempt: false, trainingExempt: false, ceipalUpdatePromptEnabled: true, employeeCategory: "experienced", employmentType: "Full-time / Regular" });
 
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkFile, setBulkFile] = useState<File | null>(null);
@@ -504,6 +504,7 @@ export default function AdminUsers() {
       salary: adminUser.salary || "",
       attendanceExempt: adminUser.attendanceExempt ?? false,
       trainingExempt: (adminUser as any).trainingExempt ?? false,
+      ceipalUpdatePromptEnabled: (adminUser as any).ceipalUpdatePromptEnabled ?? true,
       employeeCategory: adminUser.employeeCategory || "experienced",
       employmentType: (adminUser as any).employmentType || "Full-time / Regular",
     });
@@ -1253,6 +1254,24 @@ export default function AdminUsers() {
                       <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${editForm.trainingExempt ? "translate-x-5" : "translate-x-0"}`} />
                     </button>
                   </div>
+                  {editUser?.role === "recruiter" && (
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">Ceipal Check-in Prompt</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Show daily Ceipal update reminder at punch-out. Disable for team members on leave or with different arrangements.</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={editForm.ceipalUpdatePromptEnabled}
+                        onClick={() => setEditForm(prev => ({ ...prev, ceipalUpdatePromptEnabled: !prev.ceipalUpdatePromptEnabled }))}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${editForm.ceipalUpdatePromptEnabled ? "bg-primary" : "bg-input"}`}
+                        data-testid="toggle-ceipal-prompt"
+                      >
+                        <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${editForm.ceipalUpdatePromptEnabled ? "translate-x-5" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -1272,6 +1291,7 @@ export default function AdminUsers() {
                       salary: editForm.salary || null,
                       attendanceExempt: editForm.attendanceExempt,
                       trainingExempt: editForm.trainingExempt,
+                      ceipalUpdatePromptEnabled: editForm.ceipalUpdatePromptEnabled,
                       employeeCategory: editForm.employeeCategory,
                       employmentType: editForm.employmentType,
                     },

@@ -13699,7 +13699,7 @@ export async function registerRoutes(
       const hasAccess = await validateMyTeamAccess(req, res, userId);
       if (!hasAccess) return;
 
-      const { designation, departmentId, hierarchyLevel, gender, employmentType, employeeCategory, attendanceExempt, trainingExempt, maternityLeaveEligible, note } = req.body;
+      const { designation, departmentId, hierarchyLevel, gender, employmentType, employeeCategory, attendanceExempt, trainingExempt, maternityLeaveEligible, ceipalUpdatePromptEnabled, note } = req.body;
       if (!note || !note.trim()) {
         return res.status(400).json({ error: "Reason for change is required" });
       }
@@ -13757,6 +13757,11 @@ export async function registerRoutes(
         before.maternityLeaveEligible = (targetUser as any).maternityLeaveEligible;
         after.maternityLeaveEligible = maternityLeaveEligible;
         updateData.maternityLeaveEligible = maternityLeaveEligible;
+      }
+      if (ceipalUpdatePromptEnabled !== undefined && (targetUser.role === "recruiter")) {
+        before.ceipalUpdatePromptEnabled = (targetUser as any).ceipalUpdatePromptEnabled ?? true;
+        after.ceipalUpdatePromptEnabled = ceipalUpdatePromptEnabled;
+        updateData.ceipalUpdatePromptEnabled = ceipalUpdatePromptEnabled;
       }
 
       const updated = await storage.updateAdminUser(userId, updateData);
@@ -25592,11 +25597,8 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   registerSalaryAdvanceRoutes(app);
   registerAttendanceExceptionRoutes(app);
   registerTravelRoutes(app);
-<<<<<<< HEAD
   registerIntegrationsRoutes(app);
-=======
   registerRecruiterRoutes(app);
->>>>>>> da4880e (Task #1115 — Recruiter Activity & Conversion Tracker)
   registerTrainingCatalogRoutes(app);
   registerGovernanceRoutes(app);
   registerSalaryStructureRoutes(app, requirePermission);
@@ -27196,6 +27198,235 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       }
     }
     await archive.finalize();
+  });
+
+  // ── Ceipal Update Compliance Routes ─────────────────────────────────────────
+  // POST /api/ceipal/update-log — record recruiter's punch-out response
+  app.post("/api/ceipal/update-log", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role!;
+      if (userRole !== "recruiter") {
+        return res.status(403).json({ error: "Only recruiters use the Ceipal update checkpoint" });
+      }
+
+      const { status, deferredReason, commitmentTime } = req.body;
+      const validStatuses = ["confirmed", "deferred", "skipped"];
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Must be: confirmed | deferred | skipped" });
+      }
+
+      const { recordCeipalUpdateLog } = await import("./ceipalCompliance");
+      const today = new Date().toISOString().split("T")[0];
+
+      await recordCeipalUpdateLog({
+        userId,
+        logDate: today,
+        status,
+        deferredReason: deferredReason || null,
+        commitmentTime: commitmentTime ? new Date(commitmentTime) : null,
+      });
+
+      res.json({ success: true, date: today, status });
+    } catch (err: any) {
+      console.error("[ceipal-log] POST /api/ceipal/update-log:", err);
+      res.status(500).json({ error: "Failed to record Ceipal update log" });
+    }
+  });
+
+  // GET /api/ceipal/verify-today-update — background verification (recruiter calls this after saying "yes")
+  app.get("/api/ceipal/verify-today-update", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role!;
+      if (userRole !== "recruiter") {
+        return res.status(403).json({ error: "Only recruiters can verify Ceipal updates" });
+      }
+
+      const currentUser = await storage.getAdminUser(userId);
+      if (!currentUser?.email) {
+        return res.status(400).json({ error: "User email not found" });
+      }
+
+      const { verifyTodayCeipalUpdate, recordCeipalUpdateLog } = await import("./ceipalCompliance");
+      const result = await verifyTodayCeipalUpdate(currentUser.email);
+
+      const today = new Date().toISOString().split("T")[0];
+      await recordCeipalUpdateLog({
+        userId,
+        logDate: today,
+        status: result.status,
+        verifiedCount: result.submissionsCount,
+        jobsCount: result.jobsCount,
+        verifiedAt: new Date(),
+      });
+
+      // If 0 evidence found, silently flag for manager (data point, not notification)
+      // This is a silent flag; no notification is sent here — checkCeipalUpdateCompliance handles escalation
+      res.json({
+        available: result.available,
+        submissionsCount: result.submissionsCount,
+        jobsCount: result.jobsCount,
+        status: result.status,
+      });
+    } catch (err: any) {
+      console.error("[ceipal-verify] GET /api/ceipal/verify-today-update:", err);
+      res.status(500).json({ error: "Failed to verify Ceipal update" });
+    }
+  });
+
+  // GET /api/ceipal/my-update-log — recruiter's own compliance history
+  app.get("/api/ceipal/my-update-log", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const { month } = req.query; // optional YYYY-MM
+
+      const now = new Date();
+      const fromDate = month
+        ? `${month}-01`
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const toDate = now.toISOString().split("T")[0];
+
+      const rows = await db.execute(sql`
+        SELECT log_date::text AS date, status, deferred_reason, commitment_time,
+               verified_count, jobs_count, verified_at, manager_flagged_at
+        FROM ceipal_update_logs
+        WHERE user_id = ${userId}
+          AND log_date >= ${fromDate}::date
+          AND log_date <= ${toDate}::date
+        ORDER BY log_date DESC
+        LIMIT 31
+      `);
+
+      const goodStatuses = new Set(["confirmed", "confirmed_unverified"]);
+      const missedStatuses = new Set(["deferred", "skipped", "confirmed_no_evidence"]);
+      const logs = rows.rows as any[];
+      const confirmedDays = logs.filter(l => goodStatuses.has(l.status)).length;
+      const missedDays = logs.filter(l => missedStatuses.has(l.status)).length;
+      const workingDays = logs.length;
+      const rate = workingDays === 0 ? 0 : Math.round((confirmedDays / workingDays) * 100);
+
+      res.json({
+        logs,
+        summary: { workingDays, confirmedDays, missedDays, rate, month: month || fromDate.slice(0, 7) },
+      });
+    } catch (err: any) {
+      console.error("[ceipal-log] GET /api/ceipal/my-update-log:", err);
+      res.status(500).json({ error: "Failed to fetch Ceipal update log" });
+    }
+  });
+
+  // GET /api/ceipal/team-compliance — manager's team view
+  app.get("/api/ceipal/team-compliance", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const userRole = req.session.role!;
+      const { month } = req.query;
+
+      const allowedRoles = ["manager", "hr", "admin", "super_admin", "operations"];
+      if (!allowedRoles.includes(userRole)) {
+        return res.status(403).json({ error: "Not authorized" });
+      }
+
+      const { getTeamCeipalCompliance, getOrgCeipalCompliance } = await import("./ceipalCompliance");
+
+      if (["hr", "admin", "super_admin"].includes(userRole)) {
+        const result = await getOrgCeipalCompliance();
+        return res.json(result);
+      }
+
+      // Manager: their direct reports
+      const result = await getTeamCeipalCompliance(userId, month as string | undefined);
+      const avgRate = result.length === 0 ? 0
+        : Math.round(result.reduce((s, m) => s + m.rate, 0) / result.length);
+      const exempted = result.filter(m => !m.promptEnabled).length;
+      const belowThreshold = result.filter(m => m.rate < 70 && m.promptEnabled).length;
+
+      res.json({
+        members: result,
+        summary: {
+          total: result.length,
+          avgRate,
+          belowThreshold,
+          exempted,
+        },
+      });
+    } catch (err: any) {
+      console.error("[ceipal-compliance] GET /api/ceipal/team-compliance:", err);
+      res.status(500).json({ error: "Failed to fetch team Ceipal compliance" });
+    }
+  });
+
+  // GET /api/ceipal/today-status — check if recruiter has already answered today
+  app.get("/api/ceipal/today-status", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const today = new Date().toISOString().split("T")[0];
+
+      const row = await db.execute(sql`
+        SELECT status, deferred_reason, commitment_time, verified_count, jobs_count
+        FROM ceipal_update_logs
+        WHERE user_id = ${userId} AND log_date = ${today}::date
+        LIMIT 1
+      `);
+
+      // Count consecutive skips from most-recent logs (for skip-lock enforcement on frontend)
+      const recentLogs = await db.execute(sql`
+        SELECT status FROM ceipal_update_logs
+        WHERE user_id = ${userId}
+        ORDER BY log_date DESC
+        LIMIT 10
+      `);
+      let consecutiveSkips = 0;
+      for (const r of recentLogs.rows as any[]) {
+        if (r.status === "skipped") consecutiveSkips++;
+        else break;
+      }
+
+      const currentUser = await storage.getAdminUser(userId);
+      const prompted = (row.rows as any[])[0] || null;
+      res.json({
+        hasAnsweredToday: !!prompted,
+        status: prompted?.status || null,
+        promptEnabled: currentUser ? Boolean((currentUser as any).ceipalUpdatePromptEnabled ?? true) : true,
+        consecutiveSkips,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to check today status" });
+    }
+  });
+
+  // PATCH /api/hr/users/:id/ceipal-exempt — HR/admin toggle for Ceipal exemption
+  app.patch("/api/hr/users/:id/ceipal-exempt", requirePermission("admin.users", "hr", "admin", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const targetId = req.params.id;
+      const actorId = req.session.userId!;
+      const { enabled, reason } = req.body;
+
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ error: "enabled (boolean) is required" });
+      }
+      if (!enabled && !reason?.trim()) {
+        return res.status(400).json({ error: "reason is required when disabling the Ceipal checkpoint" });
+      }
+
+      await db.execute(sql`
+        UPDATE admin_users SET ceipal_update_prompt_enabled = ${enabled}, updated_at = NOW()
+        WHERE id = ${targetId}
+      `);
+
+      // Log to audit trail
+      await db.execute(sql`
+        INSERT INTO audit_logs (actor_id, target_id, action, changes)
+        VALUES (${actorId}, ${targetId}, 'ceipal_exempt_toggle',
+          ${JSON.stringify({ enabled, reason: reason || null })}::jsonb)
+      `);
+
+      res.json({ success: true, enabled });
+    } catch (err: any) {
+      console.error("[ceipal-exempt] PATCH:", err);
+      res.status(500).json({ error: "Failed to update Ceipal exemption" });
+    }
   });
 
   // ── Global Express error handler ─────────────────────────────────────────────

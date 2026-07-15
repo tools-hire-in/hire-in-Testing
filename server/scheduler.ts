@@ -1535,6 +1535,30 @@ export function startScheduler() {
     }
   }, { timezone: "UTC" });
 
+  // ── Ceipal Update Compliance Crons ──────────────────────────────────────────
+  // Morning reminder: 8:30 AM IST (= 3:00 UTC) — notifies recruiters with unresolved yesterday commitments
+  cron.schedule("0 3 * * *", async () => {
+    console.log("[scheduler] Ceipal morning reminder sweep — running");
+    try {
+      const { sendCeipalMorningReminders } = await import("./ceipalCompliance");
+      await sendCeipalMorningReminders();
+    } catch (err) {
+      console.error("[scheduler] Ceipal morning reminder sweep failed:", err);
+    }
+  }, { timezone: "UTC" });
+
+  // Daily escalation sweep: 7:30 PM IST (= 14:00 UTC) — after typical end of business day
+  // Checks for 2+ consecutive misses → manager notification
+  cron.schedule("0 14 * * 1-5", async () => {
+    console.log("[scheduler] Ceipal escalation sweep — running");
+    try {
+      const { checkCeipalUpdateCompliance } = await import("./ceipalCompliance");
+      await checkCeipalUpdateCompliance();
+    } catch (err) {
+      console.error("[scheduler] Ceipal escalation sweep failed:", err);
+    }
+  }, { timezone: "UTC" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -1551,4 +1575,6 @@ export function startScheduler() {
   console.log("  - Unified governance sync sweep (07:00 IST): cadence backfill → obligation sync → collectOverdueItems → collectProbationMilestoneEvents → applyEscalation (deduped) → HR checkin digest");
   console.log("  - CEO governance exception report: Mondays at 08:00 IST → anonymized AI summary emailed to super_admin/executive");
   console.log("  - Recruiter activity nudge: Mon-Fri at 5:30 PM IST → in-app nudge to recruiters who haven't logged today");
+  console.log("  - Ceipal morning reminder: daily at 8:30 AM IST → notifies recruiters with unresolved yesterday Ceipal commitments");
+  console.log("  - Ceipal escalation sweep: Mon-Fri at 7:30 PM IST → manager alert on 2+ consecutive misses, flag on 5+ in 30 days");
 }

@@ -20,6 +20,7 @@ import {
   KeyRound,
   ShieldAlert,
 } from "lucide-react";
+import CeipalComplianceModal, { CeipalComplianceCard } from "@/components/admin/CeipalComplianceModal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -113,6 +114,34 @@ export default function CommandCenter() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [lunchReminderDismissed, setLunchReminderDismissed] = useState(false);
   const [countdownDismissed, setCountdownDismissed] = useState(false);
+  const [ceipalModalOpen, setCeipalModalOpen] = useState(false);
+
+  const isRecruiter = user?.role === "recruiter";
+
+  // Check if recruiter has already answered today's Ceipal checkpoint
+  const { data: ceipalTodayStatus } = useQuery<{
+    hasAnsweredToday: boolean;
+    status: string | null;
+    promptEnabled: boolean;
+    consecutiveSkips: number;
+  }>({
+    queryKey: ["/api/ceipal/today-status"],
+    enabled: isAuthenticated && isRecruiter,
+    staleTime: 30000,
+  });
+
+  // Open modal if ?ceipal=1 is in the URL (e.g. from morning reminder notification CTA)
+  useEffect(() => {
+    if (!isRecruiter) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("ceipal") === "1" && ceipalTodayStatus && !ceipalTodayStatus.hasAnsweredToday && ceipalTodayStatus.promptEnabled !== false) {
+      setCeipalModalOpen(true);
+      // Remove the query param without a page reload
+      const url = new URL(window.location.href);
+      url.searchParams.delete("ceipal");
+      window.history.replaceState({}, "", url.toString());
+    }
+  }, [isRecruiter, ceipalTodayStatus]);
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/hr/dashboard-stats"],
@@ -264,6 +293,10 @@ export default function CommandCenter() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/dashboard-stats"] });
       toast({ title: "Punched Out", description: "See you next shift!" });
+      // Show Ceipal checkpoint for recruiters who haven't answered today
+      if (isRecruiter && ceipalTodayStatus?.promptEnabled !== false && !ceipalTodayStatus?.hasAnsweredToday) {
+        setTimeout(() => setCeipalModalOpen(true), 600);
+      }
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message || "Failed to punch out", variant: "destructive" });
@@ -319,6 +352,12 @@ export default function CommandCenter() {
 
   return (
     <div className="space-y-4" data-testid="command-center-bento">
+      {/* Ceipal compliance modal (recruiter-only, shown after punch-out) */}
+      <CeipalComplianceModal
+        open={ceipalModalOpen}
+        onClose={() => setCeipalModalOpen(false)}
+      />
+
       {/* Greeting */}
       <div>
         <h2 className="text-xl font-semibold" data-testid="text-cc-greeting">
@@ -707,6 +746,9 @@ export default function CommandCenter() {
 
       {/* ── Recruiter Daily Activity — recruiter/operations/manager roles ── */}
       <RecruiterActivityWidget />
+
+      {/* ── Ceipal update compliance card (recruiter only) ── */}
+      {isRecruiter && <CeipalComplianceCard />}
 
       {/* ── Team Pulse — manager/HR/admin only ── */}
       {isManagerRole && teamTodayData && teamTodayData.totalCount > 0 && (

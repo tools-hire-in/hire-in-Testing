@@ -3103,6 +3103,15 @@ async function runStartupTasks() {
         "seeds) will NOT run. To apply migration files, restart with RUN_MIGRATIONS=true.",
     );
   }
+  // Ceipal compliance schema must run early — insightsLaunch queries admin_users via storage
+  // which will include the new column in SELECT * via Drizzle. Run before any Drizzle reads.
+  try {
+    const { applyCeipalComplianceSchema } = await import("../scripts/apply-ceipal-compliance");
+    await applyCeipalComplianceSchema();
+  } catch (err) {
+    console.error("[startup] Ceipal compliance schema apply error (early):", err);
+  }
+
   await ensureSalaryStructuresTable();
   await ensurePerformanceTables();
   await ensureGoalMilestonesAndLinks();
@@ -4426,6 +4435,11 @@ async function runStartupTasks() {
   // Cron/scheduled jobs start only after schema is ensured so they query
   // tables that are guaranteed to exist.
   startScheduler();
+
+  // Send Ceipal announcement asynchronously (non-blocking)
+  import("./ceipalCompliance")
+    .then(m => m.sendCeipalAnnouncement())
+    .catch(err => console.warn("[startup] Ceipal announcement error:", err));
 
   // Load Zoom credentials from DB so they survive server restarts.
   try {

@@ -4330,10 +4330,10 @@ export default function MyTeam() {
   const canEditPayroll = can("payroll.employee.flags");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [pageTab, setPageTab] = useState<"team" | "plans" | "corrections">(() => {
+  const [pageTab, setPageTab] = useState<"team" | "plans" | "corrections" | "ceipal">(() => {
     try {
       const t = new URLSearchParams(window.location.search).get("tab");
-      if (t === "corrections" || t === "plans") return t;
+      if (t === "corrections" || t === "plans" || t === "ceipal") return t as any;
     } catch {}
     return "team";
   });
@@ -5211,7 +5211,7 @@ export default function MyTeam() {
           </div>
         </div>
 
-        <Tabs value={pageTab} onValueChange={v => setPageTab(v as "team" | "plans" | "corrections")}>
+        <Tabs value={pageTab} onValueChange={v => setPageTab(v as any)}>
           <TabsList data-testid="tabs-page-level">
             <TabsTrigger value="team" data-testid="tab-team">
               <Users className="h-4 w-4 mr-1.5" />
@@ -5237,6 +5237,10 @@ export default function MyTeam() {
                 )}
               </TabsTrigger>
             )}
+            <TabsTrigger value="ceipal" data-testid="tab-ceipal-compliance">
+              <ShieldCheck className="h-4 w-4 mr-1.5" />
+              Ceipal
+            </TabsTrigger>
           </TabsList>
 
           <TabsContent value="team" className="mt-4 space-y-6">
@@ -5322,8 +5326,139 @@ export default function MyTeam() {
           <TabsContent value="plans" className="mt-4">
             <TeamPlansTab teamMembers={membersQuery.data || []} />
           </TabsContent>
+
+          <TabsContent value="ceipal" className="mt-4">
+            <CeipalTeamComplianceView />
+          </TabsContent>
         </Tabs>
       </div>
     </AdminLayout>
+  );
+}
+
+// ── Ceipal Team Compliance View ──────────────────────────────────────────────
+
+interface CeipalMemberSummary {
+  userId: string;
+  name: string;
+  email: string;
+  promptEnabled: boolean;
+  workingDays: number;
+  confirmedDays: number;
+  missedDays: number;
+  rate: number;
+  flagged: boolean;
+  recentLogs: Array<{ date: string; status: string }>;
+}
+
+interface CeipalTeamData {
+  members: CeipalMemberSummary[];
+  summary?: { total: number; avgRate: number; belowThreshold: number; exempted: number };
+  avgRate?: number;
+  belowThreshold?: number;
+  totalRecruiters?: number;
+}
+
+const CEIPAL_DOT_COLORS: Record<string, string> = {
+  confirmed: "bg-green-500",
+  confirmed_unverified: "bg-blue-400",
+  confirmed_no_evidence: "bg-amber-400",
+  deferred: "bg-amber-500",
+  skipped: "bg-gray-400",
+};
+
+function CeipalTeamComplianceView() {
+  const { data, isLoading } = useQuery<CeipalTeamData>({
+    queryKey: ["/api/ceipal/team-compliance"],
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3].map(i => <Skeleton key={i} className="h-20 w-full" />)}
+      </div>
+    );
+  }
+
+  const members = data?.members ?? [];
+  const avgRate = data?.summary?.avgRate ?? data?.avgRate ?? 0;
+  const belowThreshold = data?.summary?.belowThreshold ?? data?.belowThreshold ?? 0;
+
+  if (members.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground">
+          No recruiters on your team, or none have the Ceipal check-in enabled.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4" data-testid="ceipal-team-compliance-view">
+      <div className="grid grid-cols-3 gap-3">
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Team Avg Rate</p>
+            <p className={`text-2xl font-bold mt-1 ${avgRate >= 80 ? "text-green-600 dark:text-green-400" : avgRate >= 60 ? "text-amber-600 dark:text-amber-400" : "text-red-600 dark:text-red-400"}`}>{avgRate}%</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Recruiters</p>
+            <p className="text-2xl font-bold mt-1">{members.length}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="pt-4 pb-3 px-4">
+            <p className="text-xs text-muted-foreground uppercase tracking-wide font-semibold">Below 70%</p>
+            <p className={`text-2xl font-bold mt-1 ${belowThreshold > 0 ? "text-red-600 dark:text-red-400" : "text-foreground"}`}>{belowThreshold}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardContent className="p-0">
+          <div className="divide-y">
+            {members.map(member => {
+              const rateColor = member.rate >= 80 ? "text-green-600 dark:text-green-400"
+                : member.rate >= 60 ? "text-amber-600 dark:text-amber-400"
+                : "text-red-600 dark:text-red-400";
+              return (
+                <div key={member.userId} className="flex items-center gap-4 px-4 py-3" data-testid={`ceipal-row-${member.userId}`}>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">{member.name}</p>
+                    <p className="text-xs text-muted-foreground">{member.email}</p>
+                    {!member.promptEnabled && (
+                      <Badge variant="secondary" className="text-xs mt-0.5">Checkpoint off</Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {member.recentLogs.slice(-7).map((log, idx) => (
+                      <div
+                        key={idx}
+                        className={`h-2.5 w-2.5 rounded-full ${CEIPAL_DOT_COLORS[log.status] ?? "bg-gray-300"}`}
+                        title={`${log.date}: ${log.status}`}
+                      />
+                    ))}
+                  </div>
+                  <div className={`text-sm font-semibold w-10 text-right shrink-0 ${member.promptEnabled ? rateColor : "text-muted-foreground"}`}>
+                    {member.promptEnabled ? `${member.rate}%` : "—"}
+                  </div>
+                  {member.flagged && (
+                    <Badge variant="destructive" className="text-xs shrink-0">5+ misses</Badge>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+
+      <p className="text-xs text-muted-foreground">
+        Dots = last 7 days. Green: confirmed, blue: logged (API unavailable), amber: pending or no evidence, grey: skipped.
+        Members with 2+ consecutive misses trigger a manager notification. 5+ misses in 30 days shows a flag.
+      </p>
+    </div>
   );
 }

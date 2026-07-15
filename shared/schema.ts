@@ -76,6 +76,10 @@ export const adminUsers = pgTable("admin_users", {
   esiApplicable: boolean("esi_applicable").notNull().default(true),
   esiCoveredUntil: date("esi_covered_until"),
   esiDailyWageExempt: boolean("esi_daily_wage_exempt").notNull().default(false),
+  // Ceipal end-of-day compliance checkpoint. When true (default), recruiter-role
+  // users see the punch-out modal asking if they updated Ceipal today.
+  // HR/admin/super_admin can disable this for specific users (e.g., on leave).
+  ceipalUpdatePromptEnabled: boolean("ceipal_update_prompt_enabled").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -4831,3 +4835,36 @@ export const applicationStageHistory = pgTable("application_stage_history", {
 export const insertApplicationStageHistorySchema = createInsertSchema(applicationStageHistory).omit({ id: true, changedAt: true });
 export type ApplicationStageHistory = typeof applicationStageHistory.$inferSelect;
 export type InsertApplicationStageHistory = z.infer<typeof insertApplicationStageHistorySchema>;
+
+// ── Ceipal Update Compliance Logs ───────────────────────────────────────────
+// One record per recruiter per day, capturing their Ceipal update commitment.
+// Status values:
+//   confirmed           — recruiter said yes; background verification found evidence
+//   confirmed_unverified — recruiter said yes; API unavailable (not penalised)
+//   confirmed_no_evidence — recruiter said yes; API found 0 submissions (flag only)
+//   deferred            — recruiter said "not yet" with a commitment
+//   skipped             — recruiter dismissed the modal without answering
+export const ceipalUpdateLogs = pgTable("ceipal_update_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  logDate: date("log_date").notNull(),
+  status: varchar("status").notNull(), // confirmed | confirmed_unverified | confirmed_no_evidence | deferred | skipped
+  deferredReason: varchar("deferred_reason"),
+  commitmentTime: timestamp("commitment_time"),
+  verifiedCount: integer("verified_count"),   // submissions found (null if unverified)
+  jobsCount: integer("jobs_count"),           // job activity found (null if unverified)
+  verifiedAt: timestamp("verified_at"),
+  managerFlaggedAt: timestamp("manager_flagged_at"),
+  managerAcknowledgedAt: timestamp("manager_acknowledged_at"),
+  managerAcknowledgedBy: varchar("manager_acknowledged_by").references(() => adminUsers.id),
+  exemptionReason: text("exemption_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  unique("uq_ceipal_update_log_user_date").on(table.userId, table.logDate),
+  index("idx_ceipal_update_logs_user").on(table.userId),
+  index("idx_ceipal_update_logs_date").on(table.logDate),
+]);
+
+export const insertCeipalUpdateLogSchema = createInsertSchema(ceipalUpdateLogs).omit({ id: true, createdAt: true });
+export type CeipalUpdateLog = typeof ceipalUpdateLogs.$inferSelect;
+export type InsertCeipalUpdateLog = z.infer<typeof insertCeipalUpdateLogSchema>;

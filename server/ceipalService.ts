@@ -47,6 +47,11 @@ function parseTokenResponse(text: string): { access_token?: string; refresh_toke
   }
 }
 
+/** Exported thin wrapper so other modules can reuse the cached token. */
+export async function getCeipalToken(): Promise<string> {
+  return authenticate();
+}
+
 async function authenticate(): Promise<string> {
   const now = Date.now();
   if (cachedToken && now < tokenExpiresAt) {
