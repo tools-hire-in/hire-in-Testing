@@ -45,9 +45,11 @@ import {
   TrendingUp,
   BarChart2,
   Users,
+  GitBranch,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { StudioProject, StudioBrandSettings } from "@shared/schema";
+import type { StudioProject, StudioBrandSettings, StudioContentIdea } from "@shared/schema";
+import { useStudioProject } from "./useStudioProject";
 import { ArticlesPanel } from "./ArticlesPanel";
 import { AuthorsPanel } from "./AuthorsPanel";
 import { StudioOnboardingChecklist } from "@/components/studio/StudioOnboardingChecklist";
@@ -58,8 +60,6 @@ import { NewsletterSettings } from "./NewsletterSettings";
 import { RegenRequestsQueue } from "./ArticleRegenPanel";
 import { LaunchControlPanel } from "./LaunchControlPanel";
 import { usePermissions } from "@/hooks/use-permissions";
-
-const STORAGE_KEY = "studio.selectedProjectId";
 
 interface PulseItem {
   id: string;
@@ -77,6 +77,78 @@ interface TriageArticle {
   title: string;
   status: string;
   updatedAt: string | null;
+}
+
+function ContentPipelineSummaryCard({ projectId }: { projectId: string }) {
+  const STATUS_CHIPS = [
+    { key: "idea", label: "Ideas", cls: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300" },
+    { key: "in_progress", label: "In Progress", cls: "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-400" },
+    { key: "in_review", label: "In Review", cls: "bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" },
+    { key: "approved", label: "Approved", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400" },
+  ] as const;
+
+  const { data: ideas, isLoading } = useQuery<StudioContentIdea[]>({
+    queryKey: ["/api/admin/studio/content-ideas", { projectId, _summary: true }],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/studio/content-ideas?projectId=${encodeURIComponent(projectId)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!projectId,
+    select: (data: any) => data ?? [],
+  });
+
+  const counts = useMemo(() => {
+    const m: Record<string, number> = { idea: 0, in_progress: 0, in_review: 0, approved: 0 };
+    for (const idea of (ideas ?? []) as StudioContentIdea[]) {
+      if (idea.status in m) m[idea.status as string]++;
+    }
+    return m;
+  }, [ideas]);
+
+  const total = Object.values(counts).reduce((a, b) => a + b, 0);
+
+  return (
+    <Card data-testid="card-pipeline-summary">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <GitBranch className="h-4 w-4 text-violet-500" />
+          Content Pipeline
+          {!isLoading && total > 0 && (
+            <span className="text-xs font-normal text-muted-foreground">{total} ideas total</span>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        ) : total === 0 ? (
+          <p className="text-sm text-muted-foreground">No pipeline ideas yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-2">
+            {STATUS_CHIPS.map(({ key, label, cls }) => (
+              <Link key={key} href={`/studio/table?status=${key}`}>
+                <div
+                  className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium cursor-pointer transition-opacity hover:opacity-80 ${cls}`}
+                  data-testid={`pipeline-chip-${key}`}
+                >
+                  <span className="tabular-nums font-bold">{counts[key]}</span>
+                  {label}
+                </div>
+              </Link>
+            ))}
+          </div>
+        )}
+        <div className="mt-2 text-right">
+          <Link href="/studio/table">
+            <span className="text-xs font-medium text-primary hover:underline" data-testid="link-pipeline-all">
+              Open Pipeline →
+            </span>
+          </Link>
+        </div>
+      </CardContent>
+    </Card>
+  );
 }
 
 function TriageCard({ projectId }: { projectId: string }) {
@@ -684,7 +756,7 @@ export default function Studio() {
   // wouter useLocation returns the path only; search params live on window.location.search.
   const tabFromUrl = new URLSearchParams(window.location.search).get("tab");
   const [activeTab, setActiveTab] = useState(tabFromUrl ?? "dashboard");
-  const [selectedProjectId, setSelectedProjectId] = useState<string>("");
+  const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } = useStudioProject();
   const { can, role } = usePermissions();
   const canManageSettings = can("studio.manage_settings");
   const canSpendDashboard = can("studio.spend_dashboard");
@@ -699,24 +771,6 @@ export default function Studio() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location]);
-
-  const { data: projects, isLoading: projectsLoading } = useQuery<StudioProject[]>({
-    queryKey: ["/api/admin/studio/projects"],
-  });
-
-  // Restore / default the selected project once projects are loaded.
-  useEffect(() => {
-    if (!projects || projects.length === 0) return;
-    const stored = localStorage.getItem(STORAGE_KEY);
-    const valid = stored && projects.some((p) => p.id === stored) ? stored : null;
-    const fallback = projects.find((p) => p.isPrimary)?.id ?? projects[0].id;
-    setSelectedProjectId(valid ?? fallback);
-  }, [projects]);
-
-  const handleProjectChange = (id: string) => {
-    setSelectedProjectId(id);
-    localStorage.setItem(STORAGE_KEY, id);
-  };
 
   const { data: stats, isLoading: statsLoading } = useQuery<StudioStats>({
     queryKey: ["/api/admin/studio/stats", selectedProjectId],
@@ -769,7 +823,7 @@ export default function Studio() {
             <span className="text-xs font-medium text-muted-foreground">Project</span>
             <Select
               value={selectedProjectId}
-              onValueChange={handleProjectChange}
+              onValueChange={setSelectedProjectId}
               disabled={projectsLoading || !projects?.length}
             >
               <SelectTrigger className="w-[220px]" data-testid="select-studio-project">
@@ -921,6 +975,7 @@ export default function Studio() {
                   </CardContent>
                 </Card>
 
+                <ContentPipelineSummaryCard projectId={selectedProjectId} />
                 <TriageCard projectId={selectedProjectId} />
                 <ContentPulseCard projectId={selectedProjectId} />
               </>

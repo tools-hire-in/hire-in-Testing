@@ -325,6 +325,22 @@ function ArticleEditorInner({ id }: { id: string }) {
     enabled: !!linkedIdeaId,
   });
 
+  // Fetch campaigns to resolve the idea's campaign name
+  const { data: originIdeaCampaigns } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/studio/campaigns", { projectId: (article as any)?.projectId }],
+    queryFn: async () => {
+      const projectId = (article as any)?.projectId;
+      if (!projectId) return [];
+      const res = await fetch(`/api/studio/campaigns?projectId=${encodeURIComponent(projectId)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!((article as any)?.projectId) && !!(originIdea as any)?.campaignId,
+  });
+  const originCampaignName = (originIdea as any)?.campaignId
+    ? originIdeaCampaigns?.find((c) => c.id === (originIdea as any).campaignId)?.name
+    : undefined;
+
   // If the article already has body content, lock the Generate Draft button so
   // AI cannot silently overwrite an in-progress draft.
   const hasDraft = !!(article?.bodyMarkdown?.trim());
@@ -1162,6 +1178,12 @@ function ArticleEditorInner({ id }: { id: string }) {
                   ))}
                 </div>
               ) : null}
+              {originCampaignName && (
+                <div>
+                  <span className="font-medium text-indigo-700 dark:text-indigo-400">Campaign: </span>
+                  <span className="text-muted-foreground">{originCampaignName}</span>
+                </div>
+              )}
               {originIdea.scheduledDate && (
                 <div>
                   <span className="font-medium text-indigo-700 dark:text-indigo-400">Planned for: </span>

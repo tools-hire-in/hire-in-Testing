@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -262,7 +262,7 @@ function PlanContentForm({ occasion, projectId, onDone }: { occasion: StudioOcca
 
 // ─── Day Idea Card ─────────────────────────────────────────────────────────────
 function DayIdeaCard({
-  idea, isSelected, onClick, assignees, commentCount, canEdit,
+  idea, isSelected, onClick, assignees, commentCount, canEdit, campaignMap, articleStatusMap,
 }: {
   idea: StudioContentIdea;
   isSelected: boolean;
@@ -270,6 +270,8 @@ function DayIdeaCard({
   assignees: { id: string; name: string }[];
   commentCount?: number;
   canEdit: boolean;
+  campaignMap?: Record<string, string>;
+  articleStatusMap?: Record<string, string>;
 }) {
   const { toast } = useToast();
   const assignee = assignees.find((a) => a.id === idea.assignedToUserId);
@@ -310,6 +312,20 @@ function DayIdeaCard({
               <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${STATUS_BADGE_CLASS[idea.status] ?? "bg-slate-100 text-slate-700"}`}>
                 {STATUS_LABELS[idea.status] ?? idea.status}
               </span>
+              {idea.origin === "bd_agent" && (
+                <span className="rounded-full bg-amber-100 border border-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">⚡ BD</span>
+              )}
+              {idea.linkedArticleId && (() => {
+                const artStatus = articleStatusMap?.[idea.linkedArticleId] ?? null;
+                return (
+                  <span className={`rounded-full border px-1.5 py-0.5 text-[10px] font-medium ${STATUS_BADGE_CLASS[artStatus ?? ""] ?? "bg-indigo-100 border-indigo-200 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400"}`} data-testid={`badge-article-status-${idea.id}`}>
+                    📰 {artStatus ? (STATUS_LABELS[artStatus] ?? artStatus) : "Article"}
+                  </span>
+                );
+              })()}
+              {(idea as any).campaignId && campaignMap?.[(idea as any).campaignId] && (
+                <span className="rounded-full bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary">● {campaignMap[(idea as any).campaignId]}</span>
+              )}
               {channels.slice(0, 2).map((c) => (
                 <span key={c} className="rounded bg-slate-100 px-1.5 py-0.5 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">{c}</span>
               ))}
@@ -330,6 +346,32 @@ function DayIdeaCard({
           </div>
         </div>
       </button>
+      {/* Linked article row — clickable, navigates to ArticleEditor */}
+      {idea.linkedArticleId && (() => {
+        const artStatus = articleStatusMap?.[idea.linkedArticleId] ?? null;
+        return (
+          <a
+            href={`/admin/studio/articles/${idea.linkedArticleId}/edit`}
+            onClick={(e) => e.stopPropagation()}
+            className={`flex items-center gap-1.5 border-t px-3 py-1.5 text-[10px] font-medium hover:bg-muted/30 transition-colors ${STATUS_BADGE_CLASS[artStatus ?? ""] ?? "text-indigo-700"}`}
+            data-testid={`row-article-link-${idea.id}`}
+          >
+            <span>📰 Article:</span>
+            <span>{artStatus ? (STATUS_LABELS[artStatus] ?? artStatus) : "View Article"}</span>
+            <ExternalLink className="h-2.5 w-2.5 ml-auto shrink-0" />
+          </a>
+        );
+      })()}
+      {/* Per-idea "View in Pipeline" link */}
+      <a
+        href={`/studio/table?idea=${idea.id}`}
+        onClick={(e) => e.stopPropagation()}
+        className="flex items-center gap-1 border-t px-3 py-1 text-[10px] text-muted-foreground hover:text-primary transition-colors"
+        data-testid={`link-pipeline-idea-${idea.id}`}
+      >
+        <ExternalLink className="h-2.5 w-2.5" />
+        View in Pipeline
+      </a>
       {/* Inline quick-status strip */}
       {canEdit && nextStates.length > 0 && (
         <div className="flex flex-wrap gap-1 border-t px-2 py-1.5">
@@ -471,7 +513,7 @@ function IdeaDetailPane({
     enabled: !!ideaId,
   });
 
-  const { data: linkedArticle } = useQuery<{ id: string; status: string; title: string }>({
+  const { data: linkedArticle } = useQuery<{ id: string; status: string; title: string } | null>({
     queryKey: ["/api/admin/studio/articles", idea?.linkedArticleId],
     enabled: !!idea?.linkedArticleId,
   });
@@ -1065,7 +1107,7 @@ function DraftScheduleRow({
 // ─── Date Workspace Sheet ─────────────────────────────────────────────────────
 function DayWorkspaceSheet({
   date, projectId, occasions, ideas, articles, canCreateArticle, canEdit, canSchedule, members,
-  initialIdeaId, onClose,
+  initialIdeaId, campaignMap, articleStatusMap, onClose,
 }: {
   date: string | null;
   projectId: string | null;
@@ -1077,6 +1119,8 @@ function DayWorkspaceSheet({
   canSchedule: boolean;
   members: { id: string; name: string }[];
   initialIdeaId?: string | null;
+  campaignMap?: Record<string, string>;
+  articleStatusMap?: Record<string, string>;
   onClose: () => void;
 }) {
   const [selectedIdeaId, setSelectedIdeaId] = useState<string | null>(initialIdeaId ?? null);
@@ -1111,10 +1155,23 @@ function DayWorkspaceSheet({
         data-testid="sheet-day-workspace"
       >
         <SheetHeader className="border-b pb-3 shrink-0">
-          <SheetTitle className="flex items-center gap-2 text-base">
-            <CalIcon className="h-4 w-4 text-muted-foreground" />
-            {displayDate}
-          </SheetTitle>
+          <div className="flex items-center justify-between gap-3">
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <CalIcon className="h-4 w-4 text-muted-foreground" />
+              {displayDate}
+            </SheetTitle>
+            {date && (
+              <a
+                href={selectedIdeaId ? `/studio/table?idea=${selectedIdeaId}` : `/studio/table?scheduled_date=${date}`}
+                className="inline-flex items-center gap-1 rounded-md border px-2 py-1 text-xs text-muted-foreground hover:text-primary hover:border-primary transition-colors"
+                data-testid="link-view-in-pipeline"
+                title={selectedIdeaId ? "Open this idea in Pipeline" : "View all ideas for this date in Pipeline"}
+              >
+                <ExternalLink className="h-3 w-3" />
+                {selectedIdeaId ? "View Idea in Pipeline" : "View in Pipeline"}
+              </a>
+            )}
+          </div>
           {occasions.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mt-1">
               {occasions.map((occ) => (
@@ -1138,17 +1195,71 @@ function DayWorkspaceSheet({
                   <p>No ideas for this date</p>
                 </div>
               )}
-              {ideas.map((idea) => (
-                <DayIdeaCard
-                  key={idea.id}
-                  idea={idea}
-                  isSelected={selectedIdeaId === idea.id}
-                  onClick={() => setSelectedIdeaId(selectedIdeaId === idea.id ? null : idea.id)}
-                  assignees={members}
-                  commentCount={commentCounts[idea.id]}
-                  canEdit={canEdit}
-                />
-              ))}
+              {/* BD Agent ideas */}
+              {ideas.filter((i) => i.origin === "bd_agent").length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-600 px-1 flex items-center gap-1">
+                    ⚡ BD Intel Ideas ({ideas.filter((i) => i.origin === "bd_agent").length})
+                  </p>
+                  {ideas.filter((i) => i.origin === "bd_agent").map((idea) => (
+                    <DayIdeaCard
+                      key={idea.id}
+                      idea={idea}
+                      isSelected={selectedIdeaId === idea.id}
+                      onClick={() => setSelectedIdeaId(selectedIdeaId === idea.id ? null : idea.id)}
+                      assignees={members}
+                      commentCount={commentCounts[idea.id]}
+                      canEdit={canEdit}
+                      campaignMap={campaignMap}
+                      articleStatusMap={articleStatusMap}
+                    />
+                  ))}
+                </div>
+              )}
+              {/* Article-linked ideas */}
+              {ideas.filter((i) => i.origin !== "bd_agent" && i.linkedArticleId).length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-600 px-1 flex items-center gap-1">
+                    📰 Article Ideas ({ideas.filter((i) => i.origin !== "bd_agent" && i.linkedArticleId).length})
+                  </p>
+                  {ideas.filter((i) => i.origin !== "bd_agent" && i.linkedArticleId).map((idea) => (
+                    <DayIdeaCard
+                      key={idea.id}
+                      idea={idea}
+                      isSelected={selectedIdeaId === idea.id}
+                      onClick={() => setSelectedIdeaId(selectedIdeaId === idea.id ? null : idea.id)}
+                      assignees={members}
+                      commentCount={commentCounts[idea.id]}
+                      canEdit={canEdit}
+                      campaignMap={campaignMap}
+                      articleStatusMap={articleStatusMap}
+                    />
+                  ))}
+                </div>
+              )}
+              {/* Calendar / manual ideas */}
+              {ideas.filter((i) => i.origin !== "bd_agent" && !i.linkedArticleId).length > 0 && (
+                <div className="space-y-1.5">
+                  {(ideas.filter((i) => i.origin === "bd_agent").length > 0 || ideas.filter((i) => i.origin !== "bd_agent" && i.linkedArticleId).length > 0) && (
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-violet-600 px-1 flex items-center gap-1">
+                      📅 Calendar Ideas ({ideas.filter((i) => i.origin !== "bd_agent" && !i.linkedArticleId).length})
+                    </p>
+                  )}
+                  {ideas.filter((i) => i.origin !== "bd_agent" && !i.linkedArticleId).map((idea) => (
+                    <DayIdeaCard
+                      key={idea.id}
+                      idea={idea}
+                      isSelected={selectedIdeaId === idea.id}
+                      onClick={() => setSelectedIdeaId(selectedIdeaId === idea.id ? null : idea.id)}
+                      assignees={members}
+                      commentCount={commentCounts[idea.id]}
+                      canEdit={canEdit}
+                      campaignMap={campaignMap}
+                      articleStatusMap={articleStatusMap}
+                    />
+                  ))}
+                </div>
+              )}
 
               {/* Draft articles — schedule them directly from the workspace */}
               {canSchedule && articles.filter((a) => a.status === "draft").length > 0 && date && (
@@ -1317,6 +1428,41 @@ export default function Calendar() {
     return d >= monthStart && d <= monthEnd;
   });
 
+  // Batch-fetch linked article statuses for all ideas in this project (used by chips + DayIdeaCard)
+  const hasLinkedIdeas = (contentIdeas ?? []).some((i) => i.linkedArticleId);
+  const { data: linkedArticlesPage } = useQuery<{ items: { id: string; status: string }[] }>({
+    queryKey: ["/api/admin/studio/articles", { projectId: selectedProjectId, batchForIdeas: true }],
+    queryFn: async () => {
+      if (!selectedProjectId) return { items: [] };
+      const res = await fetch(`/api/admin/studio/articles?projectId=${encodeURIComponent(selectedProjectId)}&limit=500`, { credentials: "include" });
+      if (!res.ok) return { items: [] };
+      return res.json();
+    },
+    enabled: !!selectedProjectId && hasLinkedIdeas,
+  });
+  const articleStatusMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const a of linkedArticlesPage?.items ?? []) m[a.id] = a.status;
+    return m;
+  }, [linkedArticlesPage]);
+
+  // Campaigns for this project — used for campaign dot on chips
+  const { data: campaignList = [] } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/studio/campaigns", { projectId: selectedProjectId }],
+    queryFn: async () => {
+      if (!selectedProjectId) return [];
+      const res = await fetch(`/api/studio/campaigns?projectId=${encodeURIComponent(selectedProjectId)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedProjectId,
+  });
+  const campaignMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const c of campaignList) m[c.id] = c.name;
+    return m;
+  }, [campaignList]);
+
   // Members for @mention + assignee
   const { data: members = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/studio/assignees"],
@@ -1478,17 +1624,25 @@ export default function Calendar() {
                           );
                         })}
                         {/* Idea chips (capped at 2) */}
-                        {visibleIdeas.map((idea) => (
-                          <button
-                            key={idea.id}
-                            onClick={(e) => { e.stopPropagation(); openWorkspace(key, idea.id); }}
-                            className="block w-full truncate rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[11px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
-                            title={`${idea.topic} — planned idea`}
-                            data-testid={`calendar-idea-${idea.id}`}
-                          >
-                            {TYPE_ICON[idea.contentType] || "✦"} {idea.topic}
-                          </button>
-                        ))}
+                        {visibleIdeas.map((idea) => {
+                          const campaignName = (idea as any).campaignId ? campaignMap[(idea as any).campaignId] : undefined;
+                          const isBD = idea.origin === "bd_agent";
+                          const linkedArtStatus = idea.linkedArticleId ? articleStatusMap[idea.linkedArticleId] : null;
+                          return (
+                            <button
+                              key={idea.id}
+                              onClick={(e) => { e.stopPropagation(); openWorkspace(key, idea.id); }}
+                              className="flex w-full items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[11px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
+                              title={`${idea.topic}${campaignName ? ` · ${campaignName}` : ""}${isBD ? " · BD Intel" : ""}${linkedArtStatus ? ` · Article: ${linkedArtStatus}` : ""}`}
+                              data-testid={`calendar-idea-${idea.id}`}
+                            >
+                              {isBD && <span className="shrink-0 text-amber-500">⚡</span>}
+                              {campaignName && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" title={campaignName} />}
+                              {linkedArtStatus && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_BADGE_CLASS[linkedArtStatus] ? "bg-indigo-500" : "bg-indigo-300"}`} title={`Article: ${STATUS_LABELS[linkedArtStatus] ?? linkedArtStatus}`} />}
+                              <span className="truncate">{TYPE_ICON[idea.contentType] || "✦"} {idea.topic}</span>
+                            </button>
+                          );
+                        })}
                         {/* +N more overflow */}
                         {overflowCount > 0 && (
                           <button
@@ -1540,17 +1694,25 @@ export default function Calendar() {
                             {a.title}
                           </button>
                         ))}
-                        {dayIdeas.slice(0, 3).map((idea) => (
-                          <button
-                            key={idea.id}
-                            onClick={(e) => { e.stopPropagation(); openWorkspace(key, idea.id); }}
-                            className="block w-full truncate rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[10px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
-                            title={idea.topic}
-                            data-testid={`week-idea-${idea.id}`}
-                          >
-                            {TYPE_ICON[idea.contentType] || "✦"} {idea.topic}
-                          </button>
-                        ))}
+                        {dayIdeas.slice(0, 3).map((idea) => {
+                          const campaignName = (idea as any).campaignId ? campaignMap[(idea as any).campaignId] : undefined;
+                          const isBD = idea.origin === "bd_agent";
+                          const linkedArtStatus = idea.linkedArticleId ? articleStatusMap[idea.linkedArticleId] : null;
+                          return (
+                            <button
+                              key={idea.id}
+                              onClick={(e) => { e.stopPropagation(); openWorkspace(key, idea.id); }}
+                              className="flex w-full items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[10px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
+                              title={`${idea.topic}${campaignName ? ` · ${campaignName}` : ""}${isBD ? " · BD Intel" : ""}${linkedArtStatus ? ` · Article: ${linkedArtStatus}` : ""}`}
+                              data-testid={`week-idea-${idea.id}`}
+                            >
+                              {isBD && <span className="shrink-0 text-amber-500">⚡</span>}
+                              {campaignName && <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-primary/70" />}
+                              {linkedArtStatus && <span className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_BADGE_CLASS[linkedArtStatus] ? "bg-indigo-500" : "bg-indigo-300"}`} title={`Article: ${STATUS_LABELS[linkedArtStatus] ?? linkedArtStatus}`} />}
+                              <span className="truncate">{TYPE_ICON[idea.contentType] || "✦"} {idea.topic}</span>
+                            </button>
+                          );
+                        })}
                         {dayIdeas.length > 3 && (
                           <button
                             onClick={() => openWorkspace(key)}
@@ -1589,6 +1751,8 @@ export default function Calendar() {
         canSchedule={canSchedulePublish}
         members={members}
         initialIdeaId={workspaceInitialIdea}
+        campaignMap={campaignMap}
+        articleStatusMap={articleStatusMap}
         onClose={() => { setWorkspaceDate(null); setWorkspaceInitialIdea(null); }}
       />
 

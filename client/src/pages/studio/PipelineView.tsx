@@ -1511,9 +1511,11 @@ export default function PipelineView({ lens }: { lens: Lens }) {
   const [importOpen, setImportOpen] = useState(false);
   const [showBacklog, setShowBacklog] = useState(true);
   const [campaignFilter, setCampaignFilter] = useState<string | null>(null);
+  const [dateFilter, setDateFilter] = useState<string | null>(null);
 
   // Deep links: ?idea=<id> opens the peek; ?create=1 opens quick-create;
-  // ?campaignId=<id> filters the pipeline to one campaign's content (T2).
+  // ?campaignId=<id> filters by campaign; ?status=<s> filters by status;
+  // ?scheduled_date=<yyyy-mm-dd> filters to a single day (from Calendar workspace link).
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const idea = params.get("idea");
@@ -1521,6 +1523,10 @@ export default function PipelineView({ lens }: { lens: Lens }) {
     if (params.get("create")) setCreateOpen(true);
     const campaign = params.get("campaignId");
     if (campaign) setCampaignFilter(campaign);
+    const status = params.get("status");
+    if (status) setStatusFilter(status);
+    const sd = params.get("scheduled_date");
+    if (sd) setDateFilter(sd);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1546,6 +1552,23 @@ export default function PipelineView({ lens }: { lens: Lens }) {
     enabled: !!selectedProjectId,
   });
 
+  // Batch-fetch linked article statuses so board/table cards can show real status.
+  const hasLinkedArticles = (ideas ?? []).some((i) => i.linkedArticleId);
+  const { data: linkedArticlesPage } = useQuery<{ items: { id: string; status: string; title: string }[] }>({
+    queryKey: ["/api/admin/studio/articles", { projectId: selectedProjectId, batch: true }],
+    queryFn: async () => {
+      const res = await fetch(`/api/admin/studio/articles?projectId=${encodeURIComponent(selectedProjectId)}&limit=500`, { credentials: "include" });
+      if (!res.ok) return { items: [] };
+      return res.json();
+    },
+    enabled: !!selectedProjectId && hasLinkedArticles,
+  });
+  const articleStatusMap = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const a of linkedArticlesPage?.items ?? []) m[a.id] = a.status;
+    return m;
+  }, [linkedArticlesPage]);
+
   // Inline edits from the Table lens (caption, links, date, status).
   const inlinePatchMutation = useMutation({
     mutationFn: async ({ id, fields }: { id: string; fields: Record<string, unknown> }) => {
@@ -1564,6 +1587,12 @@ export default function PipelineView({ lens }: { lens: Lens }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] }),
     onError: (e: Error) => toast({ title: "Couldn't change status", description: e.message, variant: "destructive" }),
   });
+
+  // Client-side date filter — applied when navigating from Calendar "View in Pipeline" link.
+  const filteredIdeas = useMemo(() => {
+    if (!dateFilter) return ideas ?? [];
+    return (ideas ?? []).filter((i) => i.scheduledDate === dateFilter);
+  }, [ideas, dateFilter]);
 
   const scheduled = useMemo(() => (ideas ?? []).filter((i) => i.scheduledDate), [ideas]);
   const backlog = useMemo(() => (ideas ?? []).filter((i) => !i.scheduledDate), [ideas]);
@@ -1741,6 +1770,13 @@ export default function PipelineView({ lens }: { lens: Lens }) {
           )}
         </div>
 
+        {dateFilter && (
+          <div className="flex items-center gap-2 rounded-md border border-violet-200 bg-violet-50 px-3 py-1.5 text-xs text-violet-700 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300" data-testid="date-filter-badge">
+            <span>📅 Showing ideas scheduled for <strong>{new Date(`${dateFilter}T00:00:00`).toLocaleDateString("en-IN", { weekday: "short", day: "2-digit", month: "short", year: "numeric" })}</strong></span>
+            <button className="ml-1 rounded px-1 hover:bg-violet-100 dark:hover:bg-violet-900" onClick={() => setDateFilter(null)} data-testid="button-clear-date-filter">✕ Clear</button>
+          </div>
+        )}
+
         {isLoading ? (
           <div className="flex h-48 items-center justify-center"><Loader2 className="h-6 w-6 animate-spin text-muted-foreground" /></div>
         ) : (
@@ -1850,7 +1886,7 @@ export default function PipelineView({ lens }: { lens: Lens }) {
             {lens === "board" && (
               <div className="flex gap-3 overflow-x-auto pb-2">
                 {BOARD_COLUMNS.map((col) => {
-                  const colIdeas = (ideas ?? []).filter((i) => i.status === col);
+                  const colIdeas = filteredIdeas.filter((i) => i.status === col);
                   return (
                     <div key={col} className="w-56 shrink-0 rounded-md border bg-muted/30" data-testid={`board-column-${col}`}>
                       <div className="flex items-center justify-between border-b px-2 py-1.5">
@@ -1858,7 +1894,9 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                         <Badge variant="secondary" className="px-1.5 py-0 text-[10px]">{colIdeas.length}</Badge>
                       </div>
                       <div className="space-y-1.5 p-1.5">
-                        {colIdeas.map((idea) => (
+                        {colIdeas.map((idea) => {
+                          const linkedArtStatus = idea.linkedArticleId ? articleStatusMap[idea.linkedArticleId] : null;
+                          return (
                           <button
                             key={idea.id}
                             className="w-full rounded-md border bg-background p-2 text-left text-xs shadow-sm hover:border-primary/40"
@@ -1866,17 +1904,36 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                             data-testid={`board-card-${idea.id}`}
                           >
                             <p className="font-medium leading-snug">{TYPE_ICON[idea.contentType] || ""} {idea.topic}</p>
-                            <p className="mt-1 text-[10px] text-muted-foreground">
-                              {idea.scheduledDate ? fmtDate(idea.scheduledDate) : "Backlog"}
-                              {idea.pillar ? ` · ${idea.pillar.replace(/_/g, " ")}` : ""}
-                            </p>
-                            {(idea as any).needsAttention && (
-                              <span className="mt-1 inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" data-testid={`badge-needs-attention-${idea.id}`}>
-                                <AlertTriangle className="h-2.5 w-2.5" /> Review
-                              </span>
-                            )}
+                            <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+                              {idea.scheduledDate ? (
+                                <span className="inline-flex items-center gap-0.5 rounded-full bg-slate-100 px-1.5 py-0.5 dark:bg-slate-800">
+                                  📅 {new Date(`${idea.scheduledDate}T00:00:00`).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                                </span>
+                              ) : (
+                                <span>Backlog</span>
+                              )}
+                              {idea.pillar && <span>· {idea.pillar.replace(/_/g, " ")}</span>}
+                            </div>
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {(idea as any).needsAttention && (
+                                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" data-testid={`badge-needs-attention-${idea.id}`}>
+                                  <AlertTriangle className="h-2.5 w-2.5" /> Review
+                                </span>
+                              )}
+                              {idea.origin === "bd_agent" && (
+                                <span className="inline-flex items-center gap-0.5 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-950/30 dark:text-amber-400" title={(idea as any).bdIntelMetadata?.detectedDomain || "BD Intel"} data-testid={`badge-bd-${idea.id}`}>
+                                  ⚡ BD
+                                </span>
+                              )}
+                              {idea.linkedArticleId && (
+                                <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_CLASS[linkedArtStatus ?? ""] ?? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400"}`} data-testid={`badge-article-${idea.id}`}>
+                                  📰 {linkedArtStatus ? STATUS_LABEL[linkedArtStatus] ?? linkedArtStatus : "Article"}
+                                </span>
+                              )}
+                            </div>
                           </button>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   );
@@ -1902,13 +1959,14 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {(ideas ?? []).length === 0 && (
+                    {filteredIdeas.length === 0 && (
                       <TableRow><TableCell colSpan={10} className="py-8 text-center text-sm text-muted-foreground">No ideas match your filters.</TableCell></TableRow>
                     )}
-                    {(ideas ?? []).map((idea) => {
+                    {filteredIdeas.map((idea) => {
                       const nextStates = (STUDIO_IDEA_TRANSITIONS[idea.status as StudioIdeaStatus] ?? []).filter((s) =>
                         ["approved", "rejected", "changes_requested"].includes(s) ? canReview : canEdit,
                       );
+                      const linkedArtStatus = idea.linkedArticleId ? articleStatusMap[idea.linkedArticleId] : null;
                       return (
                         <TableRow key={idea.id} className="cursor-pointer" onClick={() => setPeekId(idea.id)} data-testid={`row-idea-${idea.id}`}>
                           <TableCell className="whitespace-nowrap text-xs" onClick={(e) => canEdit && e.stopPropagation()}>
@@ -1931,11 +1989,16 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                           </TableCell>
                           <TableCell className="text-xs">{getPipelineContentType(idea.contentType)?.label || idea.contentType}</TableCell>
                           <TableCell className="max-w-64 text-sm font-medium">
-                            <span className="flex items-center gap-1.5">
+                            <span className="flex flex-wrap items-center gap-1.5">
                               <span className="truncate">{idea.topic}</span>
                               {(idea as any).needsAttention && (
                                 <span className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-semibold text-amber-700 dark:bg-amber-950/40 dark:text-amber-400" data-testid={`badge-needs-attention-${idea.id}`}>
                                   <AlertTriangle className="h-2.5 w-2.5" /> Review
+                                </span>
+                              )}
+                              {idea.linkedArticleId && (
+                                <span className={`inline-flex shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_CLASS[linkedArtStatus ?? ""] ?? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400"}`} data-testid={`badge-article-table-${idea.id}`}>
+                                  📰 {linkedArtStatus ? STATUS_LABEL[linkedArtStatus] ?? linkedArtStatus : "Article"}
                                 </span>
                               )}
                             </span>
@@ -2008,7 +2071,15 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                           </TableCell>
                           <TableCell className="text-xs">{((idea.channels as string[] | null) || []).join(", ") || "—"}</TableCell>
                           <TableCell className="text-xs">{idea.pillar ? idea.pillar.replace(/_/g, " ") : "—"}</TableCell>
-                          <TableCell className="text-xs">{idea.origin}</TableCell>
+                          <TableCell className="text-xs">
+                            {idea.origin === "bd_agent" ? (
+                              <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-400" title={(idea as any).bdIntelMetadata?.detectedDomain} data-testid={`badge-origin-bd-${idea.id}`}>
+                                ⚡ BD Intel
+                              </span>
+                            ) : (
+                              idea.origin
+                            )}
+                          </TableCell>
                         </TableRow>
                       );
                     })}
