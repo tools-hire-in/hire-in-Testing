@@ -12,8 +12,9 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import {
-  ClipboardList, CalendarCheck, Target, AlertCircle, Clock, Send, CheckCircle2,
+  ClipboardList, CalendarCheck, Target, AlertCircle, Clock, Send, CheckCircle2, Zap, PenLine,
 } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 
 interface PlanGoal {
@@ -25,6 +26,9 @@ interface PlanGoal {
   progress: number;
   notes: string | null;
   plan_id: string;
+  goal_metric_type?: string | null;
+  goal_progress_source?: string | null;
+  goal_progress_updated_at?: string | null;
 }
 
 interface CheckIn {
@@ -212,6 +216,21 @@ function GoalRow({
     [goal.id, planId, qc, toast]
   );
 
+  const isAutoTracked = goal.goal_metric_type && goal.goal_metric_type !== "manual";
+  const isSystemVerified = isAutoTracked && goal.goal_progress_source === "auto";
+  const lastUpdated = goal.goal_progress_updated_at
+    ? new Date(goal.goal_progress_updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+    : null;
+
+  const sourceLabel: Record<string, string> = {
+    submission_count: "submissions data",
+    ats_compliance: "ATS update records",
+    attendance_consistency: "attendance records",
+    sop_completion: "SOP acknowledgements",
+    training_completion: "training completions",
+  };
+  const sourceName = goal.goal_metric_type ? (sourceLabel[goal.goal_metric_type] ?? goal.goal_metric_type) : "system data";
+
   return (
     <div className="border rounded-lg p-3 space-y-2" data-testid={`card-goal-${goal.id}`}>
       <div className="flex items-start justify-between gap-2">
@@ -221,7 +240,53 @@ function GoalRow({
             <p className="text-xs text-muted-foreground mt-0.5">{goal.description}</p>
           )}
         </div>
-        <Badge variant="outline" className="text-xs capitalize shrink-0">{goal.category}</Badge>
+        <div className="flex items-center gap-1 shrink-0">
+          {isAutoTracked && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border font-medium cursor-default ${
+                      isSystemVerified
+                        ? "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-300"
+                        : "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300"
+                    }`}
+                    data-testid={`badge-progress-source-${goal.id}`}
+                  >
+                    {isSystemVerified
+                      ? <><Zap className="h-2.5 w-2.5" /> System verified</>
+                      : <><PenLine className="h-2.5 w-2.5" /> Manager entered</>
+                    }
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-xs text-xs">
+                  {isSystemVerified
+                    ? `Progress calculated automatically from ${sourceName}${lastUpdated ? ` — last updated ${lastUpdated}` : ""}.`
+                    : `Progress last entered manually by a manager${lastUpdated ? ` on ${lastUpdated}` : ""}. Auto-sync will resume when progress differs by more than 5 points.`
+                  }
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          {!isAutoTracked && (
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border border-muted-foreground/20 text-muted-foreground font-medium cursor-default"
+                    data-testid={`badge-progress-source-${goal.id}`}
+                  >
+                    <PenLine className="h-2.5 w-2.5" /> Manager entered
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="text-xs">
+                  Progress updated manually by a manager or employee.
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+          <Badge variant="outline" className="text-xs capitalize">{goal.category}</Badge>
+        </div>
       </div>
 
       {/* Progress slider */}

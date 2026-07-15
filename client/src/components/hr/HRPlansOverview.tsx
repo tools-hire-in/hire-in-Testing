@@ -21,7 +21,8 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
-import { ClipboardList, AlertCircle, ArrowUp, ArrowDown, ArrowUpDown, MessageSquarePlus } from "lucide-react";
+import { ClipboardList, AlertCircle, ArrowUp, ArrowDown, ArrowUpDown, MessageSquarePlus, Zap, PenLine } from "lucide-react";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 
 interface HRPlan {
   id: string;
@@ -264,29 +265,65 @@ function PlanDetailPanel({ detail, canClose, onClosePlan }: {
         <div>
           <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Goals ({goals.length})</p>
           <div className="space-y-2">
-            {goals.map((g: any) => (
-              <div key={g.id} className="border rounded-lg p-3 space-y-1.5" data-testid={`card-goal-detail-${g.id}`}>
-                <div className="flex justify-between items-start gap-2">
-                  <p className="text-sm font-medium">{g.title}</p>
-                  <Badge variant="outline" className="text-xs capitalize shrink-0">{g.category}</Badge>
-                </div>
-                {g.description && <p className="text-xs text-muted-foreground">{g.description}</p>}
-                {g.target_metric && (
-                  <p className="text-xs text-muted-foreground">Target: <span className="font-medium text-foreground">{g.target_metric}</span></p>
-                )}
-                <div className="space-y-0.5">
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>Progress</span><span>{g.progress}%</span>
+            {goals.map((g: any) => {
+              const isAutoTracked = g.goal_metric_type && g.goal_metric_type !== "manual";
+              const isSystemVerified = isAutoTracked && g.goal_progress_source === "auto";
+              const lastUpdated = g.goal_progress_updated_at
+                ? new Date(g.goal_progress_updated_at).toLocaleString("en-IN", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })
+                : null;
+              return (
+                <div key={g.id} className="border rounded-lg p-3 space-y-1.5" data-testid={`card-goal-detail-${g.id}`}>
+                  <div className="flex justify-between items-start gap-2">
+                    <p className="text-sm font-medium">{g.title}</p>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {isAutoTracked && (
+                        <TooltipProvider>
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span
+                                className={`inline-flex items-center gap-0.5 text-[10px] px-1.5 py-0.5 rounded-full border font-medium cursor-default ${
+                                  isSystemVerified
+                                    ? "bg-blue-50 border-blue-200 text-blue-700 dark:bg-blue-950/30 dark:border-blue-800 dark:text-blue-300"
+                                    : "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300"
+                                }`}
+                                data-testid={`badge-progress-source-${g.id}`}
+                              >
+                                {isSystemVerified
+                                  ? <><Zap className="h-2.5 w-2.5" /> System verified</>
+                                  : <><PenLine className="h-2.5 w-2.5" /> Manager entered</>
+                                }
+                              </span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs text-xs">
+                              {isSystemVerified
+                                ? `Calculated automatically${lastUpdated ? ` — last synced ${lastUpdated}` : ""}.`
+                                : `Manually entered${lastUpdated ? ` on ${lastUpdated}` : ""}. Auto-sync will resume when it detects a divergence > 5%.`
+                              }
+                            </TooltipContent>
+                          </Tooltip>
+                        </TooltipProvider>
+                      )}
+                      <Badge variant="outline" className="text-xs capitalize">{g.category}</Badge>
+                    </div>
                   </div>
-                  <div className="h-1.5 bg-muted rounded-full overflow-hidden">
-                    <div className="h-full bg-primary/70 rounded-full" style={{ width: `${g.progress}%` }} />
+                  {g.description && <p className="text-xs text-muted-foreground">{g.description}</p>}
+                  {g.target_metric && (
+                    <p className="text-xs text-muted-foreground">Target: <span className="font-medium text-foreground">{g.target_metric}</span></p>
+                  )}
+                  <div className="space-y-0.5">
+                    <div className="flex justify-between text-xs text-muted-foreground">
+                      <span>Progress</span><span>{g.progress}%</span>
+                    </div>
+                    <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                      <div className="h-full bg-primary/70 rounded-full" style={{ width: `${g.progress}%` }} />
+                    </div>
                   </div>
+                  {g.notes && (
+                    <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">{g.notes}</p>
+                  )}
                 </div>
-                {g.notes && (
-                  <p className="text-xs text-muted-foreground bg-muted/50 rounded px-2 py-1">{g.notes}</p>
-                )}
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

@@ -326,11 +326,7 @@ export default function ControlTower() {
         )}
         {tab === "governance" && (
           <Suspense fallback={<PanelFallback />}>
-<<<<<<< HEAD
-            <GovernanceHub />
-=======
             <GovernanceHub readonly={role === "hr"} />
->>>>>>> c09c3f7 (feat: Governance Hub — 6-card Org Pulse, manager drill-downs, SOP Rollout Panel & Wave Impact Preview)
           </Suspense>
         )}
       </div>

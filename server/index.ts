@@ -153,6 +153,18 @@ async function ensurePerformanceTables() {
     console.error("performance_goals last_progress_updated_at column migration error:", err);
   }
 
+  // ── Goal Auto-Progress Engine columns (Task #1101) ────────────────────────
+  try {
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS goal_metric_type VARCHAR`);
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS goal_metric_config JSONB DEFAULT '{}'::jsonb`);
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS goal_progress_source VARCHAR NOT NULL DEFAULT 'manual'`);
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS goal_progress_updated_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS escalation_flag BOOLEAN NOT NULL DEFAULT false`);
+    log("Ensured goal auto-progress columns on performance_goals");
+  } catch (err) {
+    console.error("performance_goals auto-progress columns migration error:", err);
+  }
+
   try {
     const result = await db.execute(sql`
       SELECT table_name FROM information_schema.tables
@@ -4430,6 +4442,54 @@ async function runStartupTasks() {
     log("Governance events table ensured");
   } catch (err) {
     console.error("[startup] Governance events table ensure error:", err);
+  }
+
+  // ── Goal metric-type backfill (Task #1101) ────────────────────────────────
+  // One-time: keyword-classify target_metric on all active plan goals so the
+  // auto-progress engine has a metric type to work with on first run.
+  // Guarded by a system_settings marker so it only runs once.
+  try {
+    const backfillMarker = "goal_metric_type_backfill_done";
+    const markerRow = await db.execute(sql`
+      SELECT value FROM system_settings WHERE key = ${backfillMarker} LIMIT 1
+    `);
+    if (markerRow.rows.length === 0) {
+      const { classifyGoalMetricType } = await import("./goalAutoProgressService");
+
+      // Fetch all active plan goals that haven't been classified yet
+      const goalsResult = await db.execute(sql`
+        SELECT pg.id, pg.target_metric, pg.title, pg.description
+        FROM performance_goals pg
+        JOIN employee_plans ep ON ep.id = pg.plan_id
+        WHERE ep.status = 'active'
+          AND pg.goal_metric_type IS NULL
+      `);
+
+      let classified = 0;
+      for (const row of goalsResult.rows as any[]) {
+        // Classify from target_metric first (most specific), fall back to title/description
+        const text = row.target_metric
+          ? row.target_metric
+          : [row.title, row.description].filter(Boolean).join(" ");
+        const metricType = classifyGoalMetricType(text);
+        await db.execute(sql`
+          UPDATE performance_goals
+          SET goal_metric_type = ${metricType}
+          WHERE id = ${row.id}
+        `);
+        classified++;
+      }
+
+      // Mark as done
+      await db.execute(sql`
+        INSERT INTO system_settings (key, value)
+        VALUES (${backfillMarker}, 'true')
+        ON CONFLICT (key) DO NOTHING
+      `);
+      log(`Goal metric-type backfill complete: ${classified} goals classified.`);
+    }
+  } catch (err) {
+    console.error("[startup] Goal metric-type backfill error (non-fatal):", err);
   }
 
   // Cron/scheduled jobs start only after schema is ensured so they query

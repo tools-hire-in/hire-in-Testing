@@ -571,6 +571,49 @@ export function startScheduler() {
     timezone: "Asia/Kolkata",
   });
 
+  // Goal Auto-Progress Engine: runs at 7:00 AM IST daily, before the 8:30 AM absent sweep.
+  // Calculates actual progress for all auto-trackable active plan goals and updates the DB.
+  cron.schedule("0 7 * * *", async () => {
+    console.log("[scheduler] Running goal auto-progress sync...");
+    try {
+      const { runGoalAutoProgressSync } = await import("./goalAutoProgressService");
+      const result = await runGoalAutoProgressSync();
+      console.log(
+        `[scheduler] Goal auto-progress sync complete: ${result.synced} synced, ` +
+        `${result.skipped} skipped, ${result.escalationFlagged} escalation-flagged, ` +
+        `${result.errors} errors.`,
+      );
+
+      // Write a durable audit log entry for traceability.
+      // actor_id requires a real admin_users FK — use the first super_admin found.
+      try {
+        const actorRow = await db.execute(sql`
+          SELECT id FROM admin_users WHERE role = 'super_admin' AND deleted_at IS NULL LIMIT 1
+        `);
+        const actorId = (actorRow.rows[0] as any)?.id;
+        if (actorId) {
+          await db.execute(sql`
+            INSERT INTO audit_logs (actor_id, action, changes)
+            VALUES (${actorId}, 'goal_auto_progress_sync', ${JSON.stringify({
+              synced: result.synced,
+              skipped: result.skipped,
+              escalationFlagged: result.escalationFlagged,
+              errors: result.errors,
+              triggeredBy: "scheduler",
+              ranAt: new Date().toISOString(),
+            })}::jsonb)
+          `);
+        }
+      } catch (auditErr) {
+        console.warn("[scheduler] Goal auto-progress audit log write failed (non-fatal):", auditErr);
+      }
+    } catch (error) {
+      console.error("[scheduler] Goal auto-progress sync failed:", error);
+    }
+  }, {
+    timezone: "Asia/Kolkata",
+  });
+
   // Admin route to update shift grace period: handled in routes.ts
   // (PATCH /api/hr/admin/shifts/:id/grace-period)
 
@@ -1572,6 +1615,7 @@ export function startScheduler() {
   console.log("  - Signing reminder sweep: daily at 9 AM IST → reminds unsigned offer letters & addendums at day 2 of 7");
   console.log("  - GSA rate refresh: daily at 02:00 EST → refreshes all ZIPs used in the last 90 days");
   console.log("  - Salary change promotion: daily at 00:30 IST → applies future-dated salary changes that became effective");
+  console.log("  - Goal auto-progress sync: daily at 07:00 IST → calculates KPI-linked progress from system data (submissions, ATS, attendance, SOP, training)");
   console.log("  - Unified governance sync sweep (07:00 IST): cadence backfill → obligation sync → collectOverdueItems → collectProbationMilestoneEvents → applyEscalation (deduped) → HR checkin digest");
   console.log("  - CEO governance exception report: Mondays at 08:00 IST → anonymized AI summary emailed to super_admin/executive");
   console.log("  - Recruiter activity nudge: Mon-Fri at 5:30 PM IST → in-app nudge to recruiters who haven't logged today");

@@ -1262,6 +1262,9 @@ export function registerPerformanceRoutes(app: Express) {
         // Track when progress was last changed (distinct from any other field update)
         if (clamped !== existing.progress) {
           (updates as any).lastProgressUpdatedAt = new Date();
+          // Mark as manually entered when a manager/employee sets progress directly
+          (updates as any).goalProgressSource = "manual";
+          (updates as any).goalProgressUpdatedAt = new Date();
         }
       }
       if (rayoAcademyTrackId !== undefined) updates.rayoAcademyTrackId = rayoAcademyTrackId;
@@ -3091,6 +3094,9 @@ export function registerPerformanceRoutes(app: Express) {
         UPDATE performance_goals SET
           progress = COALESCE(${updates.progress ?? null}, progress),
           notes = COALESCE(${updates.notes !== undefined ? updates.notes : null}, notes),
+          goal_progress_source = CASE WHEN ${updates.progress ?? null} IS NOT NULL THEN 'manual' ELSE goal_progress_source END,
+          goal_progress_updated_at = CASE WHEN ${updates.progress ?? null} IS NOT NULL THEN NOW() ELSE goal_progress_updated_at END,
+          last_progress_updated_at = CASE WHEN ${updates.progress ?? null} IS NOT NULL THEN NOW() ELSE last_progress_updated_at END,
           updated_at = NOW()
         WHERE id = ${goalId}
       `);
@@ -3101,6 +3107,62 @@ export function registerPerformanceRoutes(app: Express) {
     } catch (error) {
       console.error("Error updating plan goal:", error);
       res.status(500).json({ error: "Failed to update goal" });
+    }
+  });
+
+  // ─── Goal metric-type reclassification (Task #1101) ─────────────────────
+  // HR/admin can correct the auto-classified metric type or switch a goal to
+  // manual. On switch to manual, goal_progress_source is also set to 'manual'.
+
+  app.post("/api/hr/goals/:goalId/metric-type", async (req: Request, res: Response) => {
+    const userId = requirePermission(req, res, "hr.plans.goals", ADMIN_ROLES);
+    if (!userId) return;
+    try {
+      const { goalId } = req.params;
+      const { metricType, metricConfig } = req.body;
+
+      const VALID_METRIC_TYPES = [
+        "submission_count", "ats_compliance", "attendance_consistency",
+        "sop_completion", "training_completion", "manual",
+      ];
+      if (!metricType || !VALID_METRIC_TYPES.includes(metricType)) {
+        return res.status(400).json({
+          error: `Invalid metricType. Must be one of: ${VALID_METRIC_TYPES.join(", ")}`,
+        });
+      }
+
+      // Verify goal exists
+      const goalResult = await db.execute(sql`
+        SELECT id, goal_progress_source FROM performance_goals WHERE id = ${goalId} LIMIT 1
+      `);
+      if (goalResult.rows.length === 0) {
+        return res.status(404).json({ error: "Goal not found" });
+      }
+
+      const configJson = metricConfig ? JSON.stringify(metricConfig) : null;
+      await db.execute(sql`
+        UPDATE performance_goals SET
+          goal_metric_type = ${metricType},
+          goal_metric_config = ${configJson ? sql`${configJson}::jsonb` : sql`'{}'::jsonb`},
+          goal_progress_source = CASE WHEN ${metricType} = 'manual' THEN 'manual' ELSE goal_progress_source END,
+          updated_at = NOW()
+        WHERE id = ${goalId}
+      `);
+
+      const updated = (await db.execute(sql`
+        SELECT id, goal_metric_type, goal_metric_config, goal_progress_source, goal_progress_updated_at
+        FROM performance_goals WHERE id = ${goalId} LIMIT 1
+      `)).rows[0];
+
+      await createAuditLog(userId, "goal_metric_type_updated", {
+        goalId,
+        metricType,
+        metricConfig: metricConfig ?? null,
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating goal metric type:", error);
+      res.status(500).json({ error: "Failed to update goal metric type" });
     }
   });
 

@@ -943,6 +943,19 @@ export const performanceGoals = pgTable("performance_goals", {
   trackingType: varchar("tracking_type"),
   // Display order within a plan; lower = shown first. Null sorts last.
   sortOrder: integer("sort_order").notNull().default(0),
+  // ── Goal Auto-Progress Engine (Task #1101) ────────────────────────────────
+  // goalMetricType: nullable; one of the 5 auto-trackable types or 'manual'.
+  // Null means unclassified (treated as manual by the sync engine).
+  goalMetricType: varchar("goal_metric_type"),
+  // goalMetricConfig: JSONB parameters for auto-calculation (e.g. { weeklyTarget: 5 }).
+  goalMetricConfig: jsonb("goal_metric_config"),
+  // goalProgressSource: 'auto' when last set by the sync engine, 'manual' when
+  // a manager/employee set it directly. Default 'manual'.
+  goalProgressSource: varchar("goal_progress_source").default("manual"),
+  // goalProgressUpdatedAt: timestamp of the last progress write (auto or manual).
+  goalProgressUpdatedAt: timestamp("goal_progress_updated_at"),
+  // escalationFlag: set by sync engine when progress regresses > 15 points.
+  escalationFlag: boolean("escalation_flag").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
