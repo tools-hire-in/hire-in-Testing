@@ -488,6 +488,7 @@ function PublicRouter() {
       {/* Dev Control Center — super_admin only, non-production environments */}
       <Route path="/dev-tools/notifications">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
       <Route path="/dev-tools/crons">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
+      <Route path="/dev-tools/view-as">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
       <Route path="/dev-tools">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
 
       <Route component={NotFound} />

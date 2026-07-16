@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -30,10 +30,12 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { PlayCircle, RefreshCw, Mail, Bell, AlertTriangle, CheckCircle2 } from "lucide-react";
+import { PlayCircle, RefreshCw, Mail, Bell, AlertTriangle, CheckCircle2, Eye, EyeOff } from "lucide-react";
 import { useLocation, Redirect } from "wouter";
 import { DevToolsShell } from "@/components/dev-tools/DevToolsShell";
 import { NOTIFICATION_TYPES } from "@shared/notificationTypes";
+import { useAuth } from "@/hooks/use-auth";
+import { useViewAsRole, type AppRole } from "@/hooks/use-view-as-role";
 
 interface CronEntry {
   name: string;
@@ -474,6 +476,136 @@ function NotificationSandboxTab({ status, onRefresh }: { status: DevToolsStatus;
   );
 }
 
+const ROLE_DESCRIPTIONS: Record<AppRole, string> = {
+  super_admin: "Full access to all admin features, system settings, and dev tools",
+  admin:       "Admin access — most features except super-admin-only controls",
+  hr:          "HR portal, people management, leave approvals, and HR tools",
+  operations:  "Operations view — recruitment pipeline, team management",
+  manager:     "Team lead view — team attendance, leave approvals, training oversight",
+  recruiter:   "Recruitment-focused — Ceipal modal on punch-out, job pipeline",
+  employee:    "Standard employee — My Desk, leave requests, payslips",
+  finance:     "Finance & contracts, salary reports, payroll access",
+  executive:   "Read-only executive cockpit with high-level metrics",
+};
+
+const ALL_ROLES: AppRole[] = [
+  "super_admin", "admin", "hr", "operations", "manager",
+  "recruiter", "employee", "finance", "executive",
+];
+
+function ViewAsTab() {
+  const { realRole } = useAuth();
+  const { viewAsRole, setViewAsRole, clearViewAsRole } = useViewAsRole(realRole);
+  const queryClient = useQueryClient();
+
+  const canOverride = realRole === "super_admin" || realRole === "admin";
+
+  const handleActivate = (role: AppRole) => {
+    setViewAsRole(role);
+    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+    window.location.href = "/admin/my-desk";
+  };
+
+  const handleClear = () => {
+    clearViewAsRole();
+    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+  };
+
+  if (!canOverride) {
+    return (
+      <Alert className="border-red-800 bg-red-950/30">
+        <AlertTriangle className="h-4 w-4 text-red-400" />
+        <AlertDescription className="text-red-200 text-sm">
+          Only <strong>super_admin</strong> and <strong>admin</strong> roles can use View As. Your current real role does not qualify.
+        </AlertDescription>
+      </Alert>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Status */}
+      <Card className="bg-zinc-900 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-zinc-100 text-base">
+            <Eye className="h-4 w-4 text-orange-400" />
+            Current Override Status
+          </CardTitle>
+          <CardDescription className="text-zinc-400">
+            {viewAsRole
+              ? <>Active: UI is currently showing the <span className="font-semibold text-amber-400 uppercase">{viewAsRole}</span> role experience.</>
+              : "No override active — you are seeing your real role view."}
+          </CardDescription>
+        </CardHeader>
+        {viewAsRole && (
+          <CardContent>
+            <Button
+              variant="outline"
+              onClick={handleClear}
+              className="border-amber-600 text-amber-400 hover:bg-amber-950/40 gap-2"
+              data-testid="button-exit-view-as"
+            >
+              <EyeOff className="h-4 w-4" />
+              Exit View As — return to real view
+            </Button>
+          </CardContent>
+        )}
+      </Card>
+
+      {/* Warning card */}
+      <Alert className="border-zinc-700 bg-zinc-900/60">
+        <AlertTriangle className="h-4 w-4 text-zinc-400" />
+        <AlertDescription className="text-zinc-300 text-sm">
+          <strong>Backend responses are not affected.</strong> API data reflects your real account.
+          Only the UI role-gating (navigation, permissions, page access) changes.
+          The override lives in <code className="text-zinc-200">sessionStorage</code> and clears automatically when you close the tab or log out.
+        </AlertDescription>
+      </Alert>
+
+      {/* Role grid */}
+      <Card className="bg-zinc-900 border-zinc-800">
+        <CardHeader>
+          <CardTitle className="text-zinc-100 text-base">Choose a Role to Simulate</CardTitle>
+          <CardDescription className="text-zinc-400">
+            Click any role below. You will be redirected to My Desk and the portal will reflect that role's view.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {ALL_ROLES.map((role) => {
+              const isActive = viewAsRole === role;
+              return (
+                <button
+                  key={role}
+                  onClick={() => handleActivate(role)}
+                  data-testid={`button-view-as-${role}`}
+                  className={`text-left rounded-lg border p-4 transition-colors ${
+                    isActive
+                      ? "border-amber-500 bg-amber-950/30 text-amber-200"
+                      : "border-zinc-700 bg-zinc-800/50 text-zinc-200 hover:border-orange-600 hover:bg-zinc-800"
+                  }`}
+                >
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs font-bold uppercase tracking-wide ${isActive ? "text-amber-400" : "text-orange-400"}`}>
+                      {role}
+                    </span>
+                    {isActive && (
+                      <span className="text-[10px] bg-amber-500 text-black font-bold px-1.5 py-0.5 rounded">ACTIVE</span>
+                    )}
+                  </div>
+                  <p className="text-xs text-zinc-400 leading-snug">
+                    {ROLE_DESCRIPTIONS[role]}
+                  </p>
+                </button>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export default function DevTools() {
   const [location] = useLocation();
   const { data: status, refetch, isError, isLoading } = useQuery<DevToolsStatus>({
@@ -496,7 +628,9 @@ export default function DevTools() {
     );
   }
 
-  if (isError || !status) {
+  const isViewAs = location === "/dev-tools/view-as";
+
+  if ((isError || !status) && !isViewAs) {
     return <Redirect to="/admin/my-desk" />;
   }
 
@@ -506,7 +640,7 @@ export default function DevTools() {
   return (
     <DevToolsShell>
       <div className="max-w-4xl mx-auto p-6 space-y-6">
-        {!isCrons && !isNotifications && (
+        {!isCrons && !isNotifications && !isViewAs && (
           <EnvironmentTab status={status} onRefresh={handleRefresh} />
         )}
         {isCrons && (
@@ -514,6 +648,9 @@ export default function DevTools() {
         )}
         {isNotifications && (
           <NotificationSandboxTab status={status} onRefresh={handleRefresh} />
+        )}
+        {isViewAs && (
+          <ViewAsTab />
         )}
       </div>
     </DevToolsShell>

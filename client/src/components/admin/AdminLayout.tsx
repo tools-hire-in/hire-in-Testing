@@ -1,7 +1,7 @@
 import { AnnouncementModal } from "@/components/AnnouncementModal";
 import { Link, useLocation } from "wouter";
 import { useCallback, useEffect, useState, createContext, useContext } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
 import {
   LayoutDashboard,
@@ -96,6 +96,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAuth } from "@/hooks/use-auth";
+import { useViewAsRole } from "@/hooks/use-view-as-role";
 import { useNewLook } from "@/hooks/use-new-look";
 import { useToast } from "@/hooks/use-toast";
 import { useIdleTimeout } from "@/hooks/use-idle-timeout";
@@ -1144,7 +1145,9 @@ export function AdminLayout({ children }: AdminLayoutProps) {
 
 function AdminLayoutInner({ children }: AdminLayoutProps) {
   const [location, setLocation] = useLocation();
-  const { user, logout } = useAuth();
+  const { user, logout, realRole } = useAuth();
+  const { viewAsRole, clearViewAsRole } = useViewAsRole(realRole);
+  const queryClient = useQueryClient();
   const { isEnabled } = useFeatureFlags();
   const { enabled: hasSopAccess } = useSopAccess();
   const { can } = usePermissions();
@@ -1820,7 +1823,17 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
         open={sidebarOpen}
         onOpenChange={handleSidebarOpenChange}
       >
-        <div className={`flex h-screen w-full ${newLook ? "app-v2" : ""}`} data-look={newLook ? "v2" : "classic"}>
+        <div className={`flex flex-col h-screen w-full ${newLook ? "app-v2" : ""}`} data-look={newLook ? "v2" : "classic"}>
+          {viewAsRole && (
+            <button
+              onClick={() => { clearViewAsRole(); queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] }); }}
+              className="w-full shrink-0 bg-amber-400 hover:bg-amber-500 text-amber-950 text-sm font-semibold py-1.5 px-4 text-center transition-colors cursor-pointer z-50"
+              data-testid="banner-view-as-role"
+            >
+              DEV MODE · Viewing as <span className="uppercase">{viewAsRole}</span> · Click to exit
+            </button>
+          )}
+          <div className="flex flex-1 min-h-0 w-full">
           <Sidebar collapsible="icon">
             {/* Profile Header */}
             <SidebarHeader className="border-b p-0">
@@ -2156,6 +2169,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 children
               )}
             </main>
+          </div>
           </div>
         </div>
 

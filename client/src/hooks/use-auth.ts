@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useViewAsRole } from "@/hooks/use-view-as-role";
 
 export interface AuthUser {
   id: string;
@@ -47,16 +48,23 @@ async function logoutUser(): Promise<void> {
 export function useAuth() {
   const queryClient = useQueryClient();
   
-  const { data: user, isLoading } = useQuery<AuthUser | null>({
+  const { data: realUser, isLoading } = useQuery<AuthUser | null>({
     queryKey: ["/api/auth/me"],
     queryFn: fetchUser,
     retry: false,
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
 
+  const { viewAsRole } = useViewAsRole(realUser?.role);
+
+  const user: AuthUser | null | undefined = realUser && viewAsRole
+    ? { ...realUser, role: viewAsRole }
+    : realUser;
+
   const logoutMutation = useMutation({
     mutationFn: logoutUser,
     onSuccess: () => {
+      try { sessionStorage.removeItem("devtools:viewAsRole"); } catch {}
       queryClient.setQueryData(["/api/auth/me"], null);
       window.location.href = "/admin/login";
     },
@@ -64,6 +72,7 @@ export function useAuth() {
 
   return {
     user,
+    realRole: realUser?.role,
     isLoading,
     isAuthenticated: !!user,
     logout: logoutMutation.mutate,
