@@ -18,7 +18,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
 import {
-  KeyRound, Plus, Edit2, Eye, Copy, AlertTriangle, Shield, ShieldCheck,
+  KeyRound, Plus, Edit2, Eye, EyeOff, Copy, AlertTriangle, Shield, ShieldCheck,
   Lock, ExternalLink, MoreHorizontal, Trash2,
 } from "lucide-react";
 import {
@@ -36,6 +36,7 @@ type Secret = {
   id: string; vaultId: string; systemName: string; loginUrl?: string;
   sensitivity: string; rotationDueAt?: string; rotationRequired: boolean;
   canCopy: boolean; canReveal: boolean; createdAt: string;
+  username?: string; notes?: string;
 };
 
 function SensitivityBadge({ sensitivity }: { sensitivity: string }) {
@@ -54,12 +55,13 @@ function PersonalSecretFormDialog({
   open: boolean; onClose: () => void; vaultId: string; existing?: Secret | null;
 }) {
   const { toast } = useToast();
+  const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({
     systemName: existing?.systemName ?? "",
     loginUrl: existing?.loginUrl ?? "",
-    username: "",
+    username: existing?.username ?? "",
     password: "",
-    notes: "",
+    notes: existing?.notes ?? "",
     sensitivity: existing?.sensitivity ?? "low",
     rotationDueAt: existing?.rotationDueAt ? new Date(existing.rotationDueAt).toISOString().slice(0, 10) : "",
   });
@@ -105,7 +107,12 @@ function PersonalSecretFormDialog({
             </div>
             <div className="space-y-1">
               <Label>Password</Label>
-              <Input data-testid="input-personal-password" type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder={existing ? "Leave blank to keep" : ""} />
+              <div className="relative">
+                <Input data-testid="input-personal-password" type={showPassword ? "text" : "password"} value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder={existing ? "Leave blank to keep" : ""} className="pr-9" />
+                <button type="button" onClick={() => setShowPassword(v => !v)} className="absolute inset-y-0 right-0 flex items-center px-2.5 text-muted-foreground hover:text-foreground" data-testid="button-toggle-personal-password-visibility" aria-label={showPassword ? "Hide password" : "Show password"}>
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
+              </div>
             </div>
           </div>
           <div className="space-y-1">

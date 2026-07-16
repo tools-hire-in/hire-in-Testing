@@ -255,11 +255,14 @@ export function registerVaultRoutes(app: Express): void {
       const sanitized = await Promise.all(secrets.map(async (s) => {
         const access = await canAccessSecret(userId, userRole, s.id, vaultHint);
         if (!access.allowed) return null;
+        const isOwnerOrAdmin = isAdmin || (vault?.isPersonal && vault?.ownerId === userId);
         return {
           id: s.id, vaultId: s.vaultId, systemName: s.systemName, loginUrl: s.loginUrl,
           sensitivity: s.sensitivity, rotationDueAt: s.rotationDueAt, rotationRequired: s.rotationRequired,
           createdAt: s.createdAt, updatedAt: s.updatedAt,
           canCopy: access.canCopy, canReveal: access.canReveal,
+          ...(isOwnerOrAdmin && s.usernameEnc ? { username: decryptVaultField(s.usernameEnc) } : {}),
+          ...(isOwnerOrAdmin && s.notesEnc ? { notes: decryptVaultField(s.notesEnc) } : {}),
         };
       }));
       res.json(sanitized.filter(Boolean));
