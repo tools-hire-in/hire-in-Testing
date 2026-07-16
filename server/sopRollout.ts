@@ -166,6 +166,7 @@ export async function resolveSopAccessForUser(
 // ── Wave read model ──────────────────────────────────────────────────────────
 export interface WaveSopRow {
   sopMasterId: string;
+  sopId: string | null;
   code: string;
   title: string | null;
   category: string | null;
@@ -202,6 +203,7 @@ export async function getWavesWithSops(): Promise<{ waves: WaveView[]; cadence: 
       const doc = docByMaster.get(m.sopMasterId);
       return {
         sopMasterId: m.sopMasterId,
+        sopId: doc?.id ?? null,
         code: m.sopMasterId,
         title: doc?.title ?? null,
         category: doc?.category ?? null,

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2 } from "lucide-react";
+import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2, ExternalLink } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -205,7 +205,7 @@ export default function SOPLibrary() {
         </div>
 
         {view === "rollout" && canManageRollout ? (
-          <RolloutView />
+          <RolloutView onViewDetails={setDetailId} />
         ) : view === "reviewer" && canManageReviewers ? (
           <ReviewerAssignmentView />
         ) : (
@@ -1901,6 +1901,7 @@ function ManageReviewersDrawer({
 
 interface WaveSopRow {
   sopMasterId: string;
+  sopId: string | null;
   code: string;
   title: string | null;
   category: string | null;
@@ -1931,7 +1932,7 @@ interface WavesResponse {
   cadence: { windowCount: number; max: number };
 }
 
-function RolloutView() {
+function RolloutView({ onViewDetails }: { onViewDetails?: (id: string) => void }) {
   const { toast } = useToast();
   const { data, isLoading } = useQuery<WavesResponse>({
     queryKey: ["/api/sops/waves"],
@@ -2111,6 +2112,18 @@ function RolloutView() {
                       </Button>
                     ) : (
                       <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" /> Queued</Badge>
+                    )}
+                    {onViewDetails && sop.sopId && (
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 px-2"
+                        onClick={() => onViewDetails(sop.sopId!)}
+                        data-testid={`button-view-sop-detail-${sop.code}`}
+                      >
+                        <ExternalLink className="h-3.5 w-3.5" />
+                        <span className="sr-only">Details</span>
+                      </Button>
                     )}
                   </div>
                 </div>
