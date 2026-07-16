@@ -2,7 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { relocatedSettingsTabTarget } from "@/lib/settings-redirect";
-import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield, Lock, Clock, X, ShieldCheck, Palette, Copy, Check } from "lucide-react";
+import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield, Lock, Clock, X, ShieldCheck, Palette, Copy, Check, Eye } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -23,6 +23,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { DEFAULT_COMPANY_PROFILE, type CompanyProfile } from "@shared/companyProfile";
 import { SalaryStructuresSection, StateRegistrationsSection, CoverageSection } from "./settings/PayrollSettings";
+import CeipalComplianceModal from "@/components/admin/CeipalComplianceModal";
 
 interface LeaveType {
   id: string;
@@ -774,6 +775,59 @@ function ProcessGovernanceRolloutEditor() {
         {saveMutation.isPending ? "Saving..." : "Save rollout scope"}
       </Button>
     </div>
+  );
+}
+
+export function CeipalComplianceSettingsSection() {
+  const { user } = useAuth();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const isAdmin = ["super_admin", "admin"].includes(user?.role || "");
+
+  if (!isAdmin) return null;
+
+  return (
+    <>
+      <CeipalComplianceModal open={previewOpen} onClose={() => setPreviewOpen(false)} previewMode />
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <CheckSquare className="h-4 w-4" />
+            Ceipal Update Checkpoint
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm space-y-2">
+            <p className="font-medium text-foreground">Eligible roles</p>
+            <p className="text-muted-foreground text-xs leading-relaxed">
+              The Ceipal update prompt fires automatically for <strong>Recruiter</strong>, <strong>Operations</strong>, and <strong>Account Manager</strong> roles when they punch out, provided the prompt is enabled on their profile and they haven't already answered today. Other roles (including admin) do not see the prompt during normal use.
+            </p>
+            <div className="flex gap-2 pt-1">
+              <Badge variant="outline" className="text-xs">Recruiter</Badge>
+              <Badge variant="outline" className="text-xs">Operations</Badge>
+              <Badge variant="outline" className="text-xs">Account Manager</Badge>
+            </div>
+          </div>
+          <div className="flex items-center justify-between gap-4 rounded-md border px-4 py-3">
+            <div>
+              <p className="text-sm font-medium">Preview the prompt</p>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Opens the modal in simulation mode so you can verify it looks correct — no log entry is written.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setPreviewOpen(true)}
+              data-testid="button-preview-ceipal-modal"
+              className="shrink-0 gap-1.5"
+            >
+              <Eye className="h-3.5 w-3.5" />
+              Preview prompt
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </>
   );
 }
 

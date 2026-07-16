@@ -326,7 +326,7 @@ export default function CommandCenterV2() {
     refetchInterval: 30000,
   });
 
-  const { data: ceipalTodayStatus } = useQuery<{
+  const { data: ceipalTodayStatus, isError: ceipalStatusError } = useQuery<{
     hasAnsweredToday: boolean;
     status: string | null;
     promptEnabled: boolean;
@@ -336,6 +336,13 @@ export default function CommandCenterV2() {
     enabled: isAuthenticated && isCeipalEligible,
     staleTime: 30000,
   });
+
+  useEffect(() => {
+    if (ceipalStatusError) {
+      console.warn("[Ceipal] Could not fetch today-status — modal will not auto-open");
+      toast({ title: "Ceipal checkpoint unavailable", description: "Could not load your Ceipal status. The prompt will not appear until this resolves.", variant: "destructive" });
+    }
+  }, [ceipalStatusError]);
 
   /* ── Mutations ── */
   const punchInMutation = useMutation({

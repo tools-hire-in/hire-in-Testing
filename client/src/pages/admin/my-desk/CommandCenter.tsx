@@ -122,7 +122,7 @@ export default function CommandCenter() {
   const isCeipalEligible = ["recruiter", "operations", "account_manager"].includes(user?.role || "");
 
   // Check if Ceipal-eligible user has already answered today's checkpoint
-  const { data: ceipalTodayStatus } = useQuery<{
+  const { data: ceipalTodayStatus, isError: ceipalStatusError } = useQuery<{
     hasAnsweredToday: boolean;
     status: string | null;
     promptEnabled: boolean;
@@ -132,6 +132,13 @@ export default function CommandCenter() {
     enabled: isAuthenticated && isCeipalEligible,
     staleTime: 30000,
   });
+
+  useEffect(() => {
+    if (ceipalStatusError) {
+      console.warn("[Ceipal] Could not fetch today-status — modal will not auto-open");
+      toast({ title: "Ceipal checkpoint unavailable", description: "Could not load your Ceipal status. The prompt will not appear until this resolves.", variant: "destructive" });
+    }
+  }, [ceipalStatusError]);
 
   // Open modal if ?ceipal=1 is in the URL (e.g. from morning reminder notification CTA)
   useEffect(() => {

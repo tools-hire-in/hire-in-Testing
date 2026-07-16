@@ -34,6 +34,9 @@ const AccessControlSection = lazy(() =>
 const TrainingSettingsSection = lazy(() =>
   import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.TrainingSettingsSection })),
 );
+const CeipalComplianceSettingsSection = lazy(() =>
+  import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.CeipalComplianceSettingsSection })),
+);
 const DataMaintenanceSection = lazy(() =>
   import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.DataMaintenanceSection })),
 );
@@ -296,6 +299,7 @@ export default function ControlTower() {
             <div className="space-y-6">
               <FeatureFlagsSection />
               <TrainingSettingsSection />
+              <CeipalComplianceSettingsSection />
             </div>
           </Suspense>
         )}

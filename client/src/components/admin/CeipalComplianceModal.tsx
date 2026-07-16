@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
-import { CheckCircle2, Clock, ExternalLink, Loader2, PartyPopper } from "lucide-react";
+import { CheckCircle2, Clock, ExternalLink, Loader2, PartyPopper, Eye } from "lucide-react";
 import {
   Dialog,
   DialogContent,
@@ -17,6 +17,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 interface CeipalComplianceModalProps {
   open: boolean;
   onClose: () => void;
+  previewMode?: boolean;
 }
 
 interface TodayStatus {
@@ -28,7 +29,7 @@ interface TodayStatus {
 
 type Step = "question" | "success" | "deferred";
 
-export default function CeipalComplianceModal({ open, onClose }: CeipalComplianceModalProps) {
+export default function CeipalComplianceModal({ open, onClose, previewMode = false }: CeipalComplianceModalProps) {
   const [step, setStep] = useState<Step>("question");
   const [deferredReason, setDeferredReason] = useState("");
 
@@ -61,21 +62,26 @@ export default function CeipalComplianceModal({ open, onClose }: CeipalComplianc
   });
 
   function handleYes() {
-    logMutation.mutate({ status: "confirmed_unverified" });
-    verifyMutation.mutate();
+    if (!previewMode) {
+      logMutation.mutate({ status: "confirmed_unverified" });
+      verifyMutation.mutate();
+    }
     setStep("success");
-    setTimeout(() => onClose(), 1800);
+    setTimeout(() => onClose(), previewMode ? 1200 : 1800);
   }
 
   async function handleDeferred() {
     if (!deferredReason.trim() || !deferredReason.trim().includes(" ") && deferredReason.trim().split(/\s+/).length < 1) return;
     if (!deferredReason.trim()) return;
-    await logMutation.mutateAsync({ status: "deferred", deferredReason: deferredReason.trim() });
+    if (!previewMode) {
+      await logMutation.mutateAsync({ status: "deferred", deferredReason: deferredReason.trim() });
+    }
     onClose();
   }
 
   function handleOpenChange(v: boolean) {
     if (!v) {
+      if (previewMode) onClose();
       return;
     }
   }
@@ -98,10 +104,16 @@ export default function CeipalComplianceModal({ open, onClose }: CeipalComplianc
           </DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground">
             {step === "question" && "Before you head out — did you update Ceipal today?"}
-            {step === "success" && "Your response has been recorded."}
+            {step === "success" && (previewMode ? "Preview only — no entry was written." : "Your response has been recorded.")}
             {step === "deferred" && "No worries — please leave a reason before you go."}
           </DialogDescription>
         </DialogHeader>
+        {previewMode && (
+          <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-800 px-3 py-2 text-xs text-blue-700 dark:text-blue-300">
+            <Eye className="h-3.5 w-3.5 shrink-0" />
+            <span><strong>Admin preview</strong> — interactions are simulated; no log entries are written.</span>
+          </div>
+        )}
 
         {step === "question" && (
           <div className="space-y-4 pt-1">
