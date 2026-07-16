@@ -67,11 +67,15 @@ import {
   Columns3,
   Download,
   ExternalLink,
+  FileText,
+  Film,
   Filter,
   ImageIcon,
   Inbox,
+  LayoutGrid,
   Loader2,
   MessageSquare,
+  MonitorPlay,
   Plus,
   Pencil,
   RotateCcw,
@@ -80,6 +84,7 @@ import {
   TrendingUp,
   Undo2,
   Upload,
+  Video,
   XCircle,
 } from "lucide-react";
 
@@ -116,6 +121,81 @@ const TYPE_ICON: Record<string, string> = {
   social_post: "📣",
   story: "⏱",
 };
+
+const FORMAT_ICON: Record<string, JSX.Element> = {
+  Carousel: <LayoutGrid className="h-3 w-3" />,
+  Reel: <Film className="h-3 w-3" />,
+  Static: <ImageIcon className="h-3 w-3" />,
+  Video: <Video className="h-3 w-3" />,
+  Infographic: <FileText className="h-3 w-3" />,
+  Slides: <MonitorPlay className="h-3 w-3" />,
+};
+
+const KNOWN_FORMATS = [
+  "Carousel", "Reel", "Static", "Video", "Infographic", "Slides",
+  "Story", "UGC", "Meme", "Poll", "Text",
+];
+
+function FormatSelectorField({
+  value,
+  onValueChange,
+  triggerClassName,
+  testId,
+}: {
+  value: string | null | undefined;
+  onValueChange: (v: string | null) => void;
+  triggerClassName?: string;
+  testId?: string;
+}) {
+  const isKnown = !!(value && KNOWN_FORMATS.includes(value));
+  const [customMode, setCustomMode] = useState(!!(value && !isKnown));
+  return (
+    <div className="space-y-1.5">
+      <Select
+        value={customMode ? "__custom__" : (value || "none")}
+        onValueChange={(v) => {
+          if (v === "none") { setCustomMode(false); onValueChange(null); }
+          else if (v === "__custom__") { setCustomMode(true); }
+          else { setCustomMode(false); onValueChange(v); }
+        }}
+      >
+        <SelectTrigger className={triggerClassName} data-testid={testId}>
+          <SelectValue placeholder="None" />
+        </SelectTrigger>
+        <SelectContent>
+          <SelectItem value="none">None</SelectItem>
+          {KNOWN_FORMATS.map((f) => (
+            <SelectItem key={f} value={f}>{f}</SelectItem>
+          ))}
+          <SelectItem value="__custom__">Custom…</SelectItem>
+        </SelectContent>
+      </Select>
+      {customMode && (
+        <Input
+          placeholder="e.g. Interview Q&A"
+          value={value || ""}
+          onChange={(e) => onValueChange(e.target.value || null)}
+          className="h-8 text-sm"
+          data-testid={testId ? `${testId}-input` : undefined}
+        />
+      )}
+    </div>
+  );
+}
+
+function FormatBadge({ format }: { format: string | null | undefined }) {
+  if (!format) return null;
+  const icon = FORMAT_ICON[format];
+  return (
+    <span
+      className="inline-flex items-center gap-0.5 rounded-full bg-indigo-50 border border-indigo-200 px-1.5 py-0.5 text-[9px] font-semibold text-indigo-700 dark:bg-indigo-950/30 dark:border-indigo-800 dark:text-indigo-300"
+      data-testid={`badge-format-${format}`}
+    >
+      {icon}
+      {format}
+    </span>
+  );
+}
 
 const BOARD_COLUMNS: StudioIdeaStatus[] = [
   "suggested",
@@ -251,6 +331,7 @@ function QuickCreateDialog({
   const { toast } = useToast();
   const [topic, setTopic] = useState("");
   const [contentType, setContentType] = useState("social_post");
+  const [postFormat, setPostFormat] = useState("");
   const [channels, setChannels] = useState<string[]>([]);
   const [pillar, setPillar] = useState("");
   const [brief, setBrief] = useState("");
@@ -261,6 +342,7 @@ function QuickCreateDialog({
       setScheduledDate(defaultDate || "");
       setTopic("");
       setBrief("");
+      setPostFormat("");
     }
   }, [open, defaultDate]);
 
@@ -278,6 +360,7 @@ function QuickCreateDialog({
         projectId,
         topic,
         contentType,
+        postFormat: postFormat || undefined,
         channels,
         pillar: pillar || undefined,
         brief: brief || undefined,
@@ -355,6 +438,15 @@ function QuickCreateDialog({
                 </label>
               ))}
             </div>
+          </div>
+          <div>
+            <Label>Post Format</Label>
+            <FormatSelectorField
+              key={open ? "open" : "closed"}
+              value={postFormat || null}
+              onValueChange={(v) => setPostFormat(v || "")}
+              testId="select-idea-format"
+            />
           </div>
           <div>
             <Label>Pillar</Label>
@@ -1515,6 +1607,22 @@ export function IdeaPeek({
                   <p data-testid="text-peek-pillar">{idea.pillar ? idea.pillar.replace(/_/g, " ") : "—"}</p>
                 </div>
                 <div>
+                  <Label className="text-xs text-muted-foreground">Post Format</Label>
+                  {canEdit ? (
+                    <FormatSelectorField
+                      key={idea.id}
+                      value={(idea as any).postFormat}
+                      onValueChange={(v) => updateMutation.mutate({ postFormat: v } as any)}
+                      triggerClassName="h-8"
+                      testId="select-peek-format"
+                    />
+                  ) : (
+                    <p data-testid="text-peek-format">
+                      {(idea as any).postFormat ? <FormatBadge format={(idea as any).postFormat} /> : "—"}
+                    </p>
+                  )}
+                </div>
+                <div>
                   <Label className="text-xs text-muted-foreground">Assignee</Label>
                   {canEdit ? (
                     <Select
@@ -2053,12 +2161,17 @@ export default function PipelineView({ lens }: { lens: Lens }) {
 
   const IdeaChip = ({ idea }: { idea: StudioContentIdea }) => (
     <button
-      className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] leading-tight ${STATUS_CLASS[idea.status] || "bg-muted"}`}
+      className={`block w-full rounded px-1.5 py-0.5 text-left text-[11px] leading-tight ${STATUS_CLASS[idea.status] || "bg-muted"}`}
       onClick={() => setPeekId(idea.id)}
       title={idea.topic}
       data-testid={`chip-idea-${idea.id}`}
     >
-      {TYPE_ICON[idea.contentType] || ""} {idea.topic}
+      <span className="flex items-center gap-1 truncate">
+        <span className="truncate">{TYPE_ICON[idea.contentType] || ""} {idea.topic}</span>
+        {(idea as any).postFormat && (
+          <span className="shrink-0"><FormatBadge format={(idea as any).postFormat} /></span>
+        )}
+      </span>
     </button>
   );
 
@@ -2390,6 +2503,9 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                                         ⚡ BD
                                       </span>
                                     )}
+                                    {(idea as any).postFormat && (
+                                      <FormatBadge format={(idea as any).postFormat} />
+                                    )}
                                     {idea.linkedArticleId && (
                                       <span className={`inline-flex items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${STATUS_CLASS[linkedArtStatus ?? ""] ?? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-400"}`} data-testid={`badge-article-${idea.id}`}>
                                         📰 {linkedArtStatus ? STATUS_LABEL[linkedArtStatus] ?? linkedArtStatus : "Article"}
@@ -2509,6 +2625,7 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                     <TableRow>
                       <TableHead>Date</TableHead>
                       <TableHead>Type</TableHead>
+                      <TableHead>Format</TableHead>
                       <TableHead>Topic</TableHead>
                       <TableHead>Status</TableHead>
                       <TableHead>Caption</TableHead>
@@ -2521,7 +2638,7 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                   </TableHeader>
                   <TableBody>
                     {filteredIdeas.length === 0 && (
-                      <TableRow><TableCell colSpan={10} className="py-8 text-center text-sm text-muted-foreground">No ideas match your filters.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={11} className="py-8 text-center text-sm text-muted-foreground">No ideas match your filters.</TableCell></TableRow>
                     )}
                     {filteredIdeas.map((idea) => {
                       const nextStates = (STUDIO_IDEA_TRANSITIONS[idea.status as StudioIdeaStatus] ?? []).filter((s) =>
@@ -2549,6 +2666,9 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                             )}
                           </TableCell>
                           <TableCell className="text-xs">{getPipelineContentType(idea.contentType)?.label || idea.contentType}</TableCell>
+                          <TableCell className="text-xs">
+                            {(idea as any).postFormat ? <FormatBadge format={(idea as any).postFormat} /> : <span className="text-muted-foreground">—</span>}
+                          </TableCell>
                           <TableCell className="max-w-64 text-sm font-medium">
                             <span className="flex flex-wrap items-center gap-1.5">
                               <span className="truncate">{idea.topic}</span>

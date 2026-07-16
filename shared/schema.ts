@@ -2967,6 +2967,9 @@ export const studioContentIdeas = pgTable("studio_content_ideas", {
   // missing pillar, vague brief, platform mismatch). Advisory only — never blocks import.
   // Cleared by a human editing/approving the idea.
   needsAttention: boolean("needs_attention").notNull().default(false),
+  // Post format — describes the creative delivery format (Carousel, Reel, Static, Video, etc.)
+  // Distinct from contentType (article/social_post/story). Nullable; older rows unaffected.
+  postFormat: varchar("post_format"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [

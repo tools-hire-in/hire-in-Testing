@@ -857,6 +857,7 @@ async function ensureStudioOccasionsAndIdeas() {
     // IF NOT EXISTS above, so ensure them explicitly (idempotent).
     await db.execute(sql`ALTER TABLE studio_content_ideas ADD COLUMN IF NOT EXISTS campaign_id varchar`);
     await db.execute(sql`ALTER TABLE studio_content_ideas ADD COLUMN IF NOT EXISTS archived_at timestamp`);
+    await db.execute(sql`ALTER TABLE studio_content_ideas ADD COLUMN IF NOT EXISTS post_format varchar`);
     await db.execute(sql`ALTER TABLE studio_projects ADD COLUMN IF NOT EXISTS brand_voice_config jsonb`);
     await db.execute(sql`
       CREATE TABLE IF NOT EXISTS studio_campaigns (

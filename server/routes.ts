@@ -20143,7 +20143,7 @@ export async function registerRoutes(
   // ---- Import wizard (CSV / Excel) ----
 
   const IMPORT_TEMPLATE_HEADERS = [
-    "Date", "Day", "Platform", "Post Type", "Topic", "Details",
+    "Date", "Day", "Platform", "Post Type", "Post Format", "Topic", "Details",
     "Reference Link", "Caption/Copy", "Requirement", "Final Creative",
     "Status/Publish", "Story Content", "Story reference", "Final Story Creative", "Story Publish",
   ];
@@ -20182,8 +20182,13 @@ export async function registerRoutes(
   const HEADER_ALIASES: Record<string, string> = {
     // Date — "Day" column is computed/display only, ignored
     date: "date", postdate: "date", scheduleddate: "date", dateofposting: "date",
-    // Post type
-    posttype: "contentType", type: "contentType", contenttype: "contentType",
+    // Post type (content family: article / social_post / story)
+    posttype: "contentType", contenttype: "contentType",
+    // Post format (creative delivery: Carousel, Reel, Static, Video, etc.)
+    // "type" header without a known content-type value is treated as postFormat
+    postformat: "postFormat", format: "postFormat",
+    // "type" maps to contentType; parseImportRows falls through to postFormat if value is format-like
+    type: "contentType",
     // Channels / Pillar (kept for backward compat with older exports)
     channels: "channels", channel: "channels", platform: "channels", platforms: "channels",
     pillar: "pillar", category: "pillar",
@@ -20228,6 +20233,21 @@ export async function registerRoutes(
     published: "published", posted: "published", live: "published",
     done: "done", completed: "done",
     rejected: "rejected", dropped: "rejected",
+  };
+
+  // Known format values → canonical label. Unrecognised values are stored raw (no error).
+  const IMPORT_FORMAT_ALIASES: Record<string, string> = {
+    carousel: "Carousel", carouselpost: "Carousel",
+    reel: "Reel", reels: "Reel", shortvideo: "Reel",
+    static: "Static", staticpost: "Static", staticimage: "Static", image: "Static",
+    video: "Video", videopost: "Video", longvideo: "Video",
+    infographic: "Infographic", infograph: "Infographic",
+    slides: "Slides", slide: "Slides", presentation: "Slides",
+    story: "Story", stories: "Story",
+    ugc: "UGC",
+    meme: "Meme",
+    poll: "Poll",
+    text: "Text",
   };
 
   const parseImportDate = (raw: string): string | null | undefined => {
@@ -20309,8 +20329,27 @@ export async function registerRoutes(
       if (dueDate === undefined) errors.push(`Unrecognized due date '${rec.dueDate}'`);
 
       const rawType = normalizeHeader(rec.contentType ?? "");
-      const mappedType = rawType ? IMPORT_TYPE_ALIASES[rawType] : "social_post";
-      if (!mappedType) errors.push(`Unknown post type '${rec.contentType}'`);
+      // If contentType column has a format-like value (Carousel, Reel, etc.) instead of a
+      // content-family value (Post, Article, Story), treat it as a postFormat and default
+      // contentType to social_post — no error emitted for this case.
+      let mappedType = rawType ? IMPORT_TYPE_ALIASES[rawType] : "social_post";
+      let impliedFormatFromType: string | null = null;
+      if (!mappedType && rawType) {
+        const formatHit = IMPORT_FORMAT_ALIASES[rawType];
+        if (formatHit) {
+          impliedFormatFromType = formatHit;
+          mappedType = "social_post";
+        } else {
+          // Unrecognised value — default gracefully, no error.
+          mappedType = "social_post";
+        }
+      }
+
+      // Resolve postFormat: explicit postFormat column wins over type-column inference.
+      const rawPostFormat = normalizeHeader(rec.postFormat ?? "");
+      const resolvedPostFormat: string | null =
+        rawPostFormat ? (IMPORT_FORMAT_ALIASES[rawPostFormat] ?? rec.postFormat) :
+        impliedFormatFromType ?? null;
 
       const rawStatus = normalizeHeader(rec.status ?? "");
       const mappedStatus = rawStatus ? (IMPORT_STATUS_ALIASES[rawStatus] ?? "suggested") : "suggested";
@@ -20342,6 +20381,7 @@ export async function registerRoutes(
         dueDate: dueDate ?? null,
         assignedToUserId: assignedToUserId ?? null,
         status: mappedStatus,
+        postFormat: resolvedPostFormat,
       };
 
       const ideas: Record<string, any>[] = [];
@@ -20492,6 +20532,7 @@ export async function registerRoutes(
           { key: "topic", label: "Topic / Title", required: true, description: "Main topic or title of the content piece" },
           { key: "date", label: "Scheduled Date", required: true, description: "Date when the content is planned for publication" },
           { key: "contentType", label: "Post Type", required: false, description: "Type of content (Post, Article, Story)" },
+          { key: "postFormat", label: "Post Format", required: false, description: "Creative delivery format (Carousel, Reel, Static, Video, Infographic, Slides)" },
           { key: "channels", label: "Channels / Platform", required: false, description: "Distribution channels e.g. Instagram, LinkedIn" },
           { key: "pillar", label: "Pillar / Category", required: false, description: "Content pillar or category" },
           { key: "brief", label: "Details / Brief", required: false, description: "Description or brief for the content" },
