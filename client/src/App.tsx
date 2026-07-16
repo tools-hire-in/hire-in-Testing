@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect, useState } from "react";
-import { Switch, Route, Redirect, useLocation } from "wouter";
+import { Switch, Route, Redirect, useLocation, useParams } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { legacyToStudioPath } from "@/lib/studioBase";
@@ -234,6 +234,15 @@ function AdminFallback() {
   );
 }
 
+function DayViewRedirect() {
+  const params = useParams<{ date: string }>();
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation(params.date ? `/studio/board?scheduled_date=${params.date}` : "/studio/board");
+  }, []);
+  return <AdminFallback />;
+}
+
 function isEmployeeSubdomain(): boolean {
   // Allow runtime override (e.g. for testing)
   if (typeof (window as any).__IS_EMPLOYEE_SUBDOMAIN__ === "boolean") {
@@ -422,12 +431,12 @@ function PublicRouter() {
       <Route path="/studio/cm-review">{() => <StudioV2><StudioCMReview /></StudioV2>}</Route>
       <Route path="/studio/approvals">{() => <StudioV2><StudioApprovals /></StudioV2>}</Route>
       <Route path="/studio/final-approval">{() => <StudioV2><StudioFinalApproval /></StudioV2>}</Route>
-      <Route path="/studio/calendar/:date">{() => <StudioV2><StudioDayView /></StudioV2>}</Route>
+      <Route path="/studio/calendar/:date">{() => <StudioV2><DayViewRedirect /></StudioV2>}</Route>
       <Route path="/studio/calendar">{() => <StudioV2><StudioPipelineView lens="calendar" /></StudioV2>}</Route>
       <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
       <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
-      <Route path="/studio/publishing-calendar/:date">{() => <StudioV2><StudioDayView /></StudioV2>}</Route>
-      <Route path="/studio/day_board">{() => <StudioV2><StudioPipelineView lens="day_board" /></StudioV2>}</Route>
+      <Route path="/studio/publishing-calendar/:date">{() => <StudioV2><DayViewRedirect /></StudioV2>}</Route>
+      <Route path="/studio/day_board">{() => <StudioV2><Redirect to="/studio/board" /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
       <Route path="/studio/campaigns/:id">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
       <Route path="/studio/campaigns">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
@@ -623,12 +632,12 @@ function EmployeeRouter() {
       <Route path="/studio/cm-review">{() => <StudioV2><StudioCMReview /></StudioV2>}</Route>
       <Route path="/studio/approvals">{() => <StudioV2><StudioApprovals /></StudioV2>}</Route>
       <Route path="/studio/final-approval">{() => <StudioV2><StudioFinalApproval /></StudioV2>}</Route>
-      <Route path="/studio/calendar/:date">{() => <StudioV2><StudioDayView /></StudioV2>}</Route>
+      <Route path="/studio/calendar/:date">{() => <StudioV2><DayViewRedirect /></StudioV2>}</Route>
       <Route path="/studio/calendar">{() => <StudioV2><StudioPipelineView lens="calendar" /></StudioV2>}</Route>
       <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
       <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
-      <Route path="/studio/publishing-calendar/:date">{() => <StudioV2><StudioDayView /></StudioV2>}</Route>
-      <Route path="/studio/day_board">{() => <StudioV2><StudioPipelineView lens="day_board" /></StudioV2>}</Route>
+      <Route path="/studio/publishing-calendar/:date">{() => <StudioV2><DayViewRedirect /></StudioV2>}</Route>
+      <Route path="/studio/day_board">{() => <StudioV2><Redirect to="/studio/board" /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
       <Route path="/studio/campaigns/:id">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
       <Route path="/studio/campaigns">{() => <StudioV2><StudioCampaignsView /></StudioV2>}</Route>
