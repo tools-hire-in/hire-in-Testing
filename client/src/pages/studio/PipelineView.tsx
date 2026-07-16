@@ -2402,9 +2402,13 @@ export default function PipelineView({ lens }: { lens: Lens }) {
             )}
 
             {lens === "board" && (() => {
+              // Compute board date filter from the base ideas list (with status/type/channel filters
+              // but WITHOUT the URL dateFilter param) so Board's Today/Pick-a-date toggle works
+              // independently of the Calendar deep-link date filter.
+              const boardBaseIdeas = ideas ?? [];
               const boardDateIdeas = boardActiveDateStr
-                ? filteredIdeas.filter((i) => i.scheduledDate === boardActiveDateStr)
-                : filteredIdeas;
+                ? boardBaseIdeas.filter((i) => i.scheduledDate === boardActiveDateStr)
+                : boardBaseIdeas;
               return (
                 <div className="space-y-3">
                   {/* ── View toggle: All / Today / Pick a date ── */}

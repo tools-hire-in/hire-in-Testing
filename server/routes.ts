@@ -20422,7 +20422,7 @@ export async function registerRoutes(
     if (!t) return null;
     // ISO or yyyy-mm-dd
     if (/^\d{4}-\d{2}-\d{2}/.test(t)) return t.slice(0, 10);
-    // dd/mm/yyyy or dd-mm-yyyy (team template) — day-first
+    // dd/mm/yyyy or dd-mm-yyyy (team template) — day-first numeric
     const m = t.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/);
     if (m) {
       let [, d, mo, y] = m;
@@ -20430,6 +20430,26 @@ export async function registerRoutes(
       const day = parseInt(d, 10), mon = parseInt(mo, 10);
       if (mon >= 1 && mon <= 12 && day >= 1 && day <= 31) {
         return `${y}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+      }
+    }
+    // DD-Mon, DD-Mon-YY, DD-Mon-YYYY (e.g. "13-Jul", "19 Jul", "19-Jul-26", "19-Jul-2026")
+    const monthNames: Record<string, number> = {
+      jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+      jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+    };
+    const mName = t.match(/^(\d{1,2})[\s\-.]([a-zA-Z]{3,9})(?:[\s\-.](\d{2,4}))?$/);
+    if (mName) {
+      const day = parseInt(mName[1], 10);
+      const monKey = mName[2].slice(0, 3).toLowerCase();
+      const mon = monthNames[monKey];
+      if (mon && day >= 1 && day <= 31) {
+        let year: number;
+        if (mName[3]) {
+          year = mName[3].length === 2 ? 2000 + parseInt(mName[3], 10) : parseInt(mName[3], 10);
+        } else {
+          year = new Date().getFullYear();
+        }
+        return `${year}-${String(mon).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
       }
     }
     const parsed = new Date(t);
@@ -20534,7 +20554,8 @@ export async function registerRoutes(
         if (!assignedToUserId) errors.push(`No user found for assignee '${rec.assigneeEmail}'`);
       }
 
-      const hasStory = !!(rec.storyContent || rec.storyReference || rec.storyCreativeLink);
+      // Only trigger story-split when meaningful story content is present (not just reference/URL fields).
+      const hasStory = !!(rec.storyContent || rec.storyCreativeLink);
       const hasPost = !!(topic && (mappedType !== "story" || !hasStory));
 
       const base = {
