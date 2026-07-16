@@ -1,0 +1,270 @@
+
+Publishing
+Started less than a minute ago by Simranjeet
+Provision
+Security checks
+Build
+Bundle
+Promote
+Production
+Status
+Simranjeet published 2 days ago
+
+Visibility
+Public
+SEO Rating
+
+HEALTHY
+Domain
+https://hirein-solutions.replit.app
+
+
+https://www.hire-in.com
+
+
+https://hire-in.com
+
+
+https://employee.hire-in.com
+
+
+https://www.employee.hire-in.com
+
+
+Geography
+North America
+Type
+Autoscale
+(4 vCPU / 8 GiB RAM / 3 Max)
+See all usage
+Database
+Production database connected
+14b85fa3
+simranjeetsidan
+Simranjeet
+published 3 days ago
+b69afb4a
+simranjeetsidan
+Simranjeet
+published 9 days ago
+063f80d1
+simranjeetsidan
+Simranjeet
+published 10 days ago
+1de60c14
+simranjeetsidan
+Simranjeet
+published 10 days ago
+17781378
+simranjeetsidan
+Simranjeet
+published 10 days ago
+6003d4c7
+simranjeetsidan
+Simranjeet
+published 11 days ago
+7d469736
+simranjeetsidan
+Simranjeet
+published 11 days ago
+df2823e0
+simranjeetsidan
+Simranjeet
+published 12 days ago
+0c7e0e78
+simranjeetsidan
+Simranjeet
+published 12 days ago
+ca8ddb07
+simranjeetsidan
+Simranjeet
+published 12 days ago
+f543e367
+simranjeetsidan
+Simranjeet
+published 13 days ago
+199b51b8
+simranjeetsidan
+Simranjeet
+published 14 days ago
+a528f0e2
+simranjeetsidan
+Simranjeet
+published 15 days ago
+72618150
+simranjeetsidan
+Simranjeet
+published 16 days ago
+c77d7594
+simranjeetsidan
+Simranjeet
+published 17 days ago
+7bbee595
+simranjeetsidan
+Simranjeet
+published 20 days ago
+f9836f5f
+simranjeetsidan
+Simranjeet
+failed to publish 20 days ago
+8856c6cf
+simranjeetsidan
+Simranjeet
+published 23 days ago
+41121e95
+simranjeetsidan
+Simranjeet
+published 28 days ago
+
+
+
+
+
+
+
+
+
+Update system to include new financial targets, conversation logs, and approval features
+
+
+Simranjeet Sidana completed: Merge Day board into Kanban with date filter + Rejected content backlog
+Updated environment
+Simranjeet Sidana completed: Pre-fill Edit form from DB and add password eye toggle in the Vault
+
+Checkpoint made
+11 hours ago
+Updated environment
+
+Checkpoint made
+11 hours ago
+
+2 tasks started, 1 completed
+Updated environment
+
+Checkpoint made
+6 hours ago
+Completed: Two-tier attendance classification engine (daily tier + monthly deficit pool)
+Updated environment
+
+Checkpoint made
+6 hours ago
+
+3 tasks started, 1 completed
+Updated environment
+
+Checkpoint made
+6 hours ago
+Completed: Add SOP detail links to wave cards in Control Tower
+Updated environment
+
+Checkpoint made
+6 hours ago
+Simranjeet Sidana completed: Dev Tools — View As Role tab
+Updated environment
+
+Checkpoint made
+5 hours ago
+Architect audit and tell me the coverage of our Automation suite and what is covered with API,E2E and hybrid?
+
+5 hours ago
+
+6 messages & 36 actions
+
+Worked for 3 minutes
+Write it all in current state of automaton n catahorize them as the implementation and with each give implementation plan that's followed how they are executed test data etc for each test what you think automation architect and also what should be next steps to have coverage for P0 and P1 regression minimums
+
+5 hours ago
+
+1 message & 1 action
+Lets create task to add these docuemtn under QA and save it to share with team but break them struturely so that its wasy to understand and go through what you think honestly
+
+3 hours ago
+
+1 message & 6 actions
+
+Proposed 1 task
+
+Worked for 1 minute
+Simranjeet Sidana completed: QA Automation Audit — Team Reference Doc
+Updated environment
+
+Checkpoint made
+59 minutes ago
+
+2 tasks started, 1 completed
+Updated environment
+
+Checkpoint made
+43 minutes ago
+
+1 task started, 1 completed
+Updated environment
+
+Checkpoint made
+39 minutes ago
+Completed: Fix content calendar import — wrong dates, duplicate ideas, Board day filter
+Updated environment
+
+Checkpoint made
+38 minutes ago
+
+Pasted-CREATE-TYPE-public-integration-status-AS-ENUM-connected_1784199463561.txt
+Architect review the DB migration for prod release and give go no go
+
+33 minutes ago
+
+3 messages & 14 actions
+
+Worked for 2 minutes
+lets write task to fix anyting or eveythign for fixing db migration for prod release
+
+17 minutes ago
+
+1 message & 7 actions
+
+Proposed 1 task
+
+Worked for 56 seconds
+
+Started task
+Harden DB migration before prod release
+The architect review of the generated migration SQL identified five gaps that need to be closed before the migration is safe to run on prod: two missing query indexes (causing future full-table scans on high-traffic tables), three missing FK constraints (leaving orphaned rows possible on user deletion), and a missing FK for vault share audit fields. All fixes are additive changes to shared/schema.ts — drizzle-kit push propagates them to the DB at release time. No destructive changes are involved.
+
+
+Checkpoint made
+16 minutes ago
+
+7 messages & 30 actions
+
+Worked for 6 minutes
+
+Pasted-CREATE-TYPE-public-integration-status-AS-ENUM-connected_1784201351133.txt
+Architect go no go migration prod:
+
+2 minutes ago
+
+Analyzing SQL migration differences (32 seconds)
+Let me quickly diff this new migration against the previous one and the current live schema state.
+
+
+3 actions
+The diff tells the story in two lines. This is the post-hardening migration — exactly what the schema looks like after Task #1285 merged. Here is the verdict.
+
+✅ GO
+This migration is the hardened version. Every gap from the first review is resolved.
+
+What changed vs. the previous migration
+Item	Previous	This migration
+copilot_conversations.user_id	NOT NULL	nullable ✅
+FK copilot_conversations → admin_users	missing	ON DELETE SET NULL ✅
+FK company_financial_targets.goal_id → performance_goals	missing	ON DELETE SET NULL ✅
+FK company_goal_actions.goal_id → performance_goals	missing	ON DELETE SET NULL ✅
+FK vault_shares.revoked_by → admin_users	missing	ON DELETE NO ACTION ✅
+Index on copilot_conversations.user_id	missing	btree index ✅
+Partial index on performance_goals.escalation_flag	missing	WHERE escalation_flag = true ✅
+Everything from the previous review's tech-debt list is now in the migration. All other structural checks remain green — all new tables are additive, all NOT NULL columns have defaults, all FKs use appropriate delete semantics.
+
+The one standing rule (unchanged)
+Execute via drizzle-kit push / the post-merge.sh pipeline. Do not run this as raw SQL.
+
+The three ALTER TYPE ... ADD VALUE lines still have no IF NOT EXISTS guard. Drizzle computes the live diff and skips values that already exist in prod; raw SQL cannot. That is the only risk, and it is fully mitigated by using the standard release path.
