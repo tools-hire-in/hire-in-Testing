@@ -32,14 +32,16 @@ async function getAttendanceSettings(): Promise<{
   tier2: number;
   tier3: number;
   minExceptionShortfallMinutes: number;
+  deficitPoolThresholdMinutes: number;
 }> {
   try {
-    const [h, t1, t2, t3, minShortfall] = await Promise.all([
+    const [h, t1, t2, t3, minShortfall, deficitThreshold] = await Promise.all([
       storage.getSystemSetting("standard_shift_hours"),
       storage.getSystemSetting("attendance_alert_tier1"),
       storage.getSystemSetting("attendance_alert_tier2"),
       storage.getSystemSetting("attendance_alert_tier3"),
       storage.getSystemSetting("min_exception_shortfall_minutes"),
+      storage.getSystemSetting("attendance_deficit_pool_threshold_minutes"),
     ]);
     return {
       standardShiftHours: typeof h?.value === "number" ? h.value : 9.0,
@@ -47,9 +49,10 @@ async function getAttendanceSettings(): Promise<{
       tier2: typeof t2?.value === "number" ? t2.value : 5,
       tier3: typeof t3?.value === "number" ? t3.value : 10,
       minExceptionShortfallMinutes: typeof minShortfall?.value === "number" ? minShortfall.value : 30,
+      deficitPoolThresholdMinutes: typeof deficitThreshold?.value === "number" ? deficitThreshold.value : 120,
     };
   } catch {
-    return { standardShiftHours: 9.0, tier1: 2, tier2: 5, tier3: 10, minExceptionShortfallMinutes: 30 };
+    return { standardShiftHours: 9.0, tier1: 2, tier2: 5, tier3: 10, minExceptionShortfallMinutes: 30, deficitPoolThresholdMinutes: 120 };
   }
 }
 
@@ -287,12 +290,17 @@ export function registerAttendanceExceptionRoutes(app: Express) {
           m.first_name AS manager_first_name,
           m.last_name AS manager_last_name,
           r.first_name AS resolver_first_name,
-          r.last_name AS resolver_last_name
+          r.last_name AS resolver_last_name,
+          adp.deficit_minutes AS monthly_deficit_minutes,
+          adp.settled_at AS pool_settled_at
         FROM attendance a
         JOIN admin_users u ON u.id = a.user_id
         LEFT JOIN departments d ON d.id = u.department_id
         LEFT JOIN admin_users m ON m.id = u.manager_id
         LEFT JOIN admin_users r ON r.id = a.exception_resolved_by
+        LEFT JOIN attendance_deficit_pool adp
+          ON adp.employee_id = a.user_id
+          AND adp.month = SUBSTR(a.date::text, 1, 7)
         WHERE a.exception_status IS NOT NULL
           ${teamFilter}
           ${statusFilter}
@@ -302,6 +310,12 @@ export function registerAttendanceExceptionRoutes(app: Express) {
         ORDER BY a.date DESC
         LIMIT 200
       `)).rows as any[];
+
+      const [settings, featureFlags] = await Promise.all([
+        getAttendanceSettings(),
+        getFeatureFlags(),
+      ]);
+      const deficitPoolEnabled = featureFlags.attendance_deficit_pool_enabled === true;
 
       res.json(rows.map((row: any) => ({
         id: row.id,
@@ -326,6 +340,12 @@ export function registerAttendanceExceptionRoutes(app: Express) {
         departmentName: row.department_name,
         managerName: row.manager_first_name ? `${row.manager_first_name} ${row.manager_last_name}` : null,
         resolverName: row.resolver_first_name ? `${row.resolver_first_name} ${row.resolver_last_name}` : null,
+        // Deficit pool fields — only populated when feature flag is ON
+        deficitPoolEnabled,
+        monthlyDeficitMinutes: deficitPoolEnabled && row.monthly_deficit_minutes != null
+          ? Number(row.monthly_deficit_minutes) : null,
+        deficitThreshold: deficitPoolEnabled ? settings.deficitPoolThresholdMinutes : null,
+        poolSettled: deficitPoolEnabled ? !!row.pool_settled_at : null,
       })));
     } catch (err) {
       console.error("[exceptions] list error:", err);
@@ -640,6 +660,12 @@ export function registerAttendanceExceptionRoutes(app: Express) {
         const v = Number(minExceptionShortfallMinutes);
         if (isNaN(v) || v < 0 || v > 480) return res.status(400).json({ error: "minExceptionShortfallMinutes must be 0-480" });
         await storage.upsertSystemSetting("min_exception_shortfall_minutes", v, actorId);
+      }
+      const { deficitPoolThresholdMinutes } = req.body;
+      if (deficitPoolThresholdMinutes !== undefined) {
+        const v = Number(deficitPoolThresholdMinutes);
+        if (isNaN(v) || v < 0 || v > 480) return res.status(400).json({ error: "deficitPoolThresholdMinutes must be 0-480" });
+        await storage.upsertSystemSetting("attendance_deficit_pool_threshold_minutes", v, actorId);
       }
 
       res.json({ success: true });

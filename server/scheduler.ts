@@ -630,6 +630,30 @@ export function startScheduler() {
     } catch (error) {
       console.error("[scheduler] Monthly leave accrual failed:", error);
     }
+
+    // ── Deficit Pool Settlement — runs immediately after accrual on the 1st ──
+    // Settle the PRIOR month (month that just ended). We're now on the 1st of the
+    // new month so the priorMonth is trivially the month before getIstDateTime().
+    try {
+      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+      if (featureFlags.attendance_deficit_pool_enabled) {
+        const { year: nowY, month: nowM } = getIstDateTime();
+        let priorYear = nowY;
+        let priorMonth = nowM - 1;
+        if (priorMonth === 0) { priorMonth = 12; priorYear -= 1; }
+        const priorMonthStr = `${priorYear}-${String(priorMonth).padStart(2, "0")}`;
+        console.log(`[scheduler] Settling attendance deficit pool for ${priorMonthStr}...`);
+        const { settleMonthlyDeficitPool } = await import("./attendancePolicy");
+        const results = await settleMonthlyDeficitPool(priorMonthStr);
+        const settled = results.filter(r => r.settled).length;
+        const forgiven = results.filter(r => r.forgiven).length;
+        const lwpApplied = results.filter(r => r.lwpDays > 0).length;
+        console.log(`[scheduler] Deficit pool settled for ${priorMonthStr}: ${settled} employees — ${forgiven} forgiven, ${lwpApplied} with LWP.`);
+      }
+    } catch (err) {
+      console.error("[scheduler] Deficit pool settlement failed (non-fatal):", err);
+    }
   }, {
     timezone: "Asia/Kolkata",
   });

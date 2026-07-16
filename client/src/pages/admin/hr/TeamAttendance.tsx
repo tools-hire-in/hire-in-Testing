@@ -122,6 +122,10 @@ interface AttendanceException {
   resolverName: string | null;
   resolvedAt: string | null;
   createdAt: string;
+  deficitPoolEnabled?: boolean;
+  monthlyDeficitMinutes?: number | null;
+  deficitThreshold?: number | null;
+  poolSettled?: boolean | null;
 }
 
 export default function TeamAttendance({ view }: { view?: "attendance" | "exceptions" } = {}) {
@@ -604,13 +608,21 @@ export default function TeamAttendance({ view }: { view?: "attendance" | "except
                           <th className="text-left py-3 px-3 font-medium text-muted-foreground">Employee</th>
                           <th className="text-left py-3 px-3 font-medium text-muted-foreground">Date</th>
                           <th className="text-left py-3 px-3 font-medium text-muted-foreground">Hours / Shortfall</th>
+                          {exceptions[0]?.deficitPoolEnabled && (
+                            <th className="text-left py-3 px-3 font-medium text-muted-foreground">Monthly Deficit</th>
+                          )}
                           <th className="text-left py-3 px-3 font-medium text-muted-foreground">Status</th>
                           <th className="text-left py-3 px-3 font-medium text-muted-foreground">Comment</th>
                           <th className="text-right py-3 px-3 font-medium text-muted-foreground">Actions</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {exceptions.map(exc => (
+                        {exceptions.map(exc => {
+                          const defMin = exc.monthlyDeficitMinutes ?? 0;
+                          const defThreshold = exc.deficitThreshold ?? 120;
+                          const deficitPct = Math.min(100, (defMin / defThreshold) * 100);
+                          const deficitOver = defMin > defThreshold;
+                          return (
                           <tr key={exc.id} className="border-b last:border-0 hover:bg-muted/30" data-testid={`exc-row-${exc.id}`}>
                             <td className="py-2.5 px-3">
                               <p className="font-medium">{exc.employeeName}</p>
@@ -621,6 +633,30 @@ export default function TeamAttendance({ view }: { view?: "attendance" | "except
                               <p className="font-medium">{exc.workedHours.toFixed(1)}h</p>
                               <p className="text-xs text-red-600">−{exc.shortfall.toFixed(1)}h short</p>
                             </td>
+                            {exc.deficitPoolEnabled && (
+                              <td className="py-2.5 px-3" data-testid={`deficit-${exc.id}`}>
+                                {exc.monthlyDeficitMinutes == null ? (
+                                  <span className="text-xs text-muted-foreground">—</span>
+                                ) : exc.poolSettled ? (
+                                  <span className="text-xs text-muted-foreground">Settled</span>
+                                ) : (
+                                  <div className="min-w-[80px]">
+                                    <p className={`text-xs font-medium ${deficitOver ? "text-red-600" : "text-amber-600"}`}>
+                                      {defMin}m / {defThreshold}m
+                                    </p>
+                                    <div className="mt-0.5 h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                                      <div
+                                        className={`h-full rounded-full transition-all ${deficitOver ? "bg-red-500" : "bg-amber-400"}`}
+                                        style={{ width: `${deficitPct}%` }}
+                                      />
+                                    </div>
+                                    {deficitOver && (
+                                      <p className="text-xs text-red-600 mt-0.5">Over threshold</p>
+                                    )}
+                                  </div>
+                                )}
+                              </td>
+                            )}
                             <td className="py-2.5 px-3">
                               {exc.status === "pending" && <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 text-xs">Pending</Badge>}
                               {exc.status === "approved_exception" && <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 text-xs">Approved</Badge>}
@@ -647,7 +683,8 @@ export default function TeamAttendance({ view }: { view?: "attendance" | "except
                               )}
                             </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>

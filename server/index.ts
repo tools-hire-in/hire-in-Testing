@@ -3554,6 +3554,7 @@ async function runStartupTasks() {
         process_governance: true,
         studio_v2_enabled: true,
         enforce_probation_leave_gate: true,
+        attendance_deficit_pool_enabled: false,
       })}::jsonb)
       ON CONFLICT (key) DO UPDATE
         SET value = ${JSON.stringify({
@@ -3565,11 +3566,24 @@ async function runStartupTasks() {
           process_governance: true,
           studio_v2_enabled: true,
           enforce_probation_leave_gate: true,
+          attendance_deficit_pool_enabled: false,
         })}::jsonb || system_settings.value
     `);
     log("Feature flag defaults ensured");
   } catch (err) {
     console.error("Feature flag defaults seed error (non-fatal):", err);
+  }
+
+  // Seed deficit pool threshold (default 120 min — forgive shortfalls smaller than this).
+  try {
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES ('attendance_deficit_pool_threshold_minutes', '120'::jsonb)
+      ON CONFLICT (key) DO NOTHING
+    `);
+    log("Deficit pool threshold seeded");
+  } catch (err) {
+    console.error("Deficit pool threshold seed error (non-fatal):", err);
   }
 
   // Seed governance cadence settings as individual system_settings rows.

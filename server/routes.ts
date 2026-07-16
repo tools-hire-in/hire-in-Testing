@@ -3014,6 +3014,26 @@ export async function registerRoutes(
         }
       }
 
+      // Deficit pool data (only when feature flag is ON)
+      let deficitMinutes = 0;
+      let deficitPoolEnabled = false;
+      try {
+        const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+        const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+        if (featureFlags.attendance_deficit_pool_enabled) {
+          deficitPoolEnabled = true;
+          const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+          const poolRow = await db.execute(sql`
+            SELECT deficit_minutes FROM attendance_deficit_pool
+            WHERE employee_id = ${userId} AND month = ${currentMonth} AND settled_at IS NULL
+            LIMIT 1
+          `);
+          if ((poolRow.rows as any[]).length > 0) {
+            deficitMinutes = (poolRow.rows[0] as any).deficit_minutes || 0;
+          }
+        }
+      } catch { /* non-fatal */ }
+
       res.json({
         todayStatus,
         punchInTime: todayRecord?.punchIn || null,
@@ -3025,6 +3045,8 @@ export async function registerRoutes(
         productiveHoursToday,
         correctionsThisMonth: correctionsThisMonthForUser,
         complianceCountdown,
+        deficitMinutes,
+        deficitPoolEnabled,
       });
     } catch (error) {
       console.error("Dashboard stats error:", error);
@@ -3469,7 +3491,10 @@ export async function registerRoutes(
         if (typedUserOut?.shiftId) {
           try {
             const { computeDayCompletionStatus, computeLogoutStatus } = await import("./attendancePolicy");
-            const completionResult = await computeDayCompletionStatus(typedUserOut.shiftId, totalHoursNum, currentStatus);
+            const completionResult = await computeDayCompletionStatus(
+              typedUserOut.shiftId, totalHoursNum, currentStatus,
+              { employeeId: userId, date: (existing.date as string).slice(0, 10) },
+            );
             if (completionResult.status !== currentStatus) updatedStatus = completionResult.status;
             if (completionResult.notes) noteSegments.push(completionResult.notes);
             // Logout timing note (early / on-time / overtime)
@@ -3483,8 +3508,28 @@ export async function registerRoutes(
             const setting = await storage.getSystemSetting("standard_shift_hours");
             if (setting?.value && typeof setting.value === "number" && setting.value > 0) stdHours = setting.value;
           } catch { /* use default 9h */ }
-          if (totalHoursNum < stdHours / 2) updatedStatus = "half_day";
-          else if (totalHoursNum < stdHours) updatedStatus = "short_day";
+          if (totalHoursNum < stdHours / 2) {
+            updatedStatus = "half_day";
+          } else if (totalHoursNum < stdHours) {
+            updatedStatus = "short_day";
+          }
+          // Reconcile pool for shiftless employees. Always write — including 0 for
+          // half_day/full_day so stale short_day entries are cleared on correction.
+          // computeDayCompletionStatus is not called for shiftless, so we call directly.
+          try {
+            const flags = await storage.getSystemSetting("feature_flags");
+            const featureFlags = (flags?.value as Record<string, boolean>) || {};
+            if (featureFlags.attendance_deficit_pool_enabled) {
+              const dateStr = (existing.date as string).slice(0, 10);
+              const { upsertDeficitPool } = await import("./attendancePolicy");
+              const poolMin = updatedStatus === "short_day"
+                ? Math.max(0, Math.round((stdHours - totalHoursNum) * 60))
+                : 0; // clears any stale short_day entry for this date
+              upsertDeficitPool(userId, dateStr, poolMin).catch(
+                (err: any) => console.warn("[deficit-pool] shiftless reconciliation failed:", err),
+              );
+            }
+          } catch { /* non-fatal */ }
         }
       }
 
@@ -3496,6 +3541,7 @@ export async function registerRoutes(
       }
 
       const record = await storage.updateAttendance(existing.id, updatePayload);
+
 
       // Auto-create attendance exception row when punch-out produces a short_day
       if (updatedStatus === "short_day") {
@@ -5362,6 +5408,118 @@ export async function registerRoutes(
     }
   });
 
+  // ── Attendance Deficit Pool Routes ──────────────────────────────────────────
+
+  // GET current user's deficit pool for a given month (defaults to current month)
+  app.get("/api/hr/attendance/deficit-pool", requireAuth, async (req, res) => {
+    try {
+      const userId = req.session.userId!;
+      const month = (req.query.month as string) || new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 7);
+      if (!/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ error: "month must be YYYY-MM" });
+      }
+      const row = await db.execute(sql`
+        SELECT deficit_minutes, settled_at, settled_lwp_days, settled_leave_type, updated_at
+        FROM attendance_deficit_pool
+        WHERE employee_id = ${userId} AND month = ${month}
+        LIMIT 1
+      `);
+      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
+      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+      const thresholdSetting = await storage.getSystemSetting("attendance_deficit_pool_threshold_minutes");
+      const threshold = (thresholdSetting?.value && typeof thresholdSetting.value === "number") ? thresholdSetting.value : 120;
+      const data = (row.rows as any[])[0] || null;
+      res.json({
+        enabled: featureFlags.attendance_deficit_pool_enabled === true,
+        month,
+        deficitMinutes: data?.deficit_minutes ?? 0,
+        settledAt: data?.settled_at ?? null,
+        settledLwpDays: data?.settled_lwp_days ?? null,
+        settledLeaveType: data?.settled_leave_type ?? null,
+        threshold,
+      });
+    } catch (error) {
+      console.error("Deficit pool GET error:", error);
+      res.status(500).json({ error: "Failed to fetch deficit pool" });
+    }
+  });
+
+  // GET employee deficit pool for HR/managers (accepts ?employeeId=&month=)
+  app.get("/api/hr/attendance/deficit-pool/employee", requirePermission("hr.attendance.graceUsage", "hr", "admin", "super_admin", "manager"), async (req, res) => {
+    try {
+      const requestingUserId = req.session.userId!;
+      const requestingRole = req.session.role!;
+      const employeeId = req.query.employeeId as string;
+      const month = (req.query.month as string) || new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 7);
+      if (!employeeId) return res.status(400).json({ error: "employeeId required" });
+      if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: "month must be YYYY-MM" });
+
+      // Manager-scope enforcement: managers may only view direct reports.
+      // HR, admin, and super_admin have org-wide access.
+      if (requestingRole === "manager") {
+        const teamMembers = await storage.getTeamMembers(requestingUserId);
+        const isDirectReport = teamMembers.some(m => m.id === employeeId);
+        if (!isDirectReport) {
+          return res.status(403).json({ error: "Access denied — employee is not your direct report" });
+        }
+      }
+
+      const row = await db.execute(sql`
+        SELECT deficit_minutes, settled_at, settled_lwp_days, settled_leave_type, updated_at
+        FROM attendance_deficit_pool
+        WHERE employee_id = ${employeeId} AND month = ${month}
+        LIMIT 1
+      `);
+      const thresholdSetting = await storage.getSystemSetting("attendance_deficit_pool_threshold_minutes");
+      const threshold = (thresholdSetting?.value && typeof thresholdSetting.value === "number") ? thresholdSetting.value : 120;
+      const data = (row.rows as any[])[0] || null;
+      res.json({
+        employeeId,
+        month,
+        deficitMinutes: data?.deficit_minutes ?? 0,
+        settledAt: data?.settled_at ?? null,
+        settledLwpDays: data?.settled_lwp_days ?? null,
+        settledLeaveType: data?.settled_leave_type ?? null,
+        threshold,
+      });
+    } catch (error) {
+      console.error("Deficit pool employee GET error:", error);
+      res.status(500).json({ error: "Failed to fetch deficit pool" });
+    }
+  });
+
+  // POST settle-deficit-pool — HR manual trigger (or preview)
+  app.post("/api/hr/attendance/settle-deficit-pool", requirePermission("system.featureFlags", "super_admin", "admin", "hr"), async (req, res) => {
+    try {
+      const { month, employeeId, preview } = req.body as { month?: string; employeeId?: string; preview?: boolean };
+      if (month && !/^\d{4}-\d{2}$/.test(month)) {
+        return res.status(400).json({ error: "month must be YYYY-MM" });
+      }
+      if (preview) {
+        // Preview mode: return unsettled pool rows without writing anything
+        const whereClause = employeeId
+          ? sql`employee_id = ${employeeId} AND month = ${month || new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 7)} AND settled_at IS NULL`
+          : sql`month = ${month || new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().slice(0, 7)} AND settled_at IS NULL`;
+        const rows = await db.execute(sql`
+          SELECT adp.employee_id, adp.month, adp.deficit_minutes, u.first_name, u.last_name, u.email
+          FROM attendance_deficit_pool adp
+          JOIN admin_users u ON u.id = adp.employee_id
+          WHERE ${whereClause}
+          ORDER BY adp.deficit_minutes DESC
+        `);
+        const thresholdSetting = await storage.getSystemSetting("attendance_deficit_pool_threshold_minutes");
+        const threshold = (thresholdSetting?.value && typeof thresholdSetting.value === "number") ? thresholdSetting.value : 120;
+        return res.json({ preview: true, threshold, rows: rows.rows });
+      }
+      const { settleMonthlyDeficitPool } = await import("./attendancePolicy");
+      const results = await settleMonthlyDeficitPool(month, employeeId, req.session.userId!);
+      res.json({ settled: results.length, results });
+    } catch (error) {
+      console.error("Settle deficit pool error:", error);
+      res.status(500).json({ error: "Failed to settle deficit pool" });
+    }
+  });
+
   // ==========================================
   // ATTENDANCE REGULARIZATION ROUTES
   // ==========================================
@@ -5848,7 +6006,10 @@ export async function registerRoutes(
             const lateResult = await computeLateStatus(empUser.shiftId, new Date(effectivePunchIn));
             if (lateResult) {
               const halfResult = totalHoursNum
-                ? await computeDayCompletionStatus(empUser.shiftId, parseFloat(totalHoursNum), lateResult.status)
+                ? await computeDayCompletionStatus(
+                    empUser.shiftId, parseFloat(totalHoursNum), lateResult.status,
+                    { employeeId: request.employeeId, date: request.attendanceDate },
+                  )
                 : { status: lateResult.status };
               correctedStatus = halfResult.status;
             }
@@ -6082,7 +6243,10 @@ export async function registerRoutes(
               if (diffMs > 0) totalHrsNum = diffMs / 3600000;
             }
             const halfResult = totalHrsNum !== undefined
-              ? await chs(empUserO.shiftId, totalHrsNum, lateResult.status)
+              ? await chs(
+                  empUserO.shiftId, totalHrsNum, lateResult.status,
+                  { employeeId, date: attendanceDate },
+                )
               : { status: lateResult.status };
             computedStatus = halfResult.status;
           }
@@ -6197,7 +6361,10 @@ export async function registerRoutes(
               const lateResult = await computeLateStatus(empUser.shiftId, new Date(effectivePunchIn));
               if (lateResult) {
                 const halfResult = totalHoursNum
-                  ? await computeDayCompletionStatus(empUser.shiftId, parseFloat(totalHoursNum), lateResult.status)
+                  ? await computeDayCompletionStatus(
+                      empUser.shiftId, parseFloat(totalHoursNum), lateResult.status,
+                      { employeeId: request.employeeId, date: request.attendanceDate },
+                    )
                   : { status: lateResult.status };
                 correctedStatus = halfResult.status;
               }
@@ -14703,7 +14870,7 @@ export async function registerRoutes(
 
   app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
-      const BOOLEAN_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance", "studio_v2_enabled", "enforce_probation_leave_gate"];
+      const BOOLEAN_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance", "studio_v2_enabled", "enforce_probation_leave_gate", "attendance_deficit_pool_enabled"];
       const GOVERNANCE_INT_KEYS = ["governance_sop_grace_days", "governance_sop_cadence_max_per_week", "governance_pip_checkin_days", "governance_growth_checkin_days", "governance_escalation_probation_first_hours", "governance_escalation_probation_second_hours", "governance_goal_coaching_threshold_days"];
       const GOVERNANCE_BOOL_STR_KEYS = ["governance_nudge_sweep_enabled"];
       const ALLOWED_FLAGS = [...BOOLEAN_FLAGS, ...GOVERNANCE_INT_KEYS, ...GOVERNANCE_BOOL_STR_KEYS];

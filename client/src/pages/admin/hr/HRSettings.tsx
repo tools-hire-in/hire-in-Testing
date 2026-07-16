@@ -623,6 +623,11 @@ export function FeatureFlagsSection() {
       label: "Probation Leave Accrual Gate",
       description: "When ON (default), the monthly leave accrual engine skips EL and SL credits for any employee currently in an active probation period (probation end date not yet passed and probation not explicitly confirmed). Turn OFF to immediately allow accrual regardless of probation status — use this as an emergency kill-switch if needed.",
     },
+    {
+      key: "attendance_deficit_pool_enabled",
+      label: "Attendance Deficit Pool (Two-Tier Engine)",
+      description: "When ON, every short-day punch-out feeds a monthly deficit pool accumulating shortfall minutes. On the 1st of each month, the prior month's pool is settled: deficits below the forgiveness threshold are cancelled; excess is converted to fractional LWP days (EL → SL → raw LWP). Turn OFF to disable entirely — no pooling, no month-end settlement.",
+    },
   ];
 
   return (
@@ -2975,17 +2980,18 @@ function AttendanceExceptionThresholdsSection() {
     tier2: number;
     tier3: number;
     minExceptionShortfallMinutes: number;
+    deficitPoolThresholdMinutes: number;
   }>({
     queryKey: ["/api/attendance/settings"],
     queryFn: async () => {
       const res = await fetch("/api/attendance/settings", { credentials: "include" });
-      if (!res.ok) return { standardShiftHours: 9, tier1: 2, tier2: 5, tier3: 10, minExceptionShortfallMinutes: 30 };
+      if (!res.ok) return { standardShiftHours: 9, tier1: 2, tier2: 5, tier3: 10, minExceptionShortfallMinutes: 30, deficitPoolThresholdMinutes: 120 };
       return res.json();
     },
     enabled: isHrOrAbove,
   });
 
-  const [form, setForm] = useState({ standardShiftHours: "9", tier1: "2", tier2: "5", tier3: "10", minExceptionShortfallMinutes: "30" });
+  const [form, setForm] = useState({ standardShiftHours: "9", tier1: "2", tier2: "5", tier3: "10", minExceptionShortfallMinutes: "30", deficitPoolThresholdMinutes: "120" });
   const [editing, setEditing] = useState(false);
 
   useEffect(() => {
@@ -2996,6 +3002,7 @@ function AttendanceExceptionThresholdsSection() {
         tier2: String(settings.tier2 ?? 5),
         tier3: String(settings.tier3 ?? 10),
         minExceptionShortfallMinutes: String(settings.minExceptionShortfallMinutes ?? 30),
+        deficitPoolThresholdMinutes: String(settings.deficitPoolThresholdMinutes ?? 120),
       });
     }
   }, [settings]);
@@ -3008,6 +3015,7 @@ function AttendanceExceptionThresholdsSection() {
         tier2: parseInt(form.tier2),
         tier3: parseInt(form.tier3),
         minExceptionShortfallMinutes: parseInt(form.minExceptionShortfallMinutes),
+        deficitPoolThresholdMinutes: parseInt(form.deficitPoolThresholdMinutes),
       });
       if (!res.ok) throw new Error("Failed to save");
     },
@@ -3083,6 +3091,24 @@ function AttendanceExceptionThresholdsSection() {
                   />
                 ) : (
                   <p className="font-medium text-sm">{settings?.minExceptionShortfallMinutes ?? 30} minutes</p>
+                )}
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="att-deficit-threshold">Deficit Pool Forgiveness Threshold (minutes)</Label>
+                <p className="text-xs text-muted-foreground">Monthly accumulated shortfall below this limit is forgiven at month-end with no LWP deduction (default: 120 min = 2 hrs).</p>
+                {editing ? (
+                  <Input
+                    id="att-deficit-threshold"
+                    type="number"
+                    min="0"
+                    max="480"
+                    step="15"
+                    value={form.deficitPoolThresholdMinutes}
+                    onChange={(e) => setForm(f => ({ ...f, deficitPoolThresholdMinutes: e.target.value }))}
+                    data-testid="input-deficit-pool-threshold"
+                  />
+                ) : (
+                  <p className="font-medium text-sm">{settings?.deficitPoolThresholdMinutes ?? 120} minutes</p>
                 )}
               </div>
             </div>

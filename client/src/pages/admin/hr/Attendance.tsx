@@ -47,6 +47,8 @@ interface DashboardStats {
   pendingLeaveRequests: number;
   productiveHoursToday: string | null;
   correctionsThisMonth: number;
+  deficitMinutes?: number;
+  deficitPoolEnabled?: boolean;
 }
 
 interface AttendanceRecord {
@@ -1103,6 +1105,25 @@ export default function Attendance({ view }: { view?: "attendance" | "grace" } =
                   </CardContent>
                 </Card>
               </div>
+
+              {/* ── DEFICIT POOL CARD (only when feature is ON and pool > 0) ── */}
+              {stats?.deficitPoolEnabled && (stats?.deficitMinutes ?? 0) > 0 && (
+                <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800">
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <Info className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-amber-800 dark:text-amber-300">
+                          Short-Day Deficit Pool — {stats.deficitMinutes} min accumulated this month
+                        </p>
+                        <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                          Each time you punch out short, the shortfall is added here. At month-end, the total is reviewed: small deficits are forgiven; larger ones are converted to fractional LWP (EL balance offset first, then SL, then raw LWP).
+                        </p>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* ── RECENT RECORDS ── */}
               <Card>

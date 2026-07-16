@@ -4994,3 +4994,28 @@ export const companyGoalActions = pgTable("company_goal_actions", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// ── Attendance Deficit Pool ────────────────────────────────────────────────────
+// Per-employee monthly accumulator for short-day shortfalls.
+// Feeds the two-tier classification engine: small daily deficits (short_day)
+// silently accumulate here; month-end settlement converts excess to LWP when
+// the total crosses the configurable threshold (default 120 min).
+// Half Day and Absent days do NOT feed this pool — they are fully consumed by the daily tier.
+export const attendanceDeficitPool = pgTable("attendance_deficit_pool", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  month: varchar("month", { length: 7 }).notNull(), // 'YYYY-MM'
+  deficitMinutes: integer("deficit_minutes").notNull().default(0),
+  dailyContributions: jsonb("daily_contributions").notNull().default({}), // { 'YYYY-MM-DD': shortfallMinutes }
+  settledAt: timestamp("settled_at"),
+  settledLwpDays: numeric("settled_lwp_days"),
+  settledLeaveType: varchar("settled_leave_type"), // 'EL' | 'SL' | 'LWP' | 'mixed' | 'forgiven'
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_deficit_pool_employee_month").on(table.employeeId, table.month),
+]);
+
+export const insertAttendanceDeficitPoolSchema = createInsertSchema(attendanceDeficitPool).omit({ id: true, createdAt: true, updatedAt: true });
+export type AttendanceDeficitPool = typeof attendanceDeficitPool.$inferSelect;
+export type InsertAttendanceDeficitPool = typeof insertAttendanceDeficitPoolSchema._type;
