@@ -2577,6 +2577,56 @@ export async function sendPlanEscalationEmail(options: {
   });
 }
 
+export async function sendShiftCorrectionEmail(options: {
+  to: string;
+  firstName: string;
+  lastName?: string;
+  shiftLabel: string;
+  dstSchedule: string;
+  stdSchedule: string;
+}) {
+  try {
+    const { client, fromEmail } = await getUncachableSendGridClient();
+    const msg = {
+      to: options.to,
+      from: { email: fromEmail, name: "Alina Carter" },
+      subject: "Your Shift Schedule Has Been Updated",
+      html: `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1F3A6E 0%, #2d5299 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">Shift Schedule Update</h1>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 18px;">Hi ${options.firstName},</h2>
+            <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+              Your shift schedule (<strong>${options.shiftLabel}</strong>) has been updated with corrected times. No action is required from you — this is for your information only.
+            </p>
+            <div style="background: #f0f4ff; border: 1px solid #c7d7f9; border-radius: 8px; padding: 20px; margin: 24px 0;">
+              <p style="color: #1e293b; font-weight: 600; margin: 0 0 10px;">Updated Schedule</p>
+              <p style="color: #475569; margin: 0 0 6px;"><strong>Summer (DST):</strong> ${options.dstSchedule}</p>
+              <p style="color: #475569; margin: 0;"><strong>Winter (STD):</strong> ${options.stdSchedule}</p>
+            </div>
+            <p style="color: #475569; line-height: 1.6;">
+              All past attendance records remain unchanged. Only future punches will use the updated times. If you have any questions, please reach out to HR.
+            </p>
+            ${SIGNOFF_HTML}
+          </div>
+          <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+            <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.</p>
+          </div>
+        </div>
+      `,
+      text: `Hi ${options.firstName},\n\nYour shift schedule (${options.shiftLabel}) has been updated with corrected times.\n\nSummer (DST): ${options.dstSchedule}\nWinter (STD): ${options.stdSchedule}\n\nAll past attendance records remain unchanged. Only future punches will use the updated times.\n\nIf you have any questions, please reach out to HR.${SIGNOFF_TEXT}`,
+    };
+    await client.send(msg);
+    console.log(`Shift correction email sent to ${options.to}`);
+    return { success: true };
+  } catch (error: any) {
+    console.error("Failed to send shift correction email:", error?.response?.body || error.message);
+    return { success: false, error: error.message };
+  }
+}
+
 export async function sendPolicyUpdateEmail(options: {
   to: string;
   firstName: string;
@@ -2584,6 +2634,14 @@ export async function sendPolicyUpdateEmail(options: {
   trackTitle: string;
   versionNumber: number;
 }) {
+  const missing: string[] = [];
+  if (!options.firstName) missing.push("firstName");
+  if (!options.trackTitle) missing.push("trackTitle");
+  if (options.versionNumber === undefined || options.versionNumber === null) missing.push("versionNumber");
+  if (missing.length > 0) {
+    console.error(`sendPolicyUpdateEmail: aborting — required field(s) undefined: ${missing.join(", ")} (to: ${options.to})`);
+    return { success: false, error: "Missing required fields" };
+  }
   try {
     const { client, fromEmail } = await getUncachableSendGridClient();
     const msg = {

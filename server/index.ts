@@ -1550,13 +1550,14 @@ async function notifyShiftCorrectionEmployees() {
 
       // Send email notification (fire-and-forget)
       if (user.email) {
-        import("./email").then(({ sendPolicyUpdateEmail }) => {
-          sendPolicyUpdateEmail({
+        import("./email").then(({ sendShiftCorrectionEmail }) => {
+          sendShiftCorrectionEmail({
             to: user.email,
-            employeeName: `${user.first_name} ${user.last_name}`,
-            policyName: `${shift.display_label} — Updated Schedule`,
-            changeDescription: `Your shift times have been corrected.\n\nSummer schedule (DST): ${dstLabel}\nWinter schedule (STD): ${stdLabel}\n\nAll past attendance records remain unchanged. Only future punches will use the updated times.`,
-            effectiveDate: new Date().toISOString().slice(0, 10),
+            firstName: user.first_name,
+            lastName: user.last_name,
+            shiftLabel: shift.display_label,
+            dstSchedule: dstLabel,
+            stdSchedule: stdLabel,
           }).catch(console.error);
         }).catch(console.error);
       }
@@ -1573,6 +1574,71 @@ async function notifyShiftCorrectionEmployees() {
     if (notified > 0) log(`Shift correction notifications sent to ${notified} employee(s)`);
   } catch (err) {
     console.error("Shift correction notification error (non-fatal):", err);
+  }
+}
+
+async function sendShiftCorrectionApology() {
+  try {
+    const APOLOGY_KEY = "shift_correction_apology_sent_v1";
+    const existing = await db.execute(sql`
+      SELECT value FROM system_settings WHERE key = ${APOLOGY_KEY} LIMIT 1
+    `);
+    if (existing.rows.length > 0) return;
+
+    const affected = await db.execute(sql`
+      SELECT id, first_name, last_name, email, shift_id
+      FROM admin_users
+      WHERE shift_id IN ('SHIFT_A', 'SHIFT_C')
+        AND is_active = true AND deleted_at IS NULL
+    `);
+
+    let sent = 0;
+    const { dispatchAutomatedEmail } = await import("./email");
+    const year = new Date().getFullYear();
+    for (const user of affected.rows as any[]) {
+      if (!user.email) continue;
+
+      const firstName = user.first_name || "there";
+      await dispatchAutomatedEmail("shift_correction_apology", "system:one_time_correction", {
+        to: user.email,
+        subject: "Please ignore our earlier email — no action required",
+        html: `
+          <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+            <div style="background: linear-gradient(135deg, #1F3A6E 0%, #2d5299 100%); padding: 32px; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 22px; font-weight: 700;">No Action Required</h1>
+            </div>
+            <div style="padding: 32px;">
+              <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 18px;">Hi ${firstName},</h2>
+              <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+                You may have received an earlier email with the subject <em>"Action Required: undefined Policy Updated — Re-sign Required"</em>. Please ignore it — it was sent in error.
+              </p>
+              <p style="color: #475569; line-height: 1.6; margin: 0 0 16px;">
+                The email was triggered by a shift schedule update, not a policy compliance requirement. <strong>Your portal access is not affected or restricted in any way.</strong> No action is required from you.
+              </p>
+              <p style="color: #475569; line-height: 1.6;">
+                We apologise for any confusion. If you have questions, please reach out to HR.
+              </p>
+              <p style="color: #94a3b8; font-size: 13px; margin: 24px 0 0;">Best regards,<br/>Alina Carter<br/>HR Manager &middot; Hire'in Solutions<br/>alina.carter@hire-in.com</p>
+            </div>
+            <div style="background: #f8fafc; padding: 20px 32px; text-align: center; border-top: 1px solid #e2e8f0;">
+              <p style="color: #94a3b8; font-size: 12px; margin: 0;">&copy; ${year} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.</p>
+            </div>
+          </div>
+        `,
+        text: `Hi ${firstName},\n\nYou may have received an earlier email with the subject "Action Required: undefined Policy Updated — Re-sign Required". Please ignore it — it was sent in error.\n\nThe email was triggered by a shift schedule update, not a policy compliance requirement. Your portal access is not affected or restricted in any way. No action is required from you.\n\nWe apologise for any confusion. If you have questions, please reach out to HR.\n\nBest regards,\nAlina Carter\nHR Manager · Hire'in Solutions\nalina.carter@hire-in.com`,
+      }).catch(console.error);
+
+      sent++;
+    }
+
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES (${APOLOGY_KEY}, '{"done":true}')
+      ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value
+    `);
+    if (sent > 0) log(`Shift correction apology emails sent to ${sent} employee(s)`);
+  } catch (err) {
+    console.error("Shift correction apology error (non-fatal):", err);
   }
 }
 
@@ -3288,6 +3354,7 @@ async function runStartupTasks() {
   await ensureNightShiftConsentsTable();
   await seedShiftData();
   await notifyShiftCorrectionEmployees();
+  await sendShiftCorrectionApology();
 
   try {
     const [firstAdmin] = await db.select({ id: adminUsers.id })
