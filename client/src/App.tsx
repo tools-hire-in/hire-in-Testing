@@ -687,6 +687,12 @@ function EmployeeRouter() {
       {/* Integrations Hub */}
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
 
+      {/* Dev Tools */}
+      <Route path="/dev-tools/notifications">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
+      <Route path="/dev-tools/crons">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
+      <Route path="/dev-tools/view-as">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
+      <Route path="/dev-tools">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
+
       <Route component={NotFound} />
     </Switch>
   );
