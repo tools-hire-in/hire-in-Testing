@@ -1,0 +1,180 @@
+CREATE TYPE "public"."integration_status" AS ENUM('connected', 'error', 'unconfigured');
+ALTER TYPE "public"."governance_control_type" ADD VALUE 'manager_checkin_obligation';
+ALTER TYPE "public"."governance_control_type" ADD VALUE 'manager_coaching_obligation';
+ALTER TYPE "public"."governance_event_type" ADD VALUE 'notification_sent';
+CREATE TABLE "company_financial_targets" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"goal_id" varchar,
+	"label" varchar NOT NULL,
+	"quarter" varchar,
+	"year" integer,
+	"target_amount" numeric(14, 2),
+	"actual_amount" numeric(14, 2),
+	"currency" varchar DEFAULT 'INR' NOT NULL,
+	"notes" text,
+	"created_by" varchar,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "company_goal_actions" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"goal_id" varchar,
+	"title" varchar NOT NULL,
+	"description" text,
+	"assigned_to" varchar,
+	"due_date" date,
+	"completed_at" timestamp,
+	"created_by" varchar,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "copilot_conversations" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" varchar NOT NULL,
+	"role" varchar NOT NULL,
+	"content" text NOT NULL,
+	"intent_detected" varchar,
+	"context_snapshot_json" jsonb,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "vault_shares" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"vault_id" varchar NOT NULL,
+	"user_id" varchar NOT NULL,
+	"role" varchar(20) DEFAULT 'viewer' NOT NULL,
+	"granted_by" varchar NOT NULL,
+	"granted_at" timestamp DEFAULT now() NOT NULL,
+	"revoked_at" timestamp,
+	"revoked_by" varchar
+);
+CREATE TABLE "sop_wave_approvals" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"wave_number" integer NOT NULL,
+	"approved_by" varchar NOT NULL,
+	"approved_at" timestamp DEFAULT now() NOT NULL,
+	"risk_snapshot_json" jsonb,
+	"notes" text,
+	"created_at" timestamp DEFAULT now(),
+	CONSTRAINT "sop_wave_approvals_wave_number_unique" UNIQUE("wave_number")
+);
+CREATE TABLE "application_stage_history" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"application_id" varchar NOT NULL,
+	"from_stage" varchar,
+	"to_stage" varchar NOT NULL,
+	"changed_by" varchar,
+	"changed_at" timestamp DEFAULT now(),
+	"notes" text
+);
+CREATE TABLE "integration_settings" (
+	"key" varchar PRIMARY KEY NOT NULL,
+	"status" "integration_status" DEFAULT 'unconfigured' NOT NULL,
+	"last_checked_at" timestamp,
+	"last_error" text,
+	"meta" jsonb,
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "attendance_deficit_pool" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"employee_id" varchar NOT NULL,
+	"month" varchar(7) NOT NULL,
+	"deficit_minutes" integer DEFAULT 0 NOT NULL,
+	"daily_contributions" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"settled_at" timestamp,
+	"settled_lwp_days" numeric,
+	"settled_leave_type" varchar,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "rate_targets" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"specialty" varchar NOT NULL,
+	"target_bill_rate_usd" numeric NOT NULL,
+	"period_type" varchar NOT NULL,
+	"period_label" varchar NOT NULL,
+	"set_by" varchar,
+	"notes" text,
+	"created_at" timestamp DEFAULT now()
+);
+CREATE TABLE "ceipal_update_logs" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" varchar NOT NULL,
+	"log_date" date NOT NULL,
+	"status" varchar NOT NULL,
+	"deferred_reason" varchar,
+	"commitment_time" timestamp,
+	"verified_count" integer,
+	"jobs_count" integer,
+	"verified_at" timestamp,
+	"manager_flagged_at" timestamp,
+	"manager_acknowledged_at" timestamp,
+	"manager_acknowledged_by" varchar,
+	"exemption_reason" text,
+	"created_at" timestamp DEFAULT now(),
+	CONSTRAINT "uq_ceipal_update_log_user_date" UNIQUE("user_id","log_date")
+);
+CREATE TABLE "recruiter_activity_logs" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"recruiter_id" varchar NOT NULL,
+	"log_date" date NOT NULL,
+	"calls_made" integer DEFAULT 0 NOT NULL,
+	"screens_conducted" integer DEFAULT 0 NOT NULL,
+	"notes" text,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now(),
+	CONSTRAINT "uq_recruiter_activity_date" UNIQUE("recruiter_id","log_date")
+);
+ALTER TABLE "applications" ADD COLUMN "recruiter_id" varchar;
+ALTER TABLE "applications" ADD COLUMN "stage" varchar DEFAULT 'submitted' NOT NULL;
+ALTER TABLE "applications" ADD COLUMN "stage_updated_at" timestamp;
+ALTER TABLE "applications" ADD COLUMN "stage_updated_by" varchar;
+ALTER TABLE "applications" ADD COLUMN "placement_date" date;
+ALTER TABLE "jobs" ADD COLUMN "social_captions" jsonb;
+ALTER TABLE "contracts" ADD COLUMN "specialty" varchar;
+ALTER TABLE "contracts" ADD COLUMN "bill_rate" numeric;
+ALTER TABLE "contracts" ADD COLUMN "pay_rate" numeric;
+ALTER TABLE "performance_goals" ADD COLUMN "tracking_type" varchar;
+ALTER TABLE "performance_goals" ADD COLUMN "sort_order" integer DEFAULT 0 NOT NULL;
+ALTER TABLE "performance_goals" ADD COLUMN "goal_metric_type" varchar;
+ALTER TABLE "performance_goals" ADD COLUMN "goal_metric_config" jsonb;
+ALTER TABLE "performance_goals" ADD COLUMN "goal_progress_source" varchar DEFAULT 'manual';
+ALTER TABLE "performance_goals" ADD COLUMN "goal_progress_updated_at" timestamp;
+ALTER TABLE "performance_goals" ADD COLUMN "escalation_flag" boolean DEFAULT false;
+ALTER TABLE "performance_goals" ADD COLUMN "suggested_progress" integer;
+ALTER TABLE "performance_goals" ADD COLUMN "progress_pending_review" boolean DEFAULT false NOT NULL;
+ALTER TABLE "performance_goals" ADD COLUMN "progress_anomaly_flagged" boolean DEFAULT false NOT NULL;
+ALTER TABLE "performance_goals" ADD COLUMN "suggested_progress_at" timestamp;
+ALTER TABLE "performance_goals" ADD COLUMN "progress_confirmed_at" timestamp;
+ALTER TABLE "performance_goals" ADD COLUMN "progress_confirmed_by" varchar;
+ALTER TABLE "studio_content_ideas" ADD COLUMN "post_format" varchar;
+ALTER TABLE "sop_employee_progress" ADD COLUMN "deadline_at" timestamp;
+ALTER TABLE "sop_employee_progress" ADD COLUMN "timer_started_at" timestamp;
+ALTER TABLE "sop_employee_progress" ADD COLUMN "sop_timer_queue" jsonb;
+ALTER TABLE "studio_articles" ADD COLUMN "linked_idea_id" varchar;
+ALTER TABLE "studio_articles" ADD COLUMN "idea_context" jsonb;
+ALTER TABLE "admin_users" ADD COLUMN "ceipal_update_prompt_enabled" boolean DEFAULT true NOT NULL;
+ALTER TABLE "vaults" ADD COLUMN "is_personal" boolean DEFAULT false NOT NULL;
+ALTER TABLE "vaults" ADD COLUMN "owner_id" varchar;
+ALTER TABLE "vault_shares" ADD CONSTRAINT "vault_shares_granted_by_admin_users_id_fk" FOREIGN KEY ("granted_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "vault_shares" ADD CONSTRAINT "vault_shares_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "vault_shares" ADD CONSTRAINT "vault_shares_vault_id_vaults_id_fk" FOREIGN KEY ("vault_id") REFERENCES "public"."vaults"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "sop_wave_approvals" ADD CONSTRAINT "sop_wave_approvals_approved_by_admin_users_id_fk" FOREIGN KEY ("approved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "application_stage_history" ADD CONSTRAINT "application_stage_history_application_id_applications_id_fk" FOREIGN KEY ("application_id") REFERENCES "public"."applications"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "application_stage_history" ADD CONSTRAINT "application_stage_history_changed_by_admin_users_id_fk" FOREIGN KEY ("changed_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "attendance_deficit_pool" ADD CONSTRAINT "attendance_deficit_pool_employee_id_admin_users_id_fk" FOREIGN KEY ("employee_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "rate_targets" ADD CONSTRAINT "rate_targets_set_by_admin_users_id_fk" FOREIGN KEY ("set_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "ceipal_update_logs" ADD CONSTRAINT "ceipal_update_logs_manager_acknowledged_by_admin_users_id_fk" FOREIGN KEY ("manager_acknowledged_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "ceipal_update_logs" ADD CONSTRAINT "ceipal_update_logs_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "recruiter_activity_logs" ADD CONSTRAINT "recruiter_activity_logs_recruiter_id_admin_users_id_fk" FOREIGN KEY ("recruiter_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+CREATE INDEX "vault_shares_user_idx" ON "vault_shares" USING btree ("user_id");
+CREATE INDEX "vault_shares_vault_idx" ON "vault_shares" USING btree ("vault_id");
+CREATE INDEX "sop_wave_approvals_wave_idx" ON "sop_wave_approvals" USING btree ("wave_number");
+CREATE INDEX "idx_stage_history_application" ON "application_stage_history" USING btree ("application_id");
+CREATE INDEX "idx_stage_history_changed_at" ON "application_stage_history" USING btree ("changed_at");
+CREATE UNIQUE INDEX "uq_deficit_pool_employee_month" ON "attendance_deficit_pool" USING btree ("employee_id","month");
+CREATE INDEX "idx_ceipal_update_logs_date" ON "ceipal_update_logs" USING btree ("log_date");
+CREATE INDEX "idx_ceipal_update_logs_user" ON "ceipal_update_logs" USING btree ("user_id");
+CREATE INDEX "idx_recruiter_activity_date" ON "recruiter_activity_logs" USING btree ("log_date");
+CREATE INDEX "idx_recruiter_activity_recruiter" ON "recruiter_activity_logs" USING btree ("recruiter_id");
+ALTER TABLE "performance_goals" ADD CONSTRAINT "performance_goals_progress_confirmed_by_admin_users_id_fk" FOREIGN KEY ("progress_confirmed_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "vaults" ADD CONSTRAINT "vaults_owner_id_admin_users_id_fk" FOREIGN KEY ("owner_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
