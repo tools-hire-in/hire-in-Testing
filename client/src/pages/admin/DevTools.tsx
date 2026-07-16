@@ -96,6 +96,11 @@ function EnvironmentTab({ status, onRefresh }: { status: DevToolsStatus; onRefre
         <AlertDescription className="text-yellow-200 text-sm">
           <strong>Dev Control Center</strong> — only visible in non-production environments.
           Changing env_mode suspends crons and activates email interception. This panel is never shown in production (APP_ENV=production hard-gates everything).
+          {" "}
+          To manage the master email kill switch or per-type email toggles, visit{" "}
+          <a href="/admin/notification-settings" className="underline text-yellow-300 hover:text-yellow-100" data-testid="link-notification-settings-devtools">
+            Notification &amp; Email Settings
+          </a>.
         </AlertDescription>
       </Alert>
 

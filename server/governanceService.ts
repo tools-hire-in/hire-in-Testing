@@ -1440,6 +1440,21 @@ export async function applyEscalation(finding: GovernanceFinding): Promise<{
   newStatus?: string;
   notificationSent: boolean;
 }> {
+  // Respect the global notifications_enabled feature flag.
+  // When disabled, bail early with no state change — escalation state should only
+  // advance alongside a notification being sent (the two are coupled by design).
+  // The sweep will retry on the next run when notifications are re-enabled.
+  try {
+    const _neFlagRow = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'feature_flags' LIMIT 1`);
+    if (_neFlagRow.rows.length > 0) {
+      const _neFlags = _neFlagRow.rows[0] as any;
+      const _neFlagVal = typeof _neFlags.value === "object" ? _neFlags.value : JSON.parse(_neFlags.value ?? "{}");
+      if (_neFlagVal.notifications_enabled === false) {
+        return { changed: false, notificationSent: false };
+      }
+    }
+  } catch (_) { /* fail-open — don't suppress escalations on a transient DB error */ }
+
   const referenceId = referenceIdFor(finding);
 
   // Fetch the existing governance_control for this entity
@@ -2256,19 +2271,37 @@ export async function runGovernanceSyncSweep(): Promise<GovernanceRunResult> {
     console.error("[governanceSync] Legacy reconciliation failed (non-fatal):", err);
   }
 
-  // Step 5: Apply escalation for each finding through the central state machine
-  for (const finding of allFindings) {
-    try {
-      const out = await applyEscalation(finding);
-      if (out.changed) {
-        result.escalationsApplied++;
-        if (out.notificationSent) result.notificationsSent++;
-      } else {
+  // Step 5: Apply escalation for each finding through the central state machine.
+  // Top-level guard: check notifications_enabled before entering the loop.
+  // applyEscalation() also checks internally, but the sweep-level guard gives a
+  // clean log line and avoids N individual DB reads when the flag is off.
+  let _sweepNotifEnabled = true;
+  try {
+    const _sweepFlagRow = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'feature_flags' LIMIT 1`);
+    if (_sweepFlagRow.rows.length > 0) {
+      const _sweepFlags = _sweepFlagRow.rows[0] as any;
+      const _sweepFlagVal = typeof _sweepFlags.value === "object" ? _sweepFlags.value : JSON.parse(_sweepFlags.value ?? "{}");
+      if (_sweepFlagVal.notifications_enabled === false) _sweepNotifEnabled = false;
+    }
+  } catch (_) { /* fail-open */ }
+
+  if (!_sweepNotifEnabled) {
+    console.log(`[governanceSync] notifications_enabled=false — skipping escalation loop (${allFindings.length} findings deferred).`);
+    result.escalationsSkipped += allFindings.length;
+  } else {
+    for (const finding of allFindings) {
+      try {
+        const out = await applyEscalation(finding);
+        if (out.changed) {
+          result.escalationsApplied++;
+          if (out.notificationSent) result.notificationsSent++;
+        } else {
+          result.escalationsSkipped++;
+        }
+      } catch (err) {
+        console.error(`[governanceSync] applyEscalation failed for ${finding.entityType}:${finding.entityId}:`, err);
         result.escalationsSkipped++;
       }
-    } catch (err) {
-      console.error(`[governanceSync] applyEscalation failed for ${finding.entityType}:${finding.entityId}:`, err);
-      result.escalationsSkipped++;
     }
   }
 

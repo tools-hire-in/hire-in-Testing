@@ -12,7 +12,9 @@ export type CommunicationStatus =
   | "held"
   | "approved"
   | "rejected"
-  | "failed";
+  | "failed"
+  | "dry_run"
+  | "master_suppressed";
 
 export interface CommunicationTypeDef {
   key: string;

@@ -99,14 +99,66 @@ export async function sendHelpDeskEmail(options: {
   }
 }
 
-async function getUncachableSendGridClient() {
+async function getUncachableSendGridClient(): Promise<{
+  client: typeof sgMail | { send: (msg: any) => Promise<void> };
+  fromEmail: string;
+  masterSuppressed?: boolean;
+}> {
+  // Master email kill switch — checked before any send reaches SendGrid.
+  // When emails_master_enabled is explicitly false we return a no-op "client"
+  // whose send() method:
+  //   1. Logs the suppression to the console (with recipient address)
+  //   2. Writes a communication_logs row with status="master_suppressed"
+  //   3. Does NOT throw — so every caller (dispatchAutomatedEmail AND all the
+  //      individual send functions) naturally returns { success: true } with zero
+  //      changes to their catch blocks.
+  // masterSuppressed=true is also returned so dispatchAutomatedEmail can write a
+  // richer audit row using its own full context (type, sourceJob, bodyHtml, etc.)
+  // before calling client.send().
+  try {
+    const { storage: _killStorage } = await import("./storage");
+    const killSetting = await _killStorage.getSystemSetting("emails_master_enabled");
+    if (killSetting && killSetting.value === false) {
+      const suppressedClient = {
+        send: async (msg: any) => {
+          const toRaw = Array.isArray(msg.to) ? msg.to : [msg.to];
+          const toAddrs = toRaw
+            .map((r: any) => (typeof r === "string" ? r : r?.email))
+            .filter(Boolean) as string[];
+          console.log(
+            `[email-kill-switch] Suppressed direct send to [${toAddrs.join(", ")}] — subject: "${msg.subject ?? "(none)"}"`,
+          );
+          // Write a minimal communication_log so nothing is silently lost.
+          try {
+            const { storage: _logStorage } = await import("./storage");
+            await _logStorage.createCommunicationLog({
+              type: "direct_send",
+              sourceJob: "direct_send_function",
+              recipients: toAddrs,
+              cc: [],
+              subject: msg.subject ?? "(suppressed)",
+              bodyHtml: typeof msg.html === "string" ? msg.html.slice(0, 2000) : null,
+              bodyText: typeof msg.text === "string" ? msg.text.slice(0, 500) : null,
+              status: "master_suppressed",
+              error: "Suppressed by master email kill switch (emails_master_enabled = false)",
+            } as any);
+          } catch (_logErr) {
+            console.warn("[email-kill-switch] Failed to write master_suppressed log:", _logErr);
+          }
+        },
+      };
+      return { client: suppressedClient as any, fromEmail: FROM_EMAIL, masterSuppressed: true };
+    }
+  } catch (err: any) {
+    // DB error reading the setting — fail open so a transient DB hiccup doesn't
+    // silently block all mail.
+    console.warn("[email-kill-switch] Could not read emails_master_enabled — proceeding with send:", err?.message);
+  }
+
   const apiKey = process.env.SENDGRID_API_KEY_NEW;
   if (!apiKey) throw new Error('SENDGRID_API_KEY_NEW is not set');
   sgMail.setApiKey(apiKey);
-  return {
-    client: sgMail,
-    fromEmail: FROM_EMAIL
-  };
+  return { client: sgMail, fromEmail: FROM_EMAIL };
 }
 
 // ==========================================
@@ -268,7 +320,23 @@ export async function dispatchAutomatedEmail(
   const outMsg = { ...effectiveMsg, cc: mergedCc.length > 0 ? mergedCc : undefined };
 
   try {
-    const { client, fromEmail } = await getUncachableSendGridClient();
+    const { client, fromEmail, masterSuppressed } = await getUncachableSendGridClient();
+
+    // Master kill switch: write a richer audit row using full dispatchAutomatedEmail context
+    // (type, sourceJob, recipients, subject, body) before the no-op client.send() writes
+    // its minimal "direct_send" fallback row. Skip the actual send call entirely.
+    if (masterSuppressed) {
+      console.log(`[email-kill-switch] ${type} suppressed (master switch OFF) — recipients: ${recipients.join(", ")}`);
+      await storage.createCommunicationLog({
+        ...baseLog,
+        status: "master_suppressed",
+        error: "Suppressed by master email kill switch (emails_master_enabled = false)",
+      } as any).catch((e) =>
+        console.error(`[communications] failed to write master_suppressed log for ${type}:`, e),
+      );
+      return { success: true, disabled: true };
+    }
+
     await client.send({ ...outMsg, from: outMsg.from ?? { email: fromEmail, name: "Alina Carter" } } as any);
     await storage.createCommunicationLog({ ...baseLog, status: "sent", sentAt: new Date() } as any).catch((e) =>
       console.error(`[communications] failed to write sent log for ${type}:`, e),
@@ -292,9 +360,31 @@ export async function resendHeldCommunication(log: {
   subject: string;
   bodyHtml?: string | null;
   bodyText?: string | null;
-}): Promise<{ success: boolean; error?: string }> {
+}): Promise<{ success: boolean; error?: string; masterSuppressed?: boolean }> {
   try {
-    const { client, fromEmail } = await getUncachableSendGridClient();
+    const { client, fromEmail, masterSuppressed } = await getUncachableSendGridClient();
+    if (masterSuppressed) {
+      console.log(`[email-kill-switch] resendHeldCommunication suppressed (master switch OFF) — recipients: ${log.recipients.join(", ")}`);
+      // Write an explicit audit row — we short-circuit before calling client.send()
+      // so the no-op client's automatic log would never run for this path.
+      try {
+        const { storage: _s } = await import("./storage");
+        await _s.createCommunicationLog({
+          type: "resend_held",
+          sourceJob: "resend_held_communication",
+          recipients: log.recipients,
+          cc: (log.cc ?? []).filter(Boolean) as string[],
+          subject: log.subject,
+          bodyHtml: log.bodyHtml ?? null,
+          bodyText: log.bodyText ?? null,
+          status: "master_suppressed",
+          error: "Suppressed by master email kill switch (emails_master_enabled = false)",
+        } as any);
+      } catch (_logErr) {
+        console.warn("[email-kill-switch] Failed to write master_suppressed log for resend:", _logErr);
+      }
+      return { success: true, masterSuppressed: true };
+    }
     const msg: any = {
       to: log.recipients,
       from: { email: fromEmail, name: "Alina Carter" },

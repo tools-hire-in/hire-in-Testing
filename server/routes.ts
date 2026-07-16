@@ -17719,6 +17719,76 @@ export async function registerRoutes(
     }
   });
 
+  // ==========================================
+  // NOTIFICATION SETTINGS — unified super-admin management page
+  // ==========================================
+
+  // GET: returns master email kill switch state, notifications_enabled flag, and all communication configs.
+  app.get("/api/admin/notification-settings", requireSuperAdmin, async (_req: Request, res: Response) => {
+    try {
+      const masterRow = await storage.getSystemSetting("emails_master_enabled");
+      const emailsMasterEnabled = masterRow ? masterRow.value !== false : true;
+
+      const flagRow = await storage.getSystemSetting("feature_flags");
+      const featureFlags = (flagRow?.value as Record<string, boolean>) ?? {};
+      const notificationsEnabled = featureFlags.notifications_enabled !== false;
+
+      const savedConfigs = await storage.getCommunicationConfigs();
+      const configMap = new Map(savedConfigs.map((c) => [c.typeKey, c]));
+
+      // Fetch the most recent sent_at date for each communication type from the log table.
+      const lastSentRows = await db.execute(sql`
+        SELECT type, MAX(sent_at) AS last_sent_at
+        FROM communication_logs
+        WHERE status = 'sent' AND sent_at IS NOT NULL
+        GROUP BY type
+      `);
+      const lastSentMap = new Map<string, string | null>(
+        (lastSentRows.rows as any[]).map((r) => [r.type as string, r.last_sent_at as string | null])
+      );
+
+      const { COMMUNICATION_TYPES } = await import("../shared/communications");
+      const configs = COMMUNICATION_TYPES.map((t) => {
+        const saved = configMap.get(t.key);
+        return {
+          typeKey: t.key,
+          label: t.label,
+          description: t.description,
+          category: t.category,
+          scheduleLabel: t.scheduleLabel,
+          recipientRule: t.recipientRule,
+          enabled: saved?.enabled ?? true,
+          updatedAt: saved?.updatedAt ?? null,
+          lastSentAt: lastSentMap.get(t.key) ?? null,
+        };
+      });
+
+      res.json({ emailsMasterEnabled, notificationsEnabled, configs });
+    } catch (error) {
+      console.error("Get notification-settings error:", error);
+      res.status(500).json({ error: "Failed to fetch notification settings" });
+    }
+  });
+
+  // PATCH: update master email kill switch and/or notifications_enabled flag.
+  app.patch("/api/admin/notification-settings", requireSuperAdmin, async (req: Request, res: Response) => {
+    try {
+      const { emailsMasterEnabled, notificationsEnabled } = req.body ?? {};
+      if (typeof emailsMasterEnabled === "boolean") {
+        await storage.upsertSystemSetting("emails_master_enabled", emailsMasterEnabled, req.session.userId);
+      }
+      if (typeof notificationsEnabled === "boolean") {
+        const flagRow = await storage.getSystemSetting("feature_flags");
+        const current = (flagRow?.value as Record<string, boolean>) ?? {};
+        await storage.upsertSystemSetting("feature_flags", { ...current, notifications_enabled: notificationsEnabled }, req.session.userId);
+      }
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Update notification-settings error:", error);
+      res.status(500).json({ error: "Failed to update notification settings" });
+    }
+  });
+
   // Current user's effective permissions (feature keys their role can access).
   app.get("/api/me/permissions", requireAuth, async (req: Request, res: Response) => {
     try {

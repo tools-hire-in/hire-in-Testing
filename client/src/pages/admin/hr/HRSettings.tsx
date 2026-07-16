@@ -634,10 +634,19 @@ export function FeatureFlagsSection() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base flex items-center gap-2">
-          <Settings className="h-4 w-4" />
-          Feature Flags
-        </CardTitle>
+        <div className="flex items-center justify-between gap-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Settings className="h-4 w-4" />
+            Feature Flags
+          </CardTitle>
+          <a
+            href="/admin/notification-settings"
+            className="text-xs text-primary hover:underline flex items-center gap-1"
+            data-testid="link-notification-settings"
+          >
+            Manage email &amp; notification settings →
+          </a>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {flagDefs.map((def) => {

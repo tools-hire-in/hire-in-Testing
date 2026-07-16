@@ -3574,6 +3574,20 @@ async function runStartupTasks() {
     console.error("Feature flag defaults seed error (non-fatal):", err);
   }
 
+  // Seed master email kill switch — default ON (true) so existing behaviour is preserved.
+  // When set to false via the Notification Settings admin page, ALL outbound email
+  // from the platform is suppressed (getUncachableSendGridClient throws EMAIL_MASTER_SUPPRESSED).
+  try {
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES ('emails_master_enabled', 'true'::jsonb)
+      ON CONFLICT (key) DO NOTHING
+    `);
+    log("emails_master_enabled setting seeded");
+  } catch (err) {
+    console.error("emails_master_enabled seed error (non-fatal):", err);
+  }
+
   // Seed deficit pool threshold (default 120 min — forgive shortfalls smaller than this).
   try {
     await db.execute(sql`

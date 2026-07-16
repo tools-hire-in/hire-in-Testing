@@ -129,6 +129,7 @@ const CompetitiveAudit = lazy(() => import("@/pages/admin/CompetitiveAudit"));
 const Integrations = lazy(() => import("@/pages/admin/Integrations"));
 const GovernanceHub = lazy(() => import("@/pages/admin/governance/GovernanceHub"));
 const DevToolsPage = lazy(() => import("@/pages/admin/DevTools"));
+const NotificationSettings = lazy(() => import("@/pages/admin/NotificationSettings"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -344,6 +345,9 @@ function PublicRouter() {
       {/* Notification Centre */}
       <Route path="/admin/notifications">{() => <Suspense fallback={<AdminFallback />}><NotificationCentre /></Suspense>}</Route>
 
+      {/* Notification & Email Settings (super admin) */}
+      <Route path="/admin/notification-settings">{() => <Suspense fallback={<AdminFallback />}><NotificationSettings /></Suspense>}</Route>
+
       {/* Governance Hub — Action Required feed, nudge & escalate */}
       <Route path="/admin/governance">{() => <Suspense fallback={<AdminFallback />}><GovernanceHub /></Suspense>}</Route>
 
@@ -545,6 +549,9 @@ function EmployeeRouter() {
 
       {/* Notification Centre */}
       <Route path="/admin/notifications">{() => <Suspense fallback={<AdminFallback />}><NotificationCentre /></Suspense>}</Route>
+
+      {/* Notification & Email Settings (super admin) */}
+      <Route path="/admin/notification-settings">{() => <Suspense fallback={<AdminFallback />}><NotificationSettings /></Suspense>}</Route>
 
       {/* Governance Hub — Action Required feed, nudge & escalate */}
       <Route path="/admin/governance">{() => <Suspense fallback={<AdminFallback />}><GovernanceHub /></Suspense>}</Route>
