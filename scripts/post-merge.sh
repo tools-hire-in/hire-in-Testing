@@ -14,6 +14,18 @@ bash scripts/pre-merge-conflict-check.sh "${MERGE_BRANCH:-}" || {
 
 npm install
 
+# --- Enum pre-flight (must run before db:push) --------------------------------
+# Adds all known enum values with IF NOT EXISTS so drizzle-kit never hits
+# "enum label already exists" on a partial-push or re-deploy scenario.
+# ALTER TYPE ... ADD VALUE cannot run inside a transaction, so this script
+# uses a direct pg.Client (autocommit) outside any BEGIN/COMMIT block.
+echo "Ensuring enum values (IF NOT EXISTS)..."
+npx tsx scripts/ensure-enum-values.ts || {
+  echo "ERROR: ensure-enum-values.ts failed — aborting before db:push."
+  exit 1
+}
+# -----------------------------------------------------------------------------
+
 # --- Schema drift guard ------------------------------------------------------
 # Pre-flight: detect DESTRUCTIVE / AMBIGUOUS schema changes WITHOUT applying
 # them, then apply only if safe.

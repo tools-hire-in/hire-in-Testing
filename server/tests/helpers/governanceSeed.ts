@@ -261,6 +261,19 @@ export async function teardownGovernanceTestHierarchy(): Promise<void> {
     WHERE exception_granted_by_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
   `).catch(() => {});
 
+  // Second-pass DELETE for track_assignments and copilot_conversations: startup tasks (e.g.
+  // "Universal policy tracks" seed) may re-insert rows for these users between the first
+  // per-table delete above and the final admin_users delete below.  Running these again
+  // here — immediately before the admin_users delete — closes that race window.
+  await db.execute(sql`
+    DELETE FROM track_assignments
+    WHERE user_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+  await db.execute(sql`
+    DELETE FROM copilot_conversations
+    WHERE user_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+
   await db.execute(sql`
     DELETE FROM admin_users
     WHERE id IN (
