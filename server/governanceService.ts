@@ -1891,11 +1891,12 @@ async function dispatchEscalationNotifications(
         SELECT email FROM admin_users
         WHERE role IN ('hr', 'admin', 'super_admin') AND is_active = true AND deleted_at IS NULL
       `)).rows as any[];
-      const toEmails: string[] = hrEmailRows.map(r => String(r.email)).filter(Boolean);
+      const toEmailsRaw: string[] = hrEmailRows.map(r => String(r.email).toLowerCase()).filter(Boolean);
       if (skipManagerId) {
         const skipRow = (await db.execute(sql`SELECT email FROM admin_users WHERE id = ${skipManagerId} AND is_active = true LIMIT 1`)).rows[0] as any;
-        if (skipRow?.email) toEmails.push(String(skipRow.email));
+        if (skipRow?.email) toEmailsRaw.push(String(skipRow.email).toLowerCase());
       }
+      const toEmails = Array.from(new Set(toEmailsRaw));
       if (toEmails.length > 0) {
         try {
           await sendPlanEscalationEmail({

@@ -173,8 +173,13 @@ export async function dispatchAutomatedEmail(
     return { success: true, disabled: true };
   }
 
-  // Merge stored CC overrides into outgoing CC list (deduped)
-  const mergedCc = Array.from(new Set([...cc, ...configCc]));
+  // Merge stored CC overrides into outgoing CC list (deduped), and strip any
+  // address already in the To list so SendGrid never sees the same address in
+  // both To and CC (which causes a duplicate-recipient rejection).
+  const recipientSet = new Set(recipients.map((r) => r.toLowerCase()));
+  const mergedCc = Array.from(
+    new Set([...cc, ...configCc].filter((addr) => !recipientSet.has(addr.toLowerCase()))),
+  );
 
   let policy: "auto" | "hold" = "auto";
   try {

@@ -901,8 +901,9 @@ export function startScheduler() {
     timezone: "Asia/Kolkata",
   });
 
-  // Attendance T-2h reminder: runs every hour, sends reminder to managers who haven't responded within T-2h of deadline
-  cron.schedule("0 * * * *", async () => {
+  // Attendance T-2h reminder: runs every hour at :04 (offset from :00 to avoid
+  // colliding with studio auto-publish at :01 and deadline expiry at :02).
+  cron.schedule("4 * * * *", async () => {
     try {
       const now = new Date();
       const twoHoursFromNow = new Date(now.getTime() + 2 * 60 * 60 * 1000);
@@ -1008,7 +1009,9 @@ export function startScheduler() {
     }
   };
 
-  cron.schedule("*/15 * * * *", processExpiredDeadlines);
+  // Offset by 2 minutes so this never fires at :00 alongside the T-2h reminder
+  // or the studio auto-publish job — prevents simultaneous DB pool exhaustion.
+  cron.schedule("2,17,32,47 * * * *", processExpiredDeadlines);
 
   // Belt-and-suspenders: also check on the 1st at 08:00 IST (kept for timezone correctness)
   cron.schedule("0 8 1 * *", processExpiredDeadlines, { timezone: "Asia/Kolkata" });
@@ -1353,7 +1356,10 @@ export function startScheduler() {
 
   // Content Studio: every 5 minutes, flip scheduled articles whose time has
   // arrived to published.
-  cron.schedule("*/5 * * * *", async () => {
+  // Offset by 1 minute from the top of each 5-min block so this never fires
+  // at the same instant as the deadline expiry (*/15) or T-2h reminder (0 * * * *)
+  // which all used to collide at :00 and exhaust the DB pool simultaneously.
+  cron.schedule("1,6,11,16,21,26,31,36,41,46,51,56 * * * *", async () => {
     try {
       const now = new Date();
       const due = await storage.getDueScheduledStudioArticles(now);
@@ -1863,7 +1869,7 @@ export function startScheduler() {
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
   console.log("  - Monthly leave accrual: 1st of month at 00:00 IST (Jan: year-end for prior year runs first, then accrual)");
   console.log("  - Attendance report generation: last day of month at 22:00 PST → generates run + notifies managers (safety net 1st of month 00:05 IST)");
-  console.log("  - Attendance deadline expiry: every 15 min (primary) + 1st of month 08:00 IST (belt-and-suspenders)");
+  console.log("  - Attendance deadline expiry: at :02/:17/:32/:47 each hour (primary) + 1st of month 08:00 IST (belt-and-suspenders)");
   console.log("  - Attendance T-2h reminder: every hour → emails pending managers approaching deadline");
   console.log("  - Night shift consent expiry check: daily at 8 AM IST");
   console.log("  - Absent sweep: daily at 08:00 IST (all shifts ended by then; targets yesterday's date)");

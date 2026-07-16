@@ -1527,19 +1527,19 @@ async function notifyShiftCorrectionEmployees() {
       const dstLabel = `${shift.ist_start_dst}–${shift.ist_end_dst} IST · ${shift.us_coverage_dst ?? shift.us_coverage}`;
       const stdLabel = `${shift.ist_start_std}–${shift.ist_end_std} IST · ${shift.us_coverage_std ?? shift.us_coverage}`;
 
-      await storage.createNotification({
-        userId: user.id,
-        type: "system",
-        title: "Your shift times have been updated",
-        message: `${shift.display_label}: Summer schedule ${dstLabel} | Winter schedule ${stdLabel}. Please review your updated schedule.`,
-        isRead: false,
-        metadata: {
-          shiftId: user.shift_id,
-          shiftLabel: shift.display_label,
-          dstTimes: dstLabel,
-          stdTimes: stdLabel,
-        },
-      }).catch(console.error);
+      // Use a direct db.execute() insert — storage is not in scope here and
+      // importing it would create a circular dependency with the ensure-blocks.
+      await db.execute(sql`
+        INSERT INTO notifications (user_id, type, title, message, is_read, metadata, created_at)
+        VALUES (
+          ${user.id}, 'system',
+          'Your shift times have been updated',
+          ${`${shift.display_label}: Summer schedule ${dstLabel} | Winter schedule ${stdLabel}. Please review your updated schedule.`},
+          false,
+          ${JSON.stringify({ shiftId: user.shift_id, shiftLabel: shift.display_label, dstTimes: dstLabel, stdTimes: stdLabel })}::jsonb,
+          NOW()
+        )
+      `).catch(console.error);
 
       // Log the correction in shift_assignment_log (shift ID unchanged; only times changed)
       await db.execute(sql`
@@ -4503,7 +4503,7 @@ async function runStartupTasks() {
 
       // Fetch all active plan goals that haven't been classified yet
       const goalsResult = await db.execute(sql`
-        SELECT pg.id, pg.target_metric, pg.title, pg.description
+        SELECT pg.id, pg.title, pg.description
         FROM performance_goals pg
         JOIN employee_plans ep ON ep.id = pg.plan_id
         WHERE ep.status = 'active'
@@ -4512,10 +4512,9 @@ async function runStartupTasks() {
 
       let classified = 0;
       for (const row of goalsResult.rows as any[]) {
-        // Classify from target_metric first (most specific), fall back to title/description
-        const text = row.target_metric
-          ? row.target_metric
-          : [row.title, row.description].filter(Boolean).join(" ");
+        // Classify from title + description — target_metric lives on
+        // plan_goal_templates, not on performance_goals.
+        const text = [row.title, row.description].filter(Boolean).join(" ");
         const metricType = classifyGoalMetricType(text);
         await db.execute(sql`
           UPDATE performance_goals
@@ -4628,7 +4627,9 @@ async function runStartupTasks() {
     () => {
       log(`serving on port ${port}`);
       // Fire the heavy startup work in the background; never block the open port.
-      runStartupTasks().catch((err) => {
+      // Track the promise so gracefulShutdown() can wait for it to settle before
+      // calling pool.end() — prevents "Cannot use a pool after calling end" errors.
+      startupTasksPromise = runStartupTasks().catch((err) => {
         console.error("Background startup tasks failed:", err);
       });
     },
@@ -4639,6 +4640,11 @@ async function runStartupTasks() {
 // On deploy-time SIGTERM, stop accepting new connections and drain in-flight
 // requests before exiting so users aren't cut off mid-request. A hard timeout
 // guarantees the process still exits if a connection hangs.
+//
+// startupTasksPromise is set by the httpServer.listen() callback so that
+// gracefulShutdown() can wait for background startup work to settle before
+// calling pool.end() — prevents "Cannot use a pool after calling end" races.
+let startupTasksPromise: Promise<void> | null = null;
 let shuttingDown = false;
 function gracefulShutdown(signal: string) {
   if (shuttingDown) return;
@@ -4648,11 +4654,26 @@ function gracefulShutdown(signal: string) {
   const forceExit = setTimeout(() => {
     console.error("Graceful shutdown timed out; forcing exit.");
     process.exit(1);
-  }, 10_000);
+  }, 15_000);
   forceExit.unref();
 
-  httpServer.close(() => {
+  httpServer.close(async () => {
     log("HTTP server closed.");
+    // Wait for background startup tasks to settle (max 8 s) before closing the
+    // pool so ensure-blocks that are still running can finish their queries.
+    if (startupTasksPromise) {
+      try {
+        await Promise.race([
+          startupTasksPromise,
+          new Promise<void>((_, reject) =>
+            setTimeout(() => reject(new Error("startup wait timeout")), 8_000),
+          ),
+        ]);
+        log("Startup tasks settled before pool shutdown.");
+      } catch {
+        log("Startup tasks did not settle in time — proceeding with pool shutdown.");
+      }
+    }
     pool
       .end()
       .catch((err) => console.error("Error closing DB pool:", err))
