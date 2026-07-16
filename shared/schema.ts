@@ -969,7 +969,9 @@ export const performanceGoals = pgTable("performance_goals", {
   progressConfirmedBy: varchar("progress_confirmed_by").references((): any => adminUsers.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_performance_goals_escalation_flag").on(table.escalationFlag).where(sql`escalation_flag = true`),
+]);
 
 export const goalMilestones = pgTable("goal_milestones", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
@@ -4326,7 +4328,7 @@ export const vaultShares = pgTable("vault_shares", {
   grantedBy: varchar("granted_by").notNull().references(() => adminUsers.id),
   grantedAt: timestamp("granted_at").defaultNow().notNull(),
   revokedAt: timestamp("revoked_at"),
-  revokedBy: varchar("revoked_by"),
+  revokedBy: varchar("revoked_by").references(() => adminUsers.id),
 }, (t) => ({
   vaultIdx: index("vault_shares_vault_idx").on(t.vaultId),
   userIdx: index("vault_shares_user_idx").on(t.userId),
@@ -4959,17 +4961,19 @@ export type InsertCeipalUpdateLog = z.infer<typeof insertCeipalUpdateLogSchema>;
 
 export const copilotConversations = pgTable("copilot_conversations", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  userId: varchar("user_id").notNull(),
+  userId: varchar("user_id").references(() => adminUsers.id, { onDelete: "set null" }),
   role: varchar("role").notNull(),
   content: text("content").notNull(),
   intentDetected: varchar("intent_detected"),
   contextSnapshotJson: jsonb("context_snapshot_json"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
-});
+}, (table) => [
+  index("idx_copilot_conversations_user_id").on(table.userId),
+]);
 
 export const companyFinancialTargets = pgTable("company_financial_targets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  goalId: varchar("goal_id"),
+  goalId: varchar("goal_id").references(() => performanceGoals.id, { onDelete: "set null" }),
   label: varchar("label").notNull(),
   quarter: varchar("quarter"),
   year: integer("year"),
@@ -4984,7 +4988,7 @@ export const companyFinancialTargets = pgTable("company_financial_targets", {
 
 export const companyGoalActions = pgTable("company_goal_actions", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  goalId: varchar("goal_id"),
+  goalId: varchar("goal_id").references(() => performanceGoals.id, { onDelete: "set null" }),
   title: varchar("title").notNull(),
   description: text("description"),
   assignedTo: varchar("assigned_to"),
