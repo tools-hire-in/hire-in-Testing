@@ -17867,6 +17867,113 @@ Canonical domain: ${BASE}
     }
   });
 
+  // ---- My Author Profile endpoints ----
+  // Employees who are linked to a studio_author_profile can read/write their
+  // author-facing fields from the HR My Profile page. photo_url and linkedin_url
+  // are cross-written to admin_users so both systems stay in sync.
+
+  app.get("/api/me/author-profile", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const [profile] = await db
+        .select()
+        .from(studioAuthorProfiles)
+        .where(eq(studioAuthorProfiles.linkedUserId, userId))
+        .limit(1);
+      if (!profile) return res.json(null);
+      res.json(profile);
+    } catch (err) {
+      console.error("[me/author-profile GET]", err);
+      res.status(500).json({ error: "Failed to fetch author profile" });
+    }
+  });
+
+  app.patch("/api/me/author-profile", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const [profile] = await db
+        .select()
+        .from(studioAuthorProfiles)
+        .where(eq(studioAuthorProfiles.linkedUserId, userId))
+        .limit(1);
+      if (!profile) return res.status(404).json({ error: "No linked author profile found" });
+
+      const { bio, publicTitle, title, specialties, linkedinUrl, photoUrl } = req.body as {
+        bio?: string;
+        publicTitle?: string;
+        title?: string;
+        specialties?: string[];
+        linkedinUrl?: string;
+        photoUrl?: string;
+      };
+
+      const patch: Record<string, any> = {};
+      if (bio !== undefined) patch.bio = bio || null;
+      if (publicTitle !== undefined) patch.publicTitle = publicTitle || null;
+      if (title !== undefined) patch.title = title || null;
+      if (specialties !== undefined) patch.specialties = Array.isArray(specialties) ? specialties : [];
+      if (linkedinUrl !== undefined) patch.linkedinUrl = linkedinUrl || null;
+      if (photoUrl !== undefined) patch.photoUrl = photoUrl || null;
+
+      // Recompute profileComplete: displayName + (publicTitle or title) + bio + photoUrl all non-empty.
+      const afterPatch = { ...profile, ...patch };
+      const profileComplete = !!(
+        afterPatch.displayName?.trim() &&
+        (afterPatch.publicTitle?.trim() || afterPatch.title?.trim()) &&
+        afterPatch.bio?.trim() &&
+        afterPatch.photoUrl?.trim()
+      );
+      patch.profileComplete = profileComplete;
+
+      const [updated] = await db
+        .update(studioAuthorProfiles)
+        .set(patch)
+        .where(eq(studioAuthorProfiles.id, profile.id))
+        .returning();
+
+      // Cross-write photo_url and linkedin_url to admin_users so HR and Studio stay in sync.
+      const adminPatch: Record<string, any> = {};
+      if (photoUrl !== undefined) adminPatch.photoUrl = photoUrl || null;
+      if (linkedinUrl !== undefined) adminPatch.linkedinUrl = linkedinUrl || null;
+      if (Object.keys(adminPatch).length > 0) {
+        await db.update(adminUsers).set(adminPatch).where(eq(adminUsers.id, userId));
+      }
+
+      res.json(updated);
+    } catch (err) {
+      console.error("[me/author-profile PATCH]", err);
+      res.status(500).json({ error: "Failed to update author profile" });
+    }
+  });
+
+  // POST /api/me/author-photo-upload-url — generate a presigned URL for profile photo upload.
+  // Only requires auth (no studio permission); scoped to public/ prefix so the resulting object
+  // is accessible from the author card.
+  app.post("/api/me/author-photo-upload-url", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { name, size, contentType } = req.body ?? {};
+      if (!name || !contentType) {
+        return res.status(400).json({ error: "name and contentType required" });
+      }
+      const { Storage } = await import("@google-cloud/storage");
+      const gcsBucket = process.env.GCS_BUCKET_NAME;
+      if (!gcsBucket) return res.status(503).json({ error: "Object storage not configured" });
+      const storage2 = new Storage();
+      const ext = (name as string).split(".").pop()?.toLowerCase() ?? "jpg";
+      const objectPath = `public/author-photos/${req.session.userId}-${Date.now()}.${ext}`;
+      const [uploadURL] = await storage2.bucket(gcsBucket).file(objectPath).getSignedUrl({
+        version: "v4",
+        action: "write",
+        expires: Date.now() + 15 * 60 * 1000,
+        contentType,
+      });
+      res.json({ uploadURL, objectPath });
+    } catch (err) {
+      console.error("[me/author-photo-upload-url]", err);
+      res.status(500).json({ error: "Failed to generate upload URL" });
+    }
+  });
+
   // ---- Studio Add-On Access Management ----
 
   // GET /api/admin/studio/access — list all users with a Studio add-on (admin/super_admin only)

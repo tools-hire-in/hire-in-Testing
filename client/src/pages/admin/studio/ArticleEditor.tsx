@@ -5,7 +5,9 @@ import ReactMarkdown from "react-markdown";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
+import { useAuth } from "@/hooks/use-auth";
 import { AIErrorBanner } from "@/components/studio/AIErrorBanner";
+import { ArticleWorkflowStepper } from "@/components/studio/ArticleWorkflowStepper";
 import { StudioTip } from "@/components/studio/StudioTip";
 import { FieldHelp } from "@/components/studio/FieldHelp";
 import { studioPath } from "@/lib/studioBase";
@@ -233,6 +235,7 @@ interface EditorState {
   slug: string;
   seoTitle: string;
   seoDescription: string;
+  ogImageUrl: string;
   coverImageUrl: string;
   authorProfileId: string;
   toneVoice: string;
@@ -245,6 +248,7 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { can } = usePermissions();
+  const { user: authUser } = useAuth();
   const canEdit = can("studio.edit_article");
   const canGenerate = can("studio.generate_ai_draft");
 
@@ -253,6 +257,7 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [lastSaved, setLastSaved] = useState<Date | null>(null);
   const [ideaBannerOpen, setIdeaBannerOpen] = useState(true);
   const [rejectionBannerDismissed, setRejectionBannerDismissed] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<"details" | "ai_brief" | "publish">("details");
 
   // AI generation modal state.
   const [genOpen, setGenOpen] = useState(false);
@@ -429,6 +434,7 @@ function ArticleEditorInner({ id }: { id: string }) {
         slug: article.slug ?? "",
         seoTitle: article.seoTitle ?? "",
         seoDescription: article.seoDescription ?? "",
+        ogImageUrl: (article as any).ogImageUrl ?? "",
         coverImageUrl: article.coverImageUrl ?? "",
         authorProfileId: article.authorProfileId ?? "",
         toneVoice: (article as any).toneVoice ?? "",
@@ -539,6 +545,7 @@ function ArticleEditorInner({ id }: { id: string }) {
     slug: state.slug || null,
     seoTitle: state.seoTitle || null,
     seoDescription: state.seoDescription || null,
+    ogImageUrl: state.ogImageUrl || null,
     coverImageUrl: state.coverImageUrl || null,
     authorProfileId: state.authorProfileId || null,
     toneVoice: state.toneVoice || null,
@@ -614,6 +621,7 @@ function ArticleEditorInner({ id }: { id: string }) {
         slug: restored.slug ?? "",
         seoTitle: restored.seoTitle ?? "",
         seoDescription: restored.seoDescription ?? "",
+        ogImageUrl: (restored as any).ogImageUrl ?? "",
         coverImageUrl: restored.coverImageUrl ?? "",
         authorProfileId: restored.authorProfileId ?? "",
         toneVoice: (restored as any).toneVoice ?? "",
@@ -1257,7 +1265,20 @@ function ArticleEditorInner({ id }: { id: string }) {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_320px]">
+      {article && (
+        <ArticleWorkflowStepper
+          article={article}
+          currentUserId={authUser?.id}
+          currentUserRole={authUser?.role}
+          canEdit={canEdit}
+          canReview={can("studio.review_article")}
+          linkedAuthorUserId={(authors?.find((a) => a.id === article.authorProfileId) as any)?.linkedUserId ?? null}
+          onTransition={(to) => transitionMutation.mutate(to)}
+          transitionPending={transitionMutation.isPending}
+        />
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-[1fr_minmax(288px,320px)]">
         {/* Main editor */}
         <div className="space-y-4">
           <Input
@@ -1611,12 +1632,22 @@ function ArticleEditorInner({ id }: { id: string }) {
         </div>
 
         {/* Metadata sidebar */}
-        <div className="space-y-4">
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Details</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
+        <div className="space-y-0">
+          <Tabs value={sidebarTab} onValueChange={(v) => setSidebarTab(v as typeof sidebarTab)}>
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="details" data-testid="tab-sidebar-details">Details</TabsTrigger>
+              <TabsTrigger value="ai_brief" data-testid="tab-sidebar-ai-brief">AI Brief</TabsTrigger>
+              <TabsTrigger value="publish" className="relative" data-testid="tab-sidebar-publish">
+                Publish
+                {(!form.seoTitle?.trim() || !form.coverImageUrl) && (
+                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-red-500" />
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="details" className="mt-2 overflow-y-auto max-h-[calc(100vh-220px)]">
+              <Card>
+                <CardContent className="space-y-4 pt-4">
               <div className="space-y-2">
                 <Label>Content type</Label>
                 <Select
@@ -1778,15 +1809,16 @@ function ArticleEditorInner({ id }: { id: string }) {
                   data-testid="input-slug"
                 />
               </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          {/* Brief & Strategy sidebar card */}
-          <Card data-testid="card-brief-strategy">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Brief &amp; Strategy</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
+            <TabsContent value="ai_brief" className="mt-2 overflow-y-auto max-h-[calc(100vh-220px)]">
+              <Card data-testid="card-brief-strategy">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Brief &amp; Strategy</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
               <div className="space-y-1.5">
                 <Label htmlFor="brief-audience" className="text-xs">Audience</Label>
                 <Select
@@ -1865,12 +1897,14 @@ function ArticleEditorInner({ id }: { id: string }) {
                   <p className="text-[11px] text-muted-foreground">{getComplianceBlurb(form.complianceMode)}</p>
                 )}
               </div>
-            </CardContent>
-          </Card>
+                </CardContent>
+              </Card>
+            </TabsContent>
 
-          <Card>
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm">Featured image</CardTitle>
+            <TabsContent value="publish" className="mt-2 space-y-4 overflow-y-auto max-h-[calc(100vh-220px)]">
+              <Card>
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-sm">Featured image</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
               {form.coverImageUrl ? (
@@ -1953,6 +1987,45 @@ function ArticleEditorInner({ id }: { id: string }) {
                   disabled={!canEdit}
                   data-testid="input-seo-description"
                 />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="og-image-url" className="flex items-center gap-1.5">
+                  OG image URL
+                  <span className="rounded bg-muted px-1 py-0.5 text-[10px] font-normal text-muted-foreground">Social preview</span>
+                </Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="og-image-url"
+                    value={form.ogImageUrl}
+                    onChange={(e) => update({ ogImageUrl: e.target.value })}
+                    disabled={!canEdit}
+                    placeholder="Leave blank to use featured image"
+                    className="text-xs"
+                    data-testid="input-og-image-url"
+                  />
+                  {form.ogImageUrl && (
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="shrink-0"
+                      onClick={() => update({ ogImageUrl: "" })}
+                      data-testid="button-clear-og-image"
+                    >
+                      ✕
+                    </Button>
+                  )}
+                </div>
+                {form.ogImageUrl && (
+                  <img
+                    src={form.ogImageUrl}
+                    alt="OG preview"
+                    className="aspect-video w-full rounded-md border object-cover"
+                    data-testid="img-og-preview"
+                  />
+                )}
+                <p className="text-[11px] text-muted-foreground">
+                  Custom 1200×630 px image for social shares. Defaults to the featured image if blank.
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -2052,6 +2125,8 @@ function ArticleEditorInner({ id }: { id: string }) {
               }}
             />
           )}
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
 
