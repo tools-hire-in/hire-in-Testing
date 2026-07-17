@@ -3655,6 +3655,20 @@ async function runStartupTasks() {
     console.error("emails_master_enabled seed error (non-fatal):", err);
   }
 
+  // Seed blast queue settings — threshold (default 5 recipients) and pending alert (default 4h).
+  try {
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES
+        ('blast_threshold', '5'::jsonb),
+        ('blast_pending_alert_hours', '4'::jsonb)
+      ON CONFLICT (key) DO NOTHING
+    `);
+    log("Blast queue settings seeded (blast_threshold=5, blast_pending_alert_hours=4)");
+  } catch (err) {
+    console.error("Blast queue settings seed error (non-fatal):", err);
+  }
+
   // Seed deficit pool threshold (default 120 min — forgive shortfalls smaller than this).
   try {
     await db.execute(sql`
@@ -3978,6 +3992,82 @@ async function runStartupTasks() {
     log("Communications log table ensured");
   } catch (err) {
     console.error("Communications log table migration error:", err);
+  }
+
+  // Pending email blasts + delivery records (blast review queue)
+  // Step 1: create enums (ignore "already exists" errors)
+  try {
+    await db.execute(sql`
+      CREATE TYPE pending_email_blast_status AS ENUM (
+        'pending','approved','delivering','sent','partially_failed','failed','cancelled'
+      )
+    `);
+  } catch (_) { /* already exists */ }
+  try {
+    await db.execute(sql`
+      CREATE TYPE blast_delivery_status AS ENUM ('pending','sent','failed','skipped')
+    `);
+  } catch (_) { /* already exists */ }
+  // Step 2: create tables (columns match shared/schema.ts exactly).
+  // We re-create from scratch if the schema got out of sync on the first boot —
+  // safe because there is never real user data in these tables on a fresh install.
+  try {
+    // Check whether the table is in sync by testing for the canonical column.
+    const colCheck = await db.execute(sql`
+      SELECT column_name FROM information_schema.columns
+      WHERE table_name = 'pending_email_blasts' AND column_name = 'trigger_source'
+    `);
+    if (colCheck.rows.length === 0) {
+      // Table either doesn't exist or has the old wrong schema — drop and recreate.
+      await db.execute(sql`DROP TABLE IF EXISTS blast_delivery_records CASCADE`);
+      await db.execute(sql`DROP TABLE IF EXISTS pending_email_blasts CASCADE`);
+      log("Dropped stale pending_email_blasts tables for recreation");
+    }
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS pending_email_blasts (
+        id                   VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        trigger_source       VARCHAR NOT NULL,
+        status               pending_email_blast_status NOT NULL DEFAULT 'pending',
+        subject              VARCHAR NOT NULL,
+        body_html            TEXT NOT NULL,
+        body_text            TEXT,
+        original_subject     VARCHAR,
+        original_body_html   TEXT,
+        recipients           JSONB NOT NULL DEFAULT '[]',
+        recipient_count      INTEGER NOT NULL DEFAULT 0,
+        reviewed_by          VARCHAR,
+        reviewed_at          TIMESTAMP WITH TIME ZONE,
+        edited_by            VARCHAR,
+        edited_at            TIMESTAMP WITH TIME ZONE,
+        cancel_reason        TEXT,
+        delivery_started_at  TIMESTAMP WITH TIME ZONE,
+        delivery_finished_at TIMESTAMP WITH TIME ZONE,
+        alert_sent           BOOLEAN NOT NULL DEFAULT FALSE,
+        created_at           TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_pending_email_blasts_status
+        ON pending_email_blasts(status, created_at)
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS blast_delivery_records (
+        id            VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        blast_id      VARCHAR NOT NULL REFERENCES pending_email_blasts(id) ON DELETE CASCADE,
+        user_id       VARCHAR,
+        email         VARCHAR NOT NULL,
+        status        blast_delivery_status NOT NULL DEFAULT 'pending',
+        error_message TEXT,
+        sent_at       TIMESTAMP WITH TIME ZONE
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_blast_delivery_blast_id
+        ON blast_delivery_records(blast_id)
+    `);
+    log("Pending email blasts tables ensured");
+  } catch (err) {
+    console.error("Pending email blasts tables error (non-fatal):", err);
   }
 
   // Release Notes table
@@ -4450,6 +4540,14 @@ async function runStartupTasks() {
   // Cron/scheduled jobs start only after schema is ensured so they query
   // tables that are guaranteed to exist.
   startScheduler();
+
+  // Blast queue crash recovery — re-enqueue any blast stuck in "delivering" from a prior crash.
+  try {
+    const { recoverStuckBlasts } = await import("./blastQueue");
+    await recoverStuckBlasts();
+  } catch (err) {
+    console.error("[startup] Blast queue crash recovery failed (non-fatal):", err);
+  }
 
   // Send Ceipal announcement asynchronously (non-blocking)
   import("./ceipalCompliance")

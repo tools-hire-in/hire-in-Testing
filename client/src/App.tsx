@@ -130,6 +130,7 @@ const Integrations = lazy(() => import("@/pages/admin/Integrations"));
 const GovernanceHub = lazy(() => import("@/pages/admin/governance/GovernanceHub"));
 const DevToolsPage = lazy(() => import("@/pages/admin/DevTools"));
 const NotificationSettings = lazy(() => import("@/pages/admin/NotificationSettings"));
+const NotificationBlasts = lazy(() => import("@/pages/admin/NotificationBlasts"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -342,6 +343,9 @@ function PublicRouter() {
       {/* Communications — What's New + Release Notes */}
       <Route path="/admin/communications">{() => <Suspense fallback={<AdminFallback />}><Communications /></Suspense>}</Route>
 
+      {/* Notification Blasts — review queue for bulk automated emails */}
+      <Route path="/admin/notification-blasts">{() => <Suspense fallback={<AdminFallback />}><NotificationBlasts /></Suspense>}</Route>
+
       {/* Notification Centre */}
       <Route path="/admin/notifications">{() => <Suspense fallback={<AdminFallback />}><NotificationCentre /></Suspense>}</Route>
 
@@ -546,6 +550,9 @@ function EmployeeRouter() {
 
       {/* Communications — What's New + Release Notes */}
       <Route path="/admin/communications">{() => <Suspense fallback={<AdminFallback />}><Communications /></Suspense>}</Route>
+
+      {/* Notification Blasts — review queue for bulk automated emails */}
+      <Route path="/admin/notification-blasts">{() => <Suspense fallback={<AdminFallback />}><NotificationBlasts /></Suspense>}</Route>
 
       {/* Notification Centre */}
       <Route path="/admin/notifications">{() => <Suspense fallback={<AdminFallback />}><NotificationCentre /></Suspense>}</Route>

@@ -639,13 +639,22 @@ export function FeatureFlagsSection() {
             <Settings className="h-4 w-4" />
             Feature Flags
           </CardTitle>
-          <a
-            href="/admin/notification-settings"
-            className="text-xs text-primary hover:underline flex items-center gap-1"
-            data-testid="link-notification-settings"
-          >
-            Manage email &amp; notification settings →
-          </a>
+          <div className="flex items-center gap-3">
+            <a
+              href="/admin/notification-blasts"
+              className="text-xs text-amber-700 hover:underline flex items-center gap-1 font-medium"
+              data-testid="link-notification-blasts"
+            >
+              Review email blasts →
+            </a>
+            <a
+              href="/admin/notification-settings"
+              className="text-xs text-primary hover:underline flex items-center gap-1"
+              data-testid="link-notification-settings"
+            >
+              Manage email &amp; notification settings →
+            </a>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-4">

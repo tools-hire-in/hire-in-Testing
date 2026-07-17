@@ -1558,6 +1558,21 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   });
   const commsHeldCount = commsHeld?.count ?? 0;
 
+  // Blast queue pending count — badge on Communications nav item (super_admin + admin)
+  const { data: blastPendingData } = useQuery<{ pending_count: number }>({
+    queryKey: ["/api/admin/blasts/pending-count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/admin/blasts/pending-count", { credentials: "include" });
+        if (!res.ok) return { pending_count: 0 };
+        return res.json();
+      } catch { return { pending_count: 0 }; }
+    },
+    refetchInterval: 60000,
+    enabled: !!user && ["super_admin", "admin"].includes(user?.role || ""),
+  });
+  const blastPendingCount = blastPendingData?.pending_count ?? 0;
+
   // Salary advance pending approval badge (managers + final approver)
   const { data: salaryAdvanceStats } = useQuery<{ pendingManager: number; pendingFinal: number; active: number; pendingCeo?: number }>({
     queryKey: ["/api/salary-advances/stats"],
@@ -1676,6 +1691,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       label: "Communications",
       icon: Megaphone,
       roles: ["super_admin", "admin", "hr"],
+      badge: blastPendingCount > 0 && ["super_admin", "admin"].includes(userRole) ? blastPendingCount : undefined,
+      badgeColor: "bg-amber-500",
     }] : []),
     ...(hasSopAccess ? [{
       href: "/admin/sops",

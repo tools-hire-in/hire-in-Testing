@@ -99,7 +99,7 @@ export async function sendHelpDeskEmail(options: {
   }
 }
 
-async function getUncachableSendGridClient(): Promise<{
+export async function getUncachableSendGridClient(): Promise<{
   client: typeof sgMail | { send: (msg: any) => Promise<void> };
   fromEmail: string;
   masterSuppressed?: boolean;

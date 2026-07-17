@@ -163,7 +163,7 @@ registerCollector("checkin_overdue_digest", async (_flags) => {
 
   const hrAdmins = (
     await db.execute(sql`
-      SELECT id FROM admin_users
+      SELECT id, email, first_name, last_name FROM admin_users
       WHERE role IN ('hr', 'admin', 'super_admin') AND is_active = true AND deleted_at IS NULL
     `)
   ).rows as any[];
@@ -235,21 +235,49 @@ registerCollector("checkin_overdue_digest", async (_flags) => {
     `[complianceSweep] checkin_overdue_digest: ${overdueRows.length} overdue → ${hrAdmins.length} HR/admin users notified`
   );
 
-  // Dispatch directly via notifyUser so both in-app and SendGrid email are sent
+  // Route email blast through blast-queue for admin review when >= threshold.
+  // In-app notifications are always sent directly (per-user, no blast gating).
+  const blastRecipients = hrAdmins
+    .filter((hr: any) => !!hr.email)
+    .map((hr: any) => ({
+      userId: String(hr.id),
+      name: [hr.first_name, hr.last_name].filter(Boolean).join(" ") || String(hr.email),
+      email: String(hr.email),
+    }));
+
+  const blastSubject = `Overdue check-ins: ${overdueRows.length} pending — action needed`;
+
+  const { queueBlast } = await import("./blastQueue");
+  const blastResult = await queueBlast({
+    triggerSource: "checkin_overdue_digest",
+    subject: blastSubject,
+    bodyHtml: emailHtml,
+    recipients: blastRecipients,
+  });
+
   for (const hr of hrAdmins) {
+    // Always dispatch in-app notification (no email if blast was queued for review)
     await notifyUser({
       userId: String(hr.id),
       type: "checkin_overdue_digest",
       title: `Overdue check-ins: ${overdueRows.length} pending`,
       message: digestMsg,
       metadata: sharedMetadata,
-      email: {
-        subject: `Overdue check-ins: ${overdueRows.length} pending — action needed`,
-        html: emailHtml,
-        configType: "checkin_overdue_digest",
-        sourceJob: "compliance_sweep",
-      },
+      ...(blastResult.queued ? {} : {
+        email: {
+          subject: blastSubject,
+          html: emailHtml,
+          configType: "checkin_overdue_digest",
+          sourceJob: "compliance_sweep",
+        },
+      }),
     });
+  }
+
+  if (blastResult.queued) {
+    console.log(`[complianceSweep] checkin_overdue_digest: emailed queued as blast ${blastResult.blastId} (${blastResult.recipientCount} recipients pending review)`);
+  } else {
+    console.log(`[complianceSweep] checkin_overdue_digest: sent directly to ${hrAdmins.length} HR/admin (below blast threshold)`);
   }
 
   // Return [] — notifications already dispatched above via notifyUser

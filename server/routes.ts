@@ -26567,6 +26567,160 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   registerGovernanceRoutes(app);
   registerCopilotRoutes(app);
   registerCeoRoutes(app);
+
+  // ── Email Blast Review Queue routes (super_admin + admin) ──────────────────
+  // GET  /api/admin/blasts               — list blasts (optional ?status=pending)
+  // GET  /api/admin/blasts/pending-count — badge count for sidebar
+  // GET  /api/admin/blasts/:id           — detail + delivery records
+  // POST /api/admin/blasts/:id/approve   — approve (optionally edit) → enqueue delivery
+  // POST /api/admin/blasts/:id/retry     — re-enqueue failed/partially_failed blast
+  // POST /api/admin/blasts/:id/cancel    — cancel pending or delivering blast
+  {
+    const { pendingEmailBlasts: peb, blastDeliveryRecords: bdr } = await import("@shared/schema");
+    const { queueBlast, approveBlast, cancelBlast, processBlast } = await import("./blastQueue");
+    const { eq, desc, and, inArray } = await import("drizzle-orm");
+
+    function requireBlastAccess(req: Request, res: Response, next: NextFunction) {
+      if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+      if (!["super_admin", "admin"].includes(req.session.role || "")) {
+        return res.status(403).json({ error: "Admin access required" });
+      }
+      next();
+    }
+
+    app.get("/api/admin/blasts/pending-count", requireAuth, requireBlastAccess, async (_req: Request, res: Response) => {
+      try {
+        const rows = await db.select({ id: peb.id }).from(peb).where(eq(peb.status, "pending"));
+        res.json({ pending_count: rows.length });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    app.get("/api/admin/blasts", requireAuth, requireBlastAccess, async (req: Request, res: Response) => {
+      try {
+        const statusFilter = req.query.status as string | undefined;
+        const validStatuses = ["pending", "approved", "delivering", "sent", "partially_failed", "failed", "cancelled"];
+
+        let rows;
+        if (statusFilter && validStatuses.includes(statusFilter)) {
+          rows = await db.select().from(peb)
+            .where(eq(peb.status, statusFilter as any))
+            .orderBy(desc(peb.createdAt));
+        } else {
+          rows = await db.select().from(peb).orderBy(desc(peb.createdAt));
+        }
+
+        // Always compute pending_count globally — independent of any status filter so
+        // callers filtering by status=sent etc. still receive the correct badge count.
+        const pendingRows = await db.select({ id: peb.id }).from(peb).where(eq(peb.status, "pending"));
+        const pendingCount = pendingRows.length;
+        res.json({ blasts: rows, pending_count: pendingCount });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    app.get("/api/admin/blasts/:id", requireAuth, requireBlastAccess, async (req: Request, res: Response) => {
+      try {
+        const [blast] = await db.select().from(peb).where(eq(peb.id, req.params.id));
+        if (!blast) return res.status(404).json({ error: "Blast not found" });
+        const deliveryRows = await db.select().from(bdr)
+          .where(eq(bdr.blastId, req.params.id))
+          .orderBy(bdr.email);
+        res.json({ blast, deliveryRecords: deliveryRows });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    app.post("/api/admin/blasts/:id/approve", requireAuth, requireBlastAccess, async (req: Request, res: Response) => {
+      try {
+        const { overrideSubject, overrideBodyHtml } = req.body ?? {};
+        await approveBlast(req.params.id, req.session!.userId!, overrideSubject, overrideBodyHtml);
+        res.json({ status: "delivering" });
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    });
+
+    app.post("/api/admin/blasts/:id/retry", requireAuth, requireBlastAccess, async (req: Request, res: Response) => {
+      try {
+        const [blast] = await db.select({ status: peb.status }).from(peb).where(eq(peb.id, req.params.id));
+        if (!blast) return res.status(404).json({ error: "Blast not found" });
+        if (!["partially_failed", "failed"].includes(blast.status)) {
+          return res.status(400).json({ error: `Cannot retry blast with status: ${blast.status}` });
+        }
+        // Reset failed delivery records to pending, leave sent/skipped untouched
+        await db.update(bdr).set({ status: "pending", errorMessage: null })
+          .where(and(eq(bdr.blastId, req.params.id), eq(bdr.status, "failed")));
+        await db.update(peb).set({ status: "approved" }).where(eq(peb.id, req.params.id));
+        setImmediate(() => {
+          processBlast(req.params.id).catch(err => {
+            console.error(`[blast-retry] processBlast(${req.params.id}) failed:`, err);
+          });
+        });
+        res.json({ status: "delivering" });
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    });
+
+    app.post("/api/admin/blasts/:id/cancel", requireAuth, requireBlastAccess, async (req: Request, res: Response) => {
+      try {
+        const [blast] = await db.select({ status: peb.status }).from(peb).where(eq(peb.id, req.params.id));
+        if (!blast) return res.status(404).json({ error: "Blast not found" });
+        // Only super_admin can cancel a delivering blast
+        if (blast.status === "delivering" && req.session!.role !== "super_admin") {
+          return res.status(403).json({ error: "Only Super Admins can cancel an in-progress blast" });
+        }
+        const { reason } = req.body ?? {};
+        await cancelBlast(req.params.id, req.session!.userId!, reason ?? "Cancelled by admin");
+        res.json({ status: "cancelled" });
+      } catch (err: any) {
+        res.status(400).json({ error: err.message });
+      }
+    });
+
+    // System settings for blast threshold (read + write)
+    app.get("/api/admin/blast-settings", requireAuth, requireBlastAccess, async (_req: Request, res: Response) => {
+      try {
+        const threshRow = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'blast_threshold' LIMIT 1`);
+        const alertRow = await db.execute(sql`SELECT value FROM system_settings WHERE key = 'blast_pending_alert_hours' LIMIT 1`);
+        res.json({
+          blast_threshold: Number(threshRow.rows[0]?.value ?? 5),
+          blast_pending_alert_hours: Number(alertRow.rows[0]?.value ?? 4),
+        });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+
+    app.patch("/api/admin/blast-settings", requireAuth, requireBlastAccess, async (req: Request, res: Response) => {
+      try {
+        const { blast_threshold, blast_pending_alert_hours } = req.body ?? {};
+        if (blast_threshold !== undefined) {
+          const val = parseInt(blast_threshold, 10);
+          if (isNaN(val) || val < 1) return res.status(400).json({ error: "blast_threshold must be a positive integer" });
+          await db.execute(sql`
+            INSERT INTO system_settings (key, value) VALUES ('blast_threshold', ${val}::jsonb)
+            ON CONFLICT (key) DO UPDATE SET value = ${val}::jsonb, updated_at = NOW()
+          `);
+        }
+        if (blast_pending_alert_hours !== undefined) {
+          const val = parseInt(blast_pending_alert_hours, 10);
+          if (isNaN(val) || val < 1) return res.status(400).json({ error: "blast_pending_alert_hours must be a positive integer" });
+          await db.execute(sql`
+            INSERT INTO system_settings (key, value) VALUES ('blast_pending_alert_hours', ${val}::jsonb)
+            ON CONFLICT (key) DO UPDATE SET value = ${val}::jsonb, updated_at = NOW()
+          `);
+        }
+        res.json({ ok: true });
+      } catch (err: any) {
+        res.status(500).json({ error: err.message });
+      }
+    });
+  }
   registerSalaryStructureRoutes(app, requirePermission);
 
   // ==========================================================================

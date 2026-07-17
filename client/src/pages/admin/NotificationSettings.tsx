@@ -1,12 +1,14 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Bell, Mail, MailX, ToggleLeft, ExternalLink, RefreshCw } from "lucide-react";
+import { Bell, Mail, MailX, ToggleLeft, ExternalLink, RefreshCw, Send } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -83,6 +85,40 @@ export default function NotificationSettings() {
       toast({ title: "Email type updated" });
     },
     onError: () => toast({ title: "Failed to update email type", variant: "destructive" }),
+  });
+
+  // Blast queue threshold settings
+  const { data: blastSettings } = useQuery<{ blast_threshold: number; blast_pending_alert_hours: number }>({
+    queryKey: ["/api/admin/blast-settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/blast-settings", { credentials: "include" });
+      if (!res.ok) return { blast_threshold: 5, blast_pending_alert_hours: 4 };
+      return res.json();
+    },
+    enabled: isSuperAdmin,
+  });
+
+  const [blastThreshold, setBlastThreshold] = useState("");
+  const [blastAlertHours, setBlastAlertHours] = useState("");
+
+  // Sync state from loaded settings (only when not dirty)
+  useEffect(() => {
+    if (blastSettings) {
+      setBlastThreshold(String(blastSettings.blast_threshold));
+      setBlastAlertHours(String(blastSettings.blast_pending_alert_hours));
+    }
+  }, [blastSettings]);
+
+  const blastSettingsMutation = useMutation({
+    mutationFn: async (payload: { blast_threshold?: number; blast_pending_alert_hours?: number }) => {
+      const res = await apiRequest("PATCH", "/api/admin/blast-settings", payload);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/blast-settings"] });
+      toast({ title: "Blast queue settings saved" });
+    },
+    onError: () => toast({ title: "Failed to save blast settings", variant: "destructive" }),
   });
 
   if (authLoading || !isAuthenticated || !isSuperAdmin) return null;
@@ -191,6 +227,78 @@ export default function NotificationSettings() {
                 </CardContent>
               </Card>
             </div>
+
+            {/* Blast Queue Settings */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Send className="h-4 w-4 text-amber-500" />
+                  Email Blast Review Queue
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <p className="text-xs text-muted-foreground">
+                  Automated cron emails sent to <strong>≥ threshold</strong> recipients are held for admin review before delivery. Adjust the threshold and the stale-alert timing below.
+                  {" "}<a href="/admin/notification-blasts" className="text-primary underline">View pending blasts →</a>
+                </p>
+                <div className="grid sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="blast-threshold" className="text-sm">Recipient threshold</Label>
+                    <p className="text-xs text-muted-foreground">Emails with ≥ this many recipients are queued for review. Default: 5.</p>
+                    <div className="flex gap-2">
+                      <Input
+                        id="blast-threshold"
+                        type="number"
+                        min={1}
+                        value={blastThreshold}
+                        onChange={e => setBlastThreshold(e.target.value)}
+                        className="w-24"
+                        data-testid="input-blast-threshold"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const v = parseInt(blastThreshold, 10);
+                          if (!isNaN(v) && v >= 1) blastSettingsMutation.mutate({ blast_threshold: v });
+                        }}
+                        disabled={blastSettingsMutation.isPending}
+                        data-testid="button-save-blast-threshold"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="blast-alert-hours" className="text-sm">Pending alert after (hours)</Label>
+                    <p className="text-xs text-muted-foreground">Super admins receive an alert email if a blast sits unreviewed this long. Default: 4h.</p>
+                    <div className="flex gap-2">
+                      <Input
+                        id="blast-alert-hours"
+                        type="number"
+                        min={1}
+                        value={blastAlertHours}
+                        onChange={e => setBlastAlertHours(e.target.value)}
+                        className="w-24"
+                        data-testid="input-blast-alert-hours"
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => {
+                          const v = parseInt(blastAlertHours, 10);
+                          if (!isNaN(v) && v >= 1) blastSettingsMutation.mutate({ blast_pending_alert_hours: v });
+                        }}
+                        disabled={blastSettingsMutation.isPending}
+                        data-testid="button-save-blast-alert-hours"
+                      >
+                        Save
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
 
             <div className="space-y-4">
               <div className="flex items-center justify-between">

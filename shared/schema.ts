@@ -5025,3 +5025,57 @@ export const attendanceDeficitPool = pgTable("attendance_deficit_pool", {
 export const insertAttendanceDeficitPoolSchema = createInsertSchema(attendanceDeficitPool).omit({ id: true, createdAt: true, updatedAt: true });
 export type AttendanceDeficitPool = typeof attendanceDeficitPool.$inferSelect;
 export type InsertAttendanceDeficitPool = typeof insertAttendanceDeficitPoolSchema._type;
+
+// ── Email Blast Review Queue ──────────────────────────────────────────────────
+// Automated cron jobs that send emails to many recipients at once route through
+// this queue for Super Admin / Admin review before delivery.
+// queueBlast() inserts here when recipients.length >= blast_threshold setting.
+
+export const pendingEmailBlastStatusEnum = pgEnum("pending_email_blast_status", [
+  "pending", "approved", "delivering", "sent", "partially_failed", "failed", "cancelled",
+]);
+
+export const blastDeliveryStatusEnum = pgEnum("blast_delivery_status", [
+  "pending", "sent", "failed", "skipped",
+]);
+
+export const pendingEmailBlasts = pgTable("pending_email_blasts", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  triggerSource: varchar("trigger_source").notNull(),
+  status: pendingEmailBlastStatusEnum("status").notNull().default("pending"),
+  subject: varchar("subject").notNull(),
+  bodyHtml: text("body_html").notNull(),
+  bodyText: text("body_text"),
+  originalSubject: varchar("original_subject"),
+  originalBodyHtml: text("original_body_html"),
+  recipients: jsonb("recipients").notNull().$type<{ userId: string; name: string; email: string }[]>(),
+  recipientCount: integer("recipient_count").notNull().default(0),
+  reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
+  reviewedAt: timestamp("reviewed_at"),
+  editedBy: varchar("edited_by").references(() => adminUsers.id),
+  editedAt: timestamp("edited_at"),
+  cancelReason: text("cancel_reason"),
+  deliveryStartedAt: timestamp("delivery_started_at"),
+  deliveryFinishedAt: timestamp("delivery_finished_at"),
+  alertSent: boolean("alert_sent").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const blastDeliveryRecords = pgTable("blast_delivery_records", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  blastId: varchar("blast_id").notNull().references(() => pendingEmailBlasts.id, { onDelete: "cascade" }),
+  userId: varchar("user_id"),
+  email: varchar("email").notNull(),
+  status: blastDeliveryStatusEnum("status").notNull().default("pending"),
+  errorMessage: text("error_message"),
+  sentAt: timestamp("sent_at"),
+}, (table) => [
+  index("idx_blast_delivery_blast_id").on(table.blastId),
+]);
+
+export const insertPendingEmailBlastSchema = createInsertSchema(pendingEmailBlasts).omit({ id: true, createdAt: true });
+export type PendingEmailBlast = typeof pendingEmailBlasts.$inferSelect;
+export type InsertPendingEmailBlast = z.infer<typeof insertPendingEmailBlastSchema>;
+
+export const insertBlastDeliveryRecordSchema = createInsertSchema(blastDeliveryRecords).omit({ id: true });
+export type BlastDeliveryRecord = typeof blastDeliveryRecords.$inferSelect;

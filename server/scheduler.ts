@@ -462,7 +462,7 @@ export function startScheduler() {
         .from(adminUsers)
         .where(and(eq(adminUsers.role, "super_admin"), eq(adminUsers.isActive, true), isNull(adminUsers.deletedAt)));
 
-      const toEmails = superAdmins.map(u => u.email).filter(Boolean);
+      const toEmails = superAdmins.map(u => u.email).filter(Boolean) as string[];
       if (toEmails.length === 0) {
         console.log("[scheduler] No super admin emails found — skipping reminder.");
         return;
@@ -471,18 +471,63 @@ export function startScheduler() {
       const monthName = new Date(remindYear, remindMonth - 1, 1).toLocaleString("en-US", { month: "long" });
       const portalUrl = getPortalBaseUrl();
 
-      const result = await sendSalaryReportApprovalReminder({
-        to: toEmails,
-        year: remindYear,
-        month: remindMonth,
-        monthName,
-        portalUrl,
+      // Route through blast queue when >= threshold; send directly when below.
+      const emailSubject = `Action Required: Salary Report Pending Approval — ${monthName} ${remindYear}`;
+      const bodyHtml = `
+        <div style="font-family: 'Segoe UI', Arial, sans-serif; max-width: 600px; margin: 0 auto; background: #ffffff;">
+          <div style="background: linear-gradient(135deg, #1e40af 0%, #3b82f6 100%); padding: 32px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px; font-weight: 700;">Rayomind Solutions LLP</h1>
+            <p style="color: #dbeafe; margin: 8px 0 0; font-size: 14px;">Payroll Approval Reminder</p>
+          </div>
+          <div style="padding: 32px;">
+            <h2 style="color: #1e293b; margin: 0 0 16px; font-size: 20px;">Salary Report Awaiting Approval</h2>
+            <div style="background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px; padding: 16px 20px; margin: 0 0 24px;">
+              <p style="color: #c2410c; font-weight: 600; margin: 0 0 6px;">⚠ Pending action required</p>
+              <p style="color: #9a3412; margin: 0; font-size: 14px;">
+                The salary report for <strong>${monthName} ${remindYear}</strong> is still in
+                <em>pending approval</em> status. Please log in to review, adjust if needed,
+                and approve the report so it can be dispatched to accounts.
+              </p>
+            </div>
+            <div style="text-align: center; margin: 24px 0;">
+              <a href="${portalUrl}/admin/hr/salary-reports"
+                 style="display:inline-block;background:#1e40af;color:#ffffff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:15px;">
+                Review &amp; Approve Report
+              </a>
+            </div>
+          </div>
+          <div style="background:#f8fafc;padding:20px 32px;text-align:center;border-top:1px solid #e2e8f0;">
+            <p style="color:#94a3b8;font-size:12px;margin:0;">
+              &copy; ${new Date().getFullYear()} Hire'in Solutions (Rayomind Solutions LLP). All rights reserved.
+            </p>
+          </div>
+        </div>`;
+
+      const { queueBlast } = await import("./blastQueue");
+      const blastRecipients = toEmails.map(e => ({ userId: "", name: e, email: e }));
+      const blastResult = await queueBlast({
+        triggerSource: "salary_report_approval_reminder",
+        subject: emailSubject,
+        bodyHtml,
+        recipients: blastRecipients,
       });
 
-      if (result.success) {
-        console.log(`[scheduler] Salary report approval reminder sent to ${toEmails.join(", ")}`);
+      if (blastResult.queued) {
+        console.log(`[scheduler] Salary approval reminder queued as blast ${blastResult.blastId} (${blastResult.recipientCount} recipients pending review).`);
       } else {
-        console.error("[scheduler] Failed to send approval reminder:", result.error);
+        // Below threshold — send directly via the existing email function
+        const result = await sendSalaryReportApprovalReminder({
+          to: toEmails,
+          year: remindYear,
+          month: remindMonth,
+          monthName,
+          portalUrl,
+        });
+        if (result.success) {
+          console.log(`[scheduler] Salary approval reminder sent directly to ${toEmails.join(", ")} (below blast threshold).`);
+        } else {
+          console.error("[scheduler] Failed to send approval reminder:", result.error);
+        }
       }
     } catch (error) {
       console.error("[scheduler] Salary report approval reminder failed:", error);
@@ -1744,8 +1789,9 @@ export function startScheduler() {
         console.error("[scheduler] CEO report save to docs failed (non-fatal):", fsErr);
       }
 
-      // Send email to recipients
+      // Send email to recipients — route through blast queue when >= threshold
       const weekOf = new Date().toISOString().slice(0, 10);
+      const emailSubject = `Weekly Governance Exception Report — ${weekOf}`;
       const htmlBody = `
         <h2>Weekly Governance Exception Report — ${weekOf}</h2>
         <h3>Summary</h3>
@@ -1766,16 +1812,32 @@ export function startScheduler() {
         <p style="color:#888;font-size:12px;">This report is generated from anonymized data. No personal information has been included.</p>
       `;
 
-      const { dispatchAutomatedEmail } = await import("./email");
-      for (const r of recipients) {
-        if (!r.email) continue;
-        await dispatchAutomatedEmail("governance_ceo_report", "governance_scheduler", {
-          to: r.email,
-          subject: `Weekly Governance Exception Report — ${weekOf}`,
-          html: htmlBody,
-        }).catch(err => console.error(`[scheduler] CEO report email to ${r.email} failed:`, err));
+      const blastRecipients = recipients
+        .filter(r => !!r.email)
+        .map(r => ({ userId: r.id, name: r.id, email: r.email! }));
+
+      const { queueBlast } = await import("./blastQueue");
+      const blastResult = await queueBlast({
+        triggerSource: "governance_ceo_report_weekly",
+        subject: emailSubject,
+        bodyHtml: htmlBody,
+        recipients: blastRecipients,
+      });
+
+      if (blastResult.queued) {
+        console.log(`[scheduler] CEO governance report queued as blast ${blastResult.blastId} (${blastResult.recipientCount} recipients pending review).`);
+      } else {
+        // Below threshold — send directly
+        const { dispatchAutomatedEmail } = await import("./email");
+        for (const r of blastRecipients) {
+          await dispatchAutomatedEmail("governance_ceo_report", "governance_scheduler", {
+            to: r.email,
+            subject: emailSubject,
+            html: htmlBody,
+          }).catch(err => console.error(`[scheduler] CEO report email to ${r.email} failed:`, err));
+        }
+        console.log(`[scheduler] CEO governance report sent directly to ${blastRecipients.length} recipient(s) (below blast threshold).`);
       }
-      console.log(`[scheduler] CEO governance report sent to ${recipients.length} recipient(s).`);
     } catch (err) {
       console.error("[scheduler] CEO governance exception report failed:", err);
     }
@@ -1863,6 +1925,18 @@ export function startScheduler() {
       console.error("[scheduler] Ceipal escalation sweep failed:", err);
     }
   }, { timezone: "UTC" });
+
+  // ─── Blast queue housekeeping — hourly ───────────────────────────────────────
+  // 1. Auto-expires blasts pending > 72 hours (sets status=cancelled, reason=expired).
+  // 2. Sends a transactional alert to super_admins for blasts pending > N hours (once).
+  cron.schedule("5 * * * *", async () => {
+    try {
+      const { runBlastHousekeeping } = await import("./blastQueue");
+      await runBlastHousekeeping();
+    } catch (err) {
+      console.error("[scheduler] Blast queue housekeeping failed:", err);
+    }
+  });
 
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
