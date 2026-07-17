@@ -34,7 +34,23 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Loader2, Plus, Search, FileEdit, Clock3, FastForward, UserPlus, UserX, DollarSign } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Loader2, Plus, Search, FileEdit, Clock3, FastForward, UserPlus, UserX, DollarSign, MoreHorizontal, EyeOff, Archive } from "lucide-react";
 import { STUDIO_CONTENT_TYPES, getStudioContentType } from "@shared/studioContent";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import { OutdatedModelBadge } from "./ArticleRegenPanel";
@@ -50,7 +66,7 @@ const PAGE_SIZE = 20;
 export function ArticlesPanel({ projectId, initialStatus }: { projectId: string; initialStatus?: string }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
   const canCreate = can("studio.create_article");
 
   const [search, setSearch] = useState("");
@@ -80,6 +96,48 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
   const showSelection = canBulkApprove || canManageAuthors;
 
   const [assignAuthorId, setAssignAuthorId] = useState<string>("");
+
+  const isSuperAdmin = role === "super_admin";
+  const [takeDownTarget, setTakeDownTarget] = useState<StudioArticle | null>(null);
+  const [archiveTarget, setArchiveTarget] = useState<StudioArticle | null>(null);
+
+  const takeDownMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/admin/studio/articles/${id}/unpublish`);
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Failed to take down");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Content taken down", description: "It reverts to an unpublished (approved) state." });
+      setTakeDownTarget(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/stats"] });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Take down failed", description: err.message, variant: "destructive" }),
+  });
+
+  const archiveMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/admin/studio/articles/${id}/archive`);
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Failed to archive");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Article archived", description: "The article has been moved to the archive." });
+      setArchiveTarget(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/stats"] });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Archive failed", description: err.message, variant: "destructive" }),
+  });
 
   const { data: authors } = useQuery<StudioAuthorProfile[]>({
     queryKey: ["/api/admin/studio/authors", { projectId }],
@@ -224,6 +282,16 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
               data-testid="input-search-articles"
             />
           </div>
+          {isSuperAdmin && (
+            <Button
+              variant={statusFilter === "published" ? "default" : "outline"}
+              size="sm"
+              onClick={() => resetPageAnd(() => setStatusFilter(statusFilter === "published" ? "all" : "published"))}
+              data-testid="button-filter-published"
+            >
+              Published
+            </Button>
+          )}
           <Select value={statusFilter} onValueChange={(v) => resetPageAnd(() => setStatusFilter(v))}>
             <SelectTrigger className="w-[150px]" data-testid="select-filter-status">
               <SelectValue placeholder="Status" />
@@ -371,6 +439,7 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                   <TableHead className="text-right">Read</TableHead>
                   <TableHead className="text-right">Cost</TableHead>
                   <TableHead>Updated</TableHead>
+                  {isSuperAdmin && <TableHead className="w-10" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -445,6 +514,49 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                     <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       {a.updatedAt ? new Date(a.updatedAt).toLocaleDateString() : "—"}
                     </TableCell>
+                    {isSuperAdmin && (() => {
+                      const canTakeDown = a.status === "published" || a.status === "scheduled";
+                      const canArchive = a.status !== "archived";
+                      if (!canTakeDown && !canArchive) return <TableCell />;
+                      return (
+                        <TableCell onClick={(e) => e.stopPropagation()}>
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                data-testid={`button-row-actions-${a.id}`}
+                              >
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Row actions</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {canTakeDown && (
+                                <DropdownMenuItem
+                                  className="text-destructive focus:text-destructive"
+                                  onClick={() => setTakeDownTarget(a)}
+                                  data-testid={`menu-item-take-down-${a.id}`}
+                                >
+                                  <EyeOff className="mr-2 h-4 w-4" />
+                                  Take Down
+                                </DropdownMenuItem>
+                              )}
+                              {canArchive && (
+                                <DropdownMenuItem
+                                  onClick={() => setArchiveTarget(a)}
+                                  data-testid={`menu-item-archive-${a.id}`}
+                                >
+                                  <Archive className="mr-2 h-4 w-4" />
+                                  Archive
+                                </DropdownMenuItem>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        </TableCell>
+                      );
+                    })()}
                   </TableRow>
                 ))}
               </TableBody>
@@ -610,6 +722,61 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Take Down confirmation */}
+      <AlertDialog open={!!takeDownTarget} onOpenChange={(open) => { if (!open) setTakeDownTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Take this content down?</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{takeDownTarget?.title}" will be removed from the public site immediately.
+              It reverts to an unpublished (approved) state, so its history is preserved
+              and it can be republished later.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-take-down">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (takeDownTarget) takeDownMutation.mutate(takeDownTarget.id);
+              }}
+              disabled={takeDownMutation.isPending}
+              data-testid="button-confirm-take-down"
+            >
+              {takeDownMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Take down
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Archive confirmation */}
+      <AlertDialog open={!!archiveTarget} onOpenChange={(open) => { if (!open) setArchiveTarget(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Archive this article?</AlertDialogTitle>
+            <AlertDialogDescription>
+              "{archiveTarget?.title}" will be moved to the archive. It will no longer
+              appear in active workflows but its content is preserved.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-cancel-archive">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (archiveTarget) archiveMutation.mutate(archiveTarget.id);
+              }}
+              disabled={archiveMutation.isPending}
+              data-testid="button-confirm-archive"
+            >
+              {archiveMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
