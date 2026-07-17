@@ -233,9 +233,9 @@ export function startScheduler() {
   // they are invoked directly by the Dev Control Center trigger endpoint and
   // must run even in dev/qa.
   //
-  // When getEnvMode() throws (DB unavailable), we default to "production" as a
-  // fail-safe so scheduled jobs always fire on production servers even when the
-  // system_settings table is temporarily unreachable.
+  // When getEnvMode() throws (DB unavailable), we default to "dev" so that a
+  // transient DB error fails safe (jobs are suspended) rather than fail open
+  // (jobs fire as if on production and send real emails).
   const _origNodeCronSchedule = cron.schedule.bind(cron);
   (cron as any).schedule = (
     expression: string,
@@ -244,7 +244,7 @@ export function startScheduler() {
   ) => {
     const guarded = async () => {
       let envMode: string;
-      try { envMode = await getEnvMode(); } catch { envMode = "production"; }
+      try { envMode = await getEnvMode(); } catch { envMode = "dev"; }
       if (envMode !== "production") {
         console.log(`[scheduler][SUSPENDED](${expression}) — env_mode=${envMode}`);
         return;
