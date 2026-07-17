@@ -1143,6 +1143,7 @@ function SalaryChangeDialog({ employeeId, currentSalary, open, onOpenChange }: {
 function SalaryTab({ salary, employeeId }: { salary: EmployeeDetails["salary"]; employeeId: string }) {
   const [editOpen, setEditOpen] = useState(false);
   const { can } = usePermissions();
+  const { user } = useAuth();
   const canEdit = can("payroll.employee.flags");
 
   const historyQuery = useQuery<SalaryChangeRow[]>({
