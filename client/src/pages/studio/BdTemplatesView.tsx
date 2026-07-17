@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { StudioShell } from "@/components/studio/StudioShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,15 @@ import {
   ChevronRight,
   Sparkles,
   BookmarkPlus,
+  Lock,
+  ShieldAlert,
+  KeyRound,
+  Pencil,
+  Plus,
+  Trash2,
+  ChevronUp,
+  ArrowUp,
+  ArrowDown,
 } from "lucide-react";
 import { FieldHelp } from "@/components/studio/FieldHelp";
 
@@ -508,9 +517,24 @@ function TemplateForm({
 
 // ── Page ──────────────────────────────────────────────────────────────────────
 
+// ── Master Edit types ──────────────────────────────────────────────────────────
+
+interface MasterDeck {
+  id: string;
+  title: string;
+  domain: string;
+  deck_type: string;
+  status: string;
+  is_locked: boolean;
+  locked_at: string | null;
+  updated_at: string;
+  slides: Array<{ title: string; bullets: string[]; speaker_notes: string }>;
+}
+
 export default function BdTemplatesView() {
-  const { can } = usePermissions();
+  const { can, role } = usePermissions();
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [activeTemplate, setActiveTemplate] = useState<TemplateId>("bd_proposal_outline");
   const [result, setResult] = useState<{ contentType: TemplateId; output: any } | null>(null);
   const [saveOpen, setSaveOpen] = useState(false);
@@ -518,6 +542,17 @@ export default function BdTemplatesView() {
   const [saveProjectId, setSaveProjectId] = useState("");
 
   const canUseBd = can("studio.bd_agent");
+  const isSuperAdmin = role === "super_admin";
+
+  // ── Master Edit state ──────────────────────────────────────────────────────
+  const [masterEditOpen, setMasterEditOpen] = useState(false);
+  const [masterEditDeck, setMasterEditDeck] = useState<MasterDeck | null>(null);
+  const [masterEditStep, setMasterEditStep] = useState<"totp" | "slides">("totp");
+  const [totpCode, setTotpCode] = useState("");
+  const [totpVerified, setTotpVerified] = useState(false);
+  const [masterEditSlides, setMasterEditSlides] = useState<Array<{ title: string; bullets: string; speaker_notes: string }>>([]);
+  const [masterEditTitle, setMasterEditTitle] = useState("");
+  const [masterChangesSummary, setMasterChangesSummary] = useState("");
 
   const { data: bdProjects = [] } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/studio/bd/projects"],
@@ -528,6 +563,107 @@ export default function BdTemplatesView() {
   useEffect(() => {
     if (bdProjects.length && !selectedProjectId) setSelectedProjectId(bdProjects[0].id);
   }, [bdProjects, selectedProjectId]);
+
+  // Master decks query (only fetched for super_admin)
+  const { data: allDecks = [] } = useQuery<MasterDeck[]>({
+    queryKey: ["/api/bd/decks"],
+    enabled: isSuperAdmin && canUseBd,
+  });
+  const masterDecks = allDecks.filter((d) => d.deck_type === "master");
+
+  // TOTP preflight verify mutation
+  const totpVerifyMutation = useMutation({
+    mutationFn: (code: string) =>
+      apiRequest("POST", "/api/bd/decks/verify-totp", { totp_code: code }).then((r: any) => r.json()),
+    onSuccess: () => {
+      setTotpVerified(true);
+      setMasterEditStep("slides");
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "Verification failed";
+      if (msg.includes("TOTP_INVALID") || msg.toLowerCase().includes("invalid totp")) {
+        toast({ title: "Invalid code", description: "That code didn't match. Check your authenticator and try again.", variant: "destructive" });
+      } else if (msg.includes("TOTP_NOT_CONFIGURED")) {
+        toast({ title: "2FA not configured", description: "Your account doesn't have TOTP set up. Go to Security settings first.", variant: "destructive" });
+      } else {
+        toast({ title: "Verification failed", description: msg, variant: "destructive" });
+      }
+    },
+  });
+
+  // TOTP-gated master edit mutation
+  const masterEditMutation = useMutation({
+    mutationFn: (body: {
+      deckId: string;
+      totp_code: string;
+      slides: Array<{ title: string; bullets: string[]; speaker_notes: string }>;
+      title?: string;
+      changes_summary?: string;
+    }) =>
+      apiRequest("POST", `/api/bd/decks/${body.deckId}/master-edit`, {
+        totp_code: body.totp_code,
+        slides: body.slides,
+        title: body.title,
+        changes_summary: body.changes_summary,
+      }).then((r: any) => r.json()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/bd/decks"] });
+      toast({ title: "Master deck updated", description: "Slides have been saved and the audit log updated." });
+      setMasterEditOpen(false);
+      resetMasterEditState();
+    },
+    onError: (err: any) => {
+      const msg = err?.message || "Failed to save master deck";
+      if (msg.includes("TOTP_INVALID") || msg.toLowerCase().includes("invalid totp")) {
+        toast({ title: "TOTP expired", description: "Your code expired. Re-enter your current authenticator code.", variant: "destructive" });
+      } else {
+        toast({ title: "Save failed", description: msg, variant: "destructive" });
+      }
+    },
+  });
+
+  function resetMasterEditState() {
+    setMasterEditDeck(null);
+    setMasterEditStep("totp");
+    setTotpCode("");
+    setTotpVerified(false);
+    setMasterEditSlides([]);
+    setMasterEditTitle("");
+    setMasterChangesSummary("");
+  }
+
+  function openMasterEdit(deck: MasterDeck) {
+    setMasterEditDeck(deck);
+    setMasterEditTitle(deck.title);
+    setMasterEditSlides(
+      (deck.slides || []).map((s) => ({
+        title: s.title,
+        bullets: (s.bullets || []).join("\n"),
+        speaker_notes: s.speaker_notes || "",
+      }))
+    );
+    setMasterEditStep("totp");
+    setTotpCode("");
+    setTotpVerified(false);
+    setMasterChangesSummary("");
+    setMasterEditOpen(true);
+  }
+
+  function handleMasterSave() {
+    if (!masterEditDeck) return;
+    const parsedSlides = masterEditSlides.map((s) => ({
+      title: s.title.trim(),
+      bullets: s.bullets.split("\n").map((b) => b.trim()).filter(Boolean),
+      speaker_notes: s.speaker_notes.trim(),
+    }));
+    masterEditMutation.mutate({
+      deckId: masterEditDeck.id,
+      totp_code: totpCode.trim(),
+      slides: parsedSlides,
+      title: masterEditTitle.trim() || undefined,
+      changes_summary: masterChangesSummary.trim() || undefined,
+    });
+  }
 
   const saveIdeaMutation = useMutation({
     mutationFn: (body: { title: string; content: string; contentType: string; projectId: string }) =>
@@ -665,6 +801,306 @@ export default function BdTemplatesView() {
           )}
         </div>
       </div>
+
+      {/* Master Decks — super_admin only */}
+      {isSuperAdmin && (
+        <div className="mt-10">
+          <Separator className="mb-6" />
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-amber-500/10 text-amber-600">
+              <ShieldAlert className="h-5 w-5" />
+            </div>
+            <div>
+              <p className="font-semibold text-sm">Master Deck Governance</p>
+              <p className="text-xs text-muted-foreground">
+                Locked master templates — edits require TOTP verification. All changes are audit-logged.
+              </p>
+            </div>
+          </div>
+          <div className="rounded-xl border border-amber-200/60 bg-amber-50/40 dark:border-amber-800/30 dark:bg-amber-950/10">
+            <div className="p-4 space-y-3">
+              {masterDecks.length === 0 ? (
+                <p className="text-sm text-muted-foreground">No master decks found.</p>
+              ) : (
+                masterDecks.map((deck) => (
+                  <div
+                    key={deck.id}
+                    className="flex items-center justify-between gap-4 rounded-lg border bg-card px-4 py-3"
+                    data-testid={`master-deck-row-${deck.domain}`}
+                  >
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-muted">
+                        <Lock className="h-4 w-4 text-amber-600" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium leading-snug truncate">{deck.title}</p>
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                          <Badge variant="outline" className="text-xs capitalize px-1.5 py-0">{deck.domain}</Badge>
+                          <Badge
+                            variant={deck.is_locked ? "secondary" : "outline"}
+                            className={`text-xs px-1.5 py-0 ${deck.is_locked ? "text-amber-700 bg-amber-100 border-amber-200" : ""}`}
+                          >
+                            {deck.is_locked ? "Locked" : "Unlocked"}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">{(deck.slides || []).length} slides</span>
+                          {deck.updated_at && (
+                            <span className="text-xs text-muted-foreground" data-testid={`text-master-last-edited-${deck.domain}`}>
+                              · Last edited {new Date(deck.updated_at).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="shrink-0 h-8 gap-1.5 text-xs border-amber-300 text-amber-700 hover:bg-amber-50"
+                      onClick={() => openMasterEdit(deck)}
+                      data-testid={`button-master-edit-${deck.domain}`}
+                    >
+                      <KeyRound className="h-3.5 w-3.5" />
+                      Edit (TOTP)
+                    </Button>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Master Edit Tool dialog */}
+      <Dialog
+        open={masterEditOpen}
+        onOpenChange={(v) => {
+          if (!v) { setMasterEditOpen(false); resetMasterEditState(); }
+        }}
+      >
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <KeyRound className="h-4 w-4 text-amber-600" />
+              Master Deck Edit — {masterEditDeck?.title ?? ""}
+            </DialogTitle>
+          </DialogHeader>
+
+          {masterEditStep === "totp" && (
+            <div className="space-y-4 py-2">
+              <div className="rounded-lg border border-amber-200 bg-amber-50/60 px-4 py-3 flex items-start gap-3">
+                <ShieldAlert className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+                <div>
+                  <p className="text-sm font-medium text-amber-800">TOTP verification required</p>
+                  <p className="text-xs text-amber-700 mt-0.5">
+                    This master deck is governance-locked. Enter your authenticator code to proceed.
+                    All changes are permanently logged.
+                  </p>
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="master-totp">Authenticator code (6 digits)</Label>
+                <Input
+                  id="master-totp"
+                  value={totpCode}
+                  onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="000000"
+                  maxLength={6}
+                  className="font-mono text-center tracking-widest text-lg w-40"
+                  data-testid="input-master-totp"
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && totpCode.length === 6 && !totpVerifyMutation.isPending) {
+                      totpVerifyMutation.mutate(totpCode);
+                    }
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">Code expires every 30 seconds. Enter it and click Verify before it rotates.</p>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setMasterEditOpen(false); resetMasterEditState(); }}>Cancel</Button>
+                <Button
+                  disabled={totpCode.length !== 6 || totpVerifyMutation.isPending}
+                  onClick={() => totpVerifyMutation.mutate(totpCode)}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  data-testid="button-master-totp-continue"
+                >
+                  {totpVerifyMutation.isPending ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Verifying…</>
+                  ) : (
+                    "Verify & Continue"
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+
+          {masterEditStep === "slides" && masterEditDeck && (
+            <div className="space-y-4 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="master-title">Deck title</Label>
+                <Input
+                  id="master-title"
+                  value={masterEditTitle}
+                  onChange={(e) => setMasterEditTitle(e.target.value)}
+                  placeholder="Deck title"
+                  data-testid="input-master-title"
+                />
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <Label>Slides ({masterEditSlides.length})</Label>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1 text-xs"
+                    onClick={() =>
+                      setMasterEditSlides((prev) => [
+                        ...prev,
+                        { title: "", bullets: "", speaker_notes: "" },
+                      ])
+                    }
+                    data-testid="button-add-slide"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    Add slide
+                  </Button>
+                </div>
+
+                {masterEditSlides.map((slide, idx) => (
+                  <div key={idx} className="rounded-lg border bg-muted/20 p-3 space-y-2" data-testid={`slide-editor-${idx}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-xs font-semibold text-muted-foreground">Slide {idx + 1} of {masterEditSlides.length}</span>
+                      <div className="flex items-center gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                          disabled={idx === 0}
+                          onClick={() =>
+                            setMasterEditSlides((prev) => {
+                              const next = [...prev];
+                              [next[idx - 1], next[idx]] = [next[idx], next[idx - 1]];
+                              return next;
+                            })
+                          }
+                          title="Move slide up"
+                          data-testid={`button-slide-up-${idx}`}
+                        >
+                          <ArrowUp className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground"
+                          disabled={idx === masterEditSlides.length - 1}
+                          onClick={() =>
+                            setMasterEditSlides((prev) => {
+                              const next = [...prev];
+                              [next[idx], next[idx + 1]] = [next[idx + 1], next[idx]];
+                              return next;
+                            })
+                          }
+                          title="Move slide down"
+                          data-testid={`button-slide-down-${idx}`}
+                        >
+                          <ArrowDown className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-6 w-6 p-0 text-destructive hover:text-destructive"
+                          onClick={() =>
+                            setMasterEditSlides((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          data-testid={`button-remove-slide-${idx}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Title</Label>
+                      <Input
+                        value={slide.title}
+                        onChange={(e) =>
+                          setMasterEditSlides((prev) =>
+                            prev.map((s, i) => (i === idx ? { ...s, title: e.target.value } : s))
+                          )
+                        }
+                        placeholder="Slide title"
+                        className="h-8 text-sm"
+                        data-testid={`input-slide-title-${idx}`}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Bullets (one per line)</Label>
+                      <Textarea
+                        value={slide.bullets}
+                        onChange={(e) =>
+                          setMasterEditSlides((prev) =>
+                            prev.map((s, i) => (i === idx ? { ...s, bullets: e.target.value } : s))
+                          )
+                        }
+                        placeholder="Bullet 1&#10;Bullet 2&#10;Bullet 3"
+                        className="min-h-[80px] text-sm"
+                        data-testid={`textarea-slide-bullets-${idx}`}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Speaker notes</Label>
+                      <Textarea
+                        value={slide.speaker_notes}
+                        onChange={(e) =>
+                          setMasterEditSlides((prev) =>
+                            prev.map((s, i) => (i === idx ? { ...s, speaker_notes: e.target.value } : s))
+                          )
+                        }
+                        placeholder="Notes for the presenter…"
+                        className="min-h-[60px] text-sm"
+                        data-testid={`textarea-slide-notes-${idx}`}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-1.5">
+                <Label htmlFor="master-changes-summary">Changes summary (required for audit log)</Label>
+                <Textarea
+                  id="master-changes-summary"
+                  value={masterChangesSummary}
+                  onChange={(e) => setMasterChangesSummary(e.target.value)}
+                  placeholder="Describe what was changed and why…"
+                  className="min-h-[60px]"
+                  data-testid="textarea-master-changes-summary"
+                />
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50/40 px-3 py-2 flex items-start gap-2">
+                <Lock className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+                <p className="text-xs text-amber-700">
+                  Your TOTP code ({totpCode}) will be verified server-side when you save. All changes are permanently logged.
+                </p>
+              </div>
+
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setMasterEditOpen(false); resetMasterEditState(); }}>Cancel</Button>
+                <Button
+                  disabled={masterEditMutation.isPending || !masterChangesSummary.trim()}
+                  onClick={handleMasterSave}
+                  className="bg-amber-600 hover:bg-amber-700 text-white"
+                  data-testid="button-master-save"
+                >
+                  {masterEditMutation.isPending ? (
+                    <><Loader2 className="mr-2 h-4 w-4 animate-spin" />Saving…</>
+                  ) : (
+                    <><Pencil className="mr-2 h-4 w-4" />Save Master Deck</>
+                  )}
+                </Button>
+              </DialogFooter>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Save as content idea dialog */}
       <Dialog open={saveOpen} onOpenChange={setSaveOpen}>

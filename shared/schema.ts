@@ -4685,6 +4685,8 @@ export const bdDecks = pgTable("bd_decks", {
   description: text("description"),
   changesSummary: text("changes_summary"),
   slides: jsonb("slides").notNull().default([]),
+  isLocked: boolean("is_locked").notNull().default(false),
+  lockedAt: timestamp("locked_at"),
   createdBy: varchar("created_by"),
   approvedBy: varchar("approved_by"),
   approvedAt: timestamp("approved_at"),

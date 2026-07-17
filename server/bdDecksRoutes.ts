@@ -41,6 +41,8 @@ export interface BdDeckRow {
   description: string | null;
   changes_summary: string | null;
   slides: BdSlide[];
+  is_locked: boolean;
+  locked_at: string | null;
   created_by: string | null;
   approved_by: string | null;
   approved_at: string | null;
@@ -408,6 +410,126 @@ ${JSON.stringify(masterSlides, null, 2)}`;
     }
   });
 
+  // POST /api/bd/decks/verify-totp — preflight TOTP check (no side effects, super_admin only)
+  // Used by the UI to gate the slide editor from opening until the code is confirmed valid.
+  app.post("/api/bd/decks/verify-totp", async (req: Request, res: Response) => {
+    if (!(req.session as any)?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only" });
+
+    const { totp_code } = req.body as { totp_code?: string };
+    if (!totp_code?.trim()) return res.status(400).json({ error: "totp_code is required" });
+
+    try {
+      const userId = (req.session as any).userId;
+      const userRow = await db.execute(sql`SELECT totp_secret FROM admin_users WHERE id = ${userId} LIMIT 1`);
+      const userRecord = userRow.rows[0] as any;
+      if (!userRecord?.totp_secret) {
+        return res.status(403).json({
+          error: "No TOTP configured for your account.",
+          code: "TOTP_NOT_CONFIGURED",
+        });
+      }
+      const speakeasy = await import("speakeasy");
+      const valid = speakeasy.default.totp.verify({
+        secret: userRecord.totp_secret,
+        encoding: "base32",
+        token: totp_code.trim(),
+        window: 1,
+      });
+      if (!valid) {
+        return res.status(403).json({ error: "Invalid TOTP code", code: "TOTP_INVALID" });
+      }
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[bd-decks] verify-totp error:", err);
+      res.status(500).json({ error: err?.message || "TOTP verification failed" });
+    }
+  });
+
+  // POST /api/bd/decks/:id/master-edit — TOTP-gated master slide edit (super_admin only)
+  app.post("/api/bd/decks/:id/master-edit", async (req: Request, res: Response) => {
+    if (!(req.session as any)?.userId) return res.status(401).json({ error: "Unauthorized" });
+    if (!isSuperAdmin(req)) return res.status(403).json({ error: "Super admin only" });
+
+    try {
+      const deckResult = await db.execute(sql`SELECT * FROM bd_decks WHERE id = ${req.params.id} LIMIT 1`);
+      if (deckResult.rows.length === 0) return res.status(404).json({ error: "Deck not found" });
+      const deck = deckResult.rows[0] as BdDeckRow;
+
+      if (deck.deck_type !== "master") return res.status(400).json({ error: "Only master decks can be edited via this endpoint" });
+      if (!deck.is_locked) return res.status(400).json({ error: "Deck is not locked — use the standard PATCH endpoint" });
+
+      const { totp_code, slides, title, description, changes_summary } = req.body as {
+        totp_code?: string;
+        slides?: BdSlide[];
+        title?: string;
+        description?: string;
+        changes_summary?: string;
+      };
+
+      if (!totp_code?.trim()) return res.status(400).json({ error: "totp_code is required" });
+
+      // Verify TOTP
+      const userId = (req.session as any).userId;
+      const userRow = await db.execute(sql`SELECT totp_secret FROM admin_users WHERE id = ${userId} LIMIT 1`);
+      const userRecord = userRow.rows[0] as any;
+      if (!userRecord?.totp_secret) {
+        return res.status(403).json({ error: "No TOTP configured for your account. Please set up two-factor authentication first." });
+      }
+
+      const speakeasy = await import("speakeasy");
+      const valid = speakeasy.default.totp.verify({
+        secret: userRecord.totp_secret,
+        encoding: "base32",
+        token: totp_code.trim(),
+        window: 1,
+      });
+      if (!valid) {
+        return res.status(403).json({ error: "Invalid TOTP code", code: "TOTP_INVALID" });
+      }
+
+      // Apply updates
+      const prevSlideCount = Array.isArray(deck.slides) ? deck.slides.length : 0;
+      const auditParts: string[] = [];
+
+      if (slides !== undefined && Array.isArray(slides)) {
+        const slidesJson = JSON.stringify(slides);
+        await db.execute(sql`UPDATE bd_decks SET slides = ${slidesJson}::jsonb, updated_at = NOW() WHERE id = ${req.params.id}`);
+        auditParts.push(`slides: ${prevSlideCount} → ${slides.length}`);
+      }
+      if (title?.trim()) {
+        const t = title.trim();
+        await db.execute(sql`UPDATE bd_decks SET title = ${t}, updated_at = NOW() WHERE id = ${req.params.id}`);
+        auditParts.push(`title updated`);
+      }
+      if (description !== undefined) {
+        const d = description?.trim() || null;
+        await db.execute(sql`UPDATE bd_decks SET description = ${d}, updated_at = NOW() WHERE id = ${req.params.id}`);
+        auditParts.push("description updated");
+      }
+      if (changes_summary !== undefined) {
+        const c = changes_summary?.trim() || null;
+        await db.execute(sql`UPDATE bd_decks SET changes_summary = ${c}, updated_at = NOW() WHERE id = ${req.params.id}`);
+      }
+
+      const actorEmail = (req.session as any)?.email ?? "unknown";
+      const diffSummary = changes_summary?.trim() || auditParts.join("; ") || "No changes";
+      await db.execute(sql`
+        INSERT INTO bd_deck_audit_log (deck_id, action, actor_id, actor_email, note)
+        VALUES (
+          ${req.params.id}, 'master_slide_edit', ${userId}, ${actorEmail},
+          ${`TOTP-verified edit by ${actorEmail}: ${diffSummary}`}
+        )
+      `);
+
+      const updated = await db.execute(sql`SELECT * FROM bd_decks WHERE id = ${req.params.id} LIMIT 1`);
+      res.json(updated.rows[0]);
+    } catch (err: any) {
+      console.error("[bd-decks] master-edit error:", err);
+      res.status(500).json({ error: err?.message || "Failed to apply master edit" });
+    }
+  });
+
   // PATCH /api/bd/decks/:id — update slides, status, title, description, changes_summary
   app.patch("/api/bd/decks/:id", async (req: Request, res: Response) => {
     if (!(req.session as any)?.userId) return res.status(401).json({ error: "Unauthorized" });
@@ -418,7 +540,15 @@ ${JSON.stringify(masterSlides, null, 2)}`;
       if (deckResult.rows.length === 0) return res.status(404).json({ error: "Deck not found" });
       const deck = deckResult.rows[0] as BdDeckRow;
 
-      // Master decks: super_admin only
+      // Hard lock enforcement: locked master decks cannot be edited via PATCH
+      if (deck.deck_type === "master" && deck.is_locked) {
+        return res.status(403).json({
+          error: "Master deck is locked. Use the TOTP-gated Master Edit Tool.",
+          code: "MASTER_LOCKED",
+        });
+      }
+
+      // Master decks (unlocked): super_admin only
       if (deck.deck_type === "master" && !isSuperAdmin(req)) {
         return res.status(403).json({ error: "Only super admin can edit master decks" });
       }
