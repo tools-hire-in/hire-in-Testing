@@ -77,6 +77,8 @@ import {
   HelpCircle,
   DollarSign,
   ExternalLink,
+  PenLine,
+  MessageSquarePlus,
 } from "lucide-react";
 import {
   Dialog,
@@ -247,8 +249,7 @@ interface EditorState {
 function ArticleEditorInner({ id }: { id: string }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const { can } = usePermissions();
-  const { user: authUser } = useAuth();
+  const { can, role: currentRole, userId: currentUserId } = usePermissions();
   const canEdit = can("studio.edit_article");
   const canGenerate = can("studio.generate_ai_draft");
 
@@ -315,6 +316,8 @@ function ArticleEditorInner({ id }: { id: string }) {
   // Task #906 defect fix: AI failures surface as a persistent banner with
   // retry + continue-manually, never just a transient toast.
   const [aiError, setAiError] = useState<{ source: "article" | "social"; message: string } | null>(null);
+  // Programmatic trigger for the "Regenerate with Feedback" rework flow.
+  const [regenReworkTrigger, setRegenReworkTrigger] = useState(0);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const formRef = useRef<EditorState | null>(null);
   const dirtyRef = useRef(false);
@@ -470,6 +473,15 @@ function ArticleEditorInner({ id }: { id: string }) {
   // Only re-run when the article id changes or after the article is refetched.
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [article?.id, (article as any)?.safetyReviewResult]);
+
+  // Auto-open the generate panel when a brand-new article has no body yet (step 3).
+  useEffect(() => {
+    if (article && !article.bodyMarkdown?.trim() && article.status === "draft" && canGenerate) {
+      setGenOpen(true);
+    }
+  // Fire only on initial article load — not on every re-render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [article?.id]);
 
   // Pre-fill AI generation dialog from article state when opened.
   useEffect(() => {
@@ -1024,6 +1036,7 @@ function ArticleEditorInner({ id }: { id: string }) {
               );
               setDirty(true);
             }}
+            reworkKey={regenReworkTrigger}
             badgeOnly
           />
         </div>
@@ -1091,6 +1104,17 @@ function ArticleEditorInner({ id }: { id: string }) {
                 )}
               </div>
             </>
+          )}
+          {canGenerate && hasDraft && article.status === "draft" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setRegenReworkTrigger((n) => n + 1)}
+              data-testid="button-regen-with-feedback"
+            >
+              <MessageSquarePlus className="mr-2 h-4 w-4" />
+              Regenerate with Feedback
+            </Button>
           )}
           {canGenerate && (article.status === "published" || article.status === "approved") && (
             <Button
@@ -1204,6 +1228,37 @@ function ArticleEditorInner({ id }: { id: string }) {
           </div>
         );
       })()}
+
+      {/* Pending author sign-off banner — visible only to super_admin/admin or the linked author */}
+      {article.status === "pending_author" && (() => {
+        const isAdminRole = currentRole === "super_admin" || currentRole === "admin";
+        const linkedAuthor = authors?.find((a) => a.id === article.authorProfileId);
+        const linkedId = (linkedAuthor as any)?.linkedUserId ?? (linkedAuthor as any)?.linked_user_id ?? null;
+        const isLinkedAuthor = linkedId != null && currentUserId != null && linkedId === currentUserId;
+        return isAdminRole || isLinkedAuthor;
+      })() && (
+        <div
+          className="flex items-start gap-3 rounded-lg border border-purple-300 bg-purple-50 p-4 dark:border-purple-700 dark:bg-purple-950/30"
+          data-testid="banner-pending-author"
+        >
+          <PenLine className="mt-0.5 h-5 w-5 shrink-0 text-purple-600 dark:text-purple-400" />
+          <div className="flex-1 space-y-1">
+            <p className="text-sm font-semibold text-purple-800 dark:text-purple-300">Author sign-off required</p>
+            <p className="text-sm text-purple-700 dark:text-purple-400">
+              This article is awaiting author review and sign-off before it can proceed through the approval workflow.
+            </p>
+          </div>
+          <Button
+            size="sm"
+            variant="outline"
+            className="shrink-0 border-purple-300 text-purple-700 hover:bg-purple-50 dark:border-purple-700 dark:text-purple-300"
+            onClick={() => setLocation(`/admin/studio/articles/${id}/author-signoff`)}
+            data-testid="button-author-signoff"
+          >
+            Review &amp; Sign Off →
+          </Button>
+        </div>
+      )}
 
       {originIdea && (
         <div className="rounded-md border border-indigo-200 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-950/30" data-testid="banner-originated-from-idea">

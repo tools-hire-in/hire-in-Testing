@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ReactionBar } from "@/components/insights/ReactionBar";
 import { ShareBar } from "@/components/insights/ShareBar";
 import { NewsletterSubscribe } from "@/components/insights/NewsletterSubscribe";
+import { SocialFollowBanner } from "@/components/insights/SocialFollowBanner";
 import { InsightCard } from "@/components/insights/InsightCard";
 import { insightCategoryLabel, ctaForCategory } from "@shared/insights";
 import { formatInsightDate, type InsightDetailResponse } from "@/lib/insights";
@@ -185,7 +186,8 @@ export default function InsightArticle() {
       <SchemaHead schema={[ORGANIZATION_SCHEMA, articleSchema, breadcrumbSchema]} />
 
       {/* ── Gradient hero card ─────────────────────────────────────────────── */}
-      <div className="relative overflow-hidden" style={{ background: gradient }}>
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 pb-2">
+        <div className="relative overflow-hidden rounded-2xl" style={{ background: gradient }}>
         {/* Dot texture */}
         <div
           className="absolute inset-0 opacity-[0.07] pointer-events-none"
@@ -194,7 +196,7 @@ export default function InsightArticle() {
         {/* Bottom fade */}
         <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.35) 0%, transparent 55%)" }} />
 
-        <div className="relative z-10 max-w-4xl mx-auto px-8 py-12">
+        <div className="relative z-10 px-8 py-6">
           {/* Back link */}
           <Link
             href="/insights"
@@ -230,7 +232,7 @@ export default function InsightArticle() {
           {/* Title */}
           <h1
             style={{ fontFamily: "'Playfair Display', Georgia, serif", color: "white", lineHeight: 1.2, fontWeight: 700 }}
-            className="text-3xl lg:text-4xl xl:text-5xl mb-4"
+            className="text-2xl lg:text-3xl mb-4"
             data-testid="text-article-title"
           >
             {article.title}
@@ -296,8 +298,8 @@ export default function InsightArticle() {
                 href={article.author.linkedinUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{ color: "rgba(255,255,255,0.55)" }}
-                className="hover:text-white transition-colors"
+                className="text-white/55 hover:text-white transition-opacity opacity-60 hover:opacity-100"
+                title={`Connect with ${authorName} on LinkedIn`}
                 aria-label={`${authorName} on LinkedIn`}
                 data-testid="link-author-linkedin"
               >
@@ -305,6 +307,7 @@ export default function InsightArticle() {
               </a>
             )}
           </div>
+        </div>
         </div>
       </div>
 
@@ -440,8 +443,8 @@ export default function InsightArticle() {
                   href={article.author.linkedinUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  style={{ color: "#6b7280", flexShrink: 0 }}
-                  className="hover:text-blue-700 transition-colors"
+                  className="text-gray-400 hover:text-blue-600 transition-colors flex-shrink-0 opacity-70 hover:opacity-100"
+                  title={`Connect with ${authorName} on LinkedIn`}
                   aria-label={`${authorName} on LinkedIn`}
                 >
                   <Linkedin className="w-5 h-5" />
@@ -456,9 +459,10 @@ export default function InsightArticle() {
         </div>
       </article>
 
-      {/* Newsletter */}
+      {/* Social follow + Newsletter */}
       <section className="bg-gray-50 px-4 py-12 lg:px-6">
-        <div className="container mx-auto max-w-3xl">
+        <div className="container mx-auto max-w-3xl space-y-6">
+          <SocialFollowBanner />
           <NewsletterSubscribe />
         </div>
       </section>

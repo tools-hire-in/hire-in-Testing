@@ -6,6 +6,7 @@ import { SchemaHead, ORGANIZATION_SCHEMA } from "@/components/SchemaHead";
 import { useSEO } from "@/hooks/use-seo";
 import { Skeleton } from "@/components/ui/skeleton";
 import { NewsletterSubscribe } from "@/components/insights/NewsletterSubscribe";
+import { SocialFollowBanner } from "@/components/insights/SocialFollowBanner";
 import { INSIGHT_CATEGORIES, insightCategoryLabel } from "@shared/insights";
 import { formatInsightDate, type InsightListResponse, type PublicInsight } from "@/lib/insights";
 import { getStudioContentType, getPipelineContentType } from "@shared/studioContent";
@@ -644,8 +645,13 @@ export default function Insights() {
             </div>
           )}
 
+          {/* Social follow */}
+          <div className="mt-10">
+            <SocialFollowBanner />
+          </div>
+
           {/* Newsletter */}
-          <div className="mt-14">
+          <div className="mt-6">
             <NewsletterSubscribe />
           </div>
         </div>

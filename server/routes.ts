@@ -17860,7 +17860,7 @@ Canonical domain: ${BASE}
       const addOn = await storage.getUserStudioAddOn(req.session.userId!).catch(() => null);
       const addOnPerms = getStudioAddOnPermissions(addOn);
       const allPerms = Array.from(new Set([...permissions, ...addOnPerms]));
-      res.json({ role, permissions: allPerms, dbDriven: isDbDrivenAccessControl(), studioAddOn: addOn });
+      res.json({ role, permissions: allPerms, dbDriven: isDbDrivenAccessControl(), studioAddOn: addOn, userId: req.session.userId ?? null });
     } catch (error) {
       console.error("Get my permissions error:", error);
       res.status(500).json({ error: "Failed to fetch permissions" });

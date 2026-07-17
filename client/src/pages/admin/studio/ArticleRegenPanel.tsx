@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -74,6 +74,8 @@ interface ArticleRegenPanelProps {
   onCommit: (newMarkdown: string, newTitle?: string, mode?: string) => void;
   /** When true, only renders the outdated-model badge (for article header); dialogs still work */
   badgeOnly?: boolean;
+  /** Increment this value to programmatically open the rework-with-feedback flow */
+  reworkKey?: number;
 }
 
 type RegenStep = "idle" | "feedback" | "preflight" | "generating" | "diff";
@@ -86,6 +88,7 @@ export function ArticleRegenPanel({
   domainResolved,
   onCommit,
   badgeOnly = false,
+  reworkKey,
 }: ArticleRegenPanelProps) {
   const { toast } = useToast();
   const { role } = usePermissions();
@@ -244,6 +247,21 @@ export function ArticleRegenPanel({
     setRegenMode("full");
     setStep("preflight");
   };
+
+  // Programmatic rework trigger — called from toolbar "Regenerate with Feedback" button.
+  useEffect(() => {
+    if (!reworkKey) return;
+    if (!canFireRegen) {
+      setRegenMode("rework");
+      setRequestOpen(true);
+      return;
+    }
+    setFeedbackNote(activeApproval?.feedbackNote ?? "");
+    setRegenMode("rework");
+    setStep("feedback");
+  // reworkKey is the only dep that should trigger this; other values are stable per-render.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reworkKey]);
 
   const handleReworkClick = () => {
     if (!canFireRegen) {

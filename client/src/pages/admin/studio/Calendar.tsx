@@ -603,6 +603,20 @@ export function IdeaDetailPane({
     onError: (e: Error) => toast({ title: "Couldn't promote", description: e.message, variant: "destructive" }),
   });
 
+  const generateCardsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/studio/content-ideas/${ideaId}/generate-cards`, {});
+      if (!res.ok) { const b = await res.json().catch(() => ({})); throw new Error(b.error || "Card generation failed"); }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      invalidate();
+      const n = (data.cards ?? []).length;
+      toast({ title: `${n} social card${n === 1 ? "" : "s"} generated` });
+    },
+    onError: (e: Error) => toast({ title: "Could not generate cards", description: e.message, variant: "destructive" }),
+  });
+
   if (isLoading) {
     return (
       <div className="flex h-full items-center justify-center">
@@ -618,8 +632,10 @@ export function IdeaDetailPane({
   const editActions = nextStates.filter((s) => !["approved", "rejected", "changes_requested"].includes(s));
   const dayOfWeek = idea.scheduledDate ? WEEKDAYS_LONG[new Date(`${idea.scheduledDate}T00:00:00`).getDay()] : "—";
   const watcherUserIds = new Set(watchers.map((w) => w.userId));
-  const promotable = idea.status === "approved" && !idea.linkedArticleId && canEdit;
-  const showActionStrip = (canReview || canEdit) && (reviewActions.length > 0 || editActions.length > 0 || promotable || !!idea.linkedArticleId);
+  const isSocialFamily = STUDIO_PIPELINE_CONTENT_TYPES.find((t) => t.value === idea.contentType)?.family === "social";
+  const promotable = idea.status === "approved" && !idea.linkedArticleId && canEdit && !isSocialFamily;
+  const socialKitable = idea.status === "approved" && !idea.linkedArticleId && canEdit && isSocialFamily;
+  const showActionStrip = (canReview || canEdit) && (reviewActions.length > 0 || editActions.length > 0 || promotable || socialKitable || !!idea.linkedArticleId);
 
   const autoSave = (field: string) => (e: React.FocusEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const val = e.target.value.trim() || null;
@@ -663,16 +679,40 @@ export function IdeaDetailPane({
             </Button>
           ))}
           {promotable && (
-            <Button
-              size="sm"
-              className="h-7 text-xs ml-auto"
-              onClick={() => promoteMutation.mutate()}
-              disabled={promoteMutation.isPending}
-              data-testid="button-promote-idea"
-            >
-              {promoteMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Rocket className="mr-1 h-3 w-3" />}
-              Promote to article
-            </Button>
+            <>
+              <span className="ml-auto text-xs font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1" data-testid="label-approved-ready">
+                <Check className="h-3 w-3" />
+                Approved — ready to promote
+              </span>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => promoteMutation.mutate()}
+                disabled={promoteMutation.isPending}
+                data-testid="button-promote-idea"
+              >
+                {promoteMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Rocket className="mr-1 h-3 w-3" />}
+                Promote to article
+              </Button>
+            </>
+          )}
+          {socialKitable && (
+            <>
+              <span className="ml-auto text-xs font-medium text-emerald-700 dark:text-emerald-400 flex items-center gap-1" data-testid="label-approved-social-kit">
+                <Check className="h-3 w-3" />
+                Approved — ready to generate social kit
+              </span>
+              <Button
+                size="sm"
+                className="h-7 text-xs"
+                onClick={() => generateCardsMutation.mutate()}
+                disabled={generateCardsMutation.isPending}
+                data-testid="button-generate-social-cards"
+              >
+                {generateCardsMutation.isPending ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Rocket className="mr-1 h-3 w-3" />}
+                Generate Social Cards
+              </Button>
+            </>
           )}
           {idea.linkedArticleId && (
             <div className="ml-auto flex items-center gap-2">

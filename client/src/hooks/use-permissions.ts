@@ -5,6 +5,7 @@ interface MyPermissions {
   permissions: string[];
   dbDriven: boolean;
   studioAddOn?: string | null;
+  userId?: string | null;
 }
 
 /**
@@ -36,5 +37,6 @@ export function usePermissions() {
     dbDriven: data?.dbDriven ?? false,
     permissions: allowed ?? [],
     studioAddOn: data?.studioAddOn ?? null,
+    userId: data?.userId ? String(data.userId) : null,
   };
 }

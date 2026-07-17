@@ -38,7 +38,7 @@ interface IdeaCard {
 // Branded creative card gallery for a Social idea (Studio T4). Renders the
 // generated card options from socialCardsJsonb with hook-text edit +
 // regenerate, per-card PNG download, and "Use this card" (fills creativeLink).
-export function IdeaCardGallery({ idea }: { idea: StudioContentIdea }) {
+export function IdeaCardGallery({ idea, articleId }: { idea: StudioContentIdea; articleId?: string }) {
   const { toast } = useToast();
   const payload = (idea.socialCardsJsonb as any) ?? null;
   const cards: IdeaCard[] = Array.isArray(payload?.cards) ? payload.cards : [];
@@ -66,11 +66,14 @@ export function IdeaCardGallery({ idea }: { idea: StudioContentIdea }) {
     onSuccess: (data: any) => {
       setCacheBust(Date.now());
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
+      if (articleId) {
+        queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", articleId] });
+      }
       const n = (data.cards ?? []).length;
       toast({ title: `${n} card${n === 1 ? "" : "s"} generated` });
     },
     onError: (err: Error) =>
-      toast({ title: "Card generation failed", description: err.message, variant: "destructive" }),
+      toast({ title: "Could not generate cards", description: err.message ?? "An unexpected error occurred", variant: "destructive" }),
   });
 
   const useCardMutation = useMutation({
