@@ -8,6 +8,7 @@ import { ClientsStrip } from "@/components/sections/ClientsStrip";
 import { HowItWorksSection } from "@/components/sections/HowItWorksSection";
 import { ConsultationModal } from "@/components/forms/ConsultationModal";
 import { useSEO } from "@/hooks/use-seo";
+import { SchemaHead, EMPLOYMENT_AGENCY_SCHEMA } from "@/components/SchemaHead";
 import type { CTAType } from "@/lib/constants";
 
 export default function Home() {
@@ -28,6 +29,7 @@ export default function Home() {
 
   return (
     <Layout transparentHeader>
+      <SchemaHead schema={EMPLOYMENT_AGENCY_SCHEMA} />
       <HeroCarousel
         onStartHiring={() => openConsultation("hero-start-hiring")}
         onApplyNow={() => openConsultation("hero-apply-now")}

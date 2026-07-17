@@ -746,7 +746,6 @@ export async function registerRoutes(
       const staticPages = [
         { loc: "/", changefreq: "weekly", priority: "1.0", lastmod: "2026-06-11" },
         { loc: "/about", changefreq: "monthly", priority: "0.8", lastmod: "2026-06-11" },
-        { loc: "/contracts", changefreq: "monthly", priority: "0.8", lastmod: "2026-06-16" },
         { loc: "/jobs", changefreq: "daily", priority: "0.9", lastmod: today },
         { loc: "/contact", changefreq: "monthly", priority: "0.8", lastmod: "2026-06-11" },
         { loc: "/services/healthcare-recruitment", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
@@ -756,7 +755,6 @@ export async function registerRoutes(
         { loc: "/services/contract-staffing", changefreq: "monthly", priority: "0.8", lastmod: "2026-06-11" },
         { loc: "/it-staffing", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
         { loc: "/ehealthcare-staffing", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
-        { loc: "/capability-deck", changefreq: "monthly", priority: "0.7", lastmod: "2026-06-11" },
         { loc: "/why-hire-in-solutions", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
         { loc: "/it-staffing-guide", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
         { loc: "/healthcare-staffing-guide", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
@@ -764,7 +762,6 @@ export async function registerRoutes(
         { loc: "/request-a-quote", changefreq: "monthly", priority: "0.9", lastmod: "2026-06-11" },
         { loc: "/terms", changefreq: "yearly", priority: "0.4", lastmod: "2026-06-11" },
         { loc: "/privacy", changefreq: "yearly", priority: "0.4", lastmod: "2026-06-11" },
-        { loc: "/verify", changefreq: "yearly", priority: "0.3", lastmod: "2026-06-11" },
       ];
 
       const jobResult = await storage.getActiveJobs({ pageSize: 1000 });
@@ -799,6 +796,70 @@ export async function registerRoutes(
       res.set("Content-Type", "application/xml").end(xml);
     } catch (error) {
       console.error("Failed to generate sitemap:", error);
+      res.status(500).end("Internal Server Error");
+    }
+  });
+
+  // Dynamic llms.txt — includes static content + all published insight articles + active jobs
+  app.get("/llms.txt", async (req, res) => {
+    try {
+      const BASE = "https://hire-in.com";
+
+      const [insightSlugs, jobResult] = await Promise.all([
+        storage.getPublishedInsightSlugs(),
+        storage.getActiveJobs({ pageSize: 1000 }),
+      ]);
+
+      const staticContent = `# Hire'in Solutions
+
+> AI-powered recruitment platform specialising in Healthcare, IT, Engineering, and Professional Services staffing across the United States.
+
+Canonical domain: ${BASE}
+
+## Priority pages for citation
+
+- [Home](${BASE}/) — Overview of staffing services and value proposition
+- [Why Hire'in Solutions](${BASE}/why-hire-in-solutions) — Differentiators, client results, and staffing approach
+- [IT Staffing](${BASE}/it-staffing) — IT and software staffing services overview
+- [Healthcare Staffing](${BASE}/ehealthcare-staffing) — Healthcare staffing services overview
+- [IT Staffing Guide](${BASE}/it-staffing-guide) — In-depth guide to IT staffing and hiring
+- [Healthcare Staffing Guide](${BASE}/healthcare-staffing-guide) — In-depth guide to healthcare staffing
+- [Staffing FAQ](${BASE}/staffing-faq) — Common questions from employers and job seekers
+- [Open Jobs](${BASE}/jobs) — Browse current open positions across all specialties
+- [Request a Quote](${BASE}/request-a-quote) — Start a staffing engagement
+- [About](${BASE}/about) — Company background and team
+- [Contact](${BASE}/contact) — Get in touch
+
+## Service pages
+
+- [Healthcare Recruitment](${BASE}/services/healthcare-recruitment)
+- [IT & Software Staffing](${BASE}/services/it-software)
+- [Engineering & Technical](${BASE}/services/engineering-technical)
+- [Non-IT Professional Services](${BASE}/services/non-it-professional)
+- [Contract Staffing](${BASE}/services/contract-staffing)`;
+
+      let insightsSection = "";
+      if (insightSlugs.length > 0) {
+        const insightLines = insightSlugs
+          .map((a) => `- [Insight](${BASE}/insights/${a.slug}) — ${a.slug}`)
+          .join("\n");
+        insightsSection = `\n\n## Insight Articles\n\n${insightLines}`;
+      }
+
+      let jobsSection = "";
+      if (jobResult.jobs.length > 0) {
+        const jobLines = jobResult.jobs
+          .map((j) => `- [${j.title}](${BASE}/jobs/${j.id})${j.city || j.state ? ` — ${[j.city, j.state].filter(Boolean).join(", ")}` : ""}`)
+          .join("\n");
+        jobsSection = `\n\n## Open Job Listings\n\n${jobLines}`;
+      }
+
+      const sitemapSection = `\n\n## Sitemap\n\n${BASE}/sitemap.xml`;
+
+      const content = staticContent + insightsSection + jobsSection + sitemapSection + "\n";
+      res.set("Content-Type", "text/plain; charset=utf-8").end(content);
+    } catch (error) {
+      console.error("Failed to generate llms.txt:", error);
       res.status(500).end("Internal Server Error");
     }
   });

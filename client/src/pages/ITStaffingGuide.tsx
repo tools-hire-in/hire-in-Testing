@@ -195,7 +195,7 @@ export default function ITStaffingGuide() {
 
   return (
     <Layout>
-      <SchemaHead schema={[HOWTO_SCHEMA, FAQ_SCHEMA]} />
+      <SchemaHead schema={[HOWTO_SCHEMA, FAQ_SCHEMA, { "@context": "https://schema.org", "@type": "BreadcrumbList", itemListElement: [{ "@type": "ListItem", position: 1, name: "Home", item: "https://hire-in.com/" }, { "@type": "ListItem", position: 2, name: "IT Staffing Guide", item: "https://hire-in.com/it-staffing-guide" }] }]} />
 
       <section className="py-20 lg:py-28 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">
         <div className="container mx-auto max-w-5xl">

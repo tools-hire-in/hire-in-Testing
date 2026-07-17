@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useRoute, useLocation } from "wouter";
+import { useSEO } from "@/hooks/use-seo";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, CheckCircle, XCircle, FileText, ArrowRight, Clock } from "lucide-react";
 import { SignatureBlock } from "@/components/esign/SignatureBlock";
@@ -180,6 +181,7 @@ function ChangedTermsDisplay({ addendum }: { addendum: AddendumData }) {
 type FlowStep = "consent" | "setup" | "sign";
 
 export default function AddendumAccept() {
+  useSEO({ title: "Amendment Acceptance | Hire'in Solutions", description: "Review and accept your amendment letter.", noindex: true });
   const [, params] = useRoute("/addendum/:token");
   const [, setLocation] = useLocation();
   const token = params?.token;

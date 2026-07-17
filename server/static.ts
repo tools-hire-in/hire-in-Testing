@@ -2,8 +2,8 @@ import express, { type Express } from "express";
 import fs from "fs";
 import path from "path";
 import { db } from "./db";
-import { jobs } from "@shared/schema";
-import { eq } from "drizzle-orm";
+import { jobs, studioArticles } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import { getStaticSchemas, getJobPostingSchema, injectSchemas } from "./seo-schemas";
 
 function isEmployeeSubdomain(hostname: string): boolean {
@@ -28,6 +28,7 @@ const KNOWN_PUBLIC_EXACT_ROUTES = new Set([
   "/staffing-faq",
   "/request-a-quote",
   "/verify",
+  "/insights",
   "/services/healthcare-recruitment",
   "/services/it-software",
   "/services/engineering-technical",
@@ -38,6 +39,7 @@ const KNOWN_PUBLIC_EXACT_ROUTES = new Set([
 // Dynamic route patterns — arbitrary segment after a known prefix (token, id, etc.)
 const DYNAMIC_ROUTE_PATTERNS: RegExp[] = [
   /^\/jobs\/[^/]+$/,            // /jobs/:id
+  /^\/insights\/[^/]+$/,        // /insights/:slug
   /^\/onboard\/[^/]+$/,         // /onboard/:token
   /^\/addendum\/[^/]+$/,        // /addendum/:token
   /^\/contracts\/sign\/[^/]+$/, // /contracts/sign/:token
@@ -70,7 +72,7 @@ interface RouteMeta {
 }
 
 const BASE_URL = "https://hire-in.com";
-const DEFAULT_OG_IMAGE = `${BASE_URL}/og-image.svg`;
+const DEFAULT_OG_IMAGE = `${BASE_URL}/og-image.png`;
 
 const STATIC_ROUTE_META: Record<string, RouteMeta> = {
   "/": {
@@ -258,7 +260,62 @@ function getRouteMeta(urlPath: string): RouteMeta | null {
       canonical: `${BASE_URL}/jobs/${jobId}`,
     };
   }
+  if (/^\/insights\/[^/]+$/.test(urlPath)) {
+    const slug = urlPath.replace("/insights/", "");
+    return {
+      title: "Hire'in Insights | Hire'in Solutions",
+      description:
+        "Expert staffing insights, hiring tips, and workforce trends from Hire'in Solutions — covering Healthcare, IT, Engineering, and Professional Services.",
+      canonical: `${BASE_URL}/insights/${slug}`,
+    };
+  }
   return null;
+}
+
+async function getJobDynamicMeta(jobId: string): Promise<RouteMeta | null> {
+  try {
+    const [job] = await db
+      .select({ title: jobs.title, description: jobs.description, city: jobs.city, state: jobs.state })
+      .from(jobs)
+      .where(eq(jobs.id, jobId))
+      .limit(1);
+    if (!job) return null;
+    const location = [job.city, job.state].filter(Boolean).join(", ");
+    const rawDesc = job.description ? job.description.replace(/<[^>]+>/g, "").trim() : "";
+    const excerpt = rawDesc.slice(0, 160) + (rawDesc.length > 160 ? "…" : "");
+    return {
+      title: `${job.title}${location ? ` — ${location}` : ""} | Hire'in Solutions`,
+      description: excerpt || `Apply for ${job.title} at Hire'in Solutions. Browse open positions across Healthcare, IT, Engineering, and Professional Services.`,
+      canonical: `${BASE_URL}/jobs/${jobId}`,
+    };
+  } catch {
+    return null;
+  }
+}
+
+async function getInsightDynamicMeta(slug: string): Promise<RouteMeta | null> {
+  try {
+    const [article] = await db
+      .select({
+        title: studioArticles.title,
+        seoTitle: studioArticles.seoTitle,
+        seoDescription: studioArticles.seoDescription,
+        excerpt: studioArticles.excerpt,
+      })
+      .from(studioArticles)
+      .where(and(eq(studioArticles.slug, slug), eq(studioArticles.status, "published")))
+      .limit(1);
+    if (!article) return null;
+    const title = article.seoTitle || `${article.title} | Hire'in Solutions`;
+    const description = article.seoDescription || article.excerpt || `Read ${article.title} on Hire'in Insights — expert staffing advice from Hire'in Solutions.`;
+    return {
+      title,
+      description: description.slice(0, 200),
+      canonical: `${BASE_URL}/insights/${slug}`,
+    };
+  } catch {
+    return null;
+  }
 }
 
 function injectRouteMeta(html: string, meta: RouteMeta): string {
@@ -370,7 +427,15 @@ export function serveStatic(app: Express) {
 
       if (!isEmployee) {
         const urlPath = req.path || "/";
-        const meta = getRouteMeta(urlPath);
+        let meta = getRouteMeta(urlPath);
+        // For job and insight pages, enrich meta with actual DB data
+        if (/^\/jobs\/[^/]+$/.test(urlPath)) {
+          const jobId = urlPath.replace("/jobs/", "");
+          meta = (await getJobDynamicMeta(jobId)) ?? meta;
+        } else if (/^\/insights\/[^/]+$/.test(urlPath)) {
+          const slug = urlPath.replace("/insights/", "");
+          meta = (await getInsightDynamicMeta(slug)) ?? meta;
+        }
         if (meta) {
           html = injectRouteMeta(html, meta);
         }

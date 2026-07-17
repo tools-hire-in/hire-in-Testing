@@ -32,6 +32,16 @@ const SERVICE_SCHEMA = {
   areaServed: { "@type": "Country", name: "United States" },
 };
 
+const BREADCRUMB_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  itemListElement: [
+    { "@type": "ListItem", position: 1, name: "Home", item: "https://hire-in.com/" },
+    { "@type": "ListItem", position: 2, name: "Services", item: "https://hire-in.com/services" },
+    { "@type": "ListItem", position: 3, name: "Healthcare Recruitment", item: "https://hire-in.com/services/healthcare-recruitment" },
+  ],
+};
+
 export default function HealthcareRecruitment() {
   useSEO({
     title: "Healthcare Recruitment Services | Hire'in Solutions",
@@ -78,7 +88,7 @@ export default function HealthcareRecruitment() {
 
   return (
     <Layout>
-      <SchemaHead schema={SERVICE_SCHEMA} />
+      <SchemaHead schema={[SERVICE_SCHEMA, BREADCRUMB_SCHEMA]} />
       {/* Hero */}
       <section className="py-20 lg:py-28 px-4 lg:px-6 bg-gradient-to-br from-primary/5 via-background to-primary/10">
         <div className="container mx-auto max-w-5xl text-center">

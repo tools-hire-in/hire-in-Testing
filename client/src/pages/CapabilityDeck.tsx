@@ -144,6 +144,7 @@ export default function CapabilityDeck() {
     description:
       "Hire'in Solutions general capability deck — AI-powered staffing across Healthcare, IT, Engineering & Professional Services. Backed by Rayomind (est. 2014). View our interactive deck and download PDF/PPT.",
     canonical: "https://hire-in.com/capability-deck",
+    noindex: true,
   });
 
   const goTo = useCallback((idx: number) => {

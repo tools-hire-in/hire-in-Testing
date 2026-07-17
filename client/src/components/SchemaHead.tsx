@@ -92,3 +92,37 @@ export const WEBSITE_SCHEMA = {
     "query-input": "required name=search_term_string",
   },
 };
+
+export const EMPLOYMENT_AGENCY_SCHEMA = {
+  "@context": "https://schema.org",
+  "@type": "EmploymentAgency",
+  "@id": "https://hire-in.com/#employment-agency",
+  name: "Hire'in Solutions",
+  legalName: "Rayomind Software Solutions LLC",
+  url: "https://hire-in.com",
+  logo: "https://hire-in.com/logo.jpg",
+  description:
+    "Hire'in Solutions is an AI-powered employment agency specializing in Healthcare, IT, Engineering, and Professional Services staffing across all 50 US states.",
+  foundingDate: "2014",
+  address: {
+    "@type": "PostalAddress",
+    streetAddress: "2621 Leigh Ave.",
+    addressLocality: "San Jose",
+    addressRegion: "CA",
+    postalCode: "95124",
+    addressCountry: "US",
+  },
+  areaServed: {
+    "@type": "Country",
+    name: "United States",
+  },
+  serviceType: [
+    "Healthcare Staffing",
+    "IT Staffing",
+    "Engineering Recruitment",
+    "Professional Services Staffing",
+    "Contract Staffing",
+  ],
+  telephone: "+1-415-663-5944",
+  sameAs: ["https://www.linkedin.com/company/hirein-solutions"],
+};

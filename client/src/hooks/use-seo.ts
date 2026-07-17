@@ -4,7 +4,7 @@ const BASE_URL = "https://hire-in.com";
 const DEFAULT_TITLE = "Hire'in Solutions | AI-Powered Recruitment & Staffing";
 const DEFAULT_DESCRIPTION =
   "Hire'in Solutions is an AI-powered staffing agency specialising in Healthcare, IT, Engineering, and Professional Services. Find your next career opportunity or hire top talent today.";
-const DEFAULT_IMAGE = `${BASE_URL}/og-image.svg`;
+const DEFAULT_IMAGE = `${BASE_URL}/og-image.png`;
 const SITE_NAME = "Hire'in Solutions";
 
 function setMeta(name: string, content: string) {
@@ -15,6 +15,11 @@ function setMeta(name: string, content: string) {
     document.head.appendChild(el);
   }
   el.setAttribute("content", content);
+}
+
+function removeMeta(name: string) {
+  const el = document.querySelector<HTMLMetaElement>(`meta[name="${name}"]`);
+  if (el) el.remove();
 }
 
 function setOgMeta(property: string, content: string) {
@@ -65,6 +70,8 @@ interface SEOOptions {
   modifiedTime?: string;
   /** Author display name — only used when type === "article". */
   author?: string;
+  /** When true, adds noindex,nofollow robots meta tag. */
+  noindex?: boolean;
 }
 
 export function useSEO({
@@ -76,6 +83,7 @@ export function useSEO({
   publishedTime,
   modifiedTime,
   author,
+  noindex = false,
 }: SEOOptions) {
   useEffect(() => {
     const prevTitle = document.title;
@@ -84,11 +92,19 @@ export function useSEO({
     document.title = title;
     setMeta("description", description);
 
+    if (noindex) {
+      setMeta("robots", "noindex, nofollow");
+    } else {
+      removeMeta("robots");
+    }
+
     setOgMeta("og:title", title);
     setOgMeta("og:description", description);
     setOgMeta("og:type", type);
     setOgMeta("og:site_name", SITE_NAME);
     setOgMeta("og:image", ogImage);
+    setOgMeta("og:image:width", "1200");
+    setOgMeta("og:image:height", "630");
     setOgMeta("og:image:alt", `${SITE_NAME} — AI-Powered Recruitment & Staffing`);
 
     if (type === "article") {
@@ -112,13 +128,16 @@ export function useSEO({
       document.title = prevTitle || DEFAULT_TITLE;
       setMeta("description", DEFAULT_DESCRIPTION);
       setOgMeta("og:image", DEFAULT_IMAGE);
+      setOgMeta("og:image:width", "1200");
+      setOgMeta("og:image:height", "630");
       setMeta("twitter:image", DEFAULT_IMAGE);
       setOgMeta("og:type", "website");
       removeOgMeta("article:published_time");
       removeOgMeta("article:modified_time");
       removeOgMeta("article:author");
       removeOgMeta("article:section");
+      removeMeta("robots");
       if (canonical) removeCanonical();
     };
-  }, [title, description, canonical, image, type, publishedTime, modifiedTime, author]);
+  }, [title, description, canonical, image, type, publishedTime, modifiedTime, author, noindex]);
 }

@@ -14,6 +14,7 @@ export default function Contracts() {
     description:
       "Explore Hire'in Solutions' contract vehicles and engagements — including the State of Texas DIR IT Staff Augmentation Contract (ITSAC) — and the commercial clients we proudly serve.",
     canonical: "https://hire-in.com/contracts",
+    noindex: true,
   });
 
   return (

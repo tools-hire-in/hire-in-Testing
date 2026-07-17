@@ -129,6 +129,7 @@ export default function VerifyLetter() {
     description:
       "Verify the authenticity of an HR letter or document issued by Hire'in Solutions using its reference number and authentication code.",
     canonical: "https://hire-in.com/verify",
+    noindex: true,
   });
   const [refNumber, setRefNumber] = useState("");
   const [authCode, setAuthCode] = useState("");

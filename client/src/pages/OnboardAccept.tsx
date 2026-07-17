@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { useRoute } from "wouter";
+import { useSEO } from "@/hooks/use-seo";
 import { Card, CardContent } from "@/components/ui/card";
 import { Loader2, CheckCircle, XCircle, Clock } from "lucide-react";
 import { OfferLetterBody } from "@/components/OfferLetterBody";
@@ -44,6 +45,7 @@ interface OfferData {
 type FlowStep = "consent" | "setup" | "sign";
 
 export default function OnboardAccept() {
+  useSEO({ title: "Offer Acceptance | Hire'in Solutions", description: "Review and accept your offer letter.", noindex: true });
   const [, params] = useRoute("/onboard/:token");
   const token = params?.token;
 
