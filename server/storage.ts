@@ -5450,7 +5450,7 @@ export class DatabaseStorage implements IStorage {
     return {
       article: studioArticles,
       authorName: studioAuthorProfiles.displayName,
-      authorTitle: studioAuthorProfiles.title,
+      authorTitle: studioAuthorProfiles.publicTitle,
       authorBio: studioAuthorProfiles.bio,
       authorPhotoUrl: studioAuthorProfiles.photoUrl,
       authorLinkedinUrl: studioAuthorProfiles.linkedinUrl,

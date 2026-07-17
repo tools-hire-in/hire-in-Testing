@@ -13,6 +13,7 @@ import { NewsletterSubscribe } from "@/components/insights/NewsletterSubscribe";
 import { InsightCard } from "@/components/insights/InsightCard";
 import { insightCategoryLabel, ctaForCategory } from "@shared/insights";
 import { formatInsightDate, type InsightDetailResponse } from "@/lib/insights";
+import { getStudioContentType, getPipelineContentType } from "@shared/studioContent";
 import { Clock, ArrowLeft, ArrowRight, Linkedin, CheckCircle2, Lightbulb } from "lucide-react";
 
 const BASE_URL = "https://hire-in.com";
@@ -130,6 +131,16 @@ export default function InsightArticle() {
   }
 
   const categoryLabel = insightCategoryLabel(article.category);
+  const contentTypeLabel = (() => {
+    const t = article.contentType;
+    if (!t) return "Insight";
+    const exact = getStudioContentType(t)?.label ?? getPipelineContentType(t)?.label;
+    if (exact) return exact;
+    const lower = t.toLowerCase();
+    const fromLower = getStudioContentType(lower)?.label ?? getPipelineContentType(lower)?.label;
+    if (fromLower) return fromLower;
+    return lower.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+  })();
   const date = formatInsightDate(article.publishedAt);
   const cta = ctaForCategory(article.category);
   const related = data?.related ?? [];
@@ -177,13 +188,13 @@ export default function InsightArticle() {
       <div className="relative overflow-hidden" style={{ background: gradient }}>
         {/* Dot texture */}
         <div
-          className="absolute inset-0 opacity-[0.07]"
+          className="absolute inset-0 opacity-[0.07] pointer-events-none"
           style={{ backgroundImage: "radial-gradient(circle, white 1px, transparent 1px)", backgroundSize: "26px 26px" }}
         />
         {/* Bottom fade */}
-        <div className="absolute inset-0" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.35) 0%, transparent 55%)" }} />
+        <div className="absolute inset-0 pointer-events-none" style={{ background: "linear-gradient(to top, rgba(0,0,0,0.35) 0%, transparent 55%)" }} />
 
-        <div className="relative max-w-4xl mx-auto px-8 py-12">
+        <div className="relative z-10 max-w-4xl mx-auto px-8 py-12">
           {/* Back link */}
           <Link
             href="/insights"
@@ -212,7 +223,7 @@ export default function InsightArticle() {
               }}
               data-testid="badge-article-category"
             >
-              {categoryLabel}
+              {contentTypeLabel}
             </span>
           </div>
 

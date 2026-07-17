@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { NewsletterSubscribe } from "@/components/insights/NewsletterSubscribe";
 import { INSIGHT_CATEGORIES, insightCategoryLabel } from "@shared/insights";
 import { formatInsightDate, type InsightListResponse, type PublicInsight } from "@/lib/insights";
+import { getStudioContentType, getPipelineContentType } from "@shared/studioContent";
 import { Loader2, Clock } from "lucide-react";
 
 const BASE_URL = "https://hire-in.com";
@@ -38,13 +39,32 @@ const SLOT_CONFIGS = [
 ];
 
 const TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  "Executive Insight": { bg: "#1F3A6E14", text: "#1F3A6E", border: "#1F3A6E30" },
-  "Analysis": { bg: "#0891b214", text: "#0e7490", border: "#0891b230" },
-  "Field Report": { bg: "#16a34a14", text: "#15803d", border: "#16a34a30" },
-  "Case Study": { bg: "#7c3aed14", text: "#6d28d9", border: "#7c3aed30" },
-  "Market Brief": { bg: "#6b728014", text: "#4b5563", border: "#6b728030" },
-  "Opinion": { bg: "#ec489914", text: "#db2777", border: "#ec489930" },
+  "quick_take":        { bg: "#6b728014", text: "#4b5563", border: "#6b728030" },
+  "how_to":            { bg: "#16a34a14", text: "#15803d", border: "#16a34a30" },
+  "insights":          { bg: "#1F3A6E14", text: "#1F3A6E", border: "#1F3A6E30" },
+  "deep_dive":         { bg: "#7c3aed14", text: "#6d28d9", border: "#7c3aed30" },
+  "article":           { bg: "#0891b214", text: "#0e7490", border: "#0891b230" },
+  "thought_leadership":{ bg: "#1F3A6E14", text: "#1F3A6E", border: "#1F3A6E30" },
+  "social_post":       { bg: "#6b728014", text: "#4b5563", border: "#6b728030" },
+  "story":             { bg: "#6b728014", text: "#4b5563", border: "#6b728030" },
 };
+
+/** Resolve a human-readable content type label from any slug variant (lowercase or SCREAMING_SNAKE). */
+function resolveContentTypeLabel(type: string | null): string {
+  if (!type) return "Insight";
+  const exact = getStudioContentType(type)?.label ?? getPipelineContentType(type)?.label;
+  if (exact) return exact;
+  const lower = type.toLowerCase();
+  const fromLower = getStudioContentType(lower)?.label ?? getPipelineContentType(lower)?.label;
+  if (fromLower) return fromLower;
+  return lower.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+/** Look up badge colours by normalised (lowercase) type slug, with fallback to "article" colours. */
+function resolveTypeColors(type: string | null) {
+  const key = type?.toLowerCase() ?? "";
+  return TYPE_COLORS[key] ?? TYPE_COLORS["article"];
+}
 
 function getInitials(name: string): string {
   return name.split(" ").map((n) => n[0]).join("").slice(0, 2).toUpperCase();
@@ -57,8 +77,8 @@ function getAuthorColor(name: string): string {
 }
 
 function ArticleTypeBadge({ type }: { type: string | null }) {
-  const label = type ?? "Insight";
-  const c = TYPE_COLORS[label] ?? TYPE_COLORS["Market Brief"];
+  const label = resolveContentTypeLabel(type);
+  const c = resolveTypeColors(type);
   return (
     <span
       style={{
@@ -485,6 +505,7 @@ export default function Insights() {
     });
 
   const articles = data?.pages.flatMap((p) => p.items) ?? [];
+  const total = data?.pages[0]?.total ?? articles.length;
   const carouselArticles = !category ? articles.slice(0, 3) : [];
   const listArticles = !category ? articles.slice(0) : articles; // show all in list; carousel is purely visual overlay
 
@@ -595,7 +616,7 @@ export default function Insights() {
                 <ListHeader />
                 <div className="divide-y divide-gray-50">
                   {listArticles.map((a, idx) => (
-                    <ArticleRow key={a.id} article={a} rank={idx + 1} />
+                    <ArticleRow key={a.id} article={a} rank={total - idx} />
                   ))}
                 </div>
 
