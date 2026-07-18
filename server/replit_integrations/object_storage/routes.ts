@@ -1,6 +1,7 @@
-import type { Express } from "express";
+import type { Express, Request } from "express";
 import { ObjectStorageService, ObjectNotFoundError } from "./objectStorage";
 import { requireAuth } from "../../auth";
+import { ObjectPermission, getObjectAclPolicy } from "./objectAcl";
 
 /**
  * Register object storage routes for file uploads.
@@ -64,16 +65,54 @@ export function registerObjectStorageRoutes(app: Express): void {
   });
 
   /**
-   * Serve uploaded objects.
+   * Serve uploaded objects with ACL-aware access control.
    *
    * GET /objects/:objectPath(*)
    *
-   * This serves files from object storage. For public files, no auth needed.
-   * For protected files, add authentication middleware and ACL checks.
+   * Decision logic (in order):
+   * 1. Public ACL (visibility "public") → serve to all visitors, no auth needed.
+   *    This is the fix for public author photos on insight articles.
+   * 2. No ACL policy at all → require an authenticated session (401 if not).
+   *    Allows any authenticated user — preserves legacy behaviour for the
+   *    large population of existing uploads (HR docs, payslips, SOP evidence,
+   *    etc.) that were previously protected only by the requireAuth middleware
+   *    and have no ACL metadata written yet.
+   * 3. Explicit private ACL → require auth (401) then run per-user ownership /
+   *    rules check via canAccessObjectEntity; return 403 if the user is not
+   *    authorised. This is the full ACL enforcement path for objects that have
+   *    been explicitly tagged private.
    */
-  app.get("/objects/{*objectPath}", requireAuth, async (req, res) => {
+  app.get("/objects/{*objectPath}", async (req: Request, res) => {
     try {
       const objectFile = await objectStorageService.getObjectEntityFile(req.path);
+
+      // Fetch the raw ACL policy once to drive all three branches.
+      const aclPolicy = await getObjectAclPolicy(objectFile);
+
+      if (aclPolicy?.visibility === "public") {
+        // Branch 1: explicitly public — serve to all visitors without auth.
+        return await objectStorageService.downloadObject(objectFile, res);
+      }
+
+      // Branches 2 & 3 require an authenticated session.
+      const userId = (req as any).session?.userId as string | undefined;
+      if (!userId) {
+        return res.status(401).json({ error: "Unauthorized" });
+      }
+
+      if (aclPolicy) {
+        // Branch 3: explicit private ACL — enforce per-user ownership / rules.
+        const canAccess = await objectStorageService.canAccessObjectEntity({
+          userId,
+          objectFile,
+          requestedPermission: ObjectPermission.READ,
+        });
+        if (!canAccess) {
+          return res.status(403).json({ error: "Forbidden" });
+        }
+      }
+      // Branch 2: no ACL policy — any authenticated user may read (legacy).
+
       await objectStorageService.downloadObject(objectFile, res);
     } catch (error) {
       console.error("Error serving object:", error);

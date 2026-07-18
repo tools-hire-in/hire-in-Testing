@@ -23147,6 +23147,10 @@ Canonical domain: ${BASE}
             linkedinUrl: body.linkedinUrl,
           } as any).catch(() => {/* non-fatal */});
         }
+        // Tag photo with public ACL so it is accessible to unauthenticated visitors.
+        if (created.photoUrl) {
+          await objectStorageService.trySetObjectEntityAclPolicy(created.photoUrl, { owner: req.session.userId!, visibility: "public" }).catch(() => {/* non-fatal */});
+        }
         await storage.createStudioAuditEvent({
           articleId: null,
           actorUserId: req.session.userId,
@@ -23178,6 +23182,10 @@ Canonical domain: ${BASE}
           ...updates,
           profileComplete,
         } as any);
+        // If the photo was updated, ensure it is publicly readable.
+        if (updates.photoUrl) {
+          await objectStorageService.trySetObjectEntityAclPolicy(updates.photoUrl, { owner: req.session.userId!, visibility: "public" }).catch(() => {/* non-fatal */});
+        }
         await storage.createStudioAuditEvent({
           articleId: null,
           actorUserId: req.session.userId,
@@ -23746,6 +23754,11 @@ Canonical domain: ${BASE}
           await storage
             .updateAdminUser(employeeId, { linkedinUrl } as any)
             .catch(() => {/* non-fatal */});
+        }
+
+        // Tag photo with public ACL so it is accessible to unauthenticated visitors.
+        if (photoUrl) {
+          await objectStorageService.trySetObjectEntityAclPolicy(photoUrl, { owner: req.session.userId!, visibility: "public" }).catch(() => {/* non-fatal */});
         }
 
         await storage.createStudioAuditEvent({

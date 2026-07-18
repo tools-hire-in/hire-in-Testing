@@ -2919,6 +2919,46 @@ async function runEsiBackfill(): Promise<void> {
   }
 }
 
+// Author Photo ACL Backfill — one-time, gated by system_settings marker.
+// Sets visibility: "public" on all existing studio_authors photo objects so
+// unauthenticated visitors can load them via the ACL-gated /objects/* route.
+async function backfillAuthorPhotoAcls(): Promise<void> {
+  const MARKER_KEY = "author_photo_acl_backfill_v1_done";
+  const existing = (await db.execute(sql`
+    SELECT 1 FROM system_settings WHERE key = ${MARKER_KEY} LIMIT 1
+  `)).rows;
+  if (existing.length > 0) return;
+
+  const rows = (await db.execute(sql`
+    SELECT photo_url FROM studio_author_profiles WHERE photo_url IS NOT NULL AND photo_url != ''
+  `)).rows as Array<{ photo_url: string }>;
+
+  const { ObjectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+  const svc = new ObjectStorageService();
+
+  let tagged = 0;
+  for (const row of rows) {
+    try {
+      await svc.trySetObjectEntityAclPolicy(row.photo_url, { owner: "system", visibility: "public" });
+      tagged++;
+    } catch {
+      // Non-fatal: object may not be in managed storage (e.g. external URL).
+    }
+  }
+
+  await db.execute(sql`
+    INSERT INTO system_settings (key, value, updated_at)
+    VALUES (
+      ${MARKER_KEY},
+      ${JSON.stringify({ ran_at: new Date().toISOString(), tagged, total: rows.length })}::jsonb,
+      now()
+    )
+    ON CONFLICT (key) DO NOTHING
+  `);
+
+  log(`[author-photo-acl-backfill] Tagged ${tagged}/${rows.length} author photo(s) as public`);
+}
+
 // All schema "ensure" / seed / backfill work. Runs AFTER the HTTP port is open
 // (see bootstrap below) so the deployment healthcheck never sees a closed port
 // during boot. These blocks are idempotent, so running them post-listen is safe.
@@ -4376,6 +4416,11 @@ async function runStartupTasks() {
     await runEsiBackfill();
   } catch (err) {
     console.error("[startup] ESI backfill error (non-fatal):", err);
+  }
+  try {
+    await backfillAuthorPhotoAcls();
+  } catch (err) {
+    console.error("[startup] Author photo ACL backfill error (non-fatal):", err);
   }
 
   // ── BD Domain Masters — read-only validation log ─────────────────────────
