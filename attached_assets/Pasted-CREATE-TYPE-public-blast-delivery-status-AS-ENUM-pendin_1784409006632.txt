@@ -1,0 +1,38 @@
+CREATE TYPE "public"."blast_delivery_status" AS ENUM('pending', 'sent', 'failed', 'skipped');
+CREATE TYPE "public"."pending_email_blast_status" AS ENUM('pending', 'approved', 'delivering', 'sent', 'partially_failed', 'failed', 'cancelled');
+CREATE TABLE "blast_delivery_records" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"blast_id" varchar NOT NULL,
+	"user_id" varchar,
+	"email" varchar NOT NULL,
+	"status" "blast_delivery_status" DEFAULT 'pending' NOT NULL,
+	"error_message" text,
+	"sent_at" timestamp
+);
+CREATE TABLE "pending_email_blasts" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"trigger_source" varchar NOT NULL,
+	"status" "pending_email_blast_status" DEFAULT 'pending' NOT NULL,
+	"subject" varchar NOT NULL,
+	"body_html" text NOT NULL,
+	"body_text" text,
+	"original_subject" varchar,
+	"original_body_html" text,
+	"recipients" jsonb NOT NULL,
+	"recipient_count" integer DEFAULT 0 NOT NULL,
+	"reviewed_by" varchar,
+	"reviewed_at" timestamp,
+	"edited_by" varchar,
+	"edited_at" timestamp,
+	"cancel_reason" text,
+	"delivery_started_at" timestamp,
+	"delivery_finished_at" timestamp,
+	"alert_sent" boolean DEFAULT false NOT NULL,
+	"created_at" timestamp DEFAULT now()
+);
+ALTER TABLE "bd_decks" ADD COLUMN "is_locked" boolean DEFAULT false NOT NULL;
+ALTER TABLE "bd_decks" ADD COLUMN "locked_at" timestamp;
+ALTER TABLE "blast_delivery_records" ADD CONSTRAINT "blast_delivery_records_blast_id_pending_email_blasts_id_fk" FOREIGN KEY ("blast_id") REFERENCES "public"."pending_email_blasts"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "pending_email_blasts" ADD CONSTRAINT "pending_email_blasts_edited_by_admin_users_id_fk" FOREIGN KEY ("edited_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "pending_email_blasts" ADD CONSTRAINT "pending_email_blasts_reviewed_by_admin_users_id_fk" FOREIGN KEY ("reviewed_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+CREATE INDEX "idx_blast_delivery_blast_id" ON "blast_delivery_records" USING btree ("blast_id");

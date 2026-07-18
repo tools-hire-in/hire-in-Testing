@@ -1,0 +1,465 @@
+The QA design is directionally strong, but the current document sometimes treats future-state evaluation maturity as though it already exists. The implementation should distinguish between:
+
+Hard deterministic controls that can block release immediately.
+Semantic evaluation that begins as advisory.
+Human judgment that remains authoritative.
+Evaluation maturity that increases only after enough calibrated data exists.
+1. Same-family LLM judges
+
+The concern is correct.
+
+Using a separate call is not the same as using an independent evaluator. Two models from the same provider or family may share preferences, writing tendencies and blind spots. A judge may reward fluent prose from its own model family while missing subtle problems such as:
+
+Interpretation presented too confidently.
+Artificially balanced stakeholder coverage.
+Generic prose that appears polished.
+Source limitations being acknowledged superficially.
+An author voice that is technically compliant but still synthetic.
+Correct policy
+
+Semantic evaluation should have three maturity levels.
+
+Level 1 — Advisory only
+
+At launch:
+
+The semantic judge produces scores and evidence excerpts.
+Scores appear in the QA report.
+Scores do not independently block release.
+Deterministic critical failures still block release.
+Humans review low-confidence or high-risk cases.
+
+This should remain the default when the generator and judge are from the same family.
+
+Level 2 — Calibrated advisory
+
+After human editors have graded a representative test set:
+
+Compare judge scores with human scores.
+Measure agreement by dimension.
+Identify where the judge systematically over- or under-scores.
+Use judge scores as warnings for dimensions with acceptable agreement.
+Keep unreliable dimensions human-only.
+Level 3 — Limited hard gate
+
+A semantic dimension may become a release gate only when:
+
+It has enough calibrated examples.
+Human agreement is consistently acceptable.
+The failure cost justifies automation.
+The judge provides evidence excerpts.
+Deterministic rules still take precedence.
+Cross-family evaluation
+
+A genuinely different model family is preferable for important semantic checks, but cross-family evaluation is not automatically truth.
+
+The safest hierarchy is:
+
+Deterministic assertions.
+Source-grounding checks.
+Cross-family semantic judge where available.
+Human-calibrated benchmark.
+Named human approval.
+Revised engineering rule
+
+When generator and judge are from the same model family, all semantic rubric scores remain advisory until human calibration explicitly promotes a dimension to gated status.
+
+That statement should be hardcoded into the evaluation configuration rather than left as documentation.
+
+For example:
+
+type EvaluationEnforcement = "hard_gate" | "advisory" | "human_only";
+
+interface SemanticEvaluatorConfig {
+  id: string;
+  generatorFamily: string;
+  judgeFamily: string;
+  enforcement: EvaluationEnforcement;
+  humanCalibrationCompleted: boolean;
+  minimumAgreement?: number;
+}
+
+function resolveEnforcement(
+  config: SemanticEvaluatorConfig
+): EvaluationEnforcement {
+  const sameFamily =
+    config.generatorFamily.toLowerCase() ===
+    config.judgeFamily.toLowerCase();
+
+  if (!config.humanCalibrationCompleted || sameFamily) {
+    return "advisory";
+  }
+
+  return config.enforcement;
+}
+2. Benchmark size and statistical maturity
+
+The concern is also correct.
+
+Fifty cases are sufficient for:
+
+Schema validation.
+Prompt composition.
+Routing.
+Mode-selection checks.
+Hard guardrail checks.
+Workflow-state testing.
+Initial smoke regressions.
+
+They are not sufficient for treating small semantic-score changes as reliable evidence of improvement or decline.
+
+A two-point aggregate change across fifty cases could easily result from:
+
+Model nondeterminism.
+Case-mix sensitivity.
+Judge variability.
+One or two unusually low-scoring outputs.
+Changes in wording without meaningful changes in quality.
+Correct phased policy
+QA maturity	Dataset	Semantic score role
+Phase 1	10–20 smoke cases	Diagnostic only
+Phase 2	50–75 curated cases	Directional comparison
+Phase 3	150+ cases, multiple samples	Candidate for calibrated gating
+Phase 4	Production-derived cases plus human labels	Mature regression control
+
+For high-value cases, run more than one sample. Three samples per case is a reasonable starting point for major releases.
+
+Compare paired cases, not only averages
+
+The system should compare the baseline and candidate prompt on the same cases and report:
+
+Cases improved.
+Cases regressed.
+Critical behavior changes.
+Median score difference.
+Distribution of differences.
+Decision consistency.
+Variance across repeated samples.
+
+Do not rely only on one overall score.
+
+A better release rule during Phase 2 is:
+
+Semantic results are directional. A candidate prompt requires human review when more than 10% of benchmark cases materially regress, even when the aggregate score remains stable.
+
+At Phase 3, use confidence intervals or bootstrap estimates around paired score differences before treating a small movement as meaningful.
+
+Revised release policy
+
+Until the suite contains at least 150 curated cases with repeated samples and human calibration:
+
+Semantic scores are advisory.
+No “two-point decline” hard gate.
+Critical deterministic behavior remains gated.
+Material case-level regressions require human review.
+3. Repository organization
+
+The suggested correction is better.
+
+Prompt tests should be close to the prompt blocks they protect. Co-location makes it easier to:
+
+Update tests when a block changes.
+See which doctrine has coverage.
+Prevent orphaned cases.
+Review prompt and test changes in the same pull request.
+Assign ownership by block.
+
+The central evaluation directory should contain shared infrastructure, rubrics, baselines and reports—not every block-specific fixture.
+
+Recommended repository structure
+server/
+  insights/
+    prompts/
+      editorialIdentity.ts
+      primaryReader.ts
+      planningScan.ts
+      lensInclusion.ts
+      epistemicDiscipline.ts
+      lengthCompression.ts
+      humanAuthenticity.ts
+
+      __tests__/
+        editorialIdentity.cases.ts
+        editorialIdentity.test.ts
+
+        primaryReader.cases.ts
+        primaryReader.test.ts
+
+        planningScan.cases.ts
+        planningScan.test.ts
+
+        lensInclusion.cases.ts
+        lensInclusion.test.ts
+
+        epistemicDiscipline.cases.ts
+        epistemicDiscipline.test.ts
+
+        lengthCompression.cases.ts
+        lengthCompression.test.ts
+
+        humanAuthenticity.cases.ts
+        humanAuthenticity.test.ts
+
+        workflow.cases.ts
+        adversarial.cases.ts
+
+    schemas/
+      strategySchema.ts
+      researchSchema.ts
+      draftSchema.ts
+      reviewSchema.ts
+
+    evals/
+      deterministicEvaluators.ts
+      promptComposer.ts
+      caseLoader.ts
+
+evals/
+  runners/
+    runSemanticEvals.ts
+    runAdversarialEvals.ts
+    compareBaselines.ts
+
+  rubrics/
+    readerFocus.json
+    epistemicHonesty.json
+    humanAuthenticity.json
+    grounding.json
+
+  baselines/
+    prompt-v1/
+    prompt-v2/
+
+  reports/
+
+This gives you:
+
+Co-located unit and behavioral tests.
+Shared evaluation logic.
+Centralized expensive semantic evaluation.
+Versioned baseline artifacts.
+Clear ownership.
+4. Node test integration and standalone evaluation
+
+The review is right again.
+
+There should be two execution paths.
+
+Fast CI test path
+
+Use the repository’s established tsx --test / node:test setup for:
+
+Prompt composition.
+Schema validation.
+Routing.
+Deterministic evaluators.
+Mocked workflow integration.
+Saved-response regression tests.
+Privacy and state-machine invariants.
+
+These tests should appear alongside the rest of the server-test results.
+
+Standalone evaluation path
+
+Use the custom runner for:
+
+Live model calls.
+Cross-family semantic judges.
+Multi-sample evaluation.
+Adversarial suites.
+Grounding evaluation.
+Cost and latency comparison.
+Baseline-versus-candidate reports.
+
+These tests are slower, nondeterministic and potentially expensive, so they should not run with every normal unit-test execution.
+
+Recommended scripts
+{
+  "scripts": {
+    "test": "npx tsx --test \"server/**/*.test.ts\"",
+    "test:insights": "npx tsx --test \"server/insights/**/*.test.ts\"",
+
+    "eval:insights:smoke": "tsx evals/runners/runSemanticEvals.ts --suite smoke",
+    "eval:insights:full": "tsx evals/runners/runSemanticEvals.ts --suite full --samples 3",
+    "eval:insights:adversarial": "tsx evals/runners/runAdversarialEvals.ts --samples 3",
+    "eval:insights:regression": "tsx evals/runners/compareBaselines.ts",
+    "eval:insights:report": "tsx evals/runners/runSemanticEvals.ts --report-only"
+  }
+}
+CI behavior
+
+On every pull request:
+
+npm test
+npm run test:insights
+
+Before a prompt release:
+
+npm run eval:insights:smoke
+npm run eval:insights:adversarial
+npm run eval:insights:regression
+
+For major model or doctrine changes:
+
+npm run eval:insights:full
+Structural recommendation: split into two tasks
+
+This is the right move.
+
+The editorial system and the QA harness are related, but they are separate deliverables with different definitions of done.
+
+Task A — Insights Editorial Overlay
+
+Scope:
+
+Seven prompt blocks.
+Prompt manifest and versioning.
+Content-type routing.
+Call 1 planning output.
+Mode A/B/C logic.
+Primary-reader and stakeholder-scan behavior.
+Human Gate A.
+Later phases for research, drafting and review.
+
+Success is measured by whether the system makes strong editorial decisions.
+
+Task B — Insights Prompt QA Harness
+
+Scope:
+
+Prompt-level deterministic tests.
+Block-specific fixtures.
+Schema and state tests.
+Ten-case smoke suite initially.
+Adversarial cases from day one.
+Semantic evaluator infrastructure.
+Baseline reports.
+Release gates.
+Human calibration workflow.
+
+Success is measured by whether prompt changes can be evaluated safely and repeatably.
+
+Build them in parallel
+
+The QA task should not wait until the editorial system is finished.
+
+Recommended sequence:
+
+Sprint 1
+
+Task A
+
+Editorial Identity block.
+Primary Reader block.
+Planning Scan block.
+Lens Inclusion block.
+Call 1 structured output.
+
+Task B
+
+Prompt manifest.
+Co-located test fixtures.
+Schema tests.
+Primary-reader tests.
+Mode A/B/C tests.
+Ten-case deterministic smoke suite.
+Sprint 2
+
+Task A
+
+Epistemic Discipline block.
+Length and Compression block.
+Human Authenticity block.
+Human Gate A UI.
+
+Task B
+
+Authenticity tests.
+Unsupported-claim tests.
+Word-budget tests.
+Prompt-injection tests.
+Initial adversarial suite.
+Sprint 3
+
+Task A
+
+Call 2 source synthesis and sparse claim ledger.
+
+Task B
+
+Grounding evaluator.
+Source-conflict cases.
+Freshness tests.
+High-risk-claim vetoes.
+Sprint 4
+
+Task A
+
+Calls 3 and 4.
+Human Gates B and C.
+
+Task B
+
+Draft and compression tests.
+End-to-end workflow tests.
+Semantic judge in advisory mode.
+Baseline comparison.
+Revised enforcement matrix
+Evaluation	Phase 1	Phase 2	Phase 3+
+Schema validity	Hard gate	Hard gate	Hard gate
+State-machine rules	Hard gate	Hard gate	Hard gate
+Privacy/PII	Hard gate	Hard gate	Hard gate
+Invented experience	Hard gate	Hard gate	Hard gate
+Unsupported legal/commercial claim	Hard gate	Hard gate	Hard gate
+Mode-A lens restraint	Hard gate	Hard gate	Hard gate
+Word-budget compliance	Hard gate with override	Hard gate with override	Hard gate with override
+Semantic reader-focus score	Advisory	Directional	Calibrated gate if validated
+Human-authenticity score	Advisory	Directional	Calibrated gate if validated
+Epistemic-honesty score	Advisory plus hard claim rules	Directional	Limited calibrated gate
+Overall semantic score change	Informational	Human-reviewed	Statistical release gate
+Human author approval	Required	Required	Required
+One additional improvement
+
+I would avoid using one combined “semantic quality score” as the main release signal.
+
+A prompt can improve readability while worsening epistemic honesty. A combined average can hide that.
+
+Track the dimensions independently:
+
+Reader focus.
+Lens materiality.
+Epistemic honesty.
+Grounding.
+Practical utility.
+Human authenticity.
+Compression.
+Promotional restraint.
+
+Then assign veto-sensitive dimensions:
+
+Grounding.
+Epistemic honesty.
+Human authenticity.
+Stakeholder responsibility for Mode C.
+Privacy and governance.
+
+A strong readability score should never compensate for a weak grounding score.
+
+Final architect position
+
+The review should be accepted in full.
+
+The revised architecture should state explicitly:
+
+Semantic LLM evaluation begins as advisory, particularly when the judge and generator share a model family. It becomes a release gate only after a sufficiently large benchmark, repeated sampling and demonstrated agreement with human editors.
+
+It should also adopt:
+
+At least 150 cases before hard semantic comparison gates.
+Co-located prompt fixtures.
+node:test integration for deterministic checks.
+A separate runner for live semantic and adversarial evaluation.
+Two parallel implementation tasks.
+QA coverage delivered alongside the first prompt blocks.
+
+This is not a rejection of the QA design. It is the correct maturation path from promising evaluation framework to trustworthy production quality system.
