@@ -90,6 +90,7 @@ integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:2.0.
 
 [userenv.production]
 COOKIE_DOMAIN = ".hire-in.com"
+APP_ENV = "production"
 
 [userenv.shared]
 BASE_URL = "https://employee.hire-in.com"
