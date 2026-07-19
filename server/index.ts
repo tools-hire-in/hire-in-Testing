@@ -3517,6 +3517,19 @@ async function runStartupTasks() {
         ALTER TYPE article_status ADD VALUE IF NOT EXISTS 'author_approved';
       EXCEPTION WHEN others THEN NULL; END $$;
     `);
+    // Insights Phase 1 statuses
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE article_status ADD VALUE IF NOT EXISTS 'planning_review';
+      EXCEPTION WHEN others THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TYPE article_status ADD VALUE IF NOT EXISTS 'rejected';
+      EXCEPTION WHEN others THEN NULL; END $$;
+    `);
+    // Ensure insights_planning column exists on studio_articles
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS insights_planning jsonb`);
     log("Content Studio article_status enum values ensured");
   } catch (err) {
     console.error("Content Studio article_status enum migration error:", err);

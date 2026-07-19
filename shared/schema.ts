@@ -2761,6 +2761,8 @@ export const articleStatusEnum = pgEnum("article_status", [
   "pending_cm_review",
   "pending_author",
   "author_approved",
+  "planning_review",
+  "rejected",
 ]);
 
 // Projects / brands the studio publishes for.
@@ -2917,6 +2919,10 @@ export const studioArticles = pgTable("studio_articles", {
   // { pillar, bdIntelMetadata, captionCopy, channels }.
   // Lets the ArticleEditor surface full planner context without re-querying the idea.
   ideaContext: jsonb("idea_context"),
+  // Insights Editorial Phase 1 — JSONB blob written by Call 1 (generateInsightsBrief).
+  // Shape: InsightsPlanningOutput (brief, stakeholderScan, researchQuestions,
+  // outlineRecommendation, decision). NULL until Call 1 completes.
+  insightsPlanning: jsonb("insights_planning"),
   createdBy: varchar("created_by"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

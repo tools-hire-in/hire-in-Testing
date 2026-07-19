@@ -44,7 +44,7 @@ import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import type { StudioArticle, StudioOccasion, StudioContentIdea, StudioIdeaComment } from "@shared/schema";
 import { STUDIO_PIPELINE_CONTENT_TYPES, STUDIO_IDEA_TRANSITIONS, type StudioIdeaStatus } from "@shared/studioContent";
-import type { CanonicalSocialKit } from "@shared/studioAi";
+import { isInsightsContentType, type CanonicalSocialKit } from "@shared/studioAi";
 
 // ─── Constants ──────────────────────────────────────────────────────────────
 
@@ -1310,6 +1310,28 @@ function DayWorkspaceSheet({
                 </div>
               )}
 
+              {/* planning_review articles — editors must approve via Gate A before drafting */}
+              {articles.filter((a) => a.status === "planning_review").length > 0 && (
+                <div className="pt-2 space-y-1">
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground px-1">Awaiting Gate A Review</p>
+                  {articles.filter((a) => a.status === "planning_review").map((a) => (
+                    <button
+                      key={a.id}
+                      onClick={() => navigate(`/admin/studio/articles/${a.id}/edit`)}
+                      className="block w-full text-left rounded-md border border-indigo-200 bg-indigo-50 px-2 py-1.5 dark:border-indigo-800 dark:bg-indigo-950/30 hover-elevate"
+                      data-testid={`gate-a-row-${a.id}`}
+                    >
+                      <span className="block truncate text-[11px] font-medium text-indigo-800 dark:text-indigo-300">{a.title}</span>
+                      {(a as any).contentType && (
+                        <span className="mt-0.5 inline-block rounded bg-indigo-100 px-1 py-0.5 text-[9px] text-indigo-600 dark:bg-indigo-900/50 dark:text-indigo-400">
+                          {(a as any).contentType.replace(/_/g, " ")}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
               {/* Draft articles — schedule them directly from the workspace */}
               {canSchedule && articles.filter((a) => a.status === "draft").length > 0 && date && (
                 <div className="pt-2 space-y-2">
@@ -1382,6 +1404,7 @@ export default function Calendar() {
   const canSchedulePublish = can("studio.schedule_publish");
   const [scope, setScope] = useState<"hireins" | "all">("all");
   const [viewMode, setViewMode] = useState<"month" | "week">("month");
+  const [insightsOnly, setInsightsOnly] = useState(false);
   const [exportItem, setExportItem] = useState<CalendarItem | null>(null);
   const [cursor, setCursor] = useState(() => {
     const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1);
@@ -1571,6 +1594,14 @@ export default function Calendar() {
               <ToggleGroupItem value="hireins" data-testid="toggle-hireins">Hire'in</ToggleGroupItem>
               <ToggleGroupItem value="all" data-testid="toggle-all-projects">All Projects</ToggleGroupItem>
             </ToggleGroup>
+            <button
+              onClick={() => setInsightsOnly((v) => !v)}
+              className={`rounded border px-2 py-1 text-xs font-medium transition-colors ${insightsOnly ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-600" : "border-border text-muted-foreground hover:bg-muted"}`}
+              data-testid="toggle-insights-only"
+              title="Show only Insights editorial articles"
+            >
+              ◈ Insights
+            </button>
             <ProjectSwitcher projects={projects} projectsLoading={projectsLoading} selectedProjectId={selectedProjectId} onChange={setSelectedProjectId} />
           </div>
         </div>
@@ -1616,7 +1647,8 @@ export default function Calendar() {
                 {cells.map((cell, i) => {
                   if (!cell) return <div key={i} className="min-h-[96px] rounded-md bg-muted/20" />;
                   const key = ymd(cell);
-                  const dayItems = byDay[key] ?? [];
+                  const rawDayItems = byDay[key] ?? [];
+                  const dayItems = insightsOnly ? rawDayItems.filter((a) => isInsightsContentType((a as any).contentType)) : rawDayItems;
                   const dayOccasions = occByDay[key] ?? [];
                   const dayIdeas = ideasByDay[key] ?? [];
                   const visibleIdeas = dayIdeas.slice(0, 2);
@@ -1672,7 +1704,18 @@ export default function Calendar() {
                               title={isDraftPlanned ? `${a.title} — Planned Draft` : isNeedsRevision ? `${a.title} — Needs revision: ${a.lastRejectionReason}` : readyToExport ? `${a.title} — Ready to Export` : `${a.title} — ${a.status}`}
                               data-testid={`calendar-item-${a.id}`}
                             >
-                              {isDraftPlanned ? `· ${a.title}` : readyToExport ? `⇩ ${a.title}` : a.title}
+                              {a.status === "planning_review" ? (
+                                <>
+                                  {"◈ "}
+                                  {(() => {
+                                    const mode = (a as any).insights_planning?.brief?.mode || (a as any).insightsPlanning?.brief?.mode;
+                                    if (!mode) return null;
+                                    const modeLabel = mode === "MODE_A_FOCUSED" ? "[A]" : mode === "MODE_B_PRIMARY_PLUS_CONSEQUENCE" ? "[B]" : mode === "MODE_C_SYSTEM" ? "[C]" : null;
+                                    return modeLabel ? <span className="text-indigo-500 dark:text-indigo-400">{modeLabel}</span> : null;
+                                  })()}
+                                  {" "}{a.title}
+                                </>
+                              ) : isDraftPlanned ? `· ${a.title}` : readyToExport ? `⇩ ${a.title}` : a.title}
                             </button>
                           );
                         })}
@@ -1742,7 +1785,8 @@ export default function Calendar() {
                   const key = ymd(date);
                   const dayOccasions = occByDay[key] ?? [];
                   const dayIdeas = ideasByDay[key] ?? [];
-                  const dayItems = byDay[key] ?? [];
+                  const rawDayItems2 = byDay[key] ?? [];
+                  const dayItems = insightsOnly ? rawDayItems2.filter((a) => isInsightsContentType((a as any).contentType)) : rawDayItems2;
                   return (
                     <div key={key} className={`rounded-md border ${key === todayKey ? "border-primary" : ""}`} data-testid={`week-day-${key}`}>
                       {/* Day header */}

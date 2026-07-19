@@ -93,8 +93,11 @@ import {
   generateBdTemplate,
   runBdAgentChat,
   resolveBrief,
+  generateInsightsBrief,
+  generateInsightsBriefWithRetry,
   TIER_MODELS,
 } from "./services/aiDraftService";
+import { isInsightsContentType } from "@shared/studioAi";
 import { runStaffingSafetyGate } from "./services/staffingSafetyGate";
 import { auditRow, checkPillarBalance, type RowQualityResult } from "./services/importQualityAudit";
 import { buildRelatedContentBlock } from "./services/commercialIntelligenceService";
@@ -18500,12 +18503,13 @@ Canonical domain: ${BASE}
         }
         const readTimeMinutes = computeReadTime(parsed.bodyMarkdown, contentType);
         const staffingDomain: string | undefined = (req.body as any)?.staffingDomain || undefined;
+        const isInsights = isInsightsContentType(contentType);
         const created = await storage.createStudioArticle({
           ...parsed,
           projectId: parsed.projectId,
           title: parsed.title.trim(),
           contentType,
-          status: "draft",
+          status: isInsights ? "planning_review" : "draft",
           readTimeMinutes,
           createdBy: req.session.userId,
           ...(staffingDomain ? { domainResolved: staffingDomain } : {}),
@@ -18514,8 +18518,55 @@ Canonical domain: ${BASE}
           articleId: created.id,
           actorUserId: req.session.userId,
           eventType: "article_created",
-          metadata: { title: created.title, contentType },
+          metadata: { title: created.title, contentType, insights: isInsights },
         });
+
+        // Insights Call 1 — generate editorial brief synchronously so the editor can
+        // review the planning output immediately at Gate A without waiting for a background job.
+        if (isInsights && isAiConfigured()) {
+          const primaryReader: string = (req.body as any)?.insightsPrimaryReader
+            || (req.body as any)?.audience?.[0]
+            || "Staffing/MSP Operator";
+          // Validate required planning inputs before Call 1.
+          const primaryReaderQuestion: string =
+            ((req.body as any)?.insightsPrimaryReaderQuestion || "").trim()
+            || ((req.body as any)?.generationBrief || "").trim();
+          if (!primaryReaderQuestion) {
+            // Article already created; persist failure marker and return without planning brief.
+            const failedPlanning = { briefGenerationFailed: true, failedAt: new Date().toISOString(), errorMessage: "Primary Reader Question is required for Insights articles." };
+            await storage.updateStudioArticle(created.id, { insights_planning: failedPlanning } as any).catch(() => {});
+            return res.status(201).json({ ...created, insights_planning: failedPlanning });
+          }
+          const whyNow: string = (req.body as any)?.insightsWhyNow || "";
+          const mode: string = (req.body as any)?.insightsMode || "";
+
+          try {
+            const { planning } = await generateInsightsBriefWithRetry({
+              contentType,
+              primaryReader,
+              primaryReaderQuestion,
+              whyNow,
+              mode: mode || undefined,
+            });
+            await storage.updateStudioArticle(created.id, { insights_planning: planning } as any);
+            await storage.createStudioAuditEvent({
+              articleId: created.id,
+              actorUserId: req.session.userId,
+              eventType: "insights_brief_generated",
+              metadata: { decision: planning.decision, contentType },
+            });
+            // Return the article with the planning brief already embedded.
+            return res.status(201).json({ ...created, insightsPlanning: planning });
+          } catch (e: any) {
+            console.error(`[insights-call1] Brief generation failed for article ${created.id}:`, e?.message);
+            // Persist a lightweight failure marker so the UI can show an explicit error state
+            // rather than the ambiguous "generating..." message.
+            const failedPlanning = { briefGenerationFailed: true, failedAt: new Date().toISOString(), errorMessage: e?.message || "Unknown error" };
+            await storage.updateStudioArticle(created.id, { insights_planning: failedPlanning } as any).catch(() => {});
+            return res.status(201).json({ ...created, insights_planning: failedPlanning });
+          }
+        }
+
         res.status(201).json(created);
       } catch (error: any) {
         console.error("Create studio article error:", error);
@@ -18631,6 +18682,9 @@ Canonical domain: ${BASE}
   // Mapping is exact-slug-first (content types stored as kebab/snake strings from STUDIO_CONTENT_TYPES).
   function defaultContentGoal(contentType?: string): string | undefined {
     if (!contentType) return undefined;
+    // Uppercase Insights editorial types route exclusively through planning/Gate A —
+    // never assign a default contentGoal; the brief owns audience/lens context.
+    if (isInsightsContentType(contentType)) return undefined;
     const lower = contentType.toLowerCase().replace(/[-\s]/g, "_");
     // Exact slugs that map to Thought Leadership
     if (["quick_take", "deep_dive", "thought_leadership", "opinion"].some((s) => lower === s || lower.includes(s))) {
@@ -18848,6 +18902,247 @@ Canonical domain: ${BASE}
     },
   );
 
+  // ---------------------------------------------------------------------------
+  // Gate A — Insights editorial approval / rejection / brief revision routes
+  // ---------------------------------------------------------------------------
+
+  // Gate A: Approve — moves planning_review → draft. Also records the Gate A decision.
+  app.post(
+    "/api/admin/studio/articles/:id/insights/approve",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (!isInsightsContentType(article.contentType)) {
+          return res.status(409).json({ error: "Article is not an Insights editorial type", code: "not_insights" });
+        }
+        if (article.status !== "planning_review") {
+          return res.status(409).json({ error: "Article is not in planning_review status", code: "wrong_status" });
+        }
+        // Validate that a planning brief exists before allowing approval.
+        const existingPlanning = (article as any).insightsPlanning ?? (article as any).insights_planning;
+        if (!existingPlanning) {
+          return res.status(409).json({
+            error: "Planning brief not yet generated. Wait for the AI to complete or use Revise Brief to retry.",
+            code: "brief_not_ready",
+          });
+        }
+        // Strict gate: only allow approval when AI planning decision is PROCEED.
+        // No override pathway — editors must Revise Brief until the AI returns PROCEED.
+        if (existingPlanning.decision !== "PROCEED") {
+          return res.status(409).json({
+            error: `AI planning decision is '${existingPlanning.decision}', not PROCEED. Use Revise Brief to address concerns before approving.`,
+            code: "decision_not_proceed",
+            decision: existingPlanning.decision,
+          });
+        }
+        const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() : undefined;
+        const approvedAt = new Date().toISOString();
+        const approvedBy = req.session.userId;
+        // Persist approval metadata back into the planning JSONB.
+        const updatedPlanning = {
+          ...existingPlanning,
+          gateADecision: "approved",
+          gateAApprovedBy: approvedBy,
+          gateAApprovedAt: approvedAt,
+          gateANotes: notes || null,
+        };
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          status: "draft",
+          insights_planning: updatedPlanning,
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: req.session.userId,
+          eventType: "insights_gate_a_approved",
+          metadata: { notes: notes || null, approvedAt },
+        });
+        res.json(updated);
+      } catch (e: any) {
+        console.error("Gate A approve error:", e);
+        res.status(500).json({ error: e?.message || "Gate A approve failed" });
+      }
+    },
+  );
+
+  // Gate A: Reject — moves planning_review → rejected.
+  app.post(
+    "/api/admin/studio/articles/:id/insights/reject",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (!isInsightsContentType(article.contentType)) {
+          return res.status(409).json({ error: "Article is not an Insights editorial type", code: "not_insights" });
+        }
+        if (article.status !== "planning_review") {
+          return res.status(409).json({ error: "Article is not in planning_review status", code: "wrong_status" });
+        }
+        const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "Rejected at Gate A";
+        const existingPlanning = (article as any).insightsPlanning ?? (article as any).insights_planning ?? {};
+        const updatedPlanning = {
+          ...existingPlanning,
+          gateADecision: "rejected",
+          gateARejectedBy: req.session.userId,
+          gateARejectedAt: new Date().toISOString(),
+          gateARejectionReason: reason,
+        };
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          status: "rejected",
+          insights_planning: updatedPlanning,
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: req.session.userId,
+          eventType: "insights_gate_a_rejected",
+          metadata: { reason },
+        });
+        res.json(updated);
+      } catch (e: any) {
+        console.error("Gate A reject error:", e);
+        res.status(500).json({ error: e?.message || "Gate A reject failed" });
+      }
+    },
+  );
+
+  // Gate A: Revise Brief — re-triggers Call 1 to produce a new insights_planning object.
+  // Requires article to be in planning_review status; increments revision_count.
+  app.post(
+    "/api/admin/studio/articles/:id/insights/revise-brief",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI provider is not configured", code: "upstream" });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (!isInsightsContentType(article.contentType)) {
+          return res.status(409).json({ error: "Article is not an Insights editorial type", code: "not_insights" });
+        }
+        if (article.status !== "planning_review") {
+          return res.status(409).json({
+            error: "Revise Brief is only valid for articles in planning_review status.",
+            code: "wrong_status",
+          });
+        }
+        if (!(await checkAiRateLimit(req.session.userId!, res))) return;
+
+        const primaryReader: string = req.body?.primaryReader || "Staffing/MSP Operator";
+        const primaryReaderQuestion: string = (req.body?.primaryReaderQuestion || "").trim();
+        if (!primaryReaderQuestion) {
+          return res.status(400).json({ error: "Primary Reader Question is required to revise the brief.", code: "primary_reader_question_required" });
+        }
+        const whyNow: string = req.body?.whyNow || "";
+        const mode: string = req.body?.mode || "";
+
+        // Increment revision count from prior planning JSONB.
+        const priorPlanning = (article as any).insightsPlanning ?? (article as any).insights_planning;
+        const priorRevisionCount: number = typeof priorPlanning?.revisionCount === "number" ? priorPlanning.revisionCount : 0;
+
+        const { planning } = await generateInsightsBriefWithRetry({
+          contentType: article.contentType,
+          primaryReader,
+          primaryReaderQuestion,
+          whyNow,
+          mode: mode || undefined,
+        });
+        const planningWithMeta = {
+          ...planning,
+          revisionCount: priorRevisionCount + 1,
+          revisedAt: new Date().toISOString(),
+          revisedBy: req.session.userId,
+        };
+        const updated = await storage.updateStudioArticle(req.params.id, {
+          insights_planning: planningWithMeta,
+          status: "planning_review",
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: req.session.userId,
+          eventType: "insights_brief_revised",
+          metadata: { decision: planning.decision, contentType: article.contentType, revisionCount: planningWithMeta.revisionCount },
+        });
+        res.json({ article: updated, planning: planningWithMeta });
+      } catch (e: any) {
+        handleAiError(e, res);
+      }
+    },
+  );
+
+  // Gate A aliases at /gate-a/ path (canonical spec paths — equivalent to /insights/* above).
+  app.post("/api/admin/studio/articles/:id/gate-a/approve", requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      req.url = req.url.replace("/gate-a/approve", "/insights/approve");
+      // Inline the same logic to avoid double-routing
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (!isInsightsContentType(article.contentType)) return res.status(409).json({ error: "Not an Insights type", code: "not_insights" });
+        if (article.status !== "planning_review") return res.status(409).json({ error: "Not in planning_review", code: "wrong_status" });
+        const existingPlanning = (article as any).insightsPlanning ?? (article as any).insights_planning;
+        if (!existingPlanning) return res.status(409).json({ error: "Planning brief not yet generated.", code: "brief_not_ready" });
+        if (existingPlanning.decision !== "PROCEED") return res.status(409).json({ error: `AI decision is '${existingPlanning.decision}', not PROCEED. Revise Brief first.`, code: "decision_not_proceed", decision: existingPlanning.decision });
+        const notes = typeof req.body?.notes === "string" ? req.body.notes.trim() : undefined;
+        const approvedAt = new Date().toISOString();
+        const updatedPlanning = { ...existingPlanning, gateADecision: "approved", gateAApprovedBy: req.session.userId, gateAApprovedAt: approvedAt, gateANotes: notes || null };
+        const updated = await storage.updateStudioArticle(req.params.id, { status: "draft", insights_planning: updatedPlanning } as any);
+        await storage.createStudioAuditEvent({ articleId: req.params.id, actorUserId: req.session.userId, eventType: "insights_gate_a_approved", metadata: { notes: notes || null, approvedAt } });
+        res.json(updated);
+      } catch (e: any) { res.status(500).json({ error: e?.message || "Gate A approve failed" }); }
+    },
+  );
+  app.post("/api/admin/studio/articles/:id/gate-a/reject", requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (!isInsightsContentType(article.contentType)) return res.status(409).json({ error: "Not an Insights type", code: "not_insights" });
+        if (article.status !== "planning_review") return res.status(409).json({ error: "Not in planning_review", code: "wrong_status" });
+        const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "Rejected at Gate A";
+        const existingPlanning = (article as any).insightsPlanning ?? (article as any).insights_planning ?? {};
+        const updatedPlanning = { ...existingPlanning, gateADecision: "rejected", gateARejectedBy: req.session.userId, gateARejectedAt: new Date().toISOString(), gateARejectionReason: reason };
+        const updated = await storage.updateStudioArticle(req.params.id, { status: "rejected", insights_planning: updatedPlanning } as any);
+        await storage.createStudioAuditEvent({ articleId: req.params.id, actorUserId: req.session.userId, eventType: "insights_gate_a_rejected", metadata: { reason } });
+        res.json(updated);
+      } catch (e: any) { res.status(500).json({ error: e?.message || "Gate A reject failed" }); }
+    },
+  );
+  app.post("/api/admin/studio/articles/:id/gate-a/revise", requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) return res.status(503).json({ error: "AI provider is not configured", code: "upstream" });
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (!isInsightsContentType(article.contentType)) return res.status(409).json({ error: "Not an Insights type", code: "not_insights" });
+        if (article.status !== "planning_review") return res.status(409).json({ error: "Revise Brief is only valid for planning_review articles.", code: "wrong_status" });
+        if (!(await checkAiRateLimit(req.session.userId!, res))) return;
+        const primaryReader: string = req.body?.primaryReader || "Staffing/MSP Operator";
+        const primaryReaderQuestion: string = (req.body?.primaryReaderQuestion || "").trim();
+        if (!primaryReaderQuestion) {
+          return res.status(400).json({ error: "Primary Reader Question is required to revise the brief.", code: "primary_reader_question_required" });
+        }
+        const whyNow: string = req.body?.whyNow || "";
+        const mode: string = req.body?.mode || "";
+        const priorPlanning = (article as any).insightsPlanning ?? (article as any).insights_planning;
+        const priorRevisionCount: number = typeof priorPlanning?.revisionCount === "number" ? priorPlanning.revisionCount : 0;
+        const { planning } = await generateInsightsBriefWithRetry({ contentType: article.contentType, primaryReader, primaryReaderQuestion, whyNow, mode: mode || undefined });
+        const planningWithMeta = { ...planning, revisionCount: priorRevisionCount + 1, revisedAt: new Date().toISOString(), revisedBy: req.session.userId };
+        const updated = await storage.updateStudioArticle(req.params.id, { insights_planning: planningWithMeta, status: "planning_review" } as any);
+        await storage.createStudioAuditEvent({ articleId: req.params.id, actorUserId: req.session.userId, eventType: "insights_brief_revised", metadata: { decision: planning.decision, contentType: article.contentType, revisionCount: planningWithMeta.revisionCount } });
+        res.json({ article: updated, planning: planningWithMeta });
+      } catch (e: any) { handleAiError(e, res); }
+    },
+  );
+
   // Generate a full article draft. Modes: "topic" (default) | "shape".
   app.post(
     "/api/admin/studio/articles/:id/generate-article",
@@ -18860,6 +19155,16 @@ Canonical domain: ${BASE}
         }
         const article = await storage.getStudioArticle(req.params.id);
         if (!article) return res.status(404).json({ error: "Article not found" });
+
+        // Guard: ALL Insights editorial types are Phase 1 only — content generation is
+        // reserved for Phase 2. Return 422 regardless of status so editors know to wait
+        // for the approved-brief-powered draft path (Phase 2: Task #1350).
+        if (isInsightsContentType(article.contentType)) {
+          return res.status(422).json({
+            error: "Draft generation for Insights editorial articles is coming in Phase 2. Approve the planning brief at Gate A for now.",
+            code: "insights_phase2_required",
+          });
+        }
 
         const mode = req.body?.mode === "shape" ? "shape" : "topic";
         // RC-1 (server): resolve contentGoal from request body first, then stored article.contentGoal,
@@ -19202,6 +19507,26 @@ Canonical domain: ${BASE}
         }
 
         const compliance = getComplianceMode(req.body?.complianceMode ?? article.complianceMode);
+
+        // Insights social cascade: inject approved planning context so lens/mode constraints
+        // are respected when generating social kits for editorial Insights articles.
+        const insightsPlanningCtx = isInsightsContentType(article.contentType ?? "")
+          ? ((article as any).insightsPlanning ?? (article as any).insights_planning ?? null)
+          : null;
+        const insightsSocialContext: Partial<AiGenerationParams> = insightsPlanningCtx
+          ? {
+              audience: insightsPlanningCtx.brief?.primaryAudience || insightsPlanningCtx.primaryAudience || req.body?.audience || undefined,
+              marketContext: [
+                (insightsPlanningCtx.brief?.mode || insightsPlanningCtx.mode) ? `Editorial mode: ${insightsPlanningCtx.brief?.mode || insightsPlanningCtx.mode}` : null,
+                insightsPlanningCtx.brief?.whyNow ? `Why now: ${insightsPlanningCtx.brief.whyNow}` : null,
+                Array.isArray(insightsPlanningCtx.stakeholderScan?.publishLenses)
+                  ? `Publish lenses: ${insightsPlanningCtx.stakeholderScan.publishLenses.map((l: any) => l?.lens ?? l).join(", ")}`
+                  : null,
+                req.body?.marketContext || null,
+              ].filter(Boolean).join(" | ") || undefined,
+            }
+          : {};
+
         const params: AiGenerationParams = {
           industry: req.body?.industry,
           platform: req.body?.platform,
@@ -19220,6 +19545,8 @@ Canonical domain: ${BASE}
           audience: req.body?.audience || undefined,
           marketContext: req.body?.marketContext || undefined,
           userSuppliedFacts: req.body?.userSuppliedFacts || undefined,
+          // Insights social cascade: overrides audience/marketContext with approved planning context
+          ...insightsSocialContext,
           // Brand Voice Hub (T2): platform override (linkedin/instagram/story)
           // → project default → system default.
           ...(await resolveBrandVoiceParams(

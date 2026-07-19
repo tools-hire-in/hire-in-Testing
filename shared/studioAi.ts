@@ -121,6 +121,39 @@ export const SOCIAL_PLATFORMS: SocialPlatform[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Insights Editorial Layer — content types and modes.
+// ---------------------------------------------------------------------------
+export type InsightsContentType =
+  | "FLAGSHIP_INSIGHT"
+  | "FIELD_SIGNAL"
+  | "DECISION_GUIDE"
+  | "RESEARCH_BRIEF"
+  | "TOOL_TECH_WATCH"
+  | "SCENARIO_ANALYSIS"
+  | "EDITORIAL_PERSPECTIVE"
+  | "MONTHLY_INTELLIGENCE_BRIEF";
+
+export type InsightsArticleMode =
+  | "MODE_A_FOCUSED"
+  | "MODE_B_PRIMARY_PLUS_CONSEQUENCE"
+  | "MODE_C_SYSTEM";
+
+const INSIGHTS_CONTENT_TYPE_SET = new Set<string>([
+  "FLAGSHIP_INSIGHT",
+  "FIELD_SIGNAL",
+  "DECISION_GUIDE",
+  "RESEARCH_BRIEF",
+  "TOOL_TECH_WATCH",
+  "SCENARIO_ANALYSIS",
+  "EDITORIAL_PERSPECTIVE",
+  "MONTHLY_INTELLIGENCE_BRIEF",
+]);
+
+export function isInsightsContentType(value?: string | null): value is InsightsContentType {
+  return !!value && INSIGHTS_CONTENT_TYPE_SET.has(value);
+}
+
+// ---------------------------------------------------------------------------
 // Per-content-type word counts for long-form generation.
 // ---------------------------------------------------------------------------
 export const CONTENT_TYPE_WORD_RANGES: Record<string, { min: number; max: number }> = {
@@ -128,6 +161,15 @@ export const CONTENT_TYPE_WORD_RANGES: Record<string, { min: number; max: number
   how_to: { min: 500, max: 700 },
   insights: { min: 700, max: 1000 },
   deep_dive: { min: 1000, max: 1300 },
+  // Insights Editorial types — Section 8 word budgets
+  FLAGSHIP_INSIGHT: { min: 1200, max: 1800 },
+  FIELD_SIGNAL: { min: 250, max: 500 },
+  DECISION_GUIDE: { min: 700, max: 1100 },
+  RESEARCH_BRIEF: { min: 700, max: 1200 },
+  TOOL_TECH_WATCH: { min: 800, max: 1300 },
+  SCENARIO_ANALYSIS: { min: 800, max: 1400 },
+  EDITORIAL_PERSPECTIVE: { min: 600, max: 1100 },
+  MONTHLY_INTELLIGENCE_BRIEF: { min: 1000, max: 1600 },
 };
 
 export function getWordRange(contentType?: string | null) {
@@ -497,6 +539,157 @@ export const SOCIAL_KIT_JSON_SCHEMA = {
     "suggested_category_badge",
     "quality_notes",
   ],
+} as const;
+
+// ---------------------------------------------------------------------------
+// Insights Editorial Layer — Phase 1 planning schemas (Step 3).
+// ---------------------------------------------------------------------------
+
+export const INSIGHTS_CONTENT_TYPE_ENUM = [
+  "FLAGSHIP_INSIGHT",
+  "FIELD_SIGNAL",
+  "DECISION_GUIDE",
+  "RESEARCH_BRIEF",
+  "TOOL_TECH_WATCH",
+  "SCENARIO_ANALYSIS",
+  "EDITORIAL_PERSPECTIVE",
+  "MONTHLY_INTELLIGENCE_BRIEF",
+] as const;
+
+export const INSIGHTS_MODE_ENUM = [
+  "MODE_A_FOCUSED",
+  "MODE_B_PRIMARY_PLUS_CONSEQUENCE",
+  "MODE_C_SYSTEM",
+] as const;
+
+export const insightsBriefInputSchema = z.object({
+  contentType: z.enum(INSIGHTS_CONTENT_TYPE_ENUM),
+  primaryReader: z.string().min(1),
+  primaryReaderQuestion: z.string().min(1),
+  whyNow: z.string(),
+  mode: z.enum(INSIGHTS_MODE_ENUM).optional(),
+});
+export type InsightsBriefInput = z.infer<typeof insightsBriefInputSchema>;
+
+const editorialBriefSchema = z.object({
+  workingTitle: z.string(),
+  contentType: z.enum(INSIGHTS_CONTENT_TYPE_ENUM),
+  primaryAudience: z.string(),
+  primaryQuestion: z.string(),
+  readerOutcome: z.string(),
+  whyNow: z.string(),
+  recommendedAuthorExpertise: z.string(),
+  mode: z.enum(INSIGHTS_MODE_ENUM),
+  wordBudget: z.object({ min: z.number(), max: z.number() }),
+  readTimeTargetMinutes: z.number(),
+  riskFlags: z.array(z.string()),
+});
+export type EditorialBrief = z.infer<typeof editorialBriefSchema>;
+
+const lensEntrySchema = z.object({
+  lens: z.string(),
+  reason: z.string(),
+});
+
+const stakeholderScanSchema = z.object({
+  employerImpact: z.string(),
+  employeeCandidateImpact: z.string(),
+  staffingMspImpact: z.string(),
+  materialTradeoffs: z.string(),
+  publishLenses: z.array(lensEntrySchema),
+  omitLenses: z.array(lensEntrySchema),
+});
+export type StakeholderScan = z.infer<typeof stakeholderScanSchema>;
+
+const outlineSectionSchema = z.object({
+  purpose: z.string(),
+  workingHeading: z.string(),
+  readerValue: z.string(),
+});
+export type OutlineSection = z.infer<typeof outlineSectionSchema>;
+
+export const insightsPlanningOutputSchema = z.object({
+  brief: editorialBriefSchema,
+  stakeholderScan: stakeholderScanSchema,
+  researchQuestions: z.array(z.string()),
+  outlineRecommendation: z.array(outlineSectionSchema),
+  decision: z.enum(["PROCEED", "REVISE_BRIEF", "REJECT_GENERIC"]),
+});
+export type InsightsPlanningOutput = z.infer<typeof insightsPlanningOutputSchema>;
+
+export const INSIGHTS_PLANNING_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  required: ["brief", "stakeholderScan", "researchQuestions", "outlineRecommendation", "decision"],
+  properties: {
+    brief: {
+      type: "object",
+      additionalProperties: false,
+      required: ["workingTitle", "contentType", "primaryAudience", "primaryQuestion", "readerOutcome", "whyNow", "recommendedAuthorExpertise", "mode", "wordBudget", "readTimeTargetMinutes", "riskFlags"],
+      properties: {
+        workingTitle: { type: "string" },
+        contentType: { type: "string" },
+        primaryAudience: { type: "string" },
+        primaryQuestion: { type: "string" },
+        readerOutcome: { type: "string" },
+        whyNow: { type: "string" },
+        recommendedAuthorExpertise: { type: "string" },
+        mode: { type: "string" },
+        wordBudget: {
+          type: "object",
+          additionalProperties: false,
+          required: ["min", "max"],
+          properties: { min: { type: "number" }, max: { type: "number" } },
+        },
+        readTimeTargetMinutes: { type: "number" },
+        riskFlags: { type: "array", items: { type: "string" } },
+      },
+    },
+    stakeholderScan: {
+      type: "object",
+      additionalProperties: false,
+      required: ["employerImpact", "employeeCandidateImpact", "staffingMspImpact", "materialTradeoffs", "publishLenses", "omitLenses"],
+      properties: {
+        employerImpact: { type: "string" },
+        employeeCandidateImpact: { type: "string" },
+        staffingMspImpact: { type: "string" },
+        materialTradeoffs: { type: "string" },
+        publishLenses: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["lens", "reason"],
+            properties: { lens: { type: "string" }, reason: { type: "string" } },
+          },
+        },
+        omitLenses: {
+          type: "array",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["lens", "reason"],
+            properties: { lens: { type: "string" }, reason: { type: "string" } },
+          },
+        },
+      },
+    },
+    researchQuestions: { type: "array", items: { type: "string" } },
+    outlineRecommendation: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["purpose", "workingHeading", "readerValue"],
+        properties: {
+          purpose: { type: "string" },
+          workingHeading: { type: "string" },
+          readerValue: { type: "string" },
+        },
+      },
+    },
+    decision: { type: "string", enum: ["PROCEED", "REVISE_BRIEF", "REJECT_GENERIC"] },
+  },
 } as const;
 
 export const QUALITY_REVIEW_JSON_SCHEMA = {

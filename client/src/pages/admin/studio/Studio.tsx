@@ -28,6 +28,7 @@ import {
   Loader2,
   Newspaper,
   FileEdit,
+  FileSearch,
   Clock3,
   CheckCircle2,
   CalendarClock,
@@ -382,6 +383,7 @@ interface StudioStats {
 }
 
 const STATUS_LABELS: Record<string, string> = {
+  planning_review: "Gate A Review",
   draft: "Draft",
   in_review: "In Review",
   approved: "Approved",
@@ -391,6 +393,7 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 const STATUS_META: { key: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
+  { key: "planning_review", icon: FileSearch, color: "text-indigo-500" },
   { key: "draft", icon: FileEdit, color: "text-slate-500" },
   { key: "in_review", icon: Clock3, color: "text-amber-500" },
   { key: "approved", icon: CheckCircle2, color: "text-emerald-500" },

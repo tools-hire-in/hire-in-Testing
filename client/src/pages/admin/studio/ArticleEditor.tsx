@@ -89,7 +89,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { COMPLIANCE_MODES, type CanonicalSocialKit } from "@shared/studioAi";
+import { COMPLIANCE_MODES, type CanonicalSocialKit, isInsightsContentType, type InsightsPlanningOutput } from "@shared/studioAi";
 import {
   STUDIO_CONTENT_TYPES,
   STUDIO_CHANNELS,
@@ -287,6 +287,12 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [genContentStructure, setGenContentStructure] = useState("");
   const [genEngagementGoal, setGenEngagementGoal] = useState("");
   const [genCreativeDirectionOpen, setGenCreativeDirectionOpen] = useState(false);
+  // Gate A — Insights editorial review state
+  const [gateARejectReason, setGateARejectReason] = useState("");
+  const [gateAReviseOpen, setGateAReviseOpen] = useState(false);
+  const [gateARevisePrimaryReader, setGateARevisePrimaryReader] = useState("");
+  const [gateAReviseQuestion, setGateAReviseQuestion] = useState("");
+  const [gateAReviseWhyNow, setGateAReviseWhyNow] = useState("");
   const [genStrategySummary, setGenStrategySummary] = useState<{
     audience: string;
     domain: string;
@@ -353,6 +359,9 @@ function ArticleEditorInner({ id }: { id: string }) {
   // If the article already has body content, lock the Generate Draft button so
   // AI cannot silently overwrite an in-progress draft.
   const hasDraft = !!(article?.bodyMarkdown?.trim());
+  // Insights types are Phase 1 only — generate-article guard on the backend returns 422.
+  // Disable the button upfront so editors get a clear tooltip instead of a confusing error.
+  const isInsightsPhase1Locked = !!(article && isInsightsContentType(article.contentType));
 
   const { data: authors } = useQuery<StudioAuthorProfile[]>({
     queryKey: [
@@ -876,6 +885,63 @@ function ArticleEditorInner({ id }: { id: string }) {
     },
   });
 
+  // Gate A mutations — Insights editorial approval flow
+  const gateAApproveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/studio/articles/${id}/gate-a/approve`, {});
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || "Approve failed");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles"] });
+      toast({ title: "Brief approved — article moved to draft" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Approve failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const gateARejectMutation = useMutation({
+    mutationFn: async (reason: string) => {
+      const res = await apiRequest("POST", `/api/admin/studio/articles/${id}/gate-a/reject`, { reason });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles"] });
+      setGateARejectReason("");
+      toast({ title: "Article rejected" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Reject failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const gateAReviseMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/studio/articles/${id}/gate-a/revise`, {
+        primaryReader: gateARevisePrimaryReader || undefined,
+        primaryReaderQuestion: gateAReviseQuestion || article?.title || "",
+        whyNow: gateAReviseWhyNow || undefined,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
+      setGateAReviseOpen(false);
+      setGateAReviseQuestion("");
+      setGateAReviseWhyNow("");
+      toast({ title: "Brief revised — review the updated planning output" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Revise failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const copyText = useCallback(
     (text: string, label: string) => {
       navigator.clipboard?.writeText(text).then(
@@ -1024,7 +1090,12 @@ function ArticleEditorInner({ id }: { id: string }) {
             articleTitle={article.title ?? ""}
             currentMarkdown={article.bodyMarkdown ?? ""}
             domainResolved={(article as any).domainResolved ?? ""}
-            initialBrief={{
+            initialBrief={isInsightsContentType(article.contentType) ? {
+              hookPattern: "",
+              desiredEmotion: "",
+              contentStructure: "",
+              engagementGoal: "",
+            } : {
               hookPattern: (article as any).hookPattern ?? "",
               desiredEmotion: (article as any).desiredEmotion ?? "",
               contentStructure: (article as any).contentStructure ?? "",
@@ -1061,12 +1132,12 @@ function ArticleEditorInner({ id }: { id: string }) {
                         variant="outline"
                         size="sm"
                         onClick={() => setGenOpen(true)}
-                        disabled={generateArticleMutation.isPending || hasDraft}
+                        disabled={generateArticleMutation.isPending || hasDraft || isInsightsPhase1Locked}
                         data-testid="button-open-generate"
                       >
                         {generateArticleMutation.isPending ? (
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : hasDraft ? (
+                        ) : hasDraft || isInsightsPhase1Locked ? (
                           <Lock className="mr-2 h-4 w-4" />
                         ) : (
                           <Sparkles className="mr-2 h-4 w-4" />
@@ -1075,11 +1146,15 @@ function ArticleEditorInner({ id }: { id: string }) {
                       </Button>
                     </span>
                   </TooltipTrigger>
-                  {hasDraft && (
+                  {isInsightsPhase1Locked ? (
+                    <TooltipContent side="bottom" className="max-w-[260px] text-center">
+                      AI draft generation for Insights Editorial articles is coming in Phase 2. Approve the planning brief at Gate A for now.
+                    </TooltipContent>
+                  ) : hasDraft ? (
                     <TooltipContent side="bottom" className="max-w-[240px] text-center">
                       This article already has a draft. To use AI generation, start a new article instead.
                     </TooltipContent>
-                  )}
+                  ) : null}
                 </Tooltip>
               </TooltipProvider>
               <div className="flex flex-col items-start gap-1">
@@ -1260,6 +1335,321 @@ function ArticleEditorInner({ id }: { id: string }) {
         </div>
       )}
 
+      {/* Gate A — Insights Editorial Planning Review Panel */}
+      {article && isInsightsContentType(article.contentType) && article.status === "planning_review" && (() => {
+        const planning = ((article as any).insightsPlanning ?? (article as any).insights_planning) as InsightsPlanningOutput | null | undefined;
+        const canReview = can("studio.edit_article");
+        return (
+          <div
+            className="rounded-lg border border-indigo-300 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/30 space-y-4 p-4"
+            data-testid="panel-gate-a"
+          >
+            <div className="flex items-start gap-3">
+              <FileSearch className="mt-0.5 h-5 w-5 shrink-0 text-indigo-600 dark:text-indigo-400" />
+              <div className="flex-1 space-y-1">
+                <p className="text-sm font-semibold text-indigo-800 dark:text-indigo-300">
+                  Gate A — Editorial Planning Review{planning && typeof (planning as any).revisionCount === "number" && (planning as any).revisionCount > 0 ? ` (rev. ${(planning as any).revisionCount})` : ""}
+                </p>
+                <p className="text-sm text-indigo-700 dark:text-indigo-400">
+                  {(planning as any)?.briefGenerationFailed
+                    ? "Brief generation failed. Use Revise Brief below to retry with updated context."
+                    : planning
+                    ? "AI has generated an editorial planning brief. Review and approve before generating content."
+                    : "AI is generating the editorial planning brief… refresh in a moment to see the result."}
+                </p>
+              </div>
+            </div>
+
+            {planning && !(planning as any).briefGenerationFailed && (
+              <div className="space-y-3 rounded-md border border-indigo-200 bg-white dark:border-indigo-800 dark:bg-indigo-950/50 p-3">
+                {/* Editorial brief header */}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Working Title</p>
+                  <p className="mt-1 text-sm font-medium text-foreground">{planning.brief.workingTitle}</p>
+                </div>
+
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Primary Audience</p>
+                    <p className="text-xs text-muted-foreground">{planning.brief.primaryAudience}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">AI Decision</p>
+                    <Badge
+                      variant="secondary"
+                      className={
+                        planning.decision === "PROCEED"
+                          ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                          : planning.decision === "REJECT_GENERIC"
+                            ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"
+                            : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
+                      }
+                      data-testid="badge-gate-a-decision"
+                    >
+                      {planning.decision === "PROCEED" ? "Proceed" : planning.decision === "REJECT_GENERIC" ? "Reject" : "Revise Brief"}
+                    </Badge>
+                  </div>
+                </div>
+
+                {planning.brief.primaryQuestion && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Primary Question</p>
+                    <p className="text-xs text-muted-foreground">{planning.brief.primaryQuestion}</p>
+                  </div>
+                )}
+
+                {planning.brief.readerOutcome && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Reader Outcome</p>
+                    <p className="text-xs text-muted-foreground">{planning.brief.readerOutcome}</p>
+                  </div>
+                )}
+
+                {planning.brief.whyNow && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Why Now</p>
+                    <p className="text-xs text-muted-foreground">{planning.brief.whyNow}</p>
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-2">
+                  {planning.brief.mode && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Mode</p>
+                      <p className="text-xs text-muted-foreground">{planning.brief.mode}</p>
+                    </div>
+                  )}
+                  {planning.brief.wordBudget && (
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Word Budget</p>
+                      <p className="text-xs text-muted-foreground">{planning.brief.wordBudget.min}–{planning.brief.wordBudget.max} words</p>
+                    </div>
+                  )}
+                </div>
+
+                {planning.brief.recommendedAuthorExpertise && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Recommended Author Expertise</p>
+                    <p className="text-xs text-muted-foreground">{planning.brief.recommendedAuthorExpertise}</p>
+                  </div>
+                )}
+
+                {planning.stakeholderScan && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Stakeholder Scan</p>
+                    <div className="mt-1 space-y-1 text-xs text-muted-foreground">
+                      {planning.stakeholderScan.employerImpact && (
+                        <p><span className="font-medium">Employer:</span> {planning.stakeholderScan.employerImpact}</p>
+                      )}
+                      {planning.stakeholderScan.employeeCandidateImpact && (
+                        <p><span className="font-medium">Employee/Candidate:</span> {planning.stakeholderScan.employeeCandidateImpact}</p>
+                      )}
+                      {planning.stakeholderScan.staffingMspImpact && (
+                        <p><span className="font-medium">Staffing/MSP:</span> {planning.stakeholderScan.staffingMspImpact}</p>
+                      )}
+                      {planning.stakeholderScan.materialTradeoffs && (
+                        <p><span className="font-medium">Tradeoffs:</span> {planning.stakeholderScan.materialTradeoffs}</p>
+                      )}
+                    </div>
+                    {Array.isArray(planning.stakeholderScan.publishLenses) && planning.stakeholderScan.publishLenses.length > 0 && (
+                      <div className="mt-1">
+                        <p className="text-xs font-medium text-indigo-600 dark:text-indigo-400">Publish Lenses</p>
+                        <ul className="ml-3 list-disc space-y-0.5 text-xs text-muted-foreground">
+                          {planning.stakeholderScan.publishLenses.map((l: any, i: number) => (
+                            <li key={i}><span className="font-medium">{l.lens}:</span> {l.reason}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {Array.isArray(planning.stakeholderScan.omitLenses) && planning.stakeholderScan.omitLenses.length > 0 && (
+                      <div className="mt-1">
+                        <p className="text-xs font-medium text-red-600 dark:text-red-400">Omit Lenses</p>
+                        <ul className="ml-3 list-disc space-y-0.5 text-xs text-muted-foreground">
+                          {planning.stakeholderScan.omitLenses.map((l: any, i: number) => (
+                            <li key={i}><span className="font-medium">{l.lens}:</span> {l.reason}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {Array.isArray(planning.researchQuestions) && planning.researchQuestions.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Research Questions</p>
+                    <ul className="mt-1 ml-3 list-disc space-y-0.5 text-xs text-muted-foreground">
+                      {planning.researchQuestions.map((q: string, i: number) => (
+                        <li key={i}>{q}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {Array.isArray(planning.outlineRecommendation) && planning.outlineRecommendation.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-400">Suggested Outline</p>
+                    <ol className="mt-1 ml-3 list-decimal space-y-1 text-xs text-muted-foreground">
+                      {planning.outlineRecommendation.map((s: any, i: number) => (
+                        <li key={i}>
+                          <span className="font-medium">{s.workingHeading}</span>
+                          {s.purpose && <span className="ml-1 text-muted-foreground/70">— {s.purpose}</span>}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+
+                {Array.isArray(planning.brief.riskFlags) && planning.brief.riskFlags.length > 0 && (
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-600 dark:text-amber-400">Risk Flags</p>
+                    <ul className="mt-1 ml-3 list-disc space-y-0.5 text-xs text-amber-700 dark:text-amber-300">
+                      {planning.brief.riskFlags.map((f: string, i: number) => (
+                        <li key={i}>{f}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {canReview && (
+              <div className="flex flex-wrap items-center gap-2">
+                {planning && planning.decision !== "PROCEED" && (
+                  <p className="w-full text-xs text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 rounded px-2 py-1">
+                    AI recommends <strong>{planning.decision}</strong> — use Revise Brief to address concerns before approving.
+                  </p>
+                )}
+                {!planning && (
+                  <p className="rounded bg-amber-50 border border-amber-200 px-2 py-1.5 text-xs text-amber-700 dark:bg-amber-950/30 dark:border-amber-800 dark:text-amber-300">
+                    Brief generation did not complete. Use <strong>Revise Brief</strong> below to retry.
+                  </p>
+                )}
+                <Button
+                  size="sm"
+                  onClick={() => gateAApproveMutation.mutate()}
+                  disabled={!planning || planning.decision !== "PROCEED" || gateAApproveMutation.isPending || gateARejectMutation.isPending || gateAReviseMutation.isPending}
+                  className="bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"
+                  data-testid="button-gate-a-approve"
+                  title={planning && planning.decision !== "PROCEED" ? `Cannot approve — AI decision is '${planning.decision}'. Use Revise Brief to address concerns.` : "Approve this editorial brief"}
+                >
+                  {gateAApproveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  Approve Brief
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => setGateAReviseOpen((v) => !v)}
+                  disabled={gateAApproveMutation.isPending || gateARejectMutation.isPending || gateAReviseMutation.isPending}
+                  data-testid="button-gate-a-revise"
+                >
+                  <RefreshCw className="mr-2 h-4 w-4" />
+                  Revise Brief
+                </Button>
+                <div className="flex items-center gap-2">
+                  <Input
+                    value={gateARejectReason}
+                    onChange={(e) => setGateARejectReason(e.target.value)}
+                    placeholder="Reject reason…"
+                    className="h-8 w-40 text-xs"
+                    data-testid="input-gate-a-reject-reason"
+                  />
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={() => gateARejectMutation.mutate(gateARejectReason || "Rejected at Gate A")}
+                    disabled={gateAApproveMutation.isPending || gateARejectMutation.isPending || gateAReviseMutation.isPending}
+                    data-testid="button-gate-a-reject"
+                  >
+                    {gateARejectMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <XCircle className="mr-2 h-4 w-4" />}
+                    Reject
+                  </Button>
+                </div>
+              </div>
+            )}
+
+            {gateAReviseOpen && (
+              <div className="space-y-3 rounded-md border border-indigo-200 bg-white dark:border-indigo-800 dark:bg-indigo-950/50 p-3">
+                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">Revise Brief — provide updated context</p>
+                <div className="space-y-1">
+                  <Label className="text-xs">Primary Reader</Label>
+                  <Select
+                    value={gateARevisePrimaryReader || (planning as any)?.brief?.primaryAudience || "Staffing/MSP Operator"}
+                    onValueChange={setGateARevisePrimaryReader}
+                  >
+                    <SelectTrigger className="text-xs h-8" data-testid="select-gate-a-revise-primary-reader">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Staffing/MSP Operator">Staffing / MSP Operator</SelectItem>
+                      <SelectItem value="HR Director">HR Director</SelectItem>
+                      <SelectItem value="IT Hiring Manager">IT Hiring Manager</SelectItem>
+                      <SelectItem value="Healthcare HR Manager">Healthcare HR Manager</SelectItem>
+                      <SelectItem value="C-Suite Executive">C-Suite Executive</SelectItem>
+                      <SelectItem value="Recruitment Leader">Recruitment Leader</SelectItem>
+                      <SelectItem value="Candidate/Professional">Candidate / Professional</SelectItem>
+                      <SelectItem value="Government/Public Sector HR">Government / Public Sector HR</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Primary reader question / angle</Label>
+                  <Textarea
+                    value={gateAReviseQuestion}
+                    onChange={(e) => setGateAReviseQuestion(e.target.value)}
+                    placeholder="What should the primary reader be able to answer after reading this?"
+                    rows={2}
+                    className="text-xs"
+                    data-testid="input-gate-a-revise-question"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Why now (optional)</Label>
+                  <Input
+                    value={gateAReviseWhyNow}
+                    onChange={(e) => setGateAReviseWhyNow(e.target.value)}
+                    placeholder="Timing context — recent trend, event, or milestone…"
+                    className="text-xs"
+                    data-testid="input-gate-a-revise-why-now"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  onClick={() => gateAReviseMutation.mutate()}
+                  disabled={gateAReviseMutation.isPending}
+                  data-testid="button-gate-a-revise-submit"
+                >
+                  {gateAReviseMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4" />}
+                  Regenerate Brief
+                </Button>
+              </div>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* Phase 2 guard — Insights articles approved at Gate A are waiting for
+          draft generation (coming in Phase 2). Show a clear informational banner
+          so editors don't expect the Generate Draft button to work. */}
+      {article && isInsightsContentType(article.contentType) && article.status === "draft" && (
+        <div
+          className="rounded-lg border border-violet-300 bg-violet-50 dark:border-violet-700 dark:bg-violet-950/30 p-4 space-y-1"
+          data-testid="panel-insights-phase2"
+        >
+          <div className="flex items-start gap-3">
+            <Sparkles className="mt-0.5 h-5 w-5 shrink-0 text-violet-600 dark:text-violet-400" />
+            <div>
+              <p className="text-sm font-semibold text-violet-800 dark:text-violet-300">
+                Gate A approved — Draft generation coming in Phase 2
+              </p>
+              <p className="text-xs text-violet-700 dark:text-violet-400 mt-1">
+                The planning brief has been approved. AI-powered draft generation using the approved brief is being built in Phase 2.
+                You can write the draft manually in the editor below in the meantime.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {originIdea && (
         <div className="rounded-md border border-indigo-200 bg-indigo-50 dark:border-indigo-800 dark:bg-indigo-950/30" data-testid="banner-originated-from-idea">
           <button
@@ -1405,7 +1795,7 @@ function ArticleEditorInner({ id }: { id: string }) {
 
             <TabsContent value="write" className="mt-3 space-y-2">
               {/* CMO Copilot v2.1 — Strategy summary strip (persisted; survives page refresh) */}
-              {genStrategySummary && (
+              {genStrategySummary && !isInsightsContentType(article.contentType) && (
                 <div className="space-y-1.5" data-testid="div-strategy-summary">
                   {/* One-line summary row */}
                   <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
@@ -2160,7 +2550,12 @@ function ArticleEditorInner({ id }: { id: string }) {
               articleTitle={article.title ?? ""}
               currentMarkdown={article.bodyMarkdown ?? ""}
               domainResolved={(article as any).domainResolved ?? ""}
-              initialBrief={{
+              initialBrief={isInsightsContentType(article.contentType) ? {
+                hookPattern: "",
+                desiredEmotion: "",
+                contentStructure: "",
+                engagementGoal: "",
+              } : {
                 hookPattern: (article as any).hookPattern ?? "",
                 desiredEmotion: (article as any).desiredEmotion ?? "",
                 contentStructure: (article as any).contentStructure ?? "",
@@ -2346,8 +2741,8 @@ function ArticleEditorInner({ id }: { id: string }) {
               />
             </div>
 
-            {/* Creative direction — collapsible advanced section */}
-            <div className="rounded-md border">
+            {/* Creative direction — collapsible advanced section (hidden for Insights types) */}
+            {!isInsightsContentType(article.contentType) && <div className="rounded-md border">
               <button
                 type="button"
                 onClick={() => setGenCreativeDirectionOpen((o) => !o)}
@@ -2468,7 +2863,7 @@ function ArticleEditorInner({ id }: { id: string }) {
                   </div>
                 </div>
               )}
-            </div>
+            </div>}
           </div>
 
           {/* Brief quality + cost estimate panel — appears when topic is filled */}

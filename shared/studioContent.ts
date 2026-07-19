@@ -155,11 +155,23 @@ export function articleBylineRequired(contentType?: string | null): boolean {
  * subtypes, the legacy default "article", plus the social-family values
  * (social_post/story) that the Social Kit promote bridge creates. Server
  * returns 400 invalid_content_type for anything else.
+ *
+ * The Insights editorial types (uppercase) are distinct from the lowercase
+ * "insights" presentation type above — do not remove that existing value.
  */
 export const VALID_ARTICLE_CONTENT_TYPES: string[] = [
   "article",
   ...STUDIO_CONTENT_TYPES.map((t) => t.value),
   ...STUDIO_PIPELINE_CONTENT_TYPES.filter((t) => t.family === "social").map((t) => t.value),
+  // Insights Editorial types (Phase 1)
+  "FLAGSHIP_INSIGHT",
+  "FIELD_SIGNAL",
+  "DECISION_GUIDE",
+  "RESEARCH_BRIEF",
+  "TOOL_TECH_WATCH",
+  "SCENARIO_ANALYSIS",
+  "EDITORIAL_PERSPECTIVE",
+  "MONTHLY_INTELLIGENCE_BRIEF",
 ];
 
 export function isValidArticleContentType(value?: string | null): boolean {
@@ -233,7 +245,7 @@ export const STUDIO_PILLARS = [
   "industry_news",
 ] as const;
 
-const WORDS_PER_MINUTE = 200;
+const WORDS_PER_MINUTE = 220;
 
 /** Count words in a Markdown body, stripping common markup so the count is fair. */
 export function countWords(markdown?: string | null): number {

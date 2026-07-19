@@ -11,6 +11,9 @@ import {
   ARTICLE_DRAFT_JSON_SCHEMA,
   SOCIAL_KIT_JSON_SCHEMA,
   QUALITY_REVIEW_JSON_SCHEMA,
+  INSIGHTS_PLANNING_JSON_SCHEMA,
+  insightsPlanningOutputSchema,
+  isInsightsContentType,
   mapToCanonicalArticleDraft,
   mapToCanonicalSocialKit,
   qualityReviewSchema,
@@ -25,6 +28,8 @@ import {
   type CanonicalArticleDraft,
   type CanonicalSocialKit,
   type QualityReview,
+  type InsightsBriefInput,
+  type InsightsPlanningOutput,
 } from "@shared/studioAi";
 import {
   CLAIM_FREE_BLOCK,
@@ -41,6 +46,21 @@ import {
   TONE_BLOCKS,
   preflightCheck,
   selectExemplar,
+  INSIGHTS_EDITORIAL_IDENTITY_BLOCK,
+  INSIGHTS_PRIMARY_READER_BLOCK,
+  INSIGHTS_PLANNING_SCAN_BLOCK,
+  INSIGHTS_LENS_INCLUSION_BLOCK,
+  INSIGHTS_EPISTEMIC_DISCIPLINE_BLOCK,
+  INSIGHTS_LENGTH_BLOCK,
+  INSIGHTS_HUMAN_AUTHENTICITY_BLOCK,
+  FLAGSHIP_INSIGHT_MODULE,
+  FIELD_SIGNAL_MODULE,
+  DECISION_GUIDE_MODULE,
+  RESEARCH_BRIEF_MODULE,
+  TOOL_TECH_WATCH_MODULE,
+  SCENARIO_ANALYSIS_MODULE,
+  EDITORIAL_PERSPECTIVE_MODULE,
+  MONTHLY_BRIEF_MODULE,
 } from "../intelligence/marketingIntelligence";
 import { resolveCardLayout } from "@shared/socialCards";
 import type { StudioPromptTemplate } from "@shared/schema";
@@ -157,6 +177,20 @@ Name the concept with a short, memorable label. Explain its mechanics — how it
 Number the items. Each item is a complete, standalone truth — it must make sense if the reader screenshots just that item. No filler sentences between items. Save the most memorable or surprising item for last. The list title must promise a specific number and deliver it exactly.`,
 };
 
+function resolveInsightsContentTypeModule(contentType: string): string {
+  switch (contentType) {
+    case "FLAGSHIP_INSIGHT": return FLAGSHIP_INSIGHT_MODULE;
+    case "FIELD_SIGNAL": return FIELD_SIGNAL_MODULE;
+    case "DECISION_GUIDE": return DECISION_GUIDE_MODULE;
+    case "RESEARCH_BRIEF": return RESEARCH_BRIEF_MODULE;
+    case "TOOL_TECH_WATCH": return TOOL_TECH_WATCH_MODULE;
+    case "SCENARIO_ANALYSIS": return SCENARIO_ANALYSIS_MODULE;
+    case "EDITORIAL_PERSPECTIVE": return EDITORIAL_PERSPECTIVE_MODULE;
+    case "MONTHLY_INTELLIGENCE_BRIEF": return MONTHLY_BRIEF_MODULE;
+    default: return FLAGSHIP_INSIGHT_MODULE;
+  }
+}
+
 function buildPsychologicalContractBlock(params: AiGenerationParams): string {
   const { desiredEmotion, hookPattern, contentStructure, engagementGoal } = params;
   if (!desiredEmotion && !hookPattern && !contentStructure && !engagementGoal) return "";
@@ -181,6 +215,53 @@ function buildPsychologicalContractBlock(params: AiGenerationParams): string {
 
 function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationParams): string {
   const compliance = getComplianceMode(params.compliance_mode);
+
+  // Insights Editorial path — for Call 3 (article generation) when content_type is an Insights type.
+  // Injects the editorial identity + content-type module instead of the standard intelligence blocks.
+  // Psychological Contract fields are suppressed for Insights articles.
+  if (isInsightsContentType(params.content_type)) {
+    const contentTypeModule = resolveInsightsContentTypeModule(params.content_type);
+    const range = getWordRange(params.content_type);
+    const blocks: string[] = [
+      INSIGHTS_EDITORIAL_IDENTITY_BLOCK,
+      contentTypeModule,
+      INSIGHTS_PRIMARY_READER_BLOCK,
+      INSIGHTS_PLANNING_SCAN_BLOCK,
+      INSIGHTS_LENS_INCLUSION_BLOCK,
+      INSIGHTS_EPISTEMIC_DISCIPLINE_BLOCK,
+      INSIGHTS_LENGTH_BLOCK,
+      INSIGHTS_HUMAN_AUTHENTICITY_BLOCK,
+      BANNED_SLOP_BLOCK,
+      CLAIM_FREE_BLOCK,
+      SELF_EDIT_BLOCK,
+    ];
+    // Primary reader discipline — inject approved planning context when available.
+    // Populated from Gate A insightsPlanning via the social-cascade or direct article gen params.
+    const planningContextLines: string[] = [];
+    if (params.audience?.trim()) {
+      planningContextLines.push(`Primary reader: ${params.audience.trim()}`);
+    }
+    if (params.marketContext?.trim()) {
+      // marketContext encodes: mode | whyNow | publishLenses (pipe-separated from social cascade)
+      planningContextLines.push(`Editorial context: ${params.marketContext.trim()}`);
+    }
+    if (planningContextLines.length > 0) {
+      blocks.push(
+        `PRIMARY READER DISCIPLINE\n${planningContextLines.join("\n")}\nWrite exclusively to serve this reader's decision-making context. Every section must address their primary question or be cut.`
+      );
+    }
+    if (params.userSuppliedFacts?.trim()) {
+      blocks.push(
+        `User-supplied facts and claims (use as provided, preserve qualifiers, do not strengthen or expand): ${params.userSuppliedFacts.trim()}`
+      );
+    }
+    if (params.pastPerformanceSignal?.trim()) {
+      blocks.push(
+        `PAST PERFORMANCE SIGNAL (use as additional context to guide tone and structure — do not quote these metrics in the content):\n${params.pastPerformanceSignal.trim()}`
+      );
+    }
+    return blocks.filter(Boolean).join("\n\n");
+  }
 
   // Intelligence path: activated when contentGoal is provided
   if (params.contentGoal) {
@@ -472,6 +553,118 @@ export async function runQualityReview(
   } catch (e: any) {
     throw new AiGenerationError("validation", `Quality review output failed validation: ${e?.message}`, false);
   }
+}
+
+// ---------------------------------------------------------------------------
+// Insights Editorial Layer — Call 1: Editorial Strategy brief generation.
+// Returns InsightsPlanningOutput (brief + stakeholder scan + outline).
+// Called automatically on article creation when content_type is an Insights type.
+// ---------------------------------------------------------------------------
+
+export interface InsightsBriefResult {
+  planning: InsightsPlanningOutput;
+  model: string;
+  tokenEstimate: number;
+}
+
+export async function generateInsightsBrief(input: InsightsBriefInput): Promise<InsightsBriefResult> {
+  const contentTypeModule = resolveInsightsContentTypeModule(input.contentType);
+
+  const systemPrompt = [
+    INSIGHTS_EDITORIAL_IDENTITY_BLOCK,
+    INSIGHTS_PRIMARY_READER_BLOCK,
+    INSIGHTS_PLANNING_SCAN_BLOCK,
+    INSIGHTS_LENS_INCLUSION_BLOCK,
+    INSIGHTS_EPISTEMIC_DISCIPLINE_BLOCK,
+    INSIGHTS_LENGTH_BLOCK,
+    INSIGHTS_HUMAN_AUTHENTICITY_BLOCK,
+    BANNED_SLOP_BLOCK,
+    CLAIM_FREE_BLOCK,
+    contentTypeModule,
+  ].join("\n\n");
+
+  const userPrompt = [
+    `CALL 1 PLANNING REQUEST`,
+    `Content Type: ${input.contentType}`,
+    `Primary Reader: ${input.primaryReader}`,
+    `Primary Reader Question / Topic: ${input.primaryReaderQuestion}`,
+    `Why Now (timing context): ${input.whyNow || "Not specified"}`,
+    input.mode ? `Preferred Mode: ${input.mode}` : "",
+    ``,
+    `Please produce the structured planning output for this Insights article, including:`,
+    `1. A full editorial brief`,
+    `2. A stakeholder scan across all three groups`,
+    `3. 3-6 research questions the author must answer before writing`,
+    `4. A 3-6 section outline recommendation`,
+    `5. A planning decision: PROCEED, REVISE_BRIEF, or REJECT_GENERIC`,
+  ].filter(Boolean).join("\n");
+
+  const model = TIER_MODELS.strong;
+
+  const completion = await openai.chat.completions.create({
+    model,
+    max_completion_tokens: 3000,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "insights_planning",
+        strict: true,
+        schema: INSIGHTS_PLANNING_JSON_SCHEMA,
+      },
+    },
+  });
+
+  const content = completion.choices?.[0]?.message?.content;
+  if (!content) throw new AiGenerationError("malformed", "Insights brief generation returned no content.");
+
+  let parsed: any;
+  try {
+    parsed = JSON.parse(content);
+  } catch {
+    throw new AiGenerationError("malformed", "Insights brief generation returned invalid JSON.", true);
+  }
+
+  let planning: InsightsPlanningOutput;
+  try {
+    planning = insightsPlanningOutputSchema.parse(parsed);
+  } catch (e: any) {
+    // Validation failure is retryable — the model may produce a valid response on retry.
+    throw new AiGenerationError("validation", `Insights planning output failed validation: ${e?.message}`, true);
+  }
+
+  return {
+    planning,
+    model,
+    tokenEstimate: completion.usage?.total_tokens ?? 0,
+  };
+}
+
+// Retry wrapper for generateInsightsBrief — retries once on retryable failures
+// (JSON parse error, Zod validation failure) before surfacing the error to the caller.
+// Spec: single retry (2 total attempts) to bound token cost predictably.
+export async function generateInsightsBriefWithRetry(input: InsightsBriefInput): Promise<InsightsBriefResult> {
+  return pRetry(
+    async () => {
+      try {
+        return await generateInsightsBrief(input);
+      } catch (e: any) {
+        if (e instanceof AiGenerationError && !e.retryable) throw new AbortError(e);
+        throw e;
+      }
+    },
+    {
+      retries: 1,
+      minTimeout: 800,
+      factor: 2,
+      onFailedAttempt: (err) => {
+        console.warn(`[insights-call1] Attempt ${err.attemptNumber} failed: ${err.message}. ${err.retriesLeft} retries left.`);
+      },
+    },
+  );
 }
 
 // ---------------------------------------------------------------------------

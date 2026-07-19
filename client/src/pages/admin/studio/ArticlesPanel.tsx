@@ -21,7 +21,9 @@ import {
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -52,6 +54,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Loader2, Plus, Search, FileEdit, Clock3, FastForward, UserPlus, UserX, DollarSign, MoreHorizontal, EyeOff, Archive } from "lucide-react";
 import { STUDIO_CONTENT_TYPES, getStudioContentType } from "@shared/studioContent";
+import { isInsightsContentType } from "@shared/studioAi";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
 import { OutdatedModelBadge } from "./ArticleRegenPanel";
 import type { StudioArticle, StudioAuthorProfile } from "@shared/schema";
@@ -89,6 +92,11 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
   );
   const [newDomain, setNewDomain] = useState("");
   const [newPlannedDate, setNewPlannedDate] = useState("");
+  // Insights Editorial creation fields (only sent when isInsightsContentType(newType))
+  const [newInsightsPrimaryReader, setNewInsightsPrimaryReader] = useState("Staffing/MSP Operator");
+  const [newInsightsPrimaryReaderQuestion, setNewInsightsPrimaryReaderQuestion] = useState("");
+  const [newInsightsWhyNow, setNewInsightsWhyNow] = useState("");
+  const [newInsightsMode, setNewInsightsMode] = useState("");
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const canBulkApprove = can("studio.marketing_approve");
@@ -154,11 +162,14 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
     });
   };
 
+  // planning_review articles advance only via Gate A — never via bulk-advance.
+  const bulkSelectableItems = items.filter((a) => a.status !== "planning_review");
+
   const toggleSelectAll = () => {
-    if (selectedIds.size === items.length) {
+    if (selectedIds.size === bulkSelectableItems.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(items.map((a) => a.id)));
+      setSelectedIds(new Set(bulkSelectableItems.map((a) => a.id)));
     }
   };
 
@@ -227,6 +238,7 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
 
   const createMutation = useMutation({
     mutationFn: async () => {
+      const isInsights = isInsightsContentType(newType);
       const res = await apiRequest("POST", "/api/admin/studio/articles", {
         projectId,
         title: newTitle.trim(),
@@ -236,6 +248,11 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
         ...(newBrief.trim() ? { generationBrief: newBrief.trim() } : {}),
         ...(newDomain ? { staffingDomain: newDomain } : {}),
         ...(newPlannedDate ? { scheduledAt: newPlannedDate } : {}),
+        // Insights-specific planning inputs — prefixed names match server route contract.
+        ...(isInsights && newInsightsPrimaryReader ? { insightsPrimaryReader: newInsightsPrimaryReader } : {}),
+        ...(isInsights && newInsightsPrimaryReaderQuestion.trim() ? { insightsPrimaryReaderQuestion: newInsightsPrimaryReaderQuestion.trim() } : {}),
+        ...(isInsights && newInsightsWhyNow.trim() ? { insightsWhyNow: newInsightsWhyNow.trim() } : {}),
+        ...(isInsights && newInsightsMode ? { insightsMode: newInsightsMode } : {}),
       });
       return res.json();
     },
@@ -250,6 +267,10 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
       setNewBrief("");
       setNewDomain("");
       setNewPlannedDate("");
+      setNewInsightsPrimaryReader("Staffing/MSP Operator");
+      setNewInsightsPrimaryReaderQuestion("");
+      setNewInsightsWhyNow("");
+      setNewInsightsMode("");
       toast({ title: "Article created", description: "Opening the editor…" });
       setLocation(`/admin/studio/articles/${created.id}/edit`);
     },
@@ -425,7 +446,7 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                   {showSelection && (
                     <TableHead className="w-8">
                       <Checkbox
-                        checked={items.length > 0 && selectedIds.size === items.length}
+                        checked={bulkSelectableItems.length > 0 && selectedIds.size === bulkSelectableItems.length}
                         onCheckedChange={toggleSelectAll}
                         aria-label="Select all"
                         data-testid="checkbox-select-all"
@@ -450,11 +471,12 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                     data-testid={`row-article-${a.id}`}
                   >
                     {showSelection && (
-                      <TableCell onClick={(e) => { e.stopPropagation(); toggleSelect(a.id); }}>
+                      <TableCell onClick={(e) => { e.stopPropagation(); if (a.status !== "planning_review") toggleSelect(a.id); }}>
                         <Checkbox
                           checked={selectedIds.has(a.id)}
-                          onCheckedChange={() => toggleSelect(a.id)}
-                          aria-label={`Select ${a.title}`}
+                          onCheckedChange={() => { if (a.status !== "planning_review") toggleSelect(a.id); }}
+                          disabled={a.status === "planning_review"}
+                          aria-label={a.status === "planning_review" ? `${a.title} — advance via Gate A review` : `Select ${a.title}`}
                           data-testid={`checkbox-article-${a.id}`}
                         />
                       </TableCell>
@@ -476,7 +498,24 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                       </span>
                     </TableCell>
                     <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
-                      {getStudioContentType(a.contentType)?.label ?? a.contentType}
+                      <span className="flex flex-wrap items-center gap-1">
+                        <span>{getStudioContentType(a.contentType)?.label ?? a.contentType}</span>
+                        {isInsightsContentType(a.contentType) && a.status === "planning_review" && (
+                          <Badge variant="outline" className="h-4 rounded px-1 py-0 text-[10px] font-normal border-indigo-300 text-indigo-600 dark:border-indigo-700 dark:text-indigo-400" data-testid={`badge-gate-a-${a.id}`}>
+                            Gate A
+                          </Badge>
+                        )}
+                        {isInsightsContentType(a.contentType) && (() => {
+                          const mode = (a as any).insights_planning?.brief?.mode || (a as any).insightsPlanning?.brief?.mode;
+                          if (!mode) return null;
+                          const modeShort = mode === "MODE_A_FOCUSED" ? "A" : mode === "MODE_B_PRIMARY_PLUS_CONSEQUENCE" ? "B" : mode === "MODE_C_SYSTEM" ? "C" : mode.slice(-1);
+                          return (
+                            <Badge variant="outline" className="h-4 rounded px-1 py-0 text-[10px] font-normal border-violet-300 text-violet-600 dark:border-violet-700 dark:text-violet-400" data-testid={`badge-mode-${a.id}`}>
+                              M{modeShort}
+                            </Badge>
+                          );
+                        })()}
+                      </span>
                     </TableCell>
                     <TableCell onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
                       {(() => {
@@ -625,62 +664,151 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    {STUDIO_CONTENT_TYPES.map((t) => (
-                      <SelectItem key={t.value} value={t.value}>
-                        {t.label}
-                      </SelectItem>
-                    ))}
+                    <SelectGroup>
+                      <SelectLabel>Standard</SelectLabel>
+                      {STUDIO_CONTENT_TYPES.map((t) => (
+                        <SelectItem key={t.value} value={t.value}>
+                          {t.label}
+                        </SelectItem>
+                      ))}
+                    </SelectGroup>
+                    <SelectGroup>
+                      <SelectLabel>Insights Editorial (AI-planned)</SelectLabel>
+                      <SelectItem value="FLAGSHIP_INSIGHT">Flagship Insight</SelectItem>
+                      <SelectItem value="FIELD_SIGNAL">Field Signal</SelectItem>
+                      <SelectItem value="DECISION_GUIDE">Decision Guide</SelectItem>
+                      <SelectItem value="RESEARCH_BRIEF">Research Brief</SelectItem>
+                      <SelectItem value="TOOL_TECH_WATCH">Tool & Tech Watch</SelectItem>
+                      <SelectItem value="SCENARIO_ANALYSIS">Scenario Analysis</SelectItem>
+                      <SelectItem value="EDITORIAL_PERSPECTIVE">Editorial Perspective</SelectItem>
+                      <SelectItem value="MONTHLY_INTELLIGENCE_BRIEF">Monthly Intelligence Brief</SelectItem>
+                    </SelectGroup>
                   </SelectContent>
                 </Select>
+                {isInsightsContentType(newType) && (
+                  <div className="space-y-3 rounded-md border border-indigo-200 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/30 p-3">
+                    <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                      Insights Editorial — AI will generate a planning brief for Gate A review before drafting.
+                    </p>
+                    <div className="space-y-1">
+                      <Label className="text-xs" htmlFor="insights-primary-reader">
+                        Primary Reader <span className="text-red-500">*</span>
+                      </Label>
+                      <Select value={newInsightsPrimaryReader} onValueChange={setNewInsightsPrimaryReader}>
+                        <SelectTrigger id="insights-primary-reader" className="text-xs" data-testid="select-insights-primary-reader">
+                          <SelectValue placeholder="Select reader type…" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Staffing/MSP Operator">Staffing / MSP Operator</SelectItem>
+                          <SelectItem value="HR Director">HR Director</SelectItem>
+                          <SelectItem value="IT Hiring Manager">IT Hiring Manager</SelectItem>
+                          <SelectItem value="Healthcare HR Manager">Healthcare HR Manager</SelectItem>
+                          <SelectItem value="C-Suite Executive">C-Suite Executive</SelectItem>
+                          <SelectItem value="Recruitment Leader">Recruitment Leader</SelectItem>
+                          <SelectItem value="Candidate/Professional">Candidate / Professional</SelectItem>
+                          <SelectItem value="Government/Public Sector HR">Government / Public Sector HR</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs" htmlFor="insights-primary-question">
+                        Primary Reader Question <span className="text-muted-foreground font-normal">(what decision does this help them make?)</span>
+                      </Label>
+                      <Textarea
+                        id="insights-primary-question"
+                        value={newInsightsPrimaryReaderQuestion}
+                        onChange={(e) => setNewInsightsPrimaryReaderQuestion(e.target.value)}
+                        placeholder="e.g. Should we expand our contingent workforce given current market signals?"
+                        rows={2}
+                        className="text-xs"
+                        data-testid="input-insights-primary-question"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs" htmlFor="insights-why-now">
+                        Why This Matters Now <span className="text-red-500">*</span>
+                        <span className="text-muted-foreground font-normal ml-1">(timing / urgency hook for the AI brief)</span>
+                      </Label>
+                      <Input
+                        id="insights-why-now"
+                        value={newInsightsWhyNow}
+                        onChange={(e) => setNewInsightsWhyNow(e.target.value)}
+                        placeholder="e.g. Q3 budget planning season, recent regulatory change…"
+                        className="text-xs"
+                        data-testid="input-insights-why-now"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs" htmlFor="insights-mode">Editorial Mode <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                      <Select value={newInsightsMode || "auto"} onValueChange={(v) => setNewInsightsMode(v === "auto" ? "" : v)}>
+                        <SelectTrigger id="insights-mode" className="text-xs" data-testid="select-insights-mode">
+                          <SelectValue placeholder="Let AI decide" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="auto">Let AI decide</SelectItem>
+                          <SelectItem value="MODE_A_FOCUSED">Mode A — Data-driven / Evidence-led</SelectItem>
+                          <SelectItem value="MODE_B_PRIMARY_PLUS_CONSEQUENCE">Mode B — Narrative / Story-led</SelectItem>
+                          <SelectItem value="MODE_C_SYSTEM">Mode C — Framework / Structured guide</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                )}
               </div>
+              {!isInsightsContentType(newType) && (
+                <div className="space-y-2">
+                  <Label htmlFor="new-article-audience">Audience</Label>
+                  <Select value={newAudience || "none"} onValueChange={(v) => setNewAudience(v === "none" ? "" : v)}>
+                    <SelectTrigger id="new-article-audience" data-testid="select-new-article-audience">
+                      <SelectValue placeholder="Not set" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Not set</SelectItem>
+                      <SelectItem value="AUTO_DETECT">Auto-detect from context</SelectItem>
+                      <SelectItem value="EMPLOYER_CLIENT">Employer / Client</SelectItem>
+                      <SelectItem value="MSP_STAFFING_PARTNER">MSP / Staffing Partner</SelectItem>
+                      <SelectItem value="CANDIDATE_PROFESSIONAL">Candidate / Professional</SelectItem>
+                      <SelectItem value="RECRUITER_OPERATOR">Recruiter / Operator</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+            </div>
+            {!isInsightsContentType(newType) && (
               <div className="space-y-2">
-                <Label htmlFor="new-article-audience">Audience</Label>
-                <Select value={newAudience || "none"} onValueChange={(v) => setNewAudience(v === "none" ? "" : v)}>
-                  <SelectTrigger id="new-article-audience" data-testid="select-new-article-audience">
-                    <SelectValue placeholder="Not set" />
+                <Label htmlFor="new-article-goal">Content goal <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+                <Select value={newContentGoal || "none"} onValueChange={(v) => setNewContentGoal(v === "none" ? "" : v)}>
+                  <SelectTrigger id="new-article-goal" data-testid="select-new-article-goal">
+                    <SelectValue placeholder="Auto-derive from type" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="none">Not set</SelectItem>
-                    <SelectItem value="AUTO_DETECT">Auto-detect from context</SelectItem>
-                    <SelectItem value="EMPLOYER_CLIENT">Employer / Client</SelectItem>
-                    <SelectItem value="MSP_STAFFING_PARTNER">MSP / Staffing Partner</SelectItem>
-                    <SelectItem value="CANDIDATE_PROFESSIONAL">Candidate / Professional</SelectItem>
-                    <SelectItem value="RECRUITER_OPERATOR">Recruiter / Operator</SelectItem>
+                    <SelectItem value="none">Auto-derive from type</SelectItem>
+                    <SelectItem value="THOUGHT_LEADERSHIP">Thought Leadership</SelectItem>
+                    <SelectItem value="EDUCATIONAL">Educational</SelectItem>
+                    <SelectItem value="JOB_MARKETING">Job Marketing</SelectItem>
+                    <SelectItem value="BRAND_PERSPECTIVE">Brand Perspective</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-article-goal">Content goal <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
-              <Select value={newContentGoal || "none"} onValueChange={(v) => setNewContentGoal(v === "none" ? "" : v)}>
-                <SelectTrigger id="new-article-goal" data-testid="select-new-article-goal">
-                  <SelectValue placeholder="Auto-derive from type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Auto-derive from type</SelectItem>
-                  <SelectItem value="THOUGHT_LEADERSHIP">Thought Leadership</SelectItem>
-                  <SelectItem value="EDUCATIONAL">Educational</SelectItem>
-                  <SelectItem value="JOB_MARKETING">Job Marketing</SelectItem>
-                  <SelectItem value="BRAND_PERSPECTIVE">Brand Perspective</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            )}
             <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="new-article-domain">Staffing domain <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
-                <Select value={newDomain || "auto"} onValueChange={(v) => setNewDomain(v === "auto" ? "" : v)}>
-                  <SelectTrigger id="new-article-domain" data-testid="select-new-article-domain">
-                    <SelectValue placeholder="Auto-detect" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="auto">Auto-detect</SelectItem>
-                    <SelectItem value="IT_STAFFING">IT Staffing</SelectItem>
-                    <SelectItem value="HEALTHCARE_STAFFING">Healthcare Staffing</SelectItem>
-                    <SelectItem value="GOVERNMENT">Government</SelectItem>
-                    <SelectItem value="GENERAL_STAFFING">General Staffing</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+              {!isInsightsContentType(newType) && (
+                <div className="space-y-2">
+                  <Label htmlFor="new-article-domain">Staffing domain <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+                  <Select value={newDomain || "auto"} onValueChange={(v) => setNewDomain(v === "auto" ? "" : v)}>
+                    <SelectTrigger id="new-article-domain" data-testid="select-new-article-domain">
+                      <SelectValue placeholder="Auto-detect" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Auto-detect</SelectItem>
+                      <SelectItem value="IT_STAFFING">IT Staffing</SelectItem>
+                      <SelectItem value="HEALTHCARE_STAFFING">Healthcare Staffing</SelectItem>
+                      <SelectItem value="GOVERNMENT">Government</SelectItem>
+                      <SelectItem value="GENERAL_STAFFING">General Staffing</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
               <div className="space-y-2">
                 <Label htmlFor="new-article-planned-date">Planned publish date <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
                 <input
@@ -694,18 +822,20 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                 <p className="text-xs text-muted-foreground">Sets your target on the editorial calendar. You can change this any time.</p>
               </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="new-article-brief">Brief / angle <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
-              <Textarea
-                id="new-article-brief"
-                rows={2}
-                value={newBrief}
-                onChange={(e) => setNewBrief(e.target.value)}
-                placeholder="Key points, angle, or facts the AI must include when generating…"
-                className="text-sm"
-                data-testid="input-new-article-brief"
-              />
-            </div>
+            {!isInsightsContentType(newType) && (
+              <div className="space-y-2">
+                <Label htmlFor="new-article-brief">Brief / angle <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+                <Textarea
+                  id="new-article-brief"
+                  rows={2}
+                  value={newBrief}
+                  onChange={(e) => setNewBrief(e.target.value)}
+                  placeholder="Key points, angle, or facts the AI must include when generating…"
+                  className="text-sm"
+                  data-testid="input-new-article-brief"
+                />
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCreateOpen(false)}>
@@ -713,11 +843,15 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
             </Button>
             <Button
               onClick={() => createMutation.mutate()}
-              disabled={!newTitle.trim() || createMutation.isPending}
+              disabled={
+                !newTitle.trim() ||
+                createMutation.isPending ||
+                (isInsightsContentType(newType) && (!newInsightsPrimaryReader || !newInsightsWhyNow.trim() || !newInsightsPrimaryReaderQuestion.trim()))
+              }
               data-testid="button-create-article"
             >
               {createMutation.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-              Create & Edit
+              {isInsightsContentType(newType) ? "Run Editorial Strategy" : "Create & Edit"}
             </Button>
           </DialogFooter>
         </DialogContent>
