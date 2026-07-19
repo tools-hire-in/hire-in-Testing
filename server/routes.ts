@@ -28891,6 +28891,168 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     }
   });
 
+  // ── Knowledge Hub & Help Hub Routes ──────────────────────────────────────────
+
+  const DOCS_DIR = path.join(process.cwd(), "docs");
+
+  const VALID_USER_ROLES = ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee", "executive"] as const;
+  type UserRole = typeof VALID_USER_ROLES[number];
+
+  interface DocEntry {
+    id: string;
+    category: string;
+    title: string;
+    path: string;
+    content: string;
+  }
+
+  function readDocsDirectory(): DocEntry[] {
+    const results: DocEntry[] = [];
+    function walk(dir: string, baseCategory?: string) {
+      let entries: string[];
+      try {
+        entries = fs.readdirSync(dir);
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry);
+        let stat: import("fs").Stats;
+        try { stat = fs.statSync(fullPath); } catch { continue; }
+        if (stat.isDirectory()) {
+          const category = baseCategory ?? entry;
+          walk(fullPath, category);
+        } else if (entry.endsWith(".md")) {
+          const relPath = path.relative(DOCS_DIR, fullPath).replace(/\\/g, "/");
+          const category = baseCategory ?? relPath.split("/")[0];
+          const nameWithoutExt = entry.replace(/\.md$/, "");
+          const title = nameWithoutExt
+            .replace(/[-_]/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+          let content = "";
+          try { content = fs.readFileSync(fullPath, "utf-8"); } catch { content = ""; }
+          const id = relPath.replace(/[^a-zA-Z0-9]/g, "-");
+          results.push({ id, category, title, path: relPath, content });
+        }
+      }
+    }
+    walk(DOCS_DIR);
+    return results;
+  }
+
+  const KNOWLEDGE_HUB_SETTING_KEY = "knowledge_hub_doc_roles";
+
+  const DEFAULT_DOC_ROLES: Record<string, UserRole[]> = {
+    "training/employee-onboarding-track-source.md": ["employee", "manager", "hr", "admin", "super_admin"],
+    "training/manager-onboarding-track-source.md": ["manager", "hr", "admin", "super_admin"],
+    "guides/HR-OPS-TEAM-AI-GUIDE.md": ["hr", "operations", "manager", "admin", "super_admin"],
+    "guides/BD-TEAM-AI-GUIDE.md": ["recruiter", "operations", "admin", "super_admin"],
+    "guides/CONTENT-TEAM-AI-GUIDE.md": ["recruiter", "operations", "admin", "super_admin"],
+    "workflows/BUSINESS_RULES_CATALOGUE.md": ["manager", "hr", "operations", "admin", "super_admin"],
+  };
+
+  async function getOrSeedKnowledgeHubRoles(): Promise<Record<string, UserRole[]>> {
+    const docs = readDocsDirectory();
+    const setting = await storage.getSystemSetting(KNOWLEDGE_HUB_SETTING_KEY);
+    if (setting) {
+      const roleMap = setting.value as Record<string, UserRole[]>;
+      // Merge any new docs added after initial seed — they default to super_admin only
+      let changed = false;
+      for (const doc of docs) {
+        if (!(doc.path in roleMap)) {
+          roleMap[doc.path] = DEFAULT_DOC_ROLES[doc.path] ?? ["super_admin"];
+          changed = true;
+        }
+      }
+      if (changed) {
+        await storage.upsertSystemSetting(KNOWLEDGE_HUB_SETTING_KEY, roleMap, "system");
+      }
+      return roleMap;
+    }
+    const roleMap: Record<string, UserRole[]> = {};
+    for (const doc of docs) {
+      roleMap[doc.path] = DEFAULT_DOC_ROLES[doc.path] ?? ["super_admin"];
+    }
+    await storage.upsertSystemSetting(KNOWLEDGE_HUB_SETTING_KEY, roleMap, "system");
+    return roleMap;
+  }
+
+  // GET /api/admin/knowledge/docs — full doc list with role assignments (super_admin only)
+  app.get("/api/admin/knowledge/docs", requireAuth, async (req: Request, res: Response) => {
+    if (req.session.role !== "super_admin") {
+      return res.status(403).json({ error: "Super admin access required" });
+    }
+    try {
+      const docs = readDocsDirectory();
+      const roleMap = await getOrSeedKnowledgeHubRoles();
+      const enriched = docs.map((doc) => ({
+        ...doc,
+        assignedRoles: roleMap[doc.path] ?? ["super_admin"],
+      }));
+      res.json(enriched);
+    } catch (err: any) {
+      console.error("[knowledge-hub] GET /api/admin/knowledge/docs:", err);
+      res.status(500).json({ error: "Failed to read knowledge docs" });
+    }
+  });
+
+  // POST /api/admin/knowledge/visibility — update role assignments for a doc (super_admin only)
+  app.post("/api/admin/knowledge/visibility", requireAuth, async (req: Request, res: Response) => {
+    if (req.session.role !== "super_admin") {
+      return res.status(403).json({ error: "Super admin access required" });
+    }
+    try {
+      const { docPath, roles } = req.body;
+      if (!docPath || typeof docPath !== "string") {
+        return res.status(400).json({ error: "docPath is required" });
+      }
+      if (!Array.isArray(roles) || roles.length === 0) {
+        return res.status(400).json({ error: "roles must be a non-empty array" });
+      }
+      const invalidRoles = roles.filter((r: string) => !VALID_USER_ROLES.includes(r as UserRole));
+      if (invalidRoles.length > 0) {
+        return res.status(400).json({ error: `Invalid roles: ${invalidRoles.join(", ")}` });
+      }
+      const docs = readDocsDirectory();
+      const docExists = docs.some((d) => d.path === docPath);
+      if (!docExists) {
+        return res.status(404).json({ error: "Doc not found" });
+      }
+      const roleMap = await getOrSeedKnowledgeHubRoles();
+      roleMap[docPath] = roles as UserRole[];
+      await storage.upsertSystemSetting(KNOWLEDGE_HUB_SETTING_KEY, roleMap, req.session.userId!);
+      res.json({ success: true, docPath, assignedRoles: roles });
+    } catch (err: any) {
+      console.error("[knowledge-hub] POST /api/admin/knowledge/visibility:", err);
+      res.status(500).json({ error: "Failed to update doc visibility" });
+    }
+  });
+
+  // GET /api/admin/help/docs — filtered doc list for the requesting user's role
+  app.get("/api/admin/help/docs", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userRole = req.session.role as string;
+      const roleMap = await getOrSeedKnowledgeHubRoles();
+      const allowedPaths = Object.entries(roleMap)
+        .filter(([, roles]) => roles.includes(userRole as UserRole))
+        .map(([p]) => p);
+      if (allowedPaths.length === 0) {
+        return res.json([]);
+      }
+      const allDocs = readDocsDirectory();
+      const filtered = allDocs
+        .filter((doc) => allowedPaths.includes(doc.path))
+        .map((doc) => ({
+          ...doc,
+          assignedRoles: roleMap[doc.path] ?? ["super_admin"],
+        }));
+      res.json(filtered);
+    } catch (err: any) {
+      console.error("[knowledge-hub] GET /api/admin/help/docs:", err);
+      res.status(500).json({ error: "Failed to read help docs" });
+    }
+  });
+
   // ── Global Express error handler ─────────────────────────────────────────────
   // Must be the last middleware registered (4-argument signature).
   // Catches any error passed via next(err) or thrown in async route handlers
