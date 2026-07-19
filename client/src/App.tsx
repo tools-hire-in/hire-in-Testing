@@ -406,6 +406,10 @@ function PublicRouter() {
       <Route path="/admin/help-desk/:id">{() => <Suspense fallback={<AdminFallback />}><HelpDeskTicket /></Suspense>}</Route>
       <Route path="/admin/help-desk">{() => <Suspense fallback={<AdminFallback />}><HelpDesk /></Suspense>}</Route>
 
+      {/* Help Hub (all roles) &amp; Knowledge Hub (super_admin) */}
+      <Route path="/admin/help">{() => <Suspense fallback={<AdminFallback />}><HelpHub /></Suspense>}</Route>
+      <Route path="/admin/knowledge-hub">{() => <Suspense fallback={<AdminFallback />}><KnowledgeHub /></Suspense>}</Route>
+
       {/* Content Studio — classic /admin/studio routes (redirect to /studio when studio_v2_enabled) */}
       <Route path="/admin/studio/articles/:id/review">{() => <LegacyStudio><StudioReviewArticle /></LegacyStudio>}</Route>
       <Route path="/admin/studio/articles/:id/author-signoff">{() => <LegacyStudio><StudioAuthorSignOff /></LegacyStudio>}</Route>
@@ -618,6 +622,10 @@ function EmployeeRouter() {
       {/* Help Desk */}
       <Route path="/admin/help-desk/:id">{() => <Suspense fallback={<AdminFallback />}><HelpDeskTicket /></Suspense>}</Route>
       <Route path="/admin/help-desk">{() => <Suspense fallback={<AdminFallback />}><HelpDesk /></Suspense>}</Route>
+
+      {/* Help Hub (all roles) &amp; Knowledge Hub (super_admin) */}
+      <Route path="/admin/help">{() => <Suspense fallback={<AdminFallback />}><HelpHub /></Suspense>}</Route>
+      <Route path="/admin/knowledge-hub">{() => <Suspense fallback={<AdminFallback />}><KnowledgeHub /></Suspense>}</Route>
 
       {/* Content Studio — classic /admin/studio routes (redirect to /studio when studio_v2_enabled) */}
       <Route path="/admin/studio/articles/:id/review">{() => <LegacyStudio><StudioReviewArticle /></LegacyStudio>}</Route>
