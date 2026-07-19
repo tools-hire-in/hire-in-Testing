@@ -131,6 +131,9 @@ const GovernanceHub = lazy(() => import("@/pages/admin/governance/GovernanceHub"
 const DevToolsPage = lazy(() => import("@/pages/admin/DevTools"));
 const NotificationSettings = lazy(() => import("@/pages/admin/NotificationSettings"));
 const NotificationBlasts = lazy(() => import("@/pages/admin/NotificationBlasts"));
+const HelpHub = lazy(() => import("@/pages/admin/HelpHub"));
+const KnowledgeHub = lazy(() => import("@/pages/admin/KnowledgeHub"));
+const CeoGuide = lazy(() => import("@/pages/admin/CeoGuide"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -490,6 +493,11 @@ function PublicRouter() {
       {/* Strategy */}
       <Route path="/admin/competitive-audit">{() => <Suspense fallback={<AdminFallback />}><CompetitiveAudit /></Suspense>}</Route>
 
+      {/* Knowledge Hub, Help Hub, CEO Guide */}
+      <Route path="/admin/knowledge-hub">{() => <Suspense fallback={<AdminFallback />}><KnowledgeHub /></Suspense>}</Route>
+      <Route path="/admin/help">{() => <Suspense fallback={<AdminFallback />}><HelpHub /></Suspense>}</Route>
+      <Route path="/admin/ceo-guide">{() => <Suspense fallback={<AdminFallback />}><CeoGuide /></Suspense>}</Route>
+
       {/* Integrations Hub */}
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
 
@@ -697,6 +705,11 @@ function EmployeeRouter() {
 
       {/* Strategy */}
       <Route path="/admin/competitive-audit">{() => <Suspense fallback={<AdminFallback />}><CompetitiveAudit /></Suspense>}</Route>
+
+      {/* Knowledge Hub, Help Hub, CEO Guide */}
+      <Route path="/admin/knowledge-hub">{() => <Suspense fallback={<AdminFallback />}><KnowledgeHub /></Suspense>}</Route>
+      <Route path="/admin/help">{() => <Suspense fallback={<AdminFallback />}><HelpHub /></Suspense>}</Route>
+      <Route path="/admin/ceo-guide">{() => <Suspense fallback={<AdminFallback />}><CeoGuide /></Suspense>}</Route>
 
       {/* Integrations Hub */}
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>

@@ -28942,15 +28942,13 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   const KNOWLEDGE_HUB_SETTING_KEY = "knowledge_hub_doc_roles";
 
-  const DEFAULT_DOC_ROLES: Record<string, UserRole[]> = {
-    "training/employee-onboarding-track-source.md": ["employee", "manager", "hr", "admin", "super_admin"],
+  const DEFAULT_DOC_ROLES: Record<string, UserRole[]> = {    "training/employee-onboarding-track-source.md": ["employee", "manager", "hr", "admin", "super_admin"],
     "training/manager-onboarding-track-source.md": ["manager", "hr", "admin", "super_admin"],
     "guides/HR-OPS-TEAM-AI-GUIDE.md": ["hr", "operations", "manager", "admin", "super_admin"],
     "guides/BD-TEAM-AI-GUIDE.md": ["recruiter", "operations", "admin", "super_admin"],
     "guides/CONTENT-TEAM-AI-GUIDE.md": ["recruiter", "operations", "admin", "super_admin"],
     "workflows/BUSINESS_RULES_CATALOGUE.md": ["manager", "hr", "operations", "admin", "super_admin"],
   };
-
   async function getOrSeedKnowledgeHubRoles(): Promise<Record<string, UserRole[]>> {
     const docs = readDocsDirectory();
     const setting = await storage.getSystemSetting(KNOWLEDGE_HUB_SETTING_KEY);
@@ -29049,8 +29047,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       res.json(filtered);
     } catch (err: any) {
       console.error("[knowledge-hub] GET /api/admin/help/docs:", err);
-      res.status(500).json({ error: "Failed to read help docs" });
-    }
+      res.status(500).json({ error: "Failed to read help docs" });    }
   });
 
   // ── Global Express error handler ─────────────────────────────────────────────

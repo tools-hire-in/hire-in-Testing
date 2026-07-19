@@ -56,6 +56,9 @@ import {
   ArrowUpRight,
   Plug,
   Terminal,
+  Crown,
+  Library,
+  Target,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1644,6 +1647,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       badge: salaryAdvanceBadge > 0 ? salaryAdvanceBadge : undefined,
       badgeColor: "bg-amber-500",
     }] : []),
+    {
+      href: "/admin/help",
+      label: "Help & Guides",
+      icon: HelpCircle,
+      roles: ["all"],
+    },
   ];
 
   const orgNavItems: NavItem[] = [
@@ -1924,8 +1933,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 pendingOfferCount={pendingOfferCount}
               />
 
-              {/* ORGANISATION section — only visible to super_admin, admin, hr */}
-              {orgNavItems.length > 0 && ["super_admin", "admin", "hr"].includes(user?.role ?? "") && (
+              {/* ORGANISATION section — super_admin, admin, hr + manager/operations for relevant items */}
+              {orgNavItems.length > 0 && ["super_admin", "admin", "hr", "operations", "manager"].includes(user?.role ?? "") && (
                 <SidebarGroup>
                   <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
                     Organisation
@@ -1940,6 +1949,52 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                           isLocked={isComplianceLocked && item.href !== "/admin/growth" && item.href !== "/admin/profile"}
                         />
                       ))}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              )}
+
+              {/* PROBATION GUIDE — People & HR sub-link for manager and above */}
+              {["super_admin", "admin", "hr", "operations", "manager"].includes(userRole) && (
+                <SidebarGroup>
+                  <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
+                    People & HR
+                  </SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <NavItemButton
+                        item={{ href: "/admin/probation-guide", label: "Probation Guide", icon: ClipboardList, roles: [] }}
+                        isActive={isNavActive({ href: "/admin/probation-guide", label: "Probation Guide", icon: ClipboardList, roles: [] })}
+                        isLocked={isComplianceLocked}
+                      />
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              )}
+
+              {/* OWNER — super_admin only: CEO Guide, Knowledge Hub, Competitive Audit */}
+              {isSuperAdmin && (
+                <SidebarGroup>
+                  <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
+                    Owner
+                  </SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <NavItemButton
+                        item={{ href: "/admin/ceo-guide", label: "CEO Command Guide", icon: Crown, roles: [] }}
+                        isActive={isNavActive({ href: "/admin/ceo-guide", label: "CEO Command Guide", icon: Crown, roles: [] })}
+                        isLocked={false}
+                      />
+                      <NavItemButton
+                        item={{ href: "/admin/knowledge-hub", label: "Knowledge Hub", icon: Library, roles: [] }}
+                        isActive={isNavActive({ href: "/admin/knowledge-hub", label: "Knowledge Hub", icon: Library, roles: [] })}
+                        isLocked={false}
+                      />
+                      <NavItemButton
+                        item={{ href: "/admin/competitive-audit", label: "Competitive Audit", icon: Target, roles: [] }}
+                        isActive={isNavActive({ href: "/admin/competitive-audit", label: "Competitive Audit", icon: Target, roles: [] })}
+                        isLocked={false}
+                      />
                     </SidebarMenu>
                   </SidebarGroupContent>
                 </SidebarGroup>
