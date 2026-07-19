@@ -1,0 +1,975 @@
+{
+  "runId": "e32b5a0a-5e3e-42c8-8a61-6afcb4371731",
+  "timestamp": "2026-07-19T14:00:57.734Z",
+  "promptManifestVersion": "editorialIdentity@1.0.0,primaryReader@1.0.0,planningScan@1.0.0,lensInclusion@1.0.0,epistemicDiscipline@1.0.0,lengthCompression@1.0.0,humanAuthenticity@1.0.0",
+  "mode": "smoke",
+  "results": [
+    {
+      "caseId": "ei-normal-01",
+      "blockName": "editorialIdentity",
+      "category": "normal",
+      "assertionResults": [
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Schema valid",
+          "path": "schemaValidator"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Exactly one non-empty audience, question, and outcome present",
+          "path": "primaryReaderValidator"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "No forbidden state transitions detected",
+          "path": "stateValidator"
+        },
+        {
+          "assertionType": "word_budget_within_range",
+          "pass": true,
+          "reason": "Word budget 1200–1800 with read time 9 min passes",
+          "path": "wordBudgetValidator"
+        },
+        {
+          "assertionType": "no_first_person",
+          "pass": true,
+          "reason": "No unconfirmed first-person experience language found",
+          "path": "firstPersonGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Not a high-risk claim context; source check skipped",
+          "path": "sourceRequirementGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Freshness guard not applicable to this context",
+          "path": "freshnessGuard"
+        },
+        {
+          "assertionType": "no_pii",
+          "pass": true,
+          "reason": "No PII patterns detected",
+          "path": "privacyGuard"
+        },
+        {
+          "assertionType": "no_prompt_injection",
+          "pass": true,
+          "reason": "No prompt injection patterns detected",
+          "path": "promptInjectionGuard"
+        },
+        {
+          "assertionType": "lens_count_valid",
+          "pass": true,
+          "reason": "Mode A lens usage is within bounds",
+          "path": "lensOveruseGuard"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "No affiliated product or commercial claims detected",
+          "path": "disclosureGuard"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "Workflow state invariants satisfied",
+          "path": "workflowStateValidator"
+        }
+      ],
+      "scores": {
+        "schemaValidator": 1,
+        "primaryReaderValidator": 1,
+        "stateValidator": 1,
+        "wordBudgetValidator": 1,
+        "firstPersonGuard": 1,
+        "sourceRequirementGuard": 1,
+        "freshnessGuard": 1,
+        "privacyGuard": 1,
+        "promptInjectionGuard": 1,
+        "lensOveruseGuard": 1,
+        "disclosureGuard": 1,
+        "workflowStateValidator": 1
+      },
+      "passed": true,
+      "failureReasons": [],
+      "durationMs": 4
+    },
+    {
+      "caseId": "ei-normal-02",
+      "blockName": "editorialIdentity",
+      "category": "normal",
+      "assertionResults": [
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Schema valid",
+          "path": "schemaValidator"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Exactly one non-empty audience, question, and outcome present",
+          "path": "primaryReaderValidator"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "No forbidden state transitions detected",
+          "path": "stateValidator"
+        },
+        {
+          "assertionType": "word_budget_within_range",
+          "pass": true,
+          "reason": "Word budget 250–500 with read time 3 min passes",
+          "path": "wordBudgetValidator"
+        },
+        {
+          "assertionType": "no_first_person",
+          "pass": true,
+          "reason": "No unconfirmed first-person experience language found",
+          "path": "firstPersonGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Not a high-risk claim context; source check skipped",
+          "path": "sourceRequirementGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Freshness guard not applicable to this context",
+          "path": "freshnessGuard"
+        },
+        {
+          "assertionType": "no_pii",
+          "pass": true,
+          "reason": "No PII patterns detected",
+          "path": "privacyGuard"
+        },
+        {
+          "assertionType": "no_prompt_injection",
+          "pass": true,
+          "reason": "No prompt injection patterns detected",
+          "path": "promptInjectionGuard"
+        },
+        {
+          "assertionType": "lens_count_valid",
+          "pass": true,
+          "reason": "Mode A lens usage is within bounds",
+          "path": "lensOveruseGuard"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "No affiliated product or commercial claims detected",
+          "path": "disclosureGuard"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "Workflow state invariants satisfied",
+          "path": "workflowStateValidator"
+        }
+      ],
+      "scores": {
+        "schemaValidator": 1,
+        "primaryReaderValidator": 1,
+        "stateValidator": 1,
+        "wordBudgetValidator": 1,
+        "firstPersonGuard": 1,
+        "sourceRequirementGuard": 1,
+        "freshnessGuard": 1,
+        "privacyGuard": 1,
+        "promptInjectionGuard": 1,
+        "lensOveruseGuard": 1,
+        "disclosureGuard": 1,
+        "workflowStateValidator": 1
+      },
+      "passed": true,
+      "failureReasons": [],
+      "durationMs": 1
+    },
+    {
+      "caseId": "pr-normal-01",
+      "blockName": "primaryReader",
+      "category": "normal",
+      "assertionResults": [
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Schema valid",
+          "path": "schemaValidator"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Exactly one non-empty audience, question, and outcome present",
+          "path": "primaryReaderValidator"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "No forbidden state transitions detected",
+          "path": "stateValidator"
+        },
+        {
+          "assertionType": "word_budget_within_range",
+          "pass": true,
+          "reason": "Word budget 700–1100 with read time 5 min passes",
+          "path": "wordBudgetValidator"
+        },
+        {
+          "assertionType": "no_first_person",
+          "pass": true,
+          "reason": "No unconfirmed first-person experience language found",
+          "path": "firstPersonGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Not a high-risk claim context; source check skipped",
+          "path": "sourceRequirementGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Freshness guard not applicable to this context",
+          "path": "freshnessGuard"
+        },
+        {
+          "assertionType": "no_pii",
+          "pass": true,
+          "reason": "No PII patterns detected",
+          "path": "privacyGuard"
+        },
+        {
+          "assertionType": "no_prompt_injection",
+          "pass": true,
+          "reason": "No prompt injection patterns detected",
+          "path": "promptInjectionGuard"
+        },
+        {
+          "assertionType": "lens_count_valid",
+          "pass": true,
+          "reason": "Mode A lens usage is within bounds",
+          "path": "lensOveruseGuard"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "No affiliated product or commercial claims detected",
+          "path": "disclosureGuard"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "Workflow state invariants satisfied",
+          "path": "workflowStateValidator"
+        }
+      ],
+      "scores": {
+        "schemaValidator": 1,
+        "primaryReaderValidator": 1,
+        "stateValidator": 1,
+        "wordBudgetValidator": 1,
+        "firstPersonGuard": 1,
+        "sourceRequirementGuard": 1,
+        "freshnessGuard": 1,
+        "privacyGuard": 1,
+        "promptInjectionGuard": 1,
+        "lensOveruseGuard": 1,
+        "disclosureGuard": 1,
+        "workflowStateValidator": 1
+      },
+      "passed": true,
+      "failureReasons": [],
+      "durationMs": 1
+    },
+    {
+      "caseId": "pr-normal-02",
+      "blockName": "primaryReader",
+      "category": "normal",
+      "assertionResults": [
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Schema valid",
+          "path": "schemaValidator"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Exactly one non-empty audience, question, and outcome present",
+          "path": "primaryReaderValidator"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "No forbidden state transitions detected",
+          "path": "stateValidator"
+        },
+        {
+          "assertionType": "word_budget_within_range",
+          "pass": true,
+          "reason": "Word budget 1200–1800 with read time 9 min passes",
+          "path": "wordBudgetValidator"
+        },
+        {
+          "assertionType": "no_first_person",
+          "pass": true,
+          "reason": "No unconfirmed first-person experience language found",
+          "path": "firstPersonGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Not a high-risk claim context; source check skipped",
+          "path": "sourceRequirementGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Freshness guard not applicable to this context",
+          "path": "freshnessGuard"
+        },
+        {
+          "assertionType": "no_pii",
+          "pass": true,
+          "reason": "No PII patterns detected",
+          "path": "privacyGuard"
+        },
+        {
+          "assertionType": "no_prompt_injection",
+          "pass": true,
+          "reason": "No prompt injection patterns detected",
+          "path": "promptInjectionGuard"
+        },
+        {
+          "assertionType": "lens_count_valid",
+          "pass": true,
+          "reason": "Mode A lens usage is within bounds",
+          "path": "lensOveruseGuard"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "No affiliated product or commercial claims detected",
+          "path": "disclosureGuard"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "Workflow state invariants satisfied",
+          "path": "workflowStateValidator"
+        }
+      ],
+      "scores": {
+        "schemaValidator": 1,
+        "primaryReaderValidator": 1,
+        "stateValidator": 1,
+        "wordBudgetValidator": 1,
+        "firstPersonGuard": 1,
+        "sourceRequirementGuard": 1,
+        "freshnessGuard": 1,
+        "privacyGuard": 1,
+        "promptInjectionGuard": 1,
+        "lensOveruseGuard": 1,
+        "disclosureGuard": 1,
+        "workflowStateValidator": 1
+      },
+      "passed": true,
+      "failureReasons": [],
+      "durationMs": 0
+    },
+    {
+      "caseId": "ps-normal-01",
+      "blockName": "planningScan",
+      "category": "normal",
+      "assertionResults": [
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Schema valid",
+          "path": "schemaValidator"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Exactly one non-empty audience, question, and outcome present",
+          "path": "primaryReaderValidator"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "No forbidden state transitions detected",
+          "path": "stateValidator"
+        },
+        {
+          "assertionType": "word_budget_within_range",
+          "pass": true,
+          "reason": "Word budget 1200–1800 with read time 9 min passes",
+          "path": "wordBudgetValidator"
+        },
+        {
+          "assertionType": "no_first_person",
+          "pass": true,
+          "reason": "No unconfirmed first-person experience language found",
+          "path": "firstPersonGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Source requirements flagged in risk flags and research questions",
+          "path": "sourceRequirementGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Freshness signals found in research questions or risk flags",
+          "path": "freshnessGuard"
+        },
+        {
+          "assertionType": "no_pii",
+          "pass": true,
+          "reason": "No PII patterns detected",
+          "path": "privacyGuard"
+        },
+        {
+          "assertionType": "no_prompt_injection",
+          "pass": true,
+          "reason": "No prompt injection patterns detected",
+          "path": "promptInjectionGuard"
+        },
+        {
+          "assertionType": "lens_count_valid",
+          "pass": true,
+          "reason": "Mode is MODE_B_PRIMARY_PLUS_CONSEQUENCE; lens overuse guard not applicable",
+          "path": "lensOveruseGuard"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "No affiliated product or commercial claims detected",
+          "path": "disclosureGuard"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "Workflow state invariants satisfied",
+          "path": "workflowStateValidator"
+        }
+      ],
+      "scores": {
+        "schemaValidator": 1,
+        "primaryReaderValidator": 1,
+        "stateValidator": 1,
+        "wordBudgetValidator": 1,
+        "firstPersonGuard": 1,
+        "sourceRequirementGuard": 1,
+        "freshnessGuard": 1,
+        "privacyGuard": 1,
+        "promptInjectionGuard": 1,
+        "lensOveruseGuard": 1,
+        "disclosureGuard": 1,
+        "workflowStateValidator": 1
+      },
+      "passed": true,
+      "failureReasons": [],
+      "durationMs": 0
+    },
+    {
+      "caseId": "ps-normal-02",
+      "blockName": "planningScan",
+      "category": "normal",
+      "assertionResults": [
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Schema valid",
+          "path": "schemaValidator"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Exactly one non-empty audience, question, and outcome present",
+          "path": "primaryReaderValidator"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "No forbidden state transitions detected",
+          "path": "stateValidator"
+        },
+        {
+          "assertionType": "word_budget_within_range",
+          "pass": true,
+          "reason": "Word budget 1200–1800 with read time 9 min passes",
+          "path": "wordBudgetValidator"
+        },
+        {
+          "assertionType": "no_first_person",
+          "pass": true,
+          "reason": "No unconfirmed first-person experience language found",
+          "path": "firstPersonGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Not a high-risk claim context; source check skipped",
+          "path": "sourceRequirementGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Freshness guard not applicable to this context",
+          "path": "freshnessGuard"
+        },
+        {
+          "assertionType": "no_pii",
+          "pass": true,
+          "reason": "No PII patterns detected",
+          "path": "privacyGuard"
+        },
+        {
+          "assertionType": "no_prompt_injection",
+          "pass": true,
+          "reason": "No prompt injection patterns detected",
+          "path": "promptInjectionGuard"
+        },
+        {
+          "assertionType": "lens_count_valid",
+          "pass": true,
+          "reason": "Mode A lens usage is within bounds",
+          "path": "lensOveruseGuard"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "No affiliated product or commercial claims detected",
+          "path": "disclosureGuard"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "Workflow state invariants satisfied",
+          "path": "workflowStateValidator"
+        }
+      ],
+      "scores": {
+        "schemaValidator": 1,
+        "primaryReaderValidator": 1,
+        "stateValidator": 1,
+        "wordBudgetValidator": 1,
+        "firstPersonGuard": 1,
+        "sourceRequirementGuard": 1,
+        "freshnessGuard": 1,
+        "privacyGuard": 1,
+        "promptInjectionGuard": 1,
+        "lensOveruseGuard": 1,
+        "disclosureGuard": 1,
+        "workflowStateValidator": 1
+      },
+      "passed": true,
+      "failureReasons": [],
+      "durationMs": 0
+    },
+    {
+      "caseId": "li-normal-01",
+      "blockName": "lensInclusion",
+      "category": "normal",
+      "assertionResults": [
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Schema valid",
+          "path": "schemaValidator"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Exactly one non-empty audience, question, and outcome present",
+          "path": "primaryReaderValidator"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "No forbidden state transitions detected",
+          "path": "stateValidator"
+        },
+        {
+          "assertionType": "word_budget_within_range",
+          "pass": true,
+          "reason": "Word budget 800–1300 with read time 6 min passes",
+          "path": "wordBudgetValidator"
+        },
+        {
+          "assertionType": "no_first_person",
+          "pass": true,
+          "reason": "No unconfirmed first-person experience language found",
+          "path": "firstPersonGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Not a high-risk claim context; source check skipped",
+          "path": "sourceRequirementGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Freshness guard not applicable to this context",
+          "path": "freshnessGuard"
+        },
+        {
+          "assertionType": "no_pii",
+          "pass": true,
+          "reason": "No PII patterns detected",
+          "path": "privacyGuard"
+        },
+        {
+          "assertionType": "no_prompt_injection",
+          "pass": true,
+          "reason": "No prompt injection patterns detected",
+          "path": "promptInjectionGuard"
+        },
+        {
+          "assertionType": "lens_count_valid",
+          "pass": true,
+          "reason": "Mode A lens usage is within bounds",
+          "path": "lensOveruseGuard"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "No affiliated product or commercial claims detected",
+          "path": "disclosureGuard"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "Workflow state invariants satisfied",
+          "path": "workflowStateValidator"
+        }
+      ],
+      "scores": {
+        "schemaValidator": 1,
+        "primaryReaderValidator": 1,
+        "stateValidator": 1,
+        "wordBudgetValidator": 1,
+        "firstPersonGuard": 1,
+        "sourceRequirementGuard": 1,
+        "freshnessGuard": 1,
+        "privacyGuard": 1,
+        "promptInjectionGuard": 1,
+        "lensOveruseGuard": 1,
+        "disclosureGuard": 1,
+        "workflowStateValidator": 1
+      },
+      "passed": true,
+      "failureReasons": [],
+      "durationMs": 1
+    },
+    {
+      "caseId": "li-normal-02",
+      "blockName": "lensInclusion",
+      "category": "normal",
+      "assertionResults": [
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Schema valid",
+          "path": "schemaValidator"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Exactly one non-empty audience, question, and outcome present",
+          "path": "primaryReaderValidator"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "No forbidden state transitions detected",
+          "path": "stateValidator"
+        },
+        {
+          "assertionType": "word_budget_within_range",
+          "pass": true,
+          "reason": "Word budget 800–1300 with read time 6 min passes",
+          "path": "wordBudgetValidator"
+        },
+        {
+          "assertionType": "no_first_person",
+          "pass": true,
+          "reason": "No unconfirmed first-person experience language found",
+          "path": "firstPersonGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Not a high-risk claim context; source check skipped",
+          "path": "sourceRequirementGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Freshness guard not applicable to this context",
+          "path": "freshnessGuard"
+        },
+        {
+          "assertionType": "no_pii",
+          "pass": true,
+          "reason": "No PII patterns detected",
+          "path": "privacyGuard"
+        },
+        {
+          "assertionType": "no_prompt_injection",
+          "pass": true,
+          "reason": "No prompt injection patterns detected",
+          "path": "promptInjectionGuard"
+        },
+        {
+          "assertionType": "lens_count_valid",
+          "pass": true,
+          "reason": "Mode is MODE_B_PRIMARY_PLUS_CONSEQUENCE; lens overuse guard not applicable",
+          "path": "lensOveruseGuard"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "No affiliated product or commercial claims detected",
+          "path": "disclosureGuard"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "Workflow state invariants satisfied",
+          "path": "workflowStateValidator"
+        }
+      ],
+      "scores": {
+        "schemaValidator": 1,
+        "primaryReaderValidator": 1,
+        "stateValidator": 1,
+        "wordBudgetValidator": 1,
+        "firstPersonGuard": 1,
+        "sourceRequirementGuard": 1,
+        "freshnessGuard": 1,
+        "privacyGuard": 1,
+        "promptInjectionGuard": 1,
+        "lensOveruseGuard": 1,
+        "disclosureGuard": 1,
+        "workflowStateValidator": 1
+      },
+      "passed": true,
+      "failureReasons": [],
+      "durationMs": 1
+    },
+    {
+      "caseId": "ed-normal-01",
+      "blockName": "epistemicDiscipline",
+      "category": "normal",
+      "assertionResults": [
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Schema valid",
+          "path": "schemaValidator"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Exactly one non-empty audience, question, and outcome present",
+          "path": "primaryReaderValidator"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "No forbidden state transitions detected",
+          "path": "stateValidator"
+        },
+        {
+          "assertionType": "word_budget_within_range",
+          "pass": true,
+          "reason": "Word budget 700–1200 with read time 6 min passes",
+          "path": "wordBudgetValidator"
+        },
+        {
+          "assertionType": "no_first_person",
+          "pass": true,
+          "reason": "No unconfirmed first-person experience language found",
+          "path": "firstPersonGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Not a high-risk claim context; source check skipped",
+          "path": "sourceRequirementGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Freshness guard not applicable to this context",
+          "path": "freshnessGuard"
+        },
+        {
+          "assertionType": "no_pii",
+          "pass": true,
+          "reason": "No PII patterns detected",
+          "path": "privacyGuard"
+        },
+        {
+          "assertionType": "no_prompt_injection",
+          "pass": true,
+          "reason": "No prompt injection patterns detected",
+          "path": "promptInjectionGuard"
+        },
+        {
+          "assertionType": "lens_count_valid",
+          "pass": true,
+          "reason": "Mode A lens usage is within bounds",
+          "path": "lensOveruseGuard"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "No affiliated product or commercial claims detected",
+          "path": "disclosureGuard"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "Workflow state invariants satisfied",
+          "path": "workflowStateValidator"
+        }
+      ],
+      "scores": {
+        "schemaValidator": 1,
+        "primaryReaderValidator": 1,
+        "stateValidator": 1,
+        "wordBudgetValidator": 1,
+        "firstPersonGuard": 1,
+        "sourceRequirementGuard": 1,
+        "freshnessGuard": 1,
+        "privacyGuard": 1,
+        "promptInjectionGuard": 1,
+        "lensOveruseGuard": 1,
+        "disclosureGuard": 1,
+        "workflowStateValidator": 1
+      },
+      "passed": true,
+      "failureReasons": [],
+      "durationMs": 0
+    },
+    {
+      "caseId": "ed-normal-02",
+      "blockName": "epistemicDiscipline",
+      "category": "normal",
+      "assertionResults": [
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Schema valid",
+          "path": "schemaValidator"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "Exactly one non-empty audience, question, and outcome present",
+          "path": "primaryReaderValidator"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "No forbidden state transitions detected",
+          "path": "stateValidator"
+        },
+        {
+          "assertionType": "word_budget_within_range",
+          "pass": true,
+          "reason": "Word budget 700–1200 with read time 6 min passes",
+          "path": "wordBudgetValidator"
+        },
+        {
+          "assertionType": "no_first_person",
+          "pass": true,
+          "reason": "No unconfirmed first-person experience language found",
+          "path": "firstPersonGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Not a high-risk claim context; source check skipped",
+          "path": "sourceRequirementGuard"
+        },
+        {
+          "assertionType": "requires_source",
+          "pass": true,
+          "reason": "Freshness guard not applicable to this context",
+          "path": "freshnessGuard"
+        },
+        {
+          "assertionType": "no_pii",
+          "pass": true,
+          "reason": "No PII patterns detected",
+          "path": "privacyGuard"
+        },
+        {
+          "assertionType": "no_prompt_injection",
+          "pass": true,
+          "reason": "No prompt injection patterns detected",
+          "path": "promptInjectionGuard"
+        },
+        {
+          "assertionType": "lens_count_valid",
+          "pass": true,
+          "reason": "Mode A lens usage is within bounds",
+          "path": "lensOveruseGuard"
+        },
+        {
+          "assertionType": "schema_valid",
+          "pass": true,
+          "reason": "No affiliated product or commercial claims detected",
+          "path": "disclosureGuard"
+        },
+        {
+          "assertionType": "state_machine_safe",
+          "pass": true,
+          "reason": "Workflow state invariants satisfied",
+          "path": "workflowStateValidator"
+        }
+      ],
+      "scores": {
+        "schemaValidator": 1,
+        "primaryReaderValidator": 1,
+        "stateValidator": 1,
+        "wordBudgetValidator": 1,
+        "firstPersonGuard": 1,
+        "sourceRequirementGuard": 1,
+        "freshnessGuard": 1,
+        "privacyGuard": 1,
+        "promptInjectionGuard": 1,
+        "lensOveruseGuard": 1,
+        "disclosureGuard": 1,
+        "workflowStateValidator": 1
+      },
+      "passed": true,
+      "failureReasons": [],
+      "durationMs": 3
+    }
+  ],
+  "summary": {
+    "total": 10,
+    "passed": 10,
+    "failed": 0,
+    "criticalFailures": 0,
+    "adversarialBlocked": 0
+  }
+}
