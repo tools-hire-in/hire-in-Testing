@@ -201,6 +201,26 @@ export async function teardownGovernanceTestHierarchy(): Promise<void> {
       ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID}
     )
   `);
+  // Delete GovTest-related notifications delivered to REAL users (escalations
+  // notify HR/admin staff, so the user_id filter above misses these).
+  await db.execute(sql`
+    DELETE FROM notifications
+    WHERE title LIKE '%GovTest%' OR message LIKE '%GovTest%'
+  `).catch(() => {});
+  // Cancel + delete any email blasts queued during the test run that include
+  // test recipients (@governance.test). Blast recipient lists mix test users
+  // with real staff, so these rows must never be approved/delivered.
+  await db.execute(sql`
+    DELETE FROM blast_delivery_records
+    WHERE blast_id IN (
+      SELECT id FROM pending_email_blasts
+      WHERE recipients::text LIKE '%@governance.test%'
+    )
+  `).catch(() => {});
+  await db.execute(sql`
+    DELETE FROM pending_email_blasts
+    WHERE recipients::text LIKE '%@governance.test%'
+  `).catch(() => {});
   const IDS = [GC_CEO_ID, GC_VP_ID, GC_MGR_ID, GC_REC_A_ID, GC_REC_B_ID, GC_HR_ID];
 
   // Delete all auto-populated rows that FK back to admin_users before deleting test users.

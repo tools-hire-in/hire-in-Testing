@@ -1761,6 +1761,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: Wrench,
       roles: ["hr"],
     }] : []),
+    ...(isSuperAdmin ? [{
+      href: "/admin/notification-settings",
+      label: "Notification Settings",
+      icon: Settings,
+      roles: ["super_admin"],
+    }] : []),
   ];
 
   const isNavActive = (item: NavItem) => {

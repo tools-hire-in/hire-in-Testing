@@ -57,3 +57,4 @@
 - [Salary disbursement flow](salary-disbursement-flow.md) — per-employee payslip unlock via salary_run_payments; run auto-executes when all deposited; new slip endpoints must use findSlipRunForEmail.
 - [Notification gateway](notification-gateway.md) — all alerts go through notifyUser (pref-gated, COALESCE-on defaults); new types register in shared/notificationTypes.ts; digests skip empty content.
 - [Governance pulse cache trap](governance-pulse-cache.md) — 5-min in-memory pulse cache poisons counts computed at baseline; data sourced from governance_controls must be computed outside the cache (live on every request).
+- [Email env guard](email-env-guard.md) — all non-prod email suppression lives in the SendGrid client factory (single choke point); scheduler suspension alone leaks via direct calls/tests.

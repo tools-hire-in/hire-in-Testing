@@ -17800,7 +17800,7 @@ Canonical domain: ${BASE}
       // Fetch the most recent sent_at date for each communication type from the log table.
       const lastSentRows = await db.execute(sql`
         SELECT type, MAX(sent_at) AS last_sent_at
-        FROM communication_logs
+        FROM communications_log
         WHERE status = 'sent' AND sent_at IS NOT NULL
         GROUP BY type
       `);

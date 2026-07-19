@@ -103,6 +103,7 @@ export async function getUncachableSendGridClient(): Promise<{
   client: typeof sgMail | { send: (msg: any) => Promise<void> };
   fromEmail: string;
   masterSuppressed?: boolean;
+  suppressionReason?: "master" | "env";
 }> {
   // Master email kill switch — checked before any send reaches SendGrid.
   // When emails_master_enabled is explicitly false we return a no-op "client"
@@ -147,12 +148,97 @@ export async function getUncachableSendGridClient(): Promise<{
           }
         },
       };
-      return { client: suppressedClient as any, fromEmail: FROM_EMAIL, masterSuppressed: true };
+      return { client: suppressedClient as any, fromEmail: FROM_EMAIL, masterSuppressed: true, suppressionReason: "master" };
     }
   } catch (err: any) {
     // DB error reading the setting — fail open so a transient DB hiccup doesn't
     // silently block all mail.
     console.warn("[email-kill-switch] Could not read emails_master_enabled — proceeding with send:", err?.message);
+  }
+
+  // ── Non-production environment guard ──────────────────────────────────────
+  // Applies to EVERY send path (direct send functions, blast queue delivery,
+  // dispatchAutomatedEmail) because they all obtain the client from here.
+  // In env_mode dev/qa:
+  //   - If dev_email_override is set → real send, but redirected to the override
+  //     address with an [ENV] subject prefix.
+  //   - Otherwise → suppress entirely (logged as env_suppressed).
+  // This closes the gap where direct function calls (tests, manual triggers)
+  // bypassed the scheduler-level env_mode suspension and fired real emails.
+  try {
+    const { getEnvMode } = await import("./envMode");
+    const envMode = await getEnvMode();
+    if (envMode !== "production") {
+      const { storage: _envStorage } = await import("./storage");
+      const overrideSetting = await _envStorage.getSystemSetting("dev_email_override").catch(() => undefined);
+      const overrideAddr = ((overrideSetting?.value) as string) ?? "";
+
+      if (overrideAddr) {
+        // Redirect wrapper: rewrite recipients to the override address.
+        const apiKeyR = process.env.SENDGRID_API_KEY_NEW;
+        if (!apiKeyR) throw new Error('SENDGRID_API_KEY_NEW is not set');
+        sgMail.setApiKey(apiKeyR);
+        const redirectClient = {
+          send: async (msg: any) => {
+            const toRaw = Array.isArray(msg.to) ? msg.to : [msg.to];
+            const origAddrs = toRaw
+              .map((r: any) => (typeof r === "string" ? r : r?.email))
+              .filter(Boolean) as string[];
+            console.log(`[env-guard] [${envMode.toUpperCase()}] Redirecting send → ${overrideAddr} (original: ${origAddrs.join(", ")})`);
+            await sgMail.send({
+              ...msg,
+              to: overrideAddr,
+              cc: undefined,
+              subject: `[${envMode.toUpperCase()}] ${msg.subject ?? ""}`,
+              text: msg.text ? `${msg.text}\n\n---\n[Env guard] Original recipient(s): ${origAddrs.join(", ")}` : msg.text,
+            });
+          },
+        };
+        return { client: redirectClient as any, fromEmail: FROM_EMAIL };
+      }
+
+      // No override → suppress everything in non-production.
+      const envSuppressedClient = {
+        send: async (msg: any) => {
+          const toRaw = Array.isArray(msg.to) ? msg.to : [msg.to];
+          const toAddrs = toRaw
+            .map((r: any) => (typeof r === "string" ? r : r?.email))
+            .filter(Boolean) as string[];
+          console.log(
+            `[env-guard] [${envMode.toUpperCase()}] Suppressed send to [${toAddrs.join(", ")}] — subject: "${msg.subject ?? "(none)"}"`,
+          );
+          try {
+            const { storage: _logStorage } = await import("./storage");
+            await _logStorage.createCommunicationLog({
+              type: "direct_send",
+              sourceJob: "env_guard",
+              recipients: toAddrs,
+              cc: [],
+              subject: msg.subject ?? "(suppressed)",
+              bodyHtml: typeof msg.html === "string" ? msg.html.slice(0, 2000) : null,
+              bodyText: typeof msg.text === "string" ? msg.text.slice(0, 500) : null,
+              status: "env_suppressed",
+              error: `Suppressed by non-production env guard (env_mode=${envMode}, no dev_email_override set)`,
+            } as any);
+          } catch (_logErr) {
+            console.warn("[env-guard] Failed to write env_suppressed log:", _logErr);
+          }
+        },
+      };
+      return { client: envSuppressedClient as any, fromEmail: FROM_EMAIL, masterSuppressed: true, suppressionReason: "env" };
+    }
+  } catch (err: any) {
+    // Fail CLOSED in non-production: if we can't determine the environment,
+    // suppress rather than risk a real send from dev/QA.
+    if (process.env.APP_ENV !== "production") {
+      console.warn("[env-guard] Env check failed — suppressing send (non-production fail-safe):", err?.message);
+      const failSafeClient = {
+        send: async (msg: any) => {
+          console.log(`[env-guard] [FAILSAFE] Suppressed send — subject: "${msg?.subject ?? "(none)"}"`);
+        },
+      };
+      return { client: failSafeClient as any, fromEmail: FROM_EMAIL, masterSuppressed: true, suppressionReason: "env" };
+    }
   }
 
   const apiKey = process.env.SENDGRID_API_KEY_NEW;
@@ -320,19 +406,24 @@ export async function dispatchAutomatedEmail(
   const outMsg = { ...effectiveMsg, cc: mergedCc.length > 0 ? mergedCc : undefined };
 
   try {
-    const { client, fromEmail, masterSuppressed } = await getUncachableSendGridClient();
+    const { client, fromEmail, masterSuppressed, suppressionReason } = await getUncachableSendGridClient();
 
-    // Master kill switch: write a richer audit row using full dispatchAutomatedEmail context
-    // (type, sourceJob, recipients, subject, body) before the no-op client.send() writes
-    // its minimal "direct_send" fallback row. Skip the actual send call entirely.
+    // Suppressed client (master kill switch OR non-production env guard): write a richer
+    // audit row using full dispatchAutomatedEmail context (type, sourceJob, recipients,
+    // subject, body) instead of the no-op client's minimal fallback row. Skip the send.
     if (masterSuppressed) {
-      console.log(`[email-kill-switch] ${type} suppressed (master switch OFF) — recipients: ${recipients.join(", ")}`);
+      const isEnv = suppressionReason === "env";
+      const status = isEnv ? "env_suppressed" : "master_suppressed";
+      const reason = isEnv
+        ? "Suppressed by non-production env guard (env_mode ≠ production, no dev_email_override set)"
+        : "Suppressed by master email kill switch (emails_master_enabled = false)";
+      console.log(`[${isEnv ? "env-guard" : "email-kill-switch"}] ${type} suppressed — recipients: ${recipients.join(", ")}`);
       await storage.createCommunicationLog({
         ...baseLog,
-        status: "master_suppressed",
-        error: "Suppressed by master email kill switch (emails_master_enabled = false)",
+        status,
+        error: reason,
       } as any).catch((e) =>
-        console.error(`[communications] failed to write master_suppressed log for ${type}:`, e),
+        console.error(`[communications] failed to write ${status} log for ${type}:`, e),
       );
       return { success: true, disabled: true };
     }
@@ -362,9 +453,14 @@ export async function resendHeldCommunication(log: {
   bodyText?: string | null;
 }): Promise<{ success: boolean; error?: string; masterSuppressed?: boolean }> {
   try {
-    const { client, fromEmail, masterSuppressed } = await getUncachableSendGridClient();
+    const { client, fromEmail, masterSuppressed, suppressionReason } = await getUncachableSendGridClient();
     if (masterSuppressed) {
-      console.log(`[email-kill-switch] resendHeldCommunication suppressed (master switch OFF) — recipients: ${log.recipients.join(", ")}`);
+      const isEnv = suppressionReason === "env";
+      const status = isEnv ? "env_suppressed" : "master_suppressed";
+      const reason = isEnv
+        ? "Suppressed by non-production env guard (env_mode ≠ production, no dev_email_override set)"
+        : "Suppressed by master email kill switch (emails_master_enabled = false)";
+      console.log(`[${isEnv ? "env-guard" : "email-kill-switch"}] resendHeldCommunication suppressed — recipients: ${log.recipients.join(", ")}`);
       // Write an explicit audit row — we short-circuit before calling client.send()
       // so the no-op client's automatic log would never run for this path.
       try {
@@ -377,11 +473,11 @@ export async function resendHeldCommunication(log: {
           subject: log.subject,
           bodyHtml: log.bodyHtml ?? null,
           bodyText: log.bodyText ?? null,
-          status: "master_suppressed",
-          error: "Suppressed by master email kill switch (emails_master_enabled = false)",
+          status,
+          error: reason,
         } as any);
       } catch (_logErr) {
-        console.warn("[email-kill-switch] Failed to write master_suppressed log for resend:", _logErr);
+        console.warn(`[email-suppression] Failed to write ${status} log for resend:`, _logErr);
       }
       return { success: true, masterSuppressed: true };
     }
