@@ -59,6 +59,8 @@ import {
   Crown,
   Library,
   Target,
+  Compass,
+  BarChart2,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1776,6 +1778,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: Settings,
       roles: ["super_admin"],
     }] : []),
+    ...(["super_admin", "admin", "hr", "manager"].includes(userRole) ? [{
+      href: "/admin/probation-guide",
+      label: "Probation Guide",
+      icon: ClipboardList,
+      roles: ["super_admin", "admin", "hr", "manager"],
+    }] : []),
   ];
 
   const isNavActive = (item: NavItem) => {
@@ -1899,6 +1907,27 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 />
               )}
 
+              {/* HELP & GUIDES — visible to all roles, after My Work */}
+              <SidebarGroup>
+                <SidebarGroupContent>
+                  <SidebarMenu>
+                    <SidebarMenuItem>
+                      <SidebarMenuButton
+                        asChild
+                        isActive={location === "/admin/help" || location.startsWith("/admin/help/")}
+                        tooltip="Help & Guides"
+                        data-testid="nav-item-help-guides"
+                      >
+                        <Link href="/admin/help" className="flex items-center gap-2 w-full">
+                          <BookOpen className="h-4 w-4 shrink-0" />
+                          <span className="group-data-[collapsible=icon]:hidden">Help & Guides</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+
               {/* PERSONAL section — visible to all */}
               <SidebarGroup>
                 <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
@@ -1933,7 +1962,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 pendingOfferCount={pendingOfferCount}
               />
 
-              {/* ORGANISATION section — super_admin, admin, hr + manager/operations for relevant items */}
+              {/* ORGANISATION section — super_admin, admin, hr, operations, manager */}
               {orgNavItems.length > 0 && ["super_admin", "admin", "hr", "operations", "manager"].includes(user?.role ?? "") && (
                 <SidebarGroup>
                   <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
@@ -2052,6 +2081,58 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 isComplianceLocked={isComplianceLocked}
                 location={location}
               />
+
+              {/* OWNER section — super_admin only */}
+              {isSuperAdmin && (
+                <SidebarGroup>
+                  <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
+                    Owner
+                  </SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={location.startsWith("/admin/ceo-guide")}
+                          tooltip="CEO Command Guide"
+                          data-testid="nav-item-ceo-command-guide"
+                        >
+                          <Link href="/admin/ceo-guide" className="flex items-center gap-2 w-full">
+                            <Compass className="h-4 w-4 shrink-0" />
+                            <span className="group-data-[collapsible=icon]:hidden">CEO Command Guide</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={location.startsWith("/admin/knowledge-hub")}
+                          tooltip="Knowledge Hub"
+                          data-testid="nav-item-knowledge-hub"
+                        >
+                          <Link href="/admin/knowledge-hub" className="flex items-center gap-2 w-full">
+                            <Library className="h-4 w-4 shrink-0" />
+                            <span className="group-data-[collapsible=icon]:hidden">Knowledge Hub</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={location.startsWith("/admin/competitive-audit")}
+                          tooltip="Competitive Audit"
+                          data-testid="nav-item-competitive-audit"
+                        >
+                          <Link href="/admin/competitive-audit" className="flex items-center gap-2 w-full">
+                            <BarChart2 className="h-4 w-4 shrink-0" />
+                            <span className="group-data-[collapsible=icon]:hidden">Competitive Audit</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              )}
 
               {/* Bottom actions */}
               <SidebarGroup className="mt-auto border-t pt-2">

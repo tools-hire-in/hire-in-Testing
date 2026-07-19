@@ -126,6 +126,9 @@ const BulkPayrollRun = lazy(() => import("@/pages/admin/payroll/BulkPayrollRun")
 const ExecutiveDashboard = lazy(() => import("@/pages/admin/payroll/ExecutiveDashboard"));
 const PayrollSetup = lazy(() => import("@/pages/admin/payroll/PayrollSetup"));
 const CompetitiveAudit = lazy(() => import("@/pages/admin/CompetitiveAudit"));
+const CeoGuide = lazy(() => import("@/pages/admin/CeoGuide"));
+const HelpGuides = lazy(() => import("@/pages/admin/HelpGuides"));
+const KnowledgeHub = lazy(() => import("@/pages/admin/KnowledgeHub"));
 const Integrations = lazy(() => import("@/pages/admin/Integrations"));
 const GovernanceHub = lazy(() => import("@/pages/admin/governance/GovernanceHub"));
 const DevToolsPage = lazy(() => import("@/pages/admin/DevTools"));
@@ -494,8 +497,11 @@ function PublicRouter() {
       <Route path="/admin/payroll/executive">{() => <Suspense fallback={<AdminFallback />}><ExecutiveDashboard /></Suspense>}</Route>
       <Route path="/admin/payroll/setup">{() => <Suspense fallback={<AdminFallback />}><PayrollSetup /></Suspense>}</Route>
 
-      {/* Strategy */}
+      {/* Strategy & guides */}
       <Route path="/admin/competitive-audit">{() => <Suspense fallback={<AdminFallback />}><CompetitiveAudit /></Suspense>}</Route>
+      <Route path="/admin/ceo-guide">{() => <Suspense fallback={<AdminFallback />}><CeoGuide /></Suspense>}</Route>
+      <Route path="/admin/help">{() => <Suspense fallback={<AdminFallback />}><HelpGuides /></Suspense>}</Route>
+      <Route path="/admin/knowledge-hub">{() => <Suspense fallback={<AdminFallback />}><KnowledgeHub /></Suspense>}</Route>
 
       {/* Knowledge Hub, Help Hub, CEO Guide */}
       <Route path="/admin/knowledge-hub">{() => <Suspense fallback={<AdminFallback />}><KnowledgeHub /></Suspense>}</Route>
@@ -711,8 +717,11 @@ function EmployeeRouter() {
       <Route path="/admin/payroll/executive">{() => <Suspense fallback={<AdminFallback />}><ExecutiveDashboard /></Suspense>}</Route>
       <Route path="/admin/payroll/setup">{() => <Suspense fallback={<AdminFallback />}><PayrollSetup /></Suspense>}</Route>
 
-      {/* Strategy */}
+      {/* Strategy & guides */}
       <Route path="/admin/competitive-audit">{() => <Suspense fallback={<AdminFallback />}><CompetitiveAudit /></Suspense>}</Route>
+      <Route path="/admin/ceo-guide">{() => <Suspense fallback={<AdminFallback />}><CeoGuide /></Suspense>}</Route>
+      <Route path="/admin/help">{() => <Suspense fallback={<AdminFallback />}><HelpGuides /></Suspense>}</Route>
+      <Route path="/admin/knowledge-hub">{() => <Suspense fallback={<AdminFallback />}><KnowledgeHub /></Suspense>}</Route>
 
       {/* Knowledge Hub, Help Hub, CEO Guide */}
       <Route path="/admin/knowledge-hub">{() => <Suspense fallback={<AdminFallback />}><KnowledgeHub /></Suspense>}</Route>

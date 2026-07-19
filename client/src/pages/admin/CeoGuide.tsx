@@ -2,13 +2,14 @@ import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import {
-  BookOpen,
+  Compass,
   Lightbulb,
   ArrowUpRight,
   ChevronRight,
+  ArrowRight,
 } from "lucide-react";
 
-// ── Shared guide components ─────────────────────────────────────────────────
+// ── Shared guide helper components ───────────────────────────────────────────
 
 function ProTip({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -51,6 +52,21 @@ function StepList({ steps }: { steps: React.ReactNode[] }) {
   );
 }
 
+function FlowStrip({ stages }: { stages: string[] }) {
+  return (
+    <div className="my-4 flex flex-wrap items-center gap-1.5">
+      {stages.map((s, i) => (
+        <span key={s} className="flex items-center gap-1.5">
+          <span className="rounded-md border bg-muted px-2.5 py-1.5 text-xs font-semibold tracking-wide">
+            {s}
+          </span>
+          {i < stages.length - 1 && <ArrowRight className="h-4 w-4 text-muted-foreground" />}
+        </span>
+      ))}
+    </div>
+  );
+}
+
 function SectionHeading({ id, index, title, subtitle }: { id: string; index: string; title: string; subtitle: string }) {
   return (
     <div className="scroll-mt-20 border-t pt-8 first:border-t-0 first:pt-0" id={id}>
@@ -72,14 +88,16 @@ function H3({ children }: { children: React.ReactNode }) {
 function UL({ items }: { items: React.ReactNode[] }) {
   return (
     <ul className="mt-2 list-disc space-y-1.5 pl-5 text-sm leading-relaxed">
-      {items.map((it, i) => <li key={i}>{it}</li>)}
+      {items.map((it, i) => (
+        <li key={i}>{it}</li>
+      ))}
     </ul>
   );
 }
 
-// ── Sections index ──────────────────────────────────────────────────────────
+// ── TOC sections ─────────────────────────────────────────────────────────────
 
-const SECTIONS = [
+const SECTIONS: { id: string; index: string; label: string }[] = [
   { id: "s1", index: "1", label: "Your Daily Routine" },
   { id: "s2", index: "2", label: "Executive Cockpit" },
   { id: "s3", index: "3", label: "Governance Control Tower" },
@@ -90,6 +108,8 @@ const SECTIONS = [
   { id: "s8", index: "8", label: "Platform Health" },
 ];
 
+// ── Page ─────────────────────────────────────────────────────────────────────
+
 export default function CeoGuide() {
   const [activeId, setActiveId] = useState<string>("s1");
 
@@ -97,9 +117,11 @@ export default function CeoGuide() {
     const observer = new IntersectionObserver(
       (entries) => {
         const visible = entries.filter((e) => e.isIntersecting);
-        if (visible.length > 0) setActiveId(visible[0].target.id);
+        if (visible.length > 0) {
+          setActiveId(visible[0].target.id);
+        }
       },
-      { rootMargin: "-20% 0px -70% 0px" }
+      { rootMargin: "-20% 0px -70% 0px" },
     );
     for (const s of SECTIONS) {
       const el = document.getElementById(s.id);
@@ -116,21 +138,22 @@ export default function CeoGuide() {
   return (
     <AdminLayout>
       <div className="mx-auto max-w-6xl">
+        {/* Header */}
         <div className="mb-6 flex items-center gap-3">
           <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <BookOpen className="h-6 w-6" />
+            <Compass className="h-6 w-6" />
           </div>
           <div>
             <h1 className="text-2xl font-bold tracking-tight" data-testid="text-ceo-guide-title">
               CEO Command Guide
             </h1>
             <p className="text-sm text-muted-foreground">
-              Every tool, every workflow — in one place. Your operating manual for the platform.
+              One reference for every major platform lever — how to run the business from the portal.
             </p>
           </div>
         </div>
 
-        <div className="grid gap-8 lg:grid-cols-[220px_1fr]">
+        <div className="grid gap-8 lg:grid-cols-[240px_1fr]">
           {/* Sticky anchor nav */}
           <nav className="hidden lg:block">
             <div className="sticky top-6 space-y-0.5" data-testid="nav-ceo-guide-sections">
@@ -143,7 +166,7 @@ export default function CeoGuide() {
                       ? "bg-primary/10 font-medium text-primary"
                       : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
-                  data-testid={`nav-ceo-${s.id}`}
+                  data-testid={`nav-ceo-guide-${s.id}`}
                 >
                   <span className="w-4 shrink-0 text-xs tabular-nums opacity-60">{s.index}</span>
                   <span className="truncate">{s.label}</span>
@@ -156,41 +179,34 @@ export default function CeoGuide() {
           {/* Content */}
           <div className="min-w-0 space-y-8 pb-16">
 
-            {/* ── Section 1 — Daily Routine ── */}
+            {/* ── Section 1 — Your Daily Routine ── */}
             <section>
               <SectionHeading
                 id="s1"
                 index="1"
                 title="Your Daily Routine"
-                subtitle="A 15-minute morning check that keeps the whole operation visible."
+                subtitle="Three screens, ten minutes. Everything else can wait."
               />
-              <P>
-                Every business day starts in the same three places. Build the habit and the platform's signals
-                will surface what needs your attention before it becomes a problem.
-              </P>
-              <H3>Morning checklist (in order):</H3>
+
+              <div className="mt-4 flex flex-wrap gap-3">
+                <ScreenLink href="/admin/executive-cockpit">Exec Cockpit</ScreenLink>
+                <ScreenLink href="/admin/control-tower">Control Tower</ScreenLink>
+                <ScreenLink href="/studio">Studio</ScreenLink>
+              </div>
+
+              <H3>Morning checklist:</H3>
               <StepList
                 steps={[
-                  <>
-                    Open <ScreenLink href="/admin/executive-cockpit">Executive Cockpit</ScreenLink> — scan the People,
-                    Attendance, and Disbursement tabs. Flag anything that looks wrong (missing attendance run,
-                    pending payroll, unusual headcount).
-                  </>,
-                  <>
-                    Open <ScreenLink href="/admin/control-tower">Control Tower</ScreenLink> — check the Communications
-                    tab for held emails (amber badge) and the Automated Changes tab for pending proposals. Approve
-                    or reject before midday.
-                  </>,
-                  <>
-                    Open <ScreenLink href="/studio">Studio Dashboard</ScreenLink> — check the editorial queue (any
-                    articles waiting for final approval?), the BD agent pipeline, and the Ideas calendar for today's
-                    scheduled posts.
-                  </>,
+                  <>Open the <ScreenLink href="/admin/executive-cockpit">Executive Cockpit</ScreenLink> — scan the People tab for any new joiners or exits, and the Compliance tab for overdue controls.</>,
+                  <>Open the <ScreenLink href="/admin/control-tower">Control Tower</ScreenLink> — check the escalation count at the top. If there are escalated items, act on them before anything else.</>,
+                  <>Check the <ScreenLink href="/studio">Studio</ScreenLink> calendar — confirm today's and tomorrow's content is in Approved status. If anything is stuck in review, unblock it.</>,
+                  <>Review any pending items in the notifications bell (top right). Approve or delegate before your first call.</>,
+                  <>Once a week, open <ScreenLink href="/admin/hr/people">People & HR</ScreenLink> and check the salary report for the current month's attendance status.</>,
                 ]}
               />
-              <ProTip title="Set a recurring 9 AM block">
-                Three tabs, 15 minutes. If you find yourself spending more than 15 minutes, it usually means there's
-                a backlog of unapproved communications or pending automated changes. Clear those first.
+
+              <ProTip title="Tower escalations take priority">
+                If the Control Tower shows 5 or more escalated controls, that takes priority over Studio content review. Governance blocks compound — an unacknowledged escalation becomes a CEO Digest item within 48 hours.
               </ProTip>
             </section>
 
@@ -200,34 +216,35 @@ export default function CeoGuide() {
                 id="s2"
                 index="2"
                 title="Executive Cockpit"
-                subtitle="One surface for the whole company — people, attendance, and payroll at a glance."
+                subtitle="A unified action layer — everything senior management needs without navigating 12 modules."
               />
+
               <P>
-                The <ScreenLink href="/admin/executive-cockpit">Executive Cockpit</ScreenLink> gives you a read-only
-                executive view across the three operational dimensions: People, Attendance, and Disbursement.
+                The <ScreenLink href="/admin/executive-cockpit">Executive Cockpit</ScreenLink> aggregates signals from across the platform into four tabs. Each tab is designed to surface what requires a decision, not a report dump.
               </P>
-              <H3>What each tab shows:</H3>
+
+              <H3>The four tabs:</H3>
               <UL
                 items={[
-                  <><strong>People</strong> — live headcount, active/inactive split, departments, and a searchable
-                  employee directory. Download a CSV snapshot at any time. Use this to cross-check before a payroll run.</>,
-                  <><strong>Attendance</strong> — the current month's attendance run by manager group: team size,
-                  average days present, total LOP days, and manager approval status. Export to CSV for payroll input.</>,
-                  <><strong>Disbursement</strong> — the active salary run's payment status per employee. Mark individual
-                  deposits, or mark all deposited at once. When all are deposited, the run auto-executes and payslips unlock.</>,
+                  <><strong>People</strong> — headcount, recent joiners, exits, open positions. Use this to spot gaps in team coverage and confirm new hire onboarding is on track. If a joiner has been in the system for 7+ days without completing onboarding, follow up with HR.</>,
+                  <><strong>Compliance</strong> — overdue governance controls, pending CEO exceptions, and the most recent AI digest payload. The digest is your weekly automated summary — read it, don't archive it.</>,
+                  <><strong>Attendance</strong> — organisation-wide attendance signals for the current month. Use this to verify the attendance report is progressing before payroll week. Anomalies here (team with 0% punches) indicate a data feed issue, not an empty office.</>,
+                  <><strong>Reports</strong> — salary run status, current headcount by role, and any pending manual adjustments. Acts as a pre-flight check before approving the payroll run.</>,
                 ]}
               />
-              <H3>When to act:</H3>
-              <UL
-                items={[
-                  <>If a manager's approval is still Pending at month-end → message them directly or override via the attendance run page.</>,
-                  <>If the disbursement run shows pending employees near salary date → coordinate with finance to get deposits confirmed.</>,
-                  <>If the Cockpit shows zero employees → the session expired; refresh and log in again.</>,
-                ]}
-              />
-              <ProTip title="The AI payload is allowlisted">
-                The Cockpit's AI summary never includes raw PII — salary amounts, bank details, and personal IDs are
-                stripped before the AI sees them. The payload is fail-closed: if the guard fails, no data is sent.
+
+              <H3>When to act vs. let it run:</H3>
+              <P>
+                The Cockpit is read-mostly. Act when you see a red badge (overdue/escalated), a CEO-exception pending your signature, or a salary run stuck in "pending approval" past the 25th of the month. Everything else — green counts, in-progress onboarding, approved content — is informational.
+              </P>
+
+              <H3>Reading the AI digest payload:</H3>
+              <P>
+                The Compliance tab shows the most recent automated digest. The payload is an allowlisted summary — it contains no employee PII, no raw salary data, no medical records. It only surfaces aggregate counts and categorical risk signals. If a category shows "elevated", click through to the relevant module for detail.
+              </P>
+
+              <ProTip title="The digest is fail-closed">
+                If the AI digest payload shows "no data available", the underlying aggregation endpoint returned an error. This is not a health signal — check Control Tower instead for a manual view of compliance status.
               </ProTip>
             </section>
 
@@ -237,39 +254,35 @@ export default function CeoGuide() {
                 id="s3"
                 index="3"
                 title="Governance Control Tower"
-                subtitle="The platform's highest-privilege controls — escalation ladder, communications gate, and audit trail."
+                subtitle="The 4-stage escalation ladder — from overdue to CEO desk."
               />
+
               <P>
-                The <ScreenLink href="/admin/control-tower">Control Tower</ScreenLink> is super_admin only. It
-                combines the audit trail, feature flags, access control matrix, communications governance, and
-                automated change approvals into a single audited surface.
+                The <ScreenLink href="/admin/control-tower">Control Tower</ScreenLink> is the platform's systemic governance engine. Every control (a goal, check-in, SOP, training, PIP, or attendance threshold) is monitored automatically. When a control goes overdue, it enters the escalation ladder.
               </P>
-              <H3>Escalation ladder (what to check, and when):</H3>
+
+              <H3>The 4-stage escalation ladder:</H3>
               <UL
                 items={[
-                  <><strong>Communications (held emails)</strong> — Amber badge on the Control Tower link means
-                  emails are queued for approval. Check daily. Held emails never send until you approve them.</>,
-                  <><strong>Automated Changes</strong> — System jobs (absence sweeps, leave accruals) propose changes
-                  here for your review before they apply to employee records. Approve within 48 hours or they stale-date.</>,
-                  <><strong>Audit Logs</strong> — Every privileged action (user creation, role change, salary edit,
-                  letter generation) is recorded here. Use it when something looks wrong.</>,
-                  <><strong>Feature Flags</strong> — Toggle modules on and off. Notifications, salary advance, performance
-                  management, and training compliance lock are all flag-gated.</>,
-                  <><strong>Access Control Matrix</strong> — Override which roles can see each feature. Use sparingly
-                  — the defaults are calibrated for a staffing firm.</>,
+                  <><strong>Overdue</strong> — the control deadline has passed. The owning manager receives an in-app nudge. No action required from you at this stage.</>,
+                  <><strong>Escalated L1</strong> — still unresolved after the first grace window. The manager's manager is now notified. HR is CC'd. If you see items here, they are typically resolved within 24 hours of the L1 notification going out.</>,
+                  <><strong>Escalated L2</strong> — unresolved past L1 grace. HR and the owning department head are formally looped in. Items at L2 appear in your Exec Cockpit Compliance tab. This is your first direct touch point — review and decide whether to intervene or let HR resolve.</>,
+                  <><strong>CEO Digest</strong> — the item has been unresolved long enough to warrant your direct attention. It appears in the next automated digest. At this stage, escalate to the relevant manager with a deadline or close the item with a documented exception.</>,
                 ]}
               />
-              <H3>When to intervene directly:</H3>
-              <UL
-                items={[
-                  <>An automated change looks wrong → Reject it with a reason note. The system logs the rejection.</>,
-                  <>A communication type is sending too frequently → Go to Communications → set that type to "Hold" while you investigate.</>,
-                  <>An employee is locked out of a feature they need → Check Feature Flags and Access Control Matrix.</>,
-                ]}
-              />
-              <ProTip title="Never use Feature Flags to bypass compliance">
-                The Training Compliance Lock, SOP enforcement, and document verification are not decoration — they
-                are the compliance backbone. Only disable them if you have a specific, documented reason.
+
+              <H3>When to intervene:</H3>
+              <P>
+                L1 and L2 items rarely need your direct involvement — they resolve through the normal chain. Intervene at L2 only if the item is high-risk (a probation milestone overdue at Day 90, a PIP with no check-ins in 30 days, a statutory compliance control). At CEO Digest level, always act.
+              </P>
+
+              <H3>Exceptions:</H3>
+              <P>
+                Some controls allow a CEO exception — a documented override that closes the escalation without the underlying action being completed. Use exceptions sparingly. They are audit-logged with your name, timestamp, and reason. Exceptions are visible to auditors.
+              </P>
+
+              <ProTip title="PIP zero-threshold rule">
+                Performance Improvement Plans have a zero-tolerance escalation threshold — any missed check-in escalates immediately to L2, regardless of the control's age. This is intentional. A PIP with a missed check-in is a legal and HR risk, not an administrative oversight.
               </ProTip>
             </section>
 
@@ -279,42 +292,52 @@ export default function CeoGuide() {
                 id="s4"
                 index="4"
                 title="Studio & BD Agent"
-                subtitle="The content engine and the business development pipeline — connected."
+                subtitle="Content calendar rhythm, BD proposals, and the editorial loop explained."
               />
+
               <P>
-                The <ScreenLink href="/studio">Studio</ScreenLink> is the brand's content OS. It runs the editorial
-                calendar, generates AI drafts, routes them through review and approval, and publishes to the Insights
-                section. The BD Agent sits inside Studio and manages the outreach pipeline.
+                The <ScreenLink href="/studio">Studio</ScreenLink> runs on a weekly content cadence. The goal is to be one week ahead at all times — next week's content should be in Approved status before the current week's content goes live.
               </P>
-              <H3>Content calendar rhythm:</H3>
+
+              <H3>Weekly cadence:</H3>
               <UL
                 items={[
-                  <>Plan the month's ideas on the <ScreenLink href="/studio">Studio Dashboard</ScreenLink> → Calendar view by the last week of the prior month.</>,
-                  <>AI generates draft articles; the editorial team reviews and marks them "In Review".</>,
-                  <>As CEO, your touch-point is Final Approval — articles come to you (or a delegated approver) before publishing.</>,
-                  <>Published articles automatically appear in <ScreenLink href="/studio">Studio → Live Content</ScreenLink> and the public Insights section.</>,
+                  <><strong>Monday</strong> — review the calendar for the coming week. Any ideas still in Draft or In Review need to be unblocked or pulled from the schedule.</>,
+                  <><strong>Tuesday–Wednesday</strong> — content production and editing. AI-assisted first drafts are generated, reviewed by the content team, and submitted for approval.</>,
+                  <><strong>Thursday</strong> — final approval day. All this-week content should reach Approved status. You or a delegated approver signs off on the week's batch.</>,
+                  <><strong>Friday</strong> — social media manager downloads approved Social Kits and publishes. Articles go live on the Insights page on the scheduled date.</>,
                 ]}
               />
-              <H3>BD agent proposal flow:</H3>
+
+              <H3>Triggering a BD proposal from the BD Agent:</H3>
+              <P>
+                Go to <ScreenLink href="/studio/bd-agent">BD Agent</ScreenLink>. The agent generates outreach proposals based on your current campaign context, target segment, and brand voice. Fill in the target company, the contact role, and the value proposition context — the agent handles the draft. Review it, adjust the tone, and export.
+              </P>
+
+              <P>
+                For templates and previously approved outreach formats, see <ScreenLink href="/studio/bd-guide">BD Guide</ScreenLink>.
+              </P>
+
+              <H3>The editorial loop — how inbound connects to revenue:</H3>
+              <FlowStrip stages={["Jobs", "Content", "Brand", "Inbound", "BD", "Contract", "Onboarding", "Repeat"]} />
               <UL
                 items={[
-                  <>The BD Agent is at <ScreenLink href="/studio/bd-guide">Studio → BD Guide</ScreenLink>. It generates outreach sequences, email templates, and LinkedIn messages.</>,
-                  <>All BD agent output passes through the Staffing Safety Gate — invented facts, superlatives, and clearance claims are hard-blocked before any text reaches a prospect.</>,
-                  <>Review the proposed outreach before your BD team sends it. The agent drafts; humans decide.</>,
+                  <><strong>Jobs</strong> — open roles drive the content brief. What roles are hard to fill? Those become thought-leadership articles and social content.</>,
+                  <><strong>Content</strong> — articles and social kits are produced in Studio, approved, and published to the Insights section and social channels.</>,
+                  <><strong>Brand</strong> — consistent publishing builds brand recognition in the healthcare/IT/engineering segments. The Brand Kit ensures every piece stays on-voice.</>,
+                  <><strong>Inbound</strong> — qualified candidates and client inquiries arrive via the website's contact form and job listings. These feed into the ATS pipeline.</>,
+                  <><strong>BD</strong> — the BD Agent generates outreach for warm prospects identified from inbound signals. Outreach is personalised to the segment.</>,
+                  <><strong>Contract</strong> — signed contracts are logged in Finance & Contracts. The Contracts Hub tracks MSAs, SOWs, and placement agreements.</>,
+                  <><strong>Onboarding</strong> — placed candidates go through the New Hire pipeline. The cycle restarts with the next open role.</>,
                 ]}
               />
-              <H3>The Insights editorial loop:</H3>
-              <UL
-                items={[
-                  <>Articles with high Reactions + high CTA clicks are your best content — replicate the topic, angle, and format.</>,
-                  <>Articles with low Reactions but high clicks need a stronger CTA. Articles with high Reactions but low clicks need a stronger call to action.</>,
-                  <>Review the <ScreenLink href="/studio">Studio Analytics</ScreenLink> monthly to calibrate what's working.</>,
-                ]}
-              />
-              <ProTip title="The Safety Gate is non-negotiable">
-                The Staffing Safety Gate hard-blocks any draft that makes a claim the system can't verify (e.g., "We
-                place 10,000 candidates annually" without a cited source). Do not ask the team to bypass it — the
-                block is there to protect the brand from liability.
+
+              <P>
+                For a full guide to the Studio's capabilities, see the <ScreenLink href="/studio/guide">Studio Playbook</ScreenLink>.
+              </P>
+
+              <ProTip title="Content velocity trumps content perfection">
+                A good article published weekly outperforms a perfect article published quarterly. The Studio's AI layer is designed to get you to 80% in the first draft — your job is the final 20%. Do not let the perfect be the enemy of the published.
               </ProTip>
             </section>
 
@@ -324,40 +347,37 @@ export default function CeoGuide() {
                 id="s5"
                 index="5"
                 title="HR & Payroll"
-                subtitle="Monthly payroll run steps, attendance reports, salary advances, and letter generation."
+                subtitle="Monthly payroll in 5 steps, attendance reading, salary advance, and letter generation."
               />
-              <P>
-                Payroll runs monthly. The cycle is: attendance report → manager approval → payroll run → salary
-                slip generation → disbursement tracking. Each step gates the next.
-              </P>
-              <H3>Monthly payroll run (in order):</H3>
+
+              <H3>Monthly payroll run — 5 steps:</H3>
               <StepList
                 steps={[
-                  <>HR generates the attendance report for the month (People & HR → Attendance Report tab). Managers receive the report by email and approve their team's numbers.</>,
-                  <>Once all managers have approved (or HR overrides), the payroll run is created (Payroll → Run Payroll).</>,
-                  <>HR reviews LOP deductions, salary advances (auto-recovered from the oldest pending advance), and any adjustments.</>,
-                  <>The run is approved. Salary slips are generated and locked. Employees can view them from My Desk → Payslips.</>,
-                  <>Finance marks each salary deposit in the <ScreenLink href="/admin/executive-cockpit">Executive Cockpit → Disbursement</ScreenLink> tab. When all are deposited, the run auto-executes.</>,
+                  <>By the 20th of the month, confirm with HR that the attendance report is finalised. Open <ScreenLink href="/admin/hr/people">People & HR</ScreenLink> → Salary Reports tab and check the current month's report status. It should read "Finalised" or "Ready for payroll".</>,
+                  <>Open the <ScreenLink href="/admin/payroll/run">Bulk Payroll Run</ScreenLink> page. Review the headcount and the gross salary total against last month. A variance over 5% warrants investigation before proceeding.</>,
+                  <>Check the LOP (Loss of Pay) column. Any employee with LOP days should have a corresponding attendance note in their record. If an LOP looks wrong, flag it to HR before running — corrections after disbursement require a separate adjustment cycle.</>,
+                  <>Click "Generate Payslips". The engine runs the India-statutory computation (PF, ESI, TDS, PT) and produces individual payslips. Review the summary sheet for any computation errors flagged in red.</>,
+                  <>Approve and mark as disbursed. The system automatically unlocks individual payslips for employee viewing and triggers payslip email notifications if the notification toggle is enabled.</>,
                 ]}
               />
-              <H3>Salary advances:</H3>
-              <UL
-                items={[
-                  <>Employees can request advances (if the flag is enabled). HR/Admin can also record advances manually for any employee — useful for backfills and overpayments.</>,
-                  <>Advances are recovered automatically from the next payroll run, oldest-first. Shortfalls carry forward.</>,
-                  <>Track all active advances from <ScreenLink href="/admin/salary-advance">Salary Advance</ScreenLink>.</>,
-                ]}
-              />
-              <H3>Letter generation:</H3>
-              <UL
-                items={[
-                  <>Experience letters, internship letters, relieving letters, and amendment letters are generated from HR Tools → Letter Generator.</>,
-                  <>All letters are cryptographically verifiable — candidates can validate their letter on the <ScreenLink href="/verify">public verify page</ScreenLink> using the reference number and auth code.</>,
-                ]}
-              />
-              <ProTip title="Lock the payroll run before the disbursement">
-                Once you approve a payroll run, salary slip content is locked. Any corrections after that point require
-                a new run. Get all manager approvals in before creating the run.
+
+              <H3>Reading the attendance report:</H3>
+              <P>
+                The attendance report at <ScreenLink href="/admin/hr/people">People & HR → Salary Reports</ScreenLink> shows present days, LOP days, leave days, and punch-in/out completeness per employee. Focus on two signals: employees with 0 present days (likely a punch sync issue) and employees with LOP days who have no approved leave (likely a dispute).
+              </P>
+
+              <H3>Salary advance recording:</H3>
+              <P>
+                HR can record advances directly from <ScreenLink href="/admin/hr/tools">HR Tools</ScreenLink> → Salary Advance. Two types: a standard advance (repaid in monthly instalments) and an overpayment recovery (full deduction next cycle, remainder carries forward). Both are audit-logged. The system's monthly payroll recovery engine handles deductions automatically once an advance is disbursed.
+              </P>
+
+              <H3>Letter generation flow:</H3>
+              <P>
+                Experience letters, relieving letters, salary revision letters, and offer letters are generated from <ScreenLink href="/admin/hr/tools">HR Tools</ScreenLink>. All letters include a cryptographic reference number and verification code, accessible at the public <code>/verify</code> page. Amendment letters (salary revision, promotion, device allocation) can be emailed directly from the tool.
+              </P>
+
+              <ProTip title="Payslips are locked until disbursed">
+                Employees cannot see their payslip until you mark the run as disbursed. If an employee reports not seeing their payslip, check the run status before investigating anything else.
               </ProTip>
             </section>
 
@@ -367,35 +387,25 @@ export default function CeoGuide() {
                 id="s6"
                 index="6"
                 title="New Hire Pipeline"
-                subtitle="From offer letter to fully onboarded employee — the chain that must not break."
+                subtitle="From offer letter to active employee — what each stage requires from you."
               />
+
               <P>
-                The pipeline is: Offer Letter → HR countersign → candidate acceptance → onboarding checklist
-                → growth plan activation. Each step is tracked in the{" "}
-                <ScreenLink href="/admin/new-hire">New Hire</ScreenLink> section.
+                The <ScreenLink href="/admin/new-hire">New Hire</ScreenLink> section manages the pre-employment pipeline. The chain runs: Offer Letter → Candidate Acceptance → HR Counter-sign → Onboarding Checklist → Growth Plan activation.
               </P>
-              <H3>The chain:</H3>
-              <StepList
-                steps={[
-                  <>Manager or recruiter generates an offer letter from New Hire → Offer Letters → New Offer Letter. It goes to HR for approval.</>,
-                  <>HR (or Admin) approves and countersigns. The candidate receives an email with an acceptance link.</>,
-                  <>Candidate accepts digitally. The document is hashed and locked — any alteration voids the hash.</>,
-                  <>The New Hire → Onboarding tab shows training completion %, documents uploaded, bank details, and night-shift consent. All must be green before the employee is fully onboarded.</>,
-                  <>Once the offer is accepted, the employee's growth plan is seeded automatically. The manager runs the 90-day probation check-ins from My Team.</>,
-                ]}
-              />
-              <H3>What to watch:</H3>
+
+              <H3>What each stage requires from you:</H3>
               <UL
                 items={[
-                  <>Onboarding tab: employees with training % below 100% after their start date are at risk — their training compliance lock will fire.</>,
-                  <>Offer letters pending approval for more than 48 hours → check with HR.</>,
-                  <>Candidates who accepted but haven't uploaded documents → send a reminder from New Hire → Onboarding.</>,
+                  <><strong>Offer Letter approval</strong> — managers generate offer letters; HR submits for your final approval. You will see a badge on the New Hire nav item when letters are pending. Open New Hire → Letters, review the compensation and title, and approve or return with comments. Returning a letter prompts the originator to revise and resubmit.</>,
+                  <><strong>Counter-signature</strong> — once the candidate digitally accepts, HR countersigns on your behalf. If HR is unavailable, you can countersign directly. The countersigned letter is cryptographically hashed and stored — this is the binding employment document.</>,
+                  <><strong>Onboarding checklist</strong> — the New Hire → Onboarding tab shows each new joiner's checklist completion: training %, documents uploaded, bank details, and night-shift consent. A joiner who has been in the system for 14 days with below 50% checklist completion should be flagged to their manager.</>,
+                  <><strong>Growth plan activation</strong> — once the onboarding addendum is signed, the system activates the employee's growth plan (goals and probation framework). You do not need to take action here — it is automatic. You can review active plans in My Team → Plans.</>,
                 ]}
               />
-              <ProTip title="The 90-day probation cadence is mandatory">
-                Managers are accountable for running every check-in (Day 1, 7, 15, 30, 45, 60, 75, 90). Missed
-                milestones escalate to HR automatically. The system logs every scored review — no documentation
-                gaps at confirmation.
+
+              <ProTip title="Offer letter approval is the only manual gate">
+                Every other step in the new hire pipeline is automated or delegated to HR/managers. Your only required action is approving the offer letter. If a new hire's start date is approaching and the letter is still pending, it will block the onboarding checklist from activating.
               </ProTip>
             </section>
 
@@ -405,34 +415,26 @@ export default function CeoGuide() {
                 id="s7"
                 index="7"
                 title="Strategy & Reports"
-                subtitle="The competitive picture, the market thesis, and the fundraising story — in one place."
+                subtitle="Three documents — what each covers and when to use it."
               />
+
+              <H3>Competitive Audit</H3>
               <P>
-                Three strategic documents are always one click away from the Knowledge Hub.
+                The <ScreenLink href="/admin/competitive-audit">Competitive Audit</ScreenLink> is a live internal strategy document comparing Hire'in 360 against seven competitors across 29 weighted capability dimensions. It was last updated in July 2026. Use it when preparing for a sales conversation against Darwinbox or Keka, when briefing a potential investor on platform differentiation, or when scoping a new feature to understand how it closes a competitive gap. The Feature Matrix tab is the most actionable section — it shows exactly where Hire'in wins, where it is partial, and where it has gaps.
               </P>
-              <H3>Key documents:</H3>
-              <UL
-                items={[
-                  <>
-                    <strong>Competitive Audit (v3.0)</strong> — The full feature matrix, positioning map, white space analysis,
-                    and action plan for Hire'in 360 vs. Darwinbox, Keka, GreytHR, Rippling, and BambooHR.
-                    View at <ScreenLink href="/admin/competitive-audit">Competitive Audit</ScreenLink>. Print or export to CSV.
-                  </>,
-                  <>
-                    <strong>McKinsey Market Strategy 2026</strong> — The market sizing, segment prioritisation, and
-                    go-to-market sequencing for the staffing HRMS segment. Access via{" "}
-                    <ScreenLink href="/admin/knowledge-hub">Knowledge Hub → Strategy</ScreenLink>.
-                  </>,
-                  <>
-                    <strong>VC Fundraising Strategy 2026</strong> — The funding thesis, investor targeting, and
-                    round structure. Access via <ScreenLink href="/admin/knowledge-hub">Knowledge Hub → Strategy</ScreenLink>.
-                  </>,
-                ]}
-              />
+
+              <H3>McKinsey Market Strategy</H3>
+              <P>
+                The McKinsey-style commercialisation playbook lives in the <ScreenLink href="/admin/knowledge-hub">Knowledge Hub</ScreenLink>. It covers the India staffing market sizing, the target segment (10–200 employee Indian staffing agencies running US-client operations), the go-to-market motion, and the pricing strategy. Use it when planning a BD push into a new geography or when aligning the leadership team on the commercialisation roadmap for the next quarter.
+              </P>
+
+              <H3>VC Memo</H3>
+              <P>
+                The VC investment narrative is also in the <ScreenLink href="/admin/knowledge-hub">Knowledge Hub</ScreenLink>. It frames Hire'in 360 as a platform investment — the staffing operations OS thesis, the defensibility argument (integrated data moat + proprietary AI compliance layer), and the unit economics model. Use it when speaking with prospective investors or when briefing a new advisor who needs rapid context on the business.
+              </P>
+
               <ProTip title="Keep the Competitive Audit current">
-                The audit was last updated July 2026. Competitor feature sets change quarterly. Assign someone to
-                re-audit the top 3 competitors every quarter and update the feature matrix rows. Stale intel is
-                worse than no intel in a sales conversation.
+                Competitor products change quarterly. The Competitive Audit is only as valuable as its last update. Revisit the Feature Matrix after any major product launch by Darwinbox, Keka, or GreytHR to flag new gaps or wins.
               </ProTip>
             </section>
 
@@ -442,44 +444,34 @@ export default function CeoGuide() {
                 id="s8"
                 index="8"
                 title="Platform Health"
-                subtitle="Audit log, feature flags, notification settings — how to know if something is wrong."
+                subtitle="Audit logs, feature flags, and notification toggles — your admin levers."
               />
+
+              <H3>Reading the audit log:</H3>
               <P>
-                Platform health is visible in three places: the audit log, the feature flag dashboard, and the
-                notification settings panel.
+                The audit log is accessible from <ScreenLink href="/admin/hr/people">People & HR → Audit</ScreenLink>. Every significant write operation in the platform (salary changes, letter generation, user role changes, leave approvals, payroll runs) is logged with the acting user, timestamp, and before/after state. Use it to investigate a disputed transaction, verify a historical action, or satisfy an audit request. Filter by user or action type to narrow the log.
               </P>
-              <H3>Key health indicators:</H3>
+
+              <H3>Feature flags:</H3>
+              <P>
+                Feature flags at <ScreenLink href="/admin/settings">Settings</ScreenLink> control which platform capabilities are active. Flags you might need to toggle:
+              </P>
               <UL
                 items={[
-                  <>
-                    <strong>Audit Log</strong> (<ScreenLink href="/admin/control-tower">Control Tower → Audit Logs</ScreenLink>)
-                    — Look for unusual bursts of write operations, failed login attempts, or role changes you didn't authorise.
-                    Every privileged action has an actor, a target, and a timestamp.
-                  </>,
-                  <>
-                    <strong>Feature Flags</strong> (<ScreenLink href="/admin/control-tower">Control Tower → Feature Flags</ScreenLink>)
-                    — Check that the flags you expect to be ON are ON. The Training Compliance Lock, notifications, and
-                    salary advance flags are the three most commonly asked about.
-                  </>,
-                  <>
-                    <strong>Notification Settings</strong> (<ScreenLink href="/admin/notification-settings">Notification Settings</ScreenLink>)
-                    — Configure which event types send emails and in-app notifications. If employees are saying they
-                    didn't get an email, start here.
-                  </>,
+                  <><strong>notifications_enabled</strong> — master switch for all in-app notifications. Turn off during maintenance windows.</>,
+                  <><strong>salary_advance_enabled</strong> — controls employee self-service salary advance requests. HR can still record advances manually regardless of this flag.</>,
+                  <><strong>performance_management_enabled</strong> — enables the Goals, Check-Ins, and Reviews modules for employees.</>,
+                  <><strong>studio_v2_enabled</strong> — activates the standalone Studio shell (the /studio domain).</>,
                 ]}
               />
-              <H3>When something is wrong:</H3>
-              <UL
-                items={[
-                  <>A feature stopped working → check Feature Flags first (it may have been toggled off).</>,
-                  <>Employees aren't receiving emails → check the Communications tab in Control Tower (emails may be held), then check Notification Settings.</>,
-                  <>An HR letter hash validation is failing → check that the document wasn't regenerated after signing. Every re-issue creates a new hash.</>,
-                  <>The payroll run is stuck → check if all managers have approved the attendance report. Unapproved managers block the run creation.</>,
-                ]}
-              />
-              <ProTip title="Review the audit log weekly">
-                A 5-minute scan of the audit log every Friday catches unusual patterns before they become incidents.
-                Filter by "user management" and "salary" actions — those are the highest-risk write operations.
+
+              <H3>Notification toggles:</H3>
+              <P>
+                Granular email and in-app notification settings are at <ScreenLink href="/admin/notification-settings">Notification Settings</ScreenLink>. Each notification type (leave approval, payslip unlock, governance sweep, onboarding reminder) can be toggled independently. Review this page if employees report missing emails — the toggle is the first thing to check before investigating the email delivery layer.
+              </P>
+
+              <ProTip title="Governance sweep email toggle">
+                The governance sweep runs nightly and sends digest emails to managers with overdue controls. If managers report receiving too many emails, check the "governance_sweep_email" toggle in Notification Settings before disabling the sweep itself — the sweep still runs (and updates the Control Tower) regardless of the email toggle state.
               </ProTip>
             </section>
 
