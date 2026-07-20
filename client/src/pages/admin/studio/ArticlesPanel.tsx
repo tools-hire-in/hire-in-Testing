@@ -153,6 +153,27 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
   });
   const activeAuthors = (authors ?? []).filter((a) => a.isActive);
 
+  const queryKey = [
+    "/api/admin/studio/articles",
+    {
+      projectId,
+      status: statusFilter === "all" ? "" : statusFilter,
+      contentType: typeFilter === "all" ? "" : typeFilter,
+      search,
+      page,
+      pageSize: PAGE_SIZE,
+    },
+  ];
+
+  const { data, isLoading } = useQuery<ArticleListResponse>({
+    queryKey,
+    enabled: !!projectId,
+  });
+
+  const items = data?.items ?? [];
+  const total = data?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
   const toggleSelect = (id: string) => {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -219,23 +240,6 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
     onError: (err: Error) => toast({ title: "Bulk assign failed", description: err.message, variant: "destructive" }),
   });
 
-  const queryKey = [
-    "/api/admin/studio/articles",
-    {
-      projectId,
-      status: statusFilter === "all" ? "" : statusFilter,
-      contentType: typeFilter === "all" ? "" : typeFilter,
-      search,
-      page,
-      pageSize: PAGE_SIZE,
-    },
-  ];
-
-  const { data, isLoading } = useQuery<ArticleListResponse>({
-    queryKey,
-    enabled: !!projectId,
-  });
-
   const createMutation = useMutation({
     mutationFn: async () => {
       const isInsights = isInsightsContentType(newType);
@@ -278,10 +282,6 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
       toast({ title: "Could not create article", description: err.message, variant: "destructive" });
     },
   });
-
-  const items = data?.items ?? [];
-  const total = data?.total ?? 0;
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   const resetPageAnd = (fn: () => void) => {
     setPage(1);
