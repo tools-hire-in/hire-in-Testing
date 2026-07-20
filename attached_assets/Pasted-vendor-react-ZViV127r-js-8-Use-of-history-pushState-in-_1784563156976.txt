@@ -1,0 +1,44 @@
+vendor-react-ZViV127r.js:8 Use of history.pushState in a trivial session history context, which maintains only one session history entry, is treated as history.replaceState.
+history.<computed> @ vendor-react-ZViV127r.js:8
+/api/auth/me:1  Failed to load resource: the server responded with a status of 401 ()
+/api/dev-tools/status:1  Failed to load resource: the server responded with a status of 404 ()
+/api/ceo/goals:1  Failed to load resource: the server responded with a status of 500 ()
+vendor-radix-sXhTuiq2.js:45 Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+(anonymous) @ vendor-radix-sXhTuiq2.js:45
+vendor-radix-sXhTuiq2.js:45 Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+(anonymous) @ vendor-radix-sXhTuiq2.js:45
+vendor-radix-sXhTuiq2.js:45 Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+(anonymous) @ vendor-radix-sXhTuiq2.js:45
+vendor-radix-sXhTuiq2.js:45 Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+(anonymous) @ vendor-radix-sXhTuiq2.js:45
+vendor-radix-sXhTuiq2.js:45 `DialogContent` requires a `DialogTitle` for the component to be accessible for screen reader users.
+
+If you want to hide the `DialogTitle`, you can wrap it with our VisuallyHidden component.
+
+For more information, see https://radix-ui.com/primitives/docs/components/dialog
+(anonymous) @ vendor-radix-sXhTuiq2.js:45
+vendor-radix-sXhTuiq2.js:45 Warning: Missing `Description` or `aria-describedby={undefined}` for {DialogContent}.
+(anonymous) @ vendor-radix-sXhTuiq2.js:45
+vendor-react-ZViV127r.js:8 ReferenceError: authUser is not defined
+    at vs (ArticleEditor-BZr-jGQq.js:8:9457)
+    at cu (vendor-react-ZViV127r.js:6:17190)
+    at ku (vendor-react-ZViV127r.js:8:3159)
+    at Jc (vendor-react-ZViV127r.js:8:45044)
+    at Yc (vendor-react-ZViV127r.js:8:39937)
+    at th (vendor-react-ZViV127r.js:8:39865)
+    at Is (vendor-react-ZViV127r.js:8:39718)
+    at Vu (vendor-react-ZViV127r.js:8:36047)
+    at Wc (vendor-react-ZViV127r.js:8:34995)
+    at Te (vendor-react-ZViV127r.js:1:9795)
+_u @ vendor-react-ZViV127r.js:8
+vendor-react-ZViV127r.js:8 Uncaught ReferenceError: authUser is not defined
+    at vs (ArticleEditor-BZr-jGQq.js:8:9457)
+    at cu (vendor-react-ZViV127r.js:6:17190)
+    at ku (vendor-react-ZViV127r.js:8:3159)
+    at Jc (vendor-react-ZViV127r.js:8:45044)
+    at Yc (vendor-react-ZViV127r.js:8:39937)
+    at th (vendor-react-ZViV127r.js:8:39865)
+    at Is (vendor-react-ZViV127r.js:8:39718)
+    at Vu (vendor-react-ZViV127r.js:8:36047)
+    at Wc (vendor-react-ZViV127r.js:8:34995)
+    at Te (vendor-react-ZViV127r.js:1:9795)
