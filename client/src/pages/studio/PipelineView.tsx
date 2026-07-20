@@ -20,6 +20,7 @@ import {
   getPipelineContentType,
   type StudioIdeaStatus,
 } from "@shared/studioContent";
+import { isInsightsContentType } from "@shared/studioAi";
 import type { StudioContentIdea, StudioIdeaComment, StudioImportBatch } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,7 +32,9 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -346,11 +349,16 @@ function QuickCreateDialog({
     }
   }, [open, defaultDate]);
 
+  const isInsights = isInsightsContentType(contentType);
   const typeCfg = getPipelineContentType(contentType);
-  const allowedChannels = typeCfg?.channels ?? [];
+  const allowedChannels: readonly string[] = isInsights ? ["website"] : (typeCfg?.channels ?? []);
 
   useEffect(() => {
-    setChannels((prev) => prev.filter((c) => (allowedChannels as readonly string[]).includes(c)));
+    if (isInsights) {
+      setChannels(["website"]);
+    } else {
+      setChannels((prev) => prev.filter((c) => (allowedChannels as readonly string[]).includes(c)));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contentType]);
 
@@ -400,9 +408,23 @@ function QuickCreateDialog({
               <Select value={contentType} onValueChange={setContentType}>
                 <SelectTrigger data-testid="select-idea-type"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  {STUDIO_PIPELINE_CONTENT_TYPES.map((t) => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
+                  <SelectGroup>
+                    <SelectLabel>Standard</SelectLabel>
+                    {STUDIO_PIPELINE_CONTENT_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectGroup>
+                  <SelectGroup>
+                    <SelectLabel>Insights Editorial (AI-planned)</SelectLabel>
+                    <SelectItem value="FLAGSHIP_INSIGHT">Flagship Insight</SelectItem>
+                    <SelectItem value="FIELD_SIGNAL">Field Signal</SelectItem>
+                    <SelectItem value="DECISION_GUIDE">Decision Guide</SelectItem>
+                    <SelectItem value="RESEARCH_BRIEF">Research Brief</SelectItem>
+                    <SelectItem value="TOOL_TECH_WATCH">Tool &amp; Tech Watch</SelectItem>
+                    <SelectItem value="SCENARIO_ANALYSIS">Scenario Analysis</SelectItem>
+                    <SelectItem value="EDITORIAL_PERSPECTIVE">Editorial Perspective</SelectItem>
+                    <SelectItem value="MONTHLY_INTELLIGENCE_BRIEF">Monthly Intelligence Brief</SelectItem>
+                  </SelectGroup>
                 </SelectContent>
               </Select>
             </div>
@@ -1423,7 +1445,8 @@ export function IdeaPeek({
     ["approved", "rejected", "changes_requested"].includes(s) ? canReview : canEdit,
   );
   const typeCfg = idea ? getPipelineContentType(idea.contentType) : undefined;
-  const promotable = !!idea && !!typeCfg && idea.status === "approved" && !idea.linkedArticleId;
+  const isInsightsIdea = !!idea && isInsightsContentType(idea.contentType);
+  const promotable = !!idea && (!!typeCfg || isInsightsIdea) && idea.status === "approved" && !idea.linkedArticleId;
   const isSocialIdea = typeCfg?.family === "social";
 
   return (

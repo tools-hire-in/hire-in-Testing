@@ -249,6 +249,7 @@ interface EditorState {
 function ArticleEditorInner({ id }: { id: string }) {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user: authUser } = useAuth();
   const { can, role: currentRole, userId: currentUserId } = usePermissions();
   const canEdit = can("studio.edit_article");
   const canGenerate = can("studio.generate_ai_draft");

@@ -20095,13 +20095,17 @@ Canonical domain: ${BASE}
     contentType: unknown,
     channels: unknown,
   ): { error?: string; code?: string; channels?: string[] } => {
-    const typeCfg = getPipelineContentType(typeof contentType === "string" ? contentType : null);
-    if (!typeCfg) {
+    const ctStr = typeof contentType === "string" ? contentType : null;
+    const typeCfg = getPipelineContentType(ctStr);
+    // Insights Editorial types are valid pipeline idea types; they're not in
+    // STUDIO_PIPELINE_CONTENT_TYPES but are allowed here and restricted to website channel.
+    if (!typeCfg && !isInsightsContentType(ctStr)) {
       return {
         error: `Unknown content type '${contentType}'. Valid types: article, social_post, story`,
         code: "invalid_content_type",
       };
     }
+    const allowedChannels: readonly string[] = typeCfg ? typeCfg.channels : ["website"];
     let list: string[] = [];
     if (channels !== undefined && channels !== null) {
       if (!Array.isArray(channels) || channels.some((c) => typeof c !== "string")) {
@@ -20109,11 +20113,11 @@ Canonical domain: ${BASE}
       }
       list = channels as string[];
       const bad = list.filter(
-        (c) => !(STUDIO_CHANNELS as readonly string[]).includes(c) || !typeCfg.channels.includes(c as any),
+        (c) => !(STUDIO_CHANNELS as readonly string[]).includes(c) || !allowedChannels.includes(c),
       );
       if (bad.length) {
         return {
-          error: `Channel(s) ${bad.join(", ")} not valid for ${typeCfg.label}. Allowed: ${typeCfg.channels.join(", ")}`,
+          error: `Channel(s) ${bad.join(", ")} not valid for ${contentType}. Allowed: ${allowedChannels.join(", ")}`,
           code: "invalid_channels",
         };
       }
@@ -20640,7 +20644,8 @@ Canonical domain: ${BASE}
         const projWriteErr = await assertPipelineProject(idea.projectId, { forWrite: true });
         if (projWriteErr) return res.status(projWriteErr.status).json({ error: projWriteErr.error, code: projWriteErr.code });
         const typeCfg = getPipelineContentType(idea.contentType);
-        if (!typeCfg) {
+        const isInsightsIdea = isInsightsContentType(idea.contentType);
+        if (!typeCfg && !isInsightsIdea) {
           return res.status(422).json({
             error: `Unknown content type '${idea.contentType}'.`,
             code: "not_promotable",
@@ -20662,7 +20667,8 @@ Canonical domain: ${BASE}
         // Editorial ideas become article drafts; Social/Story ideas route into
         // the existing Social Kit flow by creating a draft record of the same
         // content type (the editor exposes Generate Social Kit for those).
-        const isSocial = typeCfg.family === "social";
+        // Insights Editorial ideas become planning_review articles so Gate A fires.
+        const isSocial = typeCfg ? typeCfg.family === "social" : false;
         const generationBrief = await buildBrief(idea, isSocial);
 
         // Best-effort: find the author profile for the assigned user in this project.
@@ -20702,8 +20708,8 @@ Canonical domain: ${BASE}
         const article = await storage.createStudioArticle({
           projectId: idea.projectId,
           title: idea.topic,
-          contentType: isSocial ? idea.contentType : "article",
-          status: "draft",
+          contentType: isSocial ? idea.contentType : isInsightsIdea ? idea.contentType : "article",
+          status: isInsightsIdea ? "planning_review" : "draft",
           generationBrief,
           ...(isSocial && idea.captionCopy ? { bodyMarkdown: idea.captionCopy } : {}),
           readTimeMinutes: 1,
