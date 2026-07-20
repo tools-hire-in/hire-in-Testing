@@ -135,8 +135,6 @@ const DevToolsPage = lazy(() => import("@/pages/admin/DevTools"));
 const NotificationSettings = lazy(() => import("@/pages/admin/NotificationSettings"));
 const NotificationBlasts = lazy(() => import("@/pages/admin/NotificationBlasts"));
 const HelpHub = lazy(() => import("@/pages/admin/HelpHub"));
-const KnowledgeHub = lazy(() => import("@/pages/admin/KnowledgeHub"));
-const CeoGuide = lazy(() => import("@/pages/admin/CeoGuide"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
