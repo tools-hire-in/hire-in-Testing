@@ -69,11 +69,15 @@ function formatDate(iso: string | null | undefined) {
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export function PlansBoard() {
+interface PlansBoardProps {
+  scope?: "org" | "team";
+}
+
+export function PlansBoard({ scope = "org" }: PlansBoardProps) {
   const { data: pulse, isLoading: pulseLoading, refetch: refetchPulse } = useQuery<PulseData>({
-    queryKey: ["/api/observation/pulse", "org"],
+    queryKey: ["/api/observation/pulse", scope],
     queryFn: async () => {
-      const res = await fetch("/api/observation/pulse?scope=org", { credentials: "include" });
+      const res = await fetch(`/api/observation/pulse?scope=${scope}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch pulse");
       return res.json();
     },
@@ -81,9 +85,9 @@ export function PlansBoard() {
   });
 
   const { data: signals, isLoading: signalsLoading, refetch: refetchSignals } = useQuery<ExitSignalData>({
-    queryKey: ["/api/observation/exit-signals", "org"],
+    queryKey: ["/api/observation/exit-signals", scope],
     queryFn: async () => {
-      const res = await fetch("/api/observation/exit-signals?scope=org", { credentials: "include" });
+      const res = await fetch(`/api/observation/exit-signals?scope=${scope}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch exit signals");
       return res.json();
     },

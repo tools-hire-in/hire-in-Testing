@@ -39,6 +39,7 @@ import {
   Clipboard,
   RefreshCw,
   ShieldCheck,
+  Radar,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -82,6 +83,10 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import RegularizationsPanel from "./RegularizationsPanel";
 import GovernanceControlsTab from "@/components/admin/governance/GovernanceControlsTab";
+import { PulseHeader } from "@/components/observation/PulseHeader";
+import { PlansBoard } from "@/components/observation/PlansBoard";
+import { ComplianceRadar } from "@/components/observation/ComplianceRadar";
+import { ExitSignalsPanel } from "@/components/observation/ExitSignalsPanel";
 
 const INDIA_PT_STATES = [
   "Andhra Pradesh", "Gujarat", "Karnataka", "Kerala", "Madhya Pradesh",
@@ -4331,13 +4336,24 @@ export default function MyTeam() {
   const canEditPayroll = can("payroll.employee.flags");
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [pageTab, setPageTab] = useState<"team" | "plans" | "corrections" | "ceipal">(() => {
+  const { user } = useAuth();
+  const userRole = user?.role || "";
+  const canViewTeamPulse = userRole === "manager" || userRole === "admin" || userRole === "super_admin";
+
+  const [pageTab, setPageTab] = useState<"team" | "plans" | "corrections" | "ceipal" | "team-pulse">(() => {
     try {
       const t = new URLSearchParams(window.location.search).get("tab");
-      if (t === "corrections" || t === "plans" || t === "ceipal") return t as any;
+      if (t === "corrections" || t === "plans" || t === "ceipal" || t === "team-pulse") return t as any;
     } catch {}
     return "team";
   });
+
+  // Guard: if a deep-linked ?tab=team-pulse loads for a role that cannot see it, fall back to "team".
+  useEffect(() => {
+    if (userRole && pageTab === "team-pulse" && !canViewTeamPulse) {
+      setPageTab("team");
+    }
+  }, [userRole, pageTab, canViewTeamPulse]);
 
   const [editAttendanceOpen, setEditAttendanceOpen] = useState(false);
   const [editAttendanceRecord, setEditAttendanceRecord] = useState<AttendanceRecord | null>(null);
@@ -5242,6 +5258,12 @@ export default function MyTeam() {
               <ShieldCheck className="h-4 w-4 mr-1.5" />
               Ceipal
             </TabsTrigger>
+            {canViewTeamPulse && (
+              <TabsTrigger value="team-pulse" data-testid="tab-team-pulse">
+                <Radar className="h-4 w-4 mr-1.5" />
+                Team Pulse
+              </TabsTrigger>
+            )}
           </TabsList>
 
           <TabsContent value="team" className="mt-4 space-y-6">
@@ -5331,9 +5353,97 @@ export default function MyTeam() {
           <TabsContent value="ceipal" className="mt-4">
             <CeipalTeamComplianceView />
           </TabsContent>
+
+          {canViewTeamPulse && (
+            <TabsContent value="team-pulse" className="mt-4">
+              <TeamPulseTab
+                memberCount={membersQuery.data?.length ?? 0}
+                isManager={userRole === "manager"}
+              />
+            </TabsContent>
+          )}
         </Tabs>
       </div>
     </AdminLayout>
+  );
+}
+
+// ── Team Pulse Tab ───────────────────────────────────────────────────────────
+
+interface TeamPulseTabProps {
+  memberCount: number;
+  isManager: boolean;
+}
+
+function TeamPulseTab({ memberCount, isManager }: TeamPulseTabProps) {
+  const [lastRefreshed, setLastRefreshed] = useState(() => new Date());
+  const pulseQueryRef = useRef<(() => void) | null>(null);
+
+  const scopeLabel = isManager
+    ? `Viewing: Your Team (${memberCount} member${memberCount !== 1 ? "s" : ""})`
+    : `Viewing: All Employees (${memberCount} member${memberCount !== 1 ? "s" : ""})`;
+
+  if (isManager && memberCount === 0) {
+    return (
+      <Card data-testid="team-pulse-no-reports">
+        <CardContent className="py-10 text-center space-y-2">
+          <Users className="h-8 w-8 mx-auto text-muted-foreground opacity-40" />
+          <p className="font-medium text-sm text-muted-foreground">No direct reports found.</p>
+          <p className="text-xs text-muted-foreground">Contact HR to verify your team assignment.</p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4" data-testid="team-pulse-tab-content">
+      {/* Scope label */}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/50 border border-border text-sm" data-testid="text-team-pulse-scope-label">
+        <Radar className="h-4 w-4 text-primary shrink-0" />
+        <span className="font-medium">{scopeLabel}</span>
+      </div>
+
+      {/* Pulse header */}
+      <PulseHeader
+        scope="team"
+        lastRefreshed={lastRefreshed}
+        onRefreshAll={() => {
+          setLastRefreshed(new Date());
+          if (pulseQueryRef.current) pulseQueryRef.current();
+        }}
+        queryRef={pulseQueryRef}
+      />
+
+      {/* Main grid */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="space-y-4">
+          <PlansBoard scope="team" />
+          <ComplianceRadar scope="team" />
+        </div>
+        <div className="space-y-4">
+          {/* Compact team goals card linking to team-goals */}
+          <Card data-testid="card-team-goals-summary">
+            <CardContent className="p-4 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Target className="h-4 w-4 text-primary shrink-0" />
+                <div>
+                  <p className="text-sm font-medium">Team Goals</p>
+                  <p className="text-xs text-muted-foreground">Individual goals for your direct reports</p>
+                </div>
+              </div>
+              <a
+                href="/admin/growth?tab=team-goals"
+                className="text-xs text-primary font-medium flex items-center gap-1 hover:underline shrink-0"
+                data-testid="link-manage-team-goals"
+              >
+                Manage team goals →
+              </a>
+            </CardContent>
+          </Card>
+          <ExitSignalsPanel scope="team" />
+        </div>
+      </div>
+    </div>
   );
 }
 

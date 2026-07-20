@@ -42,13 +42,14 @@ interface PulseHeaderProps {
   lastRefreshed: Date;
   onRefreshAll: () => void;
   queryRef?: React.MutableRefObject<(() => void) | null>;
+  scope?: "org" | "team";
 }
 
-export function PulseHeader({ lastRefreshed, onRefreshAll, queryRef }: PulseHeaderProps) {
+export function PulseHeader({ lastRefreshed, onRefreshAll, queryRef, scope = "org" }: PulseHeaderProps) {
   const { data, isLoading, refetch } = useQuery<PulseData>({
-    queryKey: ["/api/observation/pulse", "org"],
+    queryKey: ["/api/observation/pulse", scope],
     queryFn: async () => {
-      const res = await fetch("/api/observation/pulse?scope=org", { credentials: "include" });
+      const res = await fetch(`/api/observation/pulse?scope=${scope}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch pulse");
       return res.json();
     },

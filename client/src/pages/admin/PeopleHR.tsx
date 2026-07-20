@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
-import { Users as UsersIcon } from "lucide-react";
+import { Users as UsersIcon, Radar } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -15,6 +15,11 @@ import { PolicyComplianceContent } from "./hr/PolicyCompliance";
 import { AuditLogsContent } from "@/pages/admin/AuditLogs";
 import AttendanceExceptions from "./hr/AttendanceExceptions";
 import BalanceAdjustments from "./hr/BalanceAdjustments";
+import { PulseHeader } from "@/components/observation/PulseHeader";
+import { PlansBoard } from "@/components/observation/PlansBoard";
+import { ComplianceRadar } from "@/components/observation/ComplianceRadar";
+import { GoalsMilestonesPanel } from "@/components/observation/GoalsMilestonesPanel";
+import { ExitSignalsPanel } from "@/components/observation/ExitSignalsPanel";
 import {
   type PeopleHrTab,
   externalRedirectForTab,
@@ -32,6 +37,8 @@ export default function PeopleHR() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { enabled: newLook } = useNewLook();
+  const [orgPulseRefreshed, setOrgPulseRefreshed] = useState(() => new Date());
+  const orgPulseQueryRef = useRef<(() => void) | null>(null);
 
   const role = user?.role || "";
   const isAdmin = isAdminRole(role);
@@ -124,6 +131,7 @@ export default function PeopleHR() {
           <TabsList className="flex flex-wrap gap-1 h-auto w-full">
             {visibleTabs.map((t) => (
               <TabsTrigger key={t.value} value={t.value} data-testid={t.testId}>
+                {t.value === "org-pulse" && <Radar className="h-4 w-4 mr-1.5" />}
                 {t.label}
               </TabsTrigger>
             ))}
@@ -201,6 +209,32 @@ export default function PeopleHR() {
                   </Button>
                 </div>
                 <AttendanceExceptions view={escalationView} />
+              </div>
+            </TabsContent>
+          )}
+
+          {isAdmin && (
+            <TabsContent value="org-pulse" className="mt-4">
+              <div className="space-y-4" data-testid="org-pulse-tab-content">
+                <PulseHeader
+                  scope="org"
+                  lastRefreshed={orgPulseRefreshed}
+                  onRefreshAll={() => {
+                    setOrgPulseRefreshed(new Date());
+                    if (orgPulseQueryRef.current) orgPulseQueryRef.current();
+                  }}
+                  queryRef={orgPulseQueryRef}
+                />
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="space-y-4">
+                    <PlansBoard scope="org" />
+                    <ComplianceRadar scope="org" />
+                  </div>
+                  <div className="space-y-4">
+                    <GoalsMilestonesPanel />
+                    <ExitSignalsPanel scope="org" />
+                  </div>
+                </div>
               </div>
             </TabsContent>
           )}

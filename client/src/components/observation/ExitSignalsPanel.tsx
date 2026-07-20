@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { SignalActionDialog, type SignalActionResult } from "./SignalActionDialog";
+import { queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 
 interface DecliningCheckIn {
@@ -147,11 +148,15 @@ function Section({ title, count, children, actionedRecords, defaultOpen = true }
   );
 }
 
-export function ExitSignalsPanel() {
+interface ExitSignalsPanelProps {
+  scope?: "org" | "team";
+}
+
+export function ExitSignalsPanel({ scope = "org" }: ExitSignalsPanelProps) {
   const { data, isLoading, refetch } = useQuery<ExitSignalData>({
-    queryKey: ["/api/observation/exit-signals", "org"],
+    queryKey: ["/api/observation/exit-signals", scope],
     queryFn: async () => {
-      const res = await fetch("/api/observation/exit-signals?scope=org", { credentials: "include" });
+      const res = await fetch(`/api/observation/exit-signals?scope=${scope}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch exit signals");
       return res.json();
     },
@@ -188,6 +193,7 @@ export function ExitSignalsPanel() {
         [actionDialog.rowKey]: record,
       },
     }));
+    queryClient.invalidateQueries({ queryKey: ["/api/observation/exit-signals", scope] });
     setActionDialog(null);
   }
 

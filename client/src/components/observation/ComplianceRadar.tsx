@@ -103,11 +103,15 @@ function SvgRing({ pct, size = 72, strokeWidth = 7 }: SvgRingProps) {
   );
 }
 
-export function ComplianceRadar() {
+interface ComplianceRadarProps {
+  scope?: "org" | "team";
+}
+
+export function ComplianceRadar({ scope = "org" }: ComplianceRadarProps) {
   const { data, isLoading, refetch } = useQuery<ComplianceData>({
-    queryKey: ["/api/observation/compliance-radar", "org"],
+    queryKey: ["/api/observation/compliance-radar", scope],
     queryFn: async () => {
-      const res = await fetch("/api/observation/compliance-radar?scope=org", { credentials: "include" });
+      const res = await fetch(`/api/observation/compliance-radar?scope=${scope}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch compliance radar");
       return res.json();
     },
