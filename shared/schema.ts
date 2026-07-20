@@ -5085,3 +5085,32 @@ export type InsertPendingEmailBlast = z.infer<typeof insertPendingEmailBlastSche
 
 export const insertBlastDeliveryRecordSchema = createInsertSchema(blastDeliveryRecords).omit({ id: true });
 export type BlastDeliveryRecord = typeof blastDeliveryRecords.$inferSelect;
+
+// ==========================================
+// OBSERVATION TOWER — COMPANY GOAL TEMPLATES
+// ==========================================
+// Read-only library of org-level goal templates managers/admins can use
+// when firing a signal-action "create_goal" from the Observation Tower.
+// Applied via raw SQL (scripts/add-company-goal-templates.ts); declared
+// here so drizzle schema stays as the single source of truth.
+
+export const companyGoalTemplates = pgTable("company_goal_templates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  templateCode: varchar("template_code", { length: 60 }).notNull().unique(),
+  title: varchar("title", { length: 200 }).notNull(),
+  description: text("description"),
+  suggestedMilestones: jsonb("suggested_milestones").notNull().default(sql`'[]'::jsonb`),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("idx_company_goal_templates_active").on(table.isActive),
+]);
+
+export const insertCompanyGoalTemplateSchema = createInsertSchema(companyGoalTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type CompanyGoalTemplate = typeof companyGoalTemplates.$inferSelect;
+export type InsertCompanyGoalTemplate = z.infer<typeof insertCompanyGoalTemplateSchema>;

@@ -151,6 +151,7 @@ import { registerTrainingCatalogRoutes } from "./trainingCatalogRoutes";
 import { registerGovernanceRoutes } from "./governanceRoutes";
 import { registerCopilotRoutes } from "./copilotRoutes";
 import { registerCeoRoutes } from "./ceoRoutes";
+import { registerObservationRoutes } from "./observationRoutes";
 import { registerSalaryStructureRoutes, seedDefaultSalaryStructure, getPtCustomSlabs } from "./salaryStructureRoutes";
 import { computeComponentsFromGross, computeIndiaStatutory, type StructureRule } from "./salaryEngine";
 import { salaryStructures, salaryStructureRules, trainingSopLinks, roleTrainingRules, systemSettings } from "@shared/schema";
@@ -26909,6 +26910,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   registerGovernanceRoutes(app);
   registerCopilotRoutes(app);
   registerCeoRoutes(app);
+  registerObservationRoutes(app);
 
   // ── Email Blast Review Queue routes (super_admin + admin) ──────────────────
   // GET  /api/admin/blasts               — list blasts (optional ?status=pending)

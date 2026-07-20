@@ -4595,6 +4595,127 @@ async function runStartupTasks() {
     console.error("[startup] Goal metric-type backfill error (non-fatal):", err);
   }
 
+  // ── Observation Tower — company_goal_templates table + seed ────────────────
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS company_goal_templates (
+        id               VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        template_code    VARCHAR(60) NOT NULL UNIQUE,
+        title            VARCHAR(200) NOT NULL,
+        description      TEXT,
+        suggested_milestones JSONB NOT NULL DEFAULT '[]'::jsonb,
+        is_active        BOOLEAN NOT NULL DEFAULT true,
+        created_at       TIMESTAMP DEFAULT NOW(),
+        updated_at       TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE INDEX IF NOT EXISTS idx_company_goal_templates_active
+        ON company_goal_templates (is_active)
+    `);
+
+    const templates = [
+      {
+        code: "CGT-PLACEMENT-VELOCITY",
+        title: "Placement Velocity Target",
+        description: "Increase the number of candidate placements completed per recruiter per month to hit revenue run-rate targets.",
+        milestones: [
+          "Baseline current avg placements per recruiter",
+          "Mid-quarter review: 50% of target achieved",
+          "End-of-quarter: full target met and reported to leadership",
+        ],
+      },
+      {
+        code: "CGT-MONTHLY-REVENUE",
+        title: "Monthly Revenue Goal",
+        description: "Achieve the agreed gross-margin revenue target for the month across all active business verticals.",
+        milestones: [
+          "Week 1: pipeline review and deal forecasting complete",
+          "Week 2: 40% of monthly target achieved",
+          "Month-end: target met, variance report submitted",
+        ],
+      },
+      {
+        code: "CGT-SOP-COMPLIANCE",
+        title: "SOP Compliance Rollout",
+        description: "Ensure 100% of active employees complete acknowledgement of all operational SOPs released in the current wave.",
+        milestones: [
+          "SOPs assigned to all employees in scope",
+          "75% acknowledgement rate by mid-deadline",
+          "100% acknowledgement or documented exception by deadline",
+        ],
+      },
+      {
+        code: "CGT-TRAINING-COMPLETION",
+        title: "Training Completion Rate",
+        description: "Drive mandatory onboarding and compliance training completion to ≥95% across the organization by quarter-end.",
+        milestones: [
+          "All new hires assigned training tracks within 48h of joining",
+          "70% completion rate by 30-day mark",
+          "≥95% completion rate by quarter-end",
+        ],
+      },
+      {
+        code: "CGT-RECRUITER-RAMP",
+        title: "Recruiter Ramp-to-Productivity",
+        description: "New recruiters achieve first placement within 60 days and full productivity baseline within 90 days.",
+        milestones: [
+          "Day 30: first submission made to a client",
+          "Day 60: first confirmed placement",
+          "Day 90: full productivity KPI baseline met",
+        ],
+      },
+      {
+        code: "CGT-CHECKIN-CADENCE",
+        title: "Team Check-in Cadence",
+        description: "All managers maintain the required bi-weekly check-in cadence with their direct reports throughout the quarter.",
+        milestones: [
+          "Week 2: first check-in cycle complete for all team members",
+          "Mid-quarter: zero missed check-in obligations",
+          "End of quarter: full cadence maintained, completion reported",
+        ],
+      },
+      {
+        code: "CGT-CLIENT-SATISFACTION",
+        title: "Client Satisfaction Score",
+        description: "Maintain or improve the average client satisfaction score (CSAT) across all active accounts to ≥4.2/5.",
+        milestones: [
+          "Pulse survey sent to all active clients",
+          "Feedback reviewed; action plans raised for scores below 3.5",
+          "Follow-up survey confirms improvement or maintained score",
+        ],
+      },
+      {
+        code: "CGT-COMPLIANCE-AUDIT",
+        title: "Compliance Audit Readiness",
+        description: "Ensure all documentation, contracts, and employee records are audit-ready ahead of the scheduled internal or external compliance review.",
+        milestones: [
+          "Audit checklist circulated to department leads",
+          "Gap remediation complete — all critical items resolved",
+          "Audit conducted; zero critical findings outstanding",
+        ],
+      },
+    ];
+
+    for (const t of templates) {
+      await db.execute(sql`
+        INSERT INTO company_goal_templates
+          (template_code, title, description, suggested_milestones, is_active)
+        VALUES (
+          ${t.code},
+          ${t.title},
+          ${t.description},
+          ${JSON.stringify(t.milestones)},
+          true
+        )
+        ON CONFLICT (template_code) DO NOTHING
+      `);
+    }
+    log(`Observation Tower: company_goal_templates seeded (${templates.length} templates)`);
+  } catch (err) {
+    console.error("[startup] Observation Tower company_goal_templates ensure/seed error (non-fatal):", err);
+  }
+
   // Cron/scheduled jobs start only after schema is ensured so they query
   // tables that are guaranteed to exist.
   startScheduler();
