@@ -61,6 +61,7 @@ import {
   Target,
   Compass,
   BarChart2,
+  Telescope,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1905,6 +1906,30 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                   hasSopAccess={hasSopAccess}
                   myPendingRegCount={myPendingRegCount}
                 />
+              )}
+
+              {/* OBSERVATION TOWER — super_admin and admin only */}
+              {["super_admin", "admin"].includes(userRole) && (
+                <SidebarGroup>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={location.startsWith("/admin/observation")}
+                          tooltip="Observation Tower"
+                          data-testid="nav-item-observation"
+                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                        >
+                          <Link href="/admin/observation" className="flex items-center gap-2 w-full">
+                            <Telescope className="h-4 w-4 shrink-0" />
+                            <span className="group-data-[collapsible=icon]:hidden">Observation</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
               )}
 
               {/* HELP & GUIDES — visible to all roles, after My Work */}

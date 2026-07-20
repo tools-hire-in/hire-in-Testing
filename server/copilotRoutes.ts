@@ -38,6 +38,19 @@ function requireSuperAdmin(req: Request, res: Response): string | null {
   return req.session.userId;
 }
 
+/** Allow super_admin and admin — used for Observation Tower endpoints */
+function requireAdminAccess(req: Request, res: Response): string | null {
+  if (!req.session?.userId) {
+    res.status(401).json({ error: "Unauthorized" });
+    return null;
+  }
+  if (!["super_admin", "admin"].includes(req.session.role ?? "")) {
+    res.status(403).json({ error: "This feature requires admin or super_admin access" });
+    return null;
+  }
+  return req.session.userId;
+}
+
 // ── Goal proposal parser ──────────────────────────────────────────────────────
 
 interface ParsedGoalProposal {
@@ -189,7 +202,7 @@ export function registerCopilotRoutes(app: Express): void {
 
   // ── Create goal endpoint ────────────────────────────────────────────────────
   app.post("/api/ceo/copilot/create-goal", async (req: Request, res: Response) => {
-    const userId = requireSuperAdmin(req, res);
+    const userId = requireAdminAccess(req, res);
     if (!userId) return;
 
     const { title, description, milestones = [], subGoals = [], financialTarget, targetDate } = req.body as {
@@ -273,7 +286,7 @@ export function registerCopilotRoutes(app: Express): void {
 
   // ── List company goals ──────────────────────────────────────────────────────
   app.get("/api/ceo/goals", async (req: Request, res: Response) => {
-    const userId = requireSuperAdmin(req, res);
+    const userId = requireAdminAccess(req, res);
     if (!userId) return;
 
     try {

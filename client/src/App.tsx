@@ -92,6 +92,7 @@ const StudioFinalApproval = lazy(() => import("@/pages/admin/studio/FinalApprova
 const StudioCMReview = lazy(() => import("@/pages/admin/studio/CMReview"));
 const StudioAuthorSignOff = lazy(() => import("@/pages/admin/studio/AuthorSignOff"));
 const ControlTower = lazy(() => import("@/pages/admin/ControlTower"));
+const ObservationTower = lazy(() => import("@/pages/admin/ObservationTower"));
 const HelpDesk = lazy(() => import("@/pages/admin/HelpDesk"));
 const HelpDeskTicket = lazy(() => import("@/pages/admin/HelpDeskTicket"));
 const StudioCalendar = lazy(() => import("@/pages/admin/studio/Calendar"));
@@ -424,6 +425,7 @@ function PublicRouter() {
       <Route path="/admin/studio/final-approval">{() => <LegacyStudio><StudioFinalApproval /></LegacyStudio>}</Route>
       <Route path="/admin/automated-changes">{() => <Redirect to="/admin/control-tower?tab=automated-changes" />}</Route>
       <Route path="/admin/control-tower">{() => <Suspense fallback={<AdminFallback />}><ControlTower /></Suspense>}</Route>
+      <Route path="/admin/observation">{() => <Suspense fallback={<AdminFallback />}><ObservationTower /></Suspense>}</Route>
       <Route path="/admin/studio/calendar/:date">{() => <LegacyStudio><StudioDayView /></LegacyStudio>}</Route>
       <Route path="/admin/studio/calendar">{() => <LegacyStudio><StudioCalendar /></LegacyStudio>}</Route>
       <Route path="/admin/studio/settings/templates">{() => <LegacyStudio><StudioTemplateSettings /></LegacyStudio>}</Route>
@@ -644,6 +646,7 @@ function EmployeeRouter() {
       <Route path="/admin/studio/final-approval">{() => <LegacyStudio><StudioFinalApproval /></LegacyStudio>}</Route>
       <Route path="/admin/automated-changes">{() => <Redirect to="/admin/control-tower?tab=automated-changes" />}</Route>
       <Route path="/admin/control-tower">{() => <Suspense fallback={<AdminFallback />}><ControlTower /></Suspense>}</Route>
+      <Route path="/admin/observation">{() => <Suspense fallback={<AdminFallback />}><ObservationTower /></Suspense>}</Route>
       <Route path="/admin/studio/calendar/:date">{() => <LegacyStudio><StudioDayView /></LegacyStudio>}</Route>
       <Route path="/admin/studio/calendar">{() => <LegacyStudio><StudioCalendar /></LegacyStudio>}</Route>
       <Route path="/admin/studio/settings/templates">{() => <LegacyStudio><StudioTemplateSettings /></LegacyStudio>}</Route>
