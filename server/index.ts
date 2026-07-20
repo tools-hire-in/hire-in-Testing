@@ -3258,6 +3258,13 @@ async function runStartupTasks() {
   }
 
   await ensureSalaryStructuresTable();
+  try {
+    await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS uan VARCHAR`);
+    await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS esic_ip_number VARCHAR`);
+    log("Ensured admin_users.uan and admin_users.esic_ip_number columns");
+  } catch (err) {
+    console.error("admin_users statutory-identifier column ensure error:", err);
+  }
   await ensurePerformanceTables();
   await ensureGoalMilestonesAndLinks();
   await ensureHrLettersTables();

@@ -169,6 +169,7 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "hr.reports.salary.approve": ["super_admin", "admin", "executive"],
   "hr.reports.salary.execute": ["super_admin", "admin", "hr", "executive"],
   "hr.reports.salary.disburse": ["super_admin", "admin", "executive"],
+  "payroll.compliance.download": ["super_admin", "executive"],
   "hr.salarySlips.generate": ["super_admin", "admin", "hr", "executive"],
   "hr.salarySlips.regenerate": ["super_admin", "admin", "hr", "executive"],
   "hr.salarySlips.regenerateUser": ["super_admin", "admin", "hr", "finance"],

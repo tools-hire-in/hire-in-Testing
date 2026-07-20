@@ -7,6 +7,8 @@
  * - GET  /api/hr/payroll-runs/executive-summary           — KPI aggregates (approved runs only)
  * - GET  /api/hr/payroll-runs/trend                       — 6-month trend (approved runs only)
  * - GET  /api/hr/payroll-runs/:year/:month/statutory-export — CSV for filing
+ * - GET  /api/payroll/runs/:runId/compliance/status       — readiness check per file type
+ * - GET  /api/payroll/runs/:runId/compliance/:type        — download PF ECR / ESI return / PT challan
  *
  * All permission checks use the ACCESS_REGISTRY via requirePermission(key) —
  * no hard-coded role arrays in this file.
@@ -868,6 +870,112 @@ export function registerBulkPayrollRoutes(app: Express) {
       } catch (error) {
         console.error("Statutory export error:", error);
         res.status(500).json({ error: "Failed to export statutory data" });
+      }
+    }
+  );
+
+  // ─── Compliance file status ────────────────────────────────────────────────
+  // Returns readiness for each file type (missing UAN / IP counts etc.)
+  app.get(
+    "/api/payroll/runs/:runId/compliance/status",
+    requireAuth,
+    requirePermission("payroll.compliance.download"),
+    async (req: Request, res: Response) => {
+      try {
+        const { runId } = req.params;
+        const { getComplianceStatus } = await import("./complianceFileBuilder");
+        const status = await getComplianceStatus(runId);
+        res.json(status);
+      } catch (error: any) {
+        if (error?.message === "Run not found") {
+          return res.status(404).json({ error: "Run not found" });
+        }
+        console.error("Compliance status error:", error);
+        res.status(500).json({ error: "Failed to check compliance status" });
+      }
+    }
+  );
+
+  // ─── Compliance file downloads ─────────────────────────────────────────────
+  // type = pf-ecr | esi-return | pt-challan
+  app.get(
+    "/api/payroll/runs/:runId/compliance/:type",
+    requireAuth,
+    requirePermission("payroll.compliance.download"),
+    async (req: Request, res: Response) => {
+      try {
+        const { runId, type } = req.params;
+        if (!["pf-ecr", "esi-return", "pt-challan"].includes(type)) {
+          return res.status(400).json({ error: "Invalid compliance file type. Use pf-ecr, esi-return, or pt-challan." });
+        }
+
+        // Verify run exists and is executed
+        const runRows = await db
+          .select({ id: salaryReportRuns.id, status: salaryReportRuns.status, year: salaryReportRuns.year, month: salaryReportRuns.month })
+          .from(salaryReportRuns)
+          .where(eq(salaryReportRuns.id, runId))
+          .limit(1);
+        const run = runRows[0];
+        if (!run) return res.status(404).json({ error: "Run not found" });
+        if (run.status !== "executed") {
+          return res.status(400).json({ error: "Compliance files are only available for executed runs" });
+        }
+
+        const {
+          loadComplianceRows,
+          buildPfEcr,
+          buildEsiReturn,
+          buildPtChallan,
+        } = await import("./complianceFileBuilder");
+
+        const rows = await loadComplianceRows(runId);
+        const period = { year: run.year, month: run.month };
+        const monthLabel = MONTH_NAMES[(run.month - 1)] ?? String(run.month);
+
+        if (type === "pf-ecr") {
+          const { content, warnings } = buildPfEcr(rows);
+          const filename = `PF_ECR_${monthLabel}_${run.year}.txt`;
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+          res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+          if (warnings.length) {
+            res.setHeader("X-Compliance-Warnings", String(warnings.length));
+          }
+          return res.send(content);
+        }
+
+        if (type === "esi-return") {
+          const { content, warnings } = buildEsiReturn(rows);
+          const filename = `ESI_Return_${monthLabel}_${run.year}.csv`;
+          res.setHeader("Content-Type", "text/csv; charset=utf-8");
+          res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+          if (warnings.length) {
+            res.setHeader("X-Compliance-Warnings", String(warnings.length));
+          }
+          return res.send(content);
+        }
+
+        if (type === "pt-challan") {
+          // Load PT registration from DB so the challan only includes registered states
+          const { loadPtRegistrations } = await import("./complianceFileBuilder");
+          const ptReg = await loadPtRegistrations();
+          const registeredPtStateKeys = new Set(
+            [...ptReg.entries()].filter(([, v]) => v.isRegistered).map(([k]) => k)
+          );
+          const { content, warnings } = buildPtChallan(rows, period, registeredPtStateKeys);
+          const filename = `PT_Challan_${monthLabel}_${run.year}.txt`;
+          res.setHeader("Content-Type", "text/plain; charset=utf-8");
+          res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+          if (warnings.length) {
+            res.setHeader("X-Compliance-Warnings", String(warnings.length));
+          }
+          return res.send(content);
+        }
+      } catch (error: any) {
+        if (error?.message === "Run not found") {
+          return res.status(404).json({ error: "Run not found" });
+        }
+        console.error("Compliance download error:", error);
+        res.status(500).json({ error: "Failed to generate compliance file" });
       }
     }
   );

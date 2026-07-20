@@ -4,7 +4,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing, Receipt, Layers, Trash2, Banknote } from "lucide-react";
+import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing, Receipt, Layers, Trash2, Banknote, FileDown, Shield } from "lucide-react";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -2049,6 +2049,191 @@ function GenerateSlipButton({ runId, employeeId, month, year, label }: { runId: 
   );
 }
 
+interface ComplianceStatus {
+  runId: string;
+  year: number;
+  month: number;
+  totalEmployees: number;
+  pf: { eligible: number; missingUan: number; canGenerate: boolean };
+  esi: { eligible: number; missingIpNumber: number; canGenerate: boolean };
+  pt: { eligible: number; missingPtState: number; unregisteredStates: string[]; canGenerate: boolean };
+}
+
+function ComplianceFilesCard({ run }: { run: SalaryRun }) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [downloading, setDownloading] = useState<string | null>(null);
+  const [generated, setGenerated] = useState<Set<string>>(new Set());
+
+  const canAccess =
+    user?.role === "super_admin" || user?.role === "executive";
+
+  const { data: status, isLoading } = useQuery<ComplianceStatus>({
+    queryKey: ["/api/payroll/runs", run.id, "compliance/status"],
+    queryFn: async () => {
+      const res = await fetch(`/api/payroll/runs/${run.id}/compliance/status`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Failed to load compliance status");
+      return res.json();
+    },
+    enabled: canAccess,
+    staleTime: 60_000,
+  });
+
+  if (!canAccess) return null;
+
+  const handleDownload = async (type: "pf-ecr" | "esi-return" | "pt-challan") => {
+    setDownloading(type);
+    try {
+      const res = await fetch(`/api/payroll/runs/${run.id}/compliance/${type}`, {
+        credentials: "include",
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        toast({ title: "Download failed", description: data.error ?? "Could not generate file", variant: "destructive" });
+        return;
+      }
+      const warnings = res.headers.get("X-Compliance-Warnings");
+      const blob = await res.blob();
+      const disposition = res.headers.get("Content-Disposition") ?? "";
+      const filenameMatch = disposition.match(/filename="([^"]+)"/);
+      const filename = filenameMatch?.[1] ?? `compliance-${type}.txt`;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+      setGenerated(prev => new Set([...prev, type]));
+      if (warnings && parseInt(warnings) > 0) {
+        toast({
+          title: "File downloaded with warnings",
+          description: `${warnings} employee(s) had missing statutory fields — their rows are marked as placeholders.`,
+        });
+      } else {
+        toast({ title: "File downloaded", description: filename });
+      }
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  const fileTypes = [
+    {
+      type: "pf-ecr" as const,
+      label: "PF ECR",
+      description: "EPFO Electronic Challan cum Return (.txt)",
+      eligible: status?.pf.eligible ?? 0,
+      missing: status?.pf.missingUan ?? 0,
+      missingLabel: "UAN",
+      canGenerate: status?.pf.canGenerate ?? false,
+    },
+    {
+      type: "esi-return" as const,
+      label: "ESI Monthly Return",
+      description: "ESIC monthly contribution file (.csv)",
+      eligible: status?.esi.eligible ?? 0,
+      missing: status?.esi.missingIpNumber ?? 0,
+      missingLabel: "IP Number",
+      canGenerate: status?.esi.canGenerate ?? false,
+    },
+    {
+      type: "pt-challan" as const,
+      label: "PT Challan",
+      description: "Professional Tax state-wise summary (.txt)",
+      eligible: status?.pt.eligible ?? 0,
+      missing: status?.pt.missingPtState ?? 0,
+      missingLabel: "PT State",
+      canGenerate: status?.pt.canGenerate ?? false,
+    },
+  ];
+
+  const hasAnyWarning = fileTypes.some(f => f.missing > 0);
+
+  return (
+    <div className="mt-3 border border-blue-100 dark:border-blue-900 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 p-3">
+      <div className="flex items-center gap-2 mb-2">
+        <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+        <span className="text-sm font-semibold text-blue-800 dark:text-blue-300">Statutory Compliance Files</span>
+      </div>
+
+      {hasAnyWarning && (
+        <div className="flex items-start gap-2 mb-2 p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded text-xs text-amber-800 dark:text-amber-300">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span>
+            Some employees are missing statutory identifiers (UAN / IP Number).{" "}
+            Their rows will be marked as placeholders in the file.{" "}
+            Update employee profiles to fix before filing.
+          </span>
+        </div>
+      )}
+
+      <div className="space-y-1.5">
+        {fileTypes.map(ft => (
+          <div
+            key={ft.type}
+            className="flex items-center justify-between gap-2 text-xs"
+            data-testid={`compliance-row-${ft.type}`}
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              {isLoading ? (
+                <div className="h-2 w-2 rounded-full bg-muted animate-pulse shrink-0" />
+              ) : ft.canGenerate ? (
+                ft.missing > 0 ? (
+                  <div className="h-2 w-2 rounded-full bg-amber-400 shrink-0" title={`${ft.missing} missing ${ft.missingLabel}`} />
+                ) : (
+                  <div className="h-2 w-2 rounded-full bg-green-500 shrink-0" title="All fields present" />
+                )
+              ) : (
+                <div className="h-2 w-2 rounded-full bg-muted shrink-0" title="No eligible employees" />
+              )}
+              <span className="font-medium text-foreground">{ft.label}</span>
+              <span className="text-muted-foreground truncate">{ft.description}</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {!isLoading && ft.missing > 0 && (
+                <span className="text-amber-600 dark:text-amber-400">
+                  {ft.missing} missing {ft.missingLabel}
+                </span>
+              )}
+              {!isLoading && !ft.canGenerate && (
+                <span className="text-muted-foreground">No eligible employees</span>
+              )}
+              {generated.has(ft.type) && (
+                <span className="text-green-600 dark:text-green-400 text-xs flex items-center gap-1">
+                  <CheckCircle2 className="h-3 w-3" /> Generated
+                </span>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-6 text-xs gap-1"
+                disabled={downloading === ft.type || isLoading || !ft.canGenerate}
+                onClick={() => handleDownload(ft.type)}
+                data-testid={`btn-compliance-download-${ft.type}`}
+              >
+                {downloading === ft.type ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <FileDown className="h-3 w-3" />
+                )}
+                {generated.has(ft.type) ? "Re-download" : "Download"}
+              </Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {status && status.pt.unregisteredStates.length > 0 && (
+        <p className="mt-2 text-xs text-muted-foreground">
+          Excluded states (no PT applicable): {status.pt.unregisteredStates.join(", ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function MarkAsExecutedDialog({ run, onDone }: { run: SalaryRun; onDone: () => void }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
@@ -2273,6 +2458,9 @@ function RunHistoryList({ runs, onRunsChanged }: { runs: SalaryRun[]; onRunsChan
                     <RunSlipPanel run={run} />
                   )}
                 </div>
+                {run.status === "executed" && (
+                  <ComplianceFilesCard run={run} />
+                )}
               </div>
             ))}
           </div>

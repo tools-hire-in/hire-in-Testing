@@ -76,6 +76,11 @@ export const adminUsers = pgTable("admin_users", {
   esiApplicable: boolean("esi_applicable").notNull().default(true),
   esiCoveredUntil: date("esi_covered_until"),
   esiDailyWageExempt: boolean("esi_daily_wage_exempt").notNull().default(false),
+  // Statutory filing identifiers — used in PF ECR and ESI monthly return files.
+  // UAN: Universal Account Number (EPFO). Null if not yet assigned.
+  uan: varchar("uan"),
+  // ESIC IP Number: Insurance Person Number (ESIC). Null if not ESI covered.
+  esicIpNumber: varchar("esic_ip_number"),
   // Ceipal end-of-day compliance checkpoint. When true (default), recruiter-role
   // users see the punch-out modal asking if they updated Ceipal today.
   // HR/admin/super_admin can disable this for specific users (e.g., on leave).
