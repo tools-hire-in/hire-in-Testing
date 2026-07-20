@@ -5065,7 +5065,9 @@ export const pendingEmailBlasts = pgTable("pending_email_blasts", {
   deliveryFinishedAt: timestamp("delivery_finished_at"),
   alertSent: boolean("alert_sent").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("idx_pending_email_blasts_status").on(table.status, table.createdAt),
+]);
 
 export const blastDeliveryRecords = pgTable("blast_delivery_records", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

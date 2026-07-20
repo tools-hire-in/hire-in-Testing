@@ -4100,10 +4100,6 @@ async function runStartupTasks() {
       )
     `);
     await db.execute(sql`
-      CREATE INDEX IF NOT EXISTS idx_pending_email_blasts_status
-        ON pending_email_blasts(status, created_at)
-    `);
-    await db.execute(sql`
       CREATE TABLE IF NOT EXISTS blast_delivery_records (
         id            VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
         blast_id      VARCHAR NOT NULL REFERENCES pending_email_blasts(id) ON DELETE CASCADE,
