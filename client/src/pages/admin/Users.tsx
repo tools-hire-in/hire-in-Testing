@@ -261,7 +261,7 @@ export default function AdminUsers() {
       if (credentials) {
         setCredCopied(false);
         setExecCredentials(credentials);
-        toast({ title: "Executive created", description: "No email was sent. Share the login credentials shown on screen privately." });
+        toast({ title: "Executive created", description: "Executive account created. Share the login credentials shown on screen." });
       } else {
         toast({ title: "User invited successfully", description: `An invitation email with login credentials has been sent.${rayoMsg}`, duration: rayoMsg.includes("Temporary password") ? 15000 : 5000 });
       }
@@ -913,7 +913,7 @@ export default function AdminUsers() {
               <DialogTitle>Invite Team Member</DialogTitle>
               <DialogDescription>
                 {newRole === "executive"
-                  ? "Add an executive (read-only observer). No email will be sent — you'll see their login credentials once so you can share them privately."
+                  ? "Add an executive account with full payroll execution and compliance access. No invite email is sent — share login credentials privately."
                   : "Add a new team member. They'll receive an email with login credentials."}
               </DialogDescription>
             </DialogHeader>
@@ -921,8 +921,8 @@ export default function AdminUsers() {
               {currentUserRank > roleRank.executive && (
                 <div className="flex items-center justify-between rounded-lg border p-3">
                   <div className="space-y-0.5 pr-4">
-                    <Label htmlFor="exec-toggle" className="font-medium">Executive (read-only observer)</Label>
-                    <p className="text-xs text-muted-foreground">No email sent — login credentials shown once.</p>
+                    <Label htmlFor="exec-toggle" className="font-medium">Executive (payroll &amp; compliance access)</Label>
+                    <p className="text-xs text-muted-foreground">Full India payroll access. Credentials shown once — share privately.</p>
                   </div>
                   <Switch
                     id="exec-toggle"
@@ -947,7 +947,12 @@ export default function AdminUsers() {
               </div>
               <div className="space-y-2">
                 <Label htmlFor="email">Email Address</Label>
-                <Input id="email" type="email" placeholder="user@hire-in.com" value={newEmail} onChange={(e) => setNewEmail(e.target.value)} data-testid="input-invite-email" />
+                <Input id="email" type="email" placeholder={newRole === "executive" ? "user@anycompany.com" : "user@hire-in.com"} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} data-testid="input-invite-email" />
+                <p className="text-xs text-muted-foreground">
+                  {newRole === "executive"
+                    ? "Any email address accepted for executive accounts."
+                    : "Must end with @hire-in.com."}
+                </p>
               </div>
               {newRole !== "executive" && (
               <div className="grid grid-cols-2 gap-4">
@@ -1092,7 +1097,10 @@ export default function AdminUsers() {
                       } as any
                 )}
                 disabled={
-                  !newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending ||
+                  (newRole === "executive"
+                    ? (!newEmail.trim() || !newEmail.includes("@") || newEmail.split("@")[1]?.length < 1)
+                    : !newEmail.endsWith("@hire-in.com")) ||
+                  !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending ||
                   (newRole !== "executive" && (!newDepartmentId || newDepartmentId === "none" || !newShiftId))
                 }
                 data-testid="button-send-invite"

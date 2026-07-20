@@ -1894,11 +1894,13 @@ Canonical domain: ${BASE}
         return res.status(403).json({ error: "You cannot assign a role equal to or higher than your own" });
       }
 
-      if (!email?.endsWith("@hire-in.com")) {
+      const externalEmailRoles = resolveRoles("admin.users.externalEmailDomain", []);
+      const roleAllowsExternalEmail = externalEmailRoles.includes(assignedRole);
+      if (!roleAllowsExternalEmail && !email?.endsWith("@hire-in.com")) {
         return res.status(400).json({ error: "Only @hire-in.com emails are allowed" });
       }
 
-      // Executives are read-only observers — no attendance tracking or payroll
+      // Executives have payroll & compliance access — no attendance tracking or
       // onboarding, so Department/Shift are not required for them.
       const isExecutive = assignedRole === "executive";
 

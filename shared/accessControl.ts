@@ -66,6 +66,7 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "admin.offerLetters.countersign": ["super_admin", "admin", "hr"],
   "admin.users.bulkUpload": ["super_admin", "admin", "manager"],
   "admin.users.delete": ["super_admin", "admin"],
+  "admin.users.externalEmailDomain": ["super_admin", "executive"],
   "admin.users.employmentStatus": ["super_admin", "admin", "manager"],
   "admin.users.hierarchy": ["super_admin", "admin", "hr", "manager"],
   "admin.users.patch": ["super_admin", "admin", "manager", "hr"],
@@ -316,8 +317,8 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   // Governance Controls — obligation tracking, escalation, CEO reporting
   "governance.view": ["super_admin", "admin", "hr", "operations", "manager", "employee", "finance", "recruiter", "executive"],
   "governance.manager": ["super_admin", "admin", "hr", "operations", "manager"],
-  "governance.hr": ["super_admin", "admin", "hr", "executive"],
-  "governance.ceo": ["super_admin", "admin", "executive"],
+  "governance.hr": ["super_admin", "admin", "hr"],
+  "governance.ceo": ["super_admin", "admin"],
 };
 
 // ============================================================================
