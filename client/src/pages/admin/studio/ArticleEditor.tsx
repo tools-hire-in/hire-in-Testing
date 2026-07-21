@@ -319,6 +319,10 @@ function ArticleEditorInner({ id }: { id: string }) {
   // Thin-brief override — user explicitly acknowledged the "thin" warning and wants to proceed
   const [genThinBriefOverride, setGenThinBriefOverride] = useState(false);
   const [resolvedBrief, setResolvedBrief] = useState<any>(null);
+  // Topic suggestions for the Generate Draft panel
+  const [genSuggestions, setGenSuggestions] = useState<{ title: string; angle: string }[]>([]);
+  const [genSuggestLoading, setGenSuggestLoading] = useState(false);
+  const [genSuggestError, setGenSuggestError] = useState<string | null>(null);
   const [selectedHookIdx, setSelectedHookIdx] = useState<number>(0);
   // Task #906 defect fix: AI failures surface as a persistent banner with
   // retry + continue-manually, never just a transient toast.
@@ -2693,16 +2697,83 @@ function ArticleEditorInner({ id }: { id: string }) {
 
             {/* 3. Topic — required */}
             <div className="space-y-2">
-              <Label htmlFor="gen-topic">Topic or instruction <span className="text-destructive">*</span></Label>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="gen-topic">Topic or instruction <span className="text-destructive">*</span></Label>
+                <button
+                  type="button"
+                  disabled={genSuggestLoading}
+                  onClick={async () => {
+                    setGenSuggestLoading(true);
+                    setGenSuggestError(null);
+                    setGenSuggestions([]);
+                    const intents = (PLATFORM_CONTENT_INTENTS as any)[genPlatform] ?? (PLATFORM_CONTENT_INTENTS as any).ARTICLE;
+                    const intent = intents.find((i: any) => i.value === genFormat) ?? intents[0];
+                    try {
+                      const res = await fetch("/api/admin/studio/suggest-topics", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        credentials: "include",
+                        body: JSON.stringify({
+                          contentType: intent?.contentType ?? genFormat,
+                          audience: genAudience || undefined,
+                          platform: genPlatform,
+                          contentGoal: intent?.contentGoal ?? undefined,
+                        }),
+                      });
+                      const data = await res.json();
+                      if (!res.ok) throw new Error(data.error || "Failed to get suggestions");
+                      setGenSuggestions(data.suggestions ?? []);
+                    } catch (err: any) {
+                      setGenSuggestError(err.message || "Could not load suggestions");
+                    } finally {
+                      setGenSuggestLoading(false);
+                    }
+                  }}
+                  className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium text-primary hover:bg-primary/10 disabled:opacity-50 transition-colors"
+                  data-testid="button-gen-suggest-topics"
+                >
+                  {genSuggestLoading ? (
+                    <Loader2 className="h-3 w-3 animate-spin" />
+                  ) : (
+                    <Sparkles className="h-3 w-3" />
+                  )}
+                  {genSuggestLoading ? "Loading…" : "✨ Suggest Topics"}
+                </button>
+              </div>
               <Textarea
                 id="gen-topic"
                 rows={2}
                 value={genTopic}
-                onChange={(e) => setGenTopic(e.target.value)}
+                onChange={(e) => {
+                  setGenTopic(e.target.value);
+                  if (genSuggestions.length > 0) setGenSuggestions([]);
+                }}
                 placeholder="e.g. Why IT hiring managers reject technically qualified candidates — and what recruiters miss in the intake call"
                 data-testid="input-gen-topic"
                 autoFocus
               />
+              {genSuggestError && (
+                <p className="text-xs text-destructive" data-testid="text-gen-suggest-error">{genSuggestError}</p>
+              )}
+              {genSuggestions.length > 0 && (
+                <div className="space-y-1.5" data-testid="list-gen-suggestions">
+                  {genSuggestions.map((s, i) => (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => {
+                        setGenTopic(s.title);
+                        setGenSuggestions([]);
+                      }}
+                      className="w-full rounded-md border px-3 py-2 text-left hover:border-primary hover:bg-primary/5 transition-colors"
+                      data-testid={`suggestion-gen-${i}`}
+                    >
+                      <p className="text-sm font-medium leading-snug">{s.title}</p>
+                      <p className="mt-0.5 text-xs text-muted-foreground leading-snug">{s.angle}</p>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* 4. Audience — optional */}

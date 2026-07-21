@@ -95,6 +95,7 @@ import {
   resolveBrief,
   generateInsightsBrief,
   generateInsightsBriefWithRetry,
+  generateTopicSuggestions,
   TIER_MODELS,
 } from "./services/aiDraftService";
 import { isInsightsContentType } from "@shared/studioAi";
@@ -20123,6 +20124,42 @@ Canonical domain: ${BASE}
         await storage.createStudioAuditEvent({ articleId: req.params.id, actorUserId: req.session.userId, eventType: "insights_brief_revised", metadata: { decision: planning.decision, contentType: article.contentType, revisionCount: planningWithMeta.revisionCount } });
         res.json({ article: updated, planning: planningWithMeta });
       } catch (e: any) { handleAiError(e, res); }
+    },
+  );
+
+  // ---------------------------------------------------------------------------
+  // Suggest Topics — lightweight AI call returning 5–8 topic ideas.
+  // For Insights types: uses editorial identity + content-type module + reader.
+  // For regular types: uses audience, content-goal, and domain blocks.
+  // ---------------------------------------------------------------------------
+  app.post(
+    "/api/admin/studio/suggest-topics",
+    requireAuth,
+    requirePermission("studio.generate_ai_draft", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI provider is not configured", code: "upstream" });
+        }
+        if (!(await checkAiRateLimit(req.session.userId!, res))) return;
+
+        const { contentType, primaryReader, audience, platform, contentGoal } = req.body ?? {};
+        if (!contentType || typeof contentType !== "string") {
+          return res.status(400).json({ error: "contentType is required" });
+        }
+
+        const suggestions = await generateTopicSuggestions({
+          contentType,
+          primaryReader: typeof primaryReader === "string" ? primaryReader : undefined,
+          audience: typeof audience === "string" ? audience : undefined,
+          platform: typeof platform === "string" ? platform : undefined,
+          contentGoal: typeof contentGoal === "string" ? contentGoal : undefined,
+        });
+
+        res.json({ suggestions });
+      } catch (e: any) {
+        handleAiError(e, res);
+      }
     },
   );
 

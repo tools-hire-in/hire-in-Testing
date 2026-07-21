@@ -52,7 +52,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Loader2, Plus, Search, FileEdit, Clock3, FastForward, UserPlus, UserX, DollarSign, MoreHorizontal, EyeOff, Archive } from "lucide-react";
+import { Loader2, Plus, Search, FileEdit, Clock3, FastForward, UserPlus, UserX, DollarSign, MoreHorizontal, EyeOff, Archive, Sparkles } from "lucide-react";
 import { STUDIO_CONTENT_TYPES, getStudioContentType } from "@shared/studioContent";
 import { isInsightsContentType } from "@shared/studioAi";
 import { STATUS_LABELS, STATUS_BADGE_CLASS } from "./studioConstants";
@@ -97,6 +97,10 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
   const [newInsightsPrimaryReaderQuestion, setNewInsightsPrimaryReaderQuestion] = useState("");
   const [newInsightsWhyNow, setNewInsightsWhyNow] = useState("");
   const [newInsightsMode, setNewInsightsMode] = useState("");
+  // Topic suggestions for Insights creation form
+  const [insightsSuggestions, setInsightsSuggestions] = useState<{ title: string; angle: string }[]>([]);
+  const [insightsSuggestLoading, setInsightsSuggestLoading] = useState(false);
+  const [insightsSuggestError, setInsightsSuggestError] = useState<string | null>(null);
 
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const canBulkApprove = can("studio.marketing_approve");
@@ -731,18 +735,79 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                   </Select>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs" htmlFor="insights-primary-question">
-                    Primary Reader Question <span className="text-muted-foreground font-normal">(what decision does this help them make?)</span>
-                  </Label>
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs" htmlFor="insights-primary-question">
+                      Primary Reader Question <span className="text-muted-foreground font-normal">(what decision does this help them make?)</span>
+                    </Label>
+                    <button
+                      type="button"
+                      disabled={insightsSuggestLoading || !newInsightsPrimaryReader}
+                      title={!newInsightsPrimaryReader ? "Select a Primary Reader first" : "Get AI topic ideas for this reader"}
+                      onClick={async () => {
+                        setInsightsSuggestLoading(true);
+                        setInsightsSuggestError(null);
+                        setInsightsSuggestions([]);
+                        try {
+                          const res = await fetch("/api/admin/studio/suggest-topics", {
+                            method: "POST",
+                            headers: { "Content-Type": "application/json" },
+                            credentials: "include",
+                            body: JSON.stringify({ contentType: newType, primaryReader: newInsightsPrimaryReader }),
+                          });
+                          const data = await res.json();
+                          if (!res.ok) throw new Error(data.error || "Failed to get suggestions");
+                          setInsightsSuggestions(data.suggestions ?? []);
+                        } catch (err: any) {
+                          setInsightsSuggestError(err.message || "Could not load suggestions");
+                        } finally {
+                          setInsightsSuggestLoading(false);
+                        }
+                      }}
+                      className="flex items-center gap-1 rounded px-2 py-0.5 text-[11px] font-medium text-indigo-600 hover:bg-indigo-100 disabled:opacity-50 transition-colors dark:text-indigo-400 dark:hover:bg-indigo-950/40"
+                      data-testid="button-insights-suggest-topics"
+                    >
+                      {insightsSuggestLoading ? (
+                        <Loader2 className="h-3 w-3 animate-spin" />
+                      ) : (
+                        <Sparkles className="h-3 w-3" />
+                      )}
+                      {insightsSuggestLoading ? "Loading…" : "✨ Suggest Topics"}
+                    </button>
+                  </div>
                   <Textarea
                     id="insights-primary-question"
                     value={newInsightsPrimaryReaderQuestion}
-                    onChange={(e) => setNewInsightsPrimaryReaderQuestion(e.target.value)}
+                    onChange={(e) => {
+                      setNewInsightsPrimaryReaderQuestion(e.target.value);
+                      if (insightsSuggestions.length > 0) setInsightsSuggestions([]);
+                    }}
                     placeholder="e.g. Should we expand our contingent workforce given current market signals?"
                     rows={2}
                     className="text-xs"
                     data-testid="input-insights-primary-question"
                   />
+                  {insightsSuggestError && (
+                    <p className="text-[11px] text-destructive" data-testid="text-insights-suggest-error">{insightsSuggestError}</p>
+                  )}
+                  {insightsSuggestions.length > 0 && (
+                    <div className="mt-1 space-y-1" data-testid="list-insights-suggestions">
+                      {insightsSuggestions.map((s, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => {
+                            setNewInsightsPrimaryReaderQuestion(s.title);
+                            setInsightsSuggestions([]);
+                          }}
+                          className="w-full rounded-md border border-indigo-200 bg-white px-2.5 py-2 text-left hover:border-indigo-400 hover:bg-indigo-50 transition-colors dark:bg-indigo-950/20 dark:border-indigo-700 dark:hover:bg-indigo-900/30"
+                          data-testid={`suggestion-insights-${i}`}
+                        >
+                          <p className="text-[11px] font-medium text-foreground leading-snug">{s.title}</p>
+                          <p className="mt-0.5 text-[10px] text-muted-foreground leading-snug">{s.angle}</p>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs" htmlFor="insights-why-now">

@@ -992,6 +992,139 @@ export function isAiConfigured(): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Topic Suggestions (Task #1440) — lightweight call; no retry needed.
+// ---------------------------------------------------------------------------
+export interface TopicSuggestion {
+  title: string;
+  angle: string;
+}
+
+const INSIGHTS_MODULE_MAP: Record<string, string> = {
+  FLAGSHIP_INSIGHT: FLAGSHIP_INSIGHT_MODULE,
+  FIELD_SIGNAL: FIELD_SIGNAL_MODULE,
+  DECISION_GUIDE: DECISION_GUIDE_MODULE,
+  RESEARCH_BRIEF: RESEARCH_BRIEF_MODULE,
+  TOOL_TECH_WATCH: TOOL_TECH_WATCH_MODULE,
+  SCENARIO_ANALYSIS: SCENARIO_ANALYSIS_MODULE,
+  EDITORIAL_PERSPECTIVE: EDITORIAL_PERSPECTIVE_MODULE,
+  MONTHLY_INTELLIGENCE_BRIEF: MONTHLY_BRIEF_MODULE,
+};
+
+const TOPIC_SUGGESTIONS_JSON_SCHEMA = {
+  type: "object",
+  additionalProperties: false,
+  properties: {
+    suggestions: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        properties: {
+          title: { type: "string" },
+          angle: { type: "string" },
+        },
+        required: ["title", "angle"],
+      },
+    },
+  },
+  required: ["suggestions"],
+} as const;
+
+export async function generateTopicSuggestions(params: {
+  contentType: string;
+  primaryReader?: string;
+  audience?: string;
+  platform?: string;
+  contentGoal?: string;
+}): Promise<TopicSuggestion[]> {
+  const isInsights = isInsightsContentType(params.contentType);
+
+  let systemPrompt: string;
+  let userPrompt: string;
+
+  if (isInsights) {
+    const ctModule = INSIGHTS_MODULE_MAP[params.contentType] ?? INSIGHTS_MODULE_MAP.FLAGSHIP_INSIGHT;
+    const readerLabel = params.primaryReader || "Staffing/MSP Operator";
+    const formattedType = params.contentType.replace(/_/g, " ");
+    systemPrompt = [
+      INSIGHTS_EDITORIAL_IDENTITY_BLOCK,
+      INSIGHTS_PRIMARY_READER_BLOCK,
+      ctModule,
+      CLAIM_FREE_BLOCK,
+    ].join("\n\n---\n\n");
+    userPrompt = `You are generating topic ideas for an Insights editorial article.
+
+Content type: ${formattedType}
+Primary reader: ${readerLabel}
+
+Generate exactly 6 topic ideas that are sharp, specific, and directly relevant to the ${readerLabel} persona. Each idea must:
+- Frame a concrete question or tension this specific reader is actually facing right now
+- Be grounded in workforce, staffing, or talent market dynamics — not generic business advice
+- Suit the ${formattedType} format (word count and structure)
+- Have a one-sentence angle that names the specific editorial lens or mechanism the article will use
+
+Return as JSON matching the schema.`;
+  } else {
+    const audienceKey = (params.audience ?? "EMPLOYER_CLIENT").toUpperCase();
+    const audienceBlock = AUDIENCE_BLOCKS[audienceKey] ?? AUDIENCE_BLOCKS.EMPLOYER_CLIENT;
+    const goalKey = (params.contentGoal ?? "THOUGHT_LEADERSHIP").toUpperCase();
+    const goalBlock = CONTENT_GOAL_BLOCKS[goalKey] ?? CONTENT_GOAL_BLOCKS.THOUGHT_LEADERSHIP;
+    const domainBlock = DOMAIN_BLOCKS.GENERAL_STAFFING;
+    const goalLabel = goalKey.toLowerCase().replace(/_/g, " ");
+
+    systemPrompt = [
+      audienceBlock,
+      goalBlock,
+      domainBlock,
+      BANNED_SLOP_BLOCK,
+      CLAIM_FREE_BLOCK,
+    ].join("\n\n---\n\n");
+    const platformContext = params.platform && params.platform !== "ARTICLE"
+      ? `\nPlatform: ${params.platform.replace(/_/g, " ").toLowerCase()} — topics should fit the norms and reader expectations of this channel.`
+      : "";
+    userPrompt = `Generate exactly 6 topic ideas for a ${goalLabel} article targeting the above audience.${platformContext}
+
+Each topic must be:
+- Specific and actionable — not a vague headline
+- Grounded in real staffing domain mechanics, not generic business advice
+- Ready to hand to a content writer as a clear brief starting point
+- Have a one-sentence angle that names the specific editorial lens or mechanism
+
+Return as JSON matching the schema.`;
+  }
+
+  const response = await openai.chat.completions.create({
+    model: TIER_MODELS.economy,
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userPrompt },
+    ],
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "topic_suggestions",
+        strict: true,
+        schema: TOPIC_SUGGESTIONS_JSON_SCHEMA,
+      },
+    } as any,
+    max_completion_tokens: 1200,
+  });
+
+  const raw = response.choices[0]?.message?.content ?? "{}";
+  let parsed: any;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new AiGenerationError("malformed", "AI returned invalid JSON for topic suggestions", false);
+  }
+
+  const list = Array.isArray(parsed.suggestions) ? parsed.suggestions : [];
+  return list
+    .map((s: any) => ({ title: String(s.title ?? "").trim(), angle: String(s.angle ?? "").trim() }))
+    .filter((s: TopicSuggestion) => s.title && s.angle);
+}
+
+// ---------------------------------------------------------------------------
 // Studio BD Agent (Task #942) — chat completion + template generation.
 // bd_text templates use generic JSON-object structured output since each
 // template has a bespoke shape; the schema is declared per contentType below.
