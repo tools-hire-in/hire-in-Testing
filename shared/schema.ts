@@ -4248,30 +4248,80 @@ export type InsertSopAuditRecord = z.infer<typeof insertSopAuditRecordSchema>;
 export type SopAuditFinding = typeof sopAuditFindings.$inferSelect;
 export type InsertSopAuditFinding = z.infer<typeof insertSopAuditFindingSchema>;
 
-// ==========================================
-// SOP KNOWLEDGE CHECK TABLES (Task #1420)
-// ==========================================
-// One question bank per SOP (keyed by sopMasterId). Questions are soft-archived
-// rather than hard-deleted so employee response history is preserved.
-// Applied via scripts/apply-sop-quiz-schema.ts (raw SQL, avoids drizzle TTY).
+// ── SOP Knowledge Checks — merged (Tasks #1419 + #1420) ───────────────────────
+// Questions keyed by sopMasterId (stable across SOP versions). Normalized
+// approach (Task #1420) with correctOptionIndex + a separate options table.
+// Legacy JSONB columns (sopId, options, correctIndex) retained for DB compat.
+// Applied via scripts/apply-sop-quiz-schema.ts.
 
 export const sopKnowledgeChecks = pgTable("sop_knowledge_checks", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // Stable key across versions — canonical lookup key
   sopMasterId: varchar("sop_master_id").notNull(),
   questionText: text("question_text").notNull(),
-  // 0-based index into the ordered options for this question.
-  correctOptionIndex: integer("correct_option_index").notNull(),
-  explanation: text("explanation"),
-  position: integer("position").notNull().default(0),
-  // Soft-delete: set when a question is removed so historical responses are kept.
+  // Normalized approach (Task #1420): canonical correct answer index
+  correctOptionIndex: integer("correct_option_index"),
+  // Soft-delete: set when a question is removed so historical responses are kept
   archivedAt: timestamp("archived_at"),
   createdBy: varchar("created_by").references(() => adminUsers.id),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  // Legacy JSONB approach (Task #1419): retained for backward compat
+  sopId: varchar("sop_id").references(() => sopDocuments.id, { onDelete: "cascade" }),
+  options: jsonb("options").$type<string[]>(),
+  correctIndex: integer("correct_index"),
+  // Common fields
+  explanation: text("explanation"),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   masterIdx: index("sop_knowledge_checks_master_idx").on(table.sopMasterId),
 }));
 
+// Per-employee quiz response log — every attempt is persisted
+export const sopEmployeeQuizResponses = pgTable("sop_employee_quiz_responses", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sopId: varchar("sop_id").notNull().references(() => sopDocuments.id),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  // 1, 2, or 3 — max 3 attempts
+  attemptNumber: integer("attempt_number").notNull(),
+  // integer[] — one answer index per question, parallel to position-ordered questions
+  answers: jsonb("answers").notNull().$type<number[]>(),
+  scorePct: integer("score_pct").notNull(),
+  passed: boolean("passed").notNull(),
+  attemptedAt: timestamp("attempted_at").defaultNow().notNull(),
+  // Set when failed and attempts remain: attemptedAt + 10 min
+  cooldownUntil: timestamp("cooldown_until"),
+}, (t) => [
+  index("sop_quiz_responses_sop_user_idx").on(t.sopId, t.userId),
+  index("sop_quiz_responses_user_idx").on(t.userId),
+]);
+
+export const insertSopEmployeeQuizResponseSchema = createInsertSchema(sopEmployeeQuizResponses).omit({ id: true, attemptedAt: true });
+export type SopEmployeeQuizResponse = typeof sopEmployeeQuizResponses.$inferSelect;
+export type InsertSopEmployeeQuizResponse = z.infer<typeof insertSopEmployeeQuizResponseSchema>;
+
+// Wave-level signed attestation — auto-created when employee acknowledges all SOPs in a wave
+export const sopWaveAttestations = pgTable("sop_wave_attestations", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  waveNumber: integer("wave_number").notNull(),
+  attestedAt: timestamp("attested_at").defaultNow().notNull(),
+  // HMAC-SHA256(userId + waveNumber + attestedAt, SIGNING_SECRET)
+  signatureHash: text("signature_hash").notNull(),
+  // WAV-{wave}-{6-char alphanum}
+  refNumber: text("ref_number").notNull(),
+  // Cached AI-generated cheat sheet markdown; NULL until first generation
+  cheatSheetContent: text("cheat_sheet_content"),
+}, (t) => [
+  index("sop_wave_attestations_user_wave_idx").on(t.userId, t.waveNumber),
+  uniqueIndex("sop_wave_attestations_user_wave_unique").on(t.userId, t.waveNumber),
+]);
+
+export const insertSopWaveAttestationSchema = createInsertSchema(sopWaveAttestations).omit({ id: true, attestedAt: true });
+export type SopWaveAttestation = typeof sopWaveAttestations.$inferSelect;
+export type InsertSopWaveAttestation = z.infer<typeof insertSopWaveAttestationSchema>;
+
+// Normalized per-question answer options (Task #1420)
 export const sopKnowledgeCheckOptions = pgTable("sop_knowledge_check_options", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   questionId: varchar("question_id").notNull().references(() => sopKnowledgeChecks.id, { onDelete: "cascade" }),
@@ -4283,7 +4333,7 @@ export const sopKnowledgeCheckOptions = pgTable("sop_knowledge_check_options", {
 }));
 
 export const insertSopKnowledgeCheckSchema = createInsertSchema(sopKnowledgeChecks).omit({
-  id: true, archivedAt: true, createdAt: true, updatedAt: true,
+  id: true, sopId: true, archivedAt: true, createdAt: true, updatedAt: true,
 });
 export type SopKnowledgeCheck = typeof sopKnowledgeChecks.$inferSelect;
 export type InsertSopKnowledgeCheck = z.infer<typeof insertSopKnowledgeCheckSchema>;

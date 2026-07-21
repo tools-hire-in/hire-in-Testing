@@ -346,6 +346,11 @@ export interface MySopAssignment {
   evidenceText: string | null;
   evidenceFileUrl: string | null;
   evidenceDescription: string | null;
+  // Quiz fields (Task #1419)
+  quizRequired: boolean;
+  quizPassed: boolean;
+  quizAttempts: number;
+  quizPassedAt: Date | null;
 }
 
 async function buildAssignmentRows(userId: string, role?: string): Promise<MySopAssignment[]> {
@@ -456,8 +461,59 @@ async function buildAssignmentRows(userId: string, role?: string): Promise<MySop
       evidenceText: (p as any).evidenceText ?? null,
       evidenceFileUrl: (p as any).evidenceFileUrl ?? null,
       evidenceDescription: evidenceDescByMaster.get(p.sopMasterId) ?? null,
+      // Quiz fields — enriched below after the loop
+      quizRequired: false,
+      quizPassed: false,
+      quizAttempts: 0,
+      quizPassedAt: null,
     });
   }
+
+  // ── Enrich quiz state for all rows in one SQL query (Task #1419) ─────────
+  if (rows.length > 0) {
+    try {
+      const sopIds = rows.map((r) => r.sopId);
+      const quizCheckCounts = await db.execute(sql`
+        SELECT sop_id, COUNT(*)::int AS q_count
+        FROM sop_knowledge_checks
+        WHERE sop_id = ANY(${sopIds})
+        GROUP BY sop_id
+      `).catch(() => ({ rows: [] }));
+      const qCountBySopId = new Map<string, number>(
+        (quizCheckCounts.rows as any[]).map((r) => [r.sop_id, Number(r.q_count)])
+      );
+
+      const quizResults = await db.execute(sql`
+        SELECT sop_id, COUNT(*)::int AS attempts,
+               BOOL_OR(passed) AS passed,
+               MAX(CASE WHEN passed THEN attempted_at END) AS passed_at
+        FROM sop_employee_quiz_responses
+        WHERE user_id = ${userId}
+          AND sop_id = ANY(${sopIds})
+        GROUP BY sop_id
+      `).catch(() => ({ rows: [] }));
+      const quizBySopId = new Map<string, { attempts: number; passed: boolean; passedAt: Date | null }>(
+        (quizResults.rows as any[]).map((r) => [r.sop_id, {
+          attempts: Number(r.attempts),
+          passed: Boolean(r.passed),
+          passedAt: r.passed_at ? new Date(r.passed_at) : null,
+        }])
+      );
+
+      for (const row of rows) {
+        const qCount = qCountBySopId.get(row.sopId) ?? 0;
+        const quizData = quizBySopId.get(row.sopId);
+        row.quizRequired = qCount > 0;
+        row.quizPassed = quizData?.passed ?? false;
+        row.quizAttempts = quizData?.attempts ?? 0;
+        row.quizPassedAt = quizData?.passedAt ?? null;
+      }
+    } catch (quizErr) {
+      // Non-fatal: quiz tables might not exist yet in dev
+      console.warn("[sopRollout] Quiz enrichment failed (non-fatal):", quizErr instanceof Error ? quizErr.message : quizErr);
+    }
+  }
+
   return rows;
 }
 

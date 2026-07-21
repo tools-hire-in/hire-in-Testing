@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2, ExternalLink, BookOpen, Trash2, CalendarDays } from "lucide-react";
+import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2, ExternalLink, BookOpen, Brain, Award, Trash2, GripVertical, CalendarDays } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -78,7 +78,8 @@ export default function SOPLibrary() {
   // sops.rollout permission gating the wave endpoints).
   const canManageRollout = ["super_admin", "admin"].includes(user?.role || "");
   const canManageReviewers = ["super_admin", "admin"].includes(user?.role || "");
-  const [view, setView] = useState<"library" | "rollout" | "reviewer">("library");
+  const canViewAttestations = ["super_admin", "admin", "hr", "operations"].includes(user?.role || "");
+  const [view, setView] = useState<"library" | "rollout" | "reviewer" | "attestations">("library");
 
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("all");
@@ -195,6 +196,17 @@ export default function SOPLibrary() {
                     <UserCheck className="h-3.5 w-3.5 mr-1" /> Reviewers
                   </Button>
                 )}
+                {canViewAttestations && (
+                  <Button
+                    size="sm"
+                    variant={view === "attestations" ? "default" : "ghost"}
+                    className="h-8"
+                    onClick={() => setView("attestations")}
+                    data-testid="button-view-attestations"
+                  >
+                    <Award className="h-3.5 w-3.5 mr-1" /> Attestations
+                  </Button>
+                )}
               </div>
             )}
             {canManage && view === "library" && (
@@ -209,6 +221,8 @@ export default function SOPLibrary() {
           <RolloutView onViewDetails={setDetailId} />
         ) : view === "reviewer" && canManageReviewers ? (
           <ReviewerAssignmentView />
+        ) : view === "attestations" && canViewAttestations ? (
+          <AttestationsView />
         ) : (
         <>
         <Card>
@@ -265,8 +279,19 @@ export default function SOPLibrary() {
               return (
                 <Card key={sop.id} className="flex flex-col" data-testid={`card-sop-${sop.code}`}>
                   <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between gap-2">
-                      <Badge variant="outline" data-testid={`text-sop-code-${sop.code}`}>{sop.code}</Badge>
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-1.5">
+                        <Badge variant="outline" data-testid={`text-sop-code-${sop.code}`}>{sop.code}</Badge>
+                        {(sop as any).questionCount > 0 ? (
+                          <Badge variant="secondary" className="gap-1 text-[10px] bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300 border-emerald-200" data-testid={`badge-quiz-${sop.code}`}>
+                            <Brain className="h-2.5 w-2.5" /> {(sop as any).questionCount}Q
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="gap-1 text-[10px] text-amber-700 bg-amber-50 dark:bg-amber-900/30 border-amber-200" data-testid={`badge-quiz-empty-${sop.code}`}>
+                            <Brain className="h-2.5 w-2.5" /> No quiz
+                          </Badge>
+                        )}
+                      </div>
                       <Badge variant={lifecycleVariant(sop.lifecycleStatus)} data-testid={`badge-sop-status-${sop.code}`}>
                         {locked && <Lock className="h-3 w-3 mr-1" />}
                         {LIFECYCLE_LABELS[sop.lifecycleStatus] ?? sop.lifecycleStatus}
@@ -419,7 +444,7 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
             </div>
 
             <Tabs value={tab} onValueChange={setTab} className="mt-2">
-              <TabsList className={`grid ${data.code === "OPS-001" ? "grid-cols-7" : "grid-cols-6"} w-full`}>
+              <TabsList className={`grid ${data.code === "OPS-001" ? (canManage ? "grid-cols-8" : "grid-cols-7") : (canManage ? "grid-cols-7" : "grid-cols-6")} w-full`}>
                 <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
                 <TabsTrigger value="reviewers" data-testid="tab-reviewers">Reviewers</TabsTrigger>
                 <TabsTrigger value="comments" data-testid="tab-comments">Comments</TabsTrigger>
@@ -439,6 +464,11 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="audit" data-testid="tab-audit">Audit &amp; Findings</TabsTrigger>
+                {canManage && (
+                  <TabsTrigger value="knowledge-check" data-testid="tab-knowledge-check">
+                    <Brain className="h-3.5 w-3.5 mr-1" />Knowledge Check
+                  </TabsTrigger>
+                )}
                 {data.code === "OPS-001" && (
                   <TabsTrigger value="access" data-testid="tab-access-requests">Access Requests</TabsTrigger>
                 )}
@@ -522,6 +552,11 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                 <AuditFindingsTab sopId={id} canManage={canManage} />
               </TabsContent>
 
+              {canManage && (
+                <TabsContent value="knowledge-check" className="mt-3">
+                  <KnowledgeCheckSection sopId={id} canManage={canManage} />
+                </TabsContent>
+              )}
               {data.code === "OPS-001" && (
                 <TabsContent value="access" className="mt-3">
                   <AccessRequestsTab sopId={id} />
@@ -1542,6 +1577,481 @@ function AccessRequestsTab({ sopId }: { sopId: string }) {
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Knowledge Check Tab — HR/Admin MCQ question management (Task #1419) ──────
+interface KnowledgeCheckQuestion {
+  id: string;
+  questionText: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string | null;
+  position: number;
+}
+
+function KnowledgeCheckTab({ sopId }: { sopId: string }) {
+  const { toast } = useToast();
+  const [addOpen, setAddOpen] = useState(false);
+  const [editQ, setEditQ] = useState<KnowledgeCheckQuestion | null>(null);
+
+  const { data: questions, isLoading, refetch } = useQuery<KnowledgeCheckQuestion[]>({
+    queryKey: ["/api/sops", sopId, "questions"],
+    staleTime: 15000,
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: async (qid: string) => {
+      await apiRequest("DELETE", `/api/sops/${sopId}/questions/${qid}`, {});
+    },
+    onSuccess: () => { refetch(); toast({ title: "Question deleted" }); },
+    onError: (e: any) => toast({ title: "Delete failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const qs = questions ?? [];
+
+  return (
+    <div className="space-y-4" data-testid="tab-content-knowledge-check">
+      <div className="flex items-center justify-between">
+        <div>
+          <p className="text-sm font-medium flex items-center gap-1.5"><Brain className="h-4 w-4 text-primary" /> Knowledge Check Questions</p>
+          <p className="text-xs text-muted-foreground mt-0.5">Employees must score ≥70% before they can acknowledge this SOP. Max 3 attempts, 10-min cooldown between fails.</p>
+        </div>
+        <Button size="sm" onClick={() => setAddOpen(true)} data-testid="button-add-question">
+          <Plus className="h-3.5 w-3.5 mr-1" /> Add Question
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <Skeleton className="h-24 w-full" />
+      ) : qs.length === 0 ? (
+        <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="no-questions">
+          <Brain className="h-8 w-8 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">No questions yet. Add at least one MCQ to activate the knowledge check gate.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {qs.map((q, qi) => (
+            <div key={q.id} className="rounded-md border p-3 space-y-2" data-testid={`row-question-${q.id}`}>
+              <div className="flex items-start justify-between gap-2">
+                <p className="text-sm font-medium">{qi + 1}. {q.questionText}</p>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => setEditQ(q)} data-testid={`button-edit-question-${q.id}`}>
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="h-7 w-7 text-destructive hover:text-destructive"
+                    onClick={() => { if (window.confirm("Delete this question?")) deleteMut.mutate(q.id); }}
+                    data-testid={`button-delete-question-${q.id}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </Button>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {q.options.map((opt, oi) => (
+                  <div
+                    key={oi}
+                    className={`text-xs rounded px-2 py-1 border ${oi === q.correctIndex ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300" : "border-border text-muted-foreground"}`}
+                    data-testid={`option-${q.id}-${oi}`}
+                  >
+                    {oi === q.correctIndex && <CheckCircle2 className="h-3 w-3 inline mr-1" />}
+                    {opt}
+                  </div>
+                ))}
+              </div>
+              {q.explanation && (
+                <p className="text-xs text-muted-foreground border-l-2 pl-2 italic">{q.explanation}</p>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {(addOpen || editQ) && (
+        <QuestionFormDialog
+          sopId={sopId}
+          question={editQ}
+          onClose={() => { setAddOpen(false); setEditQ(null); }}
+          onSaved={() => { setAddOpen(false); setEditQ(null); refetch(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+function QuestionFormDialog({
+  sopId, question, onClose, onSaved,
+}: { sopId: string; question: KnowledgeCheckQuestion | null; onClose: () => void; onSaved: () => void }) {
+  const { toast } = useToast();
+  const isEdit = !!question;
+  const [qText, setQText] = useState(question?.questionText ?? "");
+  const [options, setOptions] = useState<string[]>(question?.options ?? ["", ""]);
+  const [correctIdx, setCorrectIdx] = useState(question?.correctIndex ?? 0);
+  const [explanation, setExplanation] = useState(question?.explanation ?? "");
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const body = { questionText: qText.trim(), options: options.map((o) => o.trim()), correctIndex: correctIdx, explanation: explanation.trim() || null };
+      if (isEdit) {
+        await apiRequest("PATCH", `/api/sops/${sopId}/questions/${question!.id}`, body);
+      } else {
+        await apiRequest("POST", `/api/sops/${sopId}/questions`, body);
+      }
+    },
+    onSuccess: () => { toast({ title: isEdit ? "Question updated" : "Question added" }); onSaved(); },
+    onError: (e: any) => toast({ title: "Save failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const updateOption = (i: number, val: string) => {
+    const next = [...options];
+    next[i] = val;
+    setOptions(next);
+  };
+  const addOption = () => { if (options.length < 4) setOptions([...options, ""]); };
+  const removeOption = (i: number) => {
+    if (options.length <= 2) return;
+    const next = options.filter((_, idx) => idx !== i);
+    setOptions(next);
+    if (correctIdx >= next.length) setCorrectIdx(next.length - 1);
+  };
+
+  const canSave = qText.trim().length > 0 && options.every((o) => o.trim().length > 0) && options.length >= 2;
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg" data-testid="dialog-question-form">
+        <DialogHeader>
+          <DialogTitle>{isEdit ? "Edit Question" : "Add Question"}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4">
+          <div className="space-y-1.5">
+            <Label className="text-xs">Question</Label>
+            <Textarea
+              value={qText}
+              onChange={(e) => setQText(e.target.value)}
+              rows={2}
+              placeholder="Enter the question text…"
+              className="text-sm resize-none"
+              data-testid="input-question-text"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label className="text-xs">Answer Options (select the correct one)</Label>
+            {options.map((opt, oi) => (
+              <div key={oi} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setCorrectIdx(oi)}
+                  className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${oi === correctIdx ? "border-emerald-500 bg-emerald-500" : "border-muted-foreground"}`}
+                  data-testid={`select-correct-${oi}`}
+                  title="Mark as correct"
+                >
+                  {oi === correctIdx && <div className="w-2 h-2 bg-white rounded-full" />}
+                </button>
+                <Input
+                  value={opt}
+                  onChange={(e) => updateOption(oi, e.target.value)}
+                  placeholder={`Option ${oi + 1}`}
+                  className="text-sm"
+                  data-testid={`input-option-${oi}`}
+                />
+                {options.length > 2 && (
+                  <Button size="icon" variant="ghost" className="h-8 w-8 shrink-0" onClick={() => removeOption(oi)}>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
+                )}
+              </div>
+            ))}
+            {options.length < 4 && (
+              <Button size="sm" variant="outline" className="gap-1" onClick={addOption} data-testid="button-add-option">
+                <Plus className="h-3 w-3" /> Add option
+              </Button>
+            )}
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-xs">Explanation (optional — shown on pass or after all attempts)</Label>
+            <Textarea
+              value={explanation}
+              onChange={(e) => setExplanation(e.target.value)}
+              rows={2}
+              placeholder="Explain why the correct answer is right…"
+              className="text-sm resize-none"
+              data-testid="input-explanation"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-cancel-question">Cancel</Button>
+          <Button disabled={!canSave || saveMut.isPending} onClick={() => saveMut.mutate()} data-testid="button-save-question">
+            {saveMut.isPending ? "Saving…" : isEdit ? "Update" : "Add Question"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── Attestations View — HR wave completion tracking (Task #1419) ──────────────
+interface AttestationRow {
+  id: string;
+  userId: string;
+  name: string;
+  email: string;
+  attestedAt: string;
+  refNumber: string;
+  quizStats: { sops_passed: number; total_passes: number; total_fails: number } | null;
+}
+interface NotAttestedRow {
+  userId: string;
+  name: string;
+  email: string;
+  role: string;
+}
+interface SopQuizStat {
+  sopId: string;
+  code: string;
+  title: string;
+  passRatePct: number;
+  avgAttempts: string;
+  totalAttempts: number;
+  passedEmployees: number;
+  totalEmployees: number;
+}
+interface WaveAttestationsData {
+  waveNumber: number;
+  totalImpacted: number;
+  attestedCount: number;
+  pendingCount: number;
+  attestations: AttestationRow[];
+  notAttested: NotAttestedRow[];
+  sopQuizStats: SopQuizStat[];
+}
+
+function AttestationsView() {
+  const [selectedWave, setSelectedWave] = useState<string>("all");
+
+  // Fetch available waves
+  const { data: wavesData } = useQuery<{ waves: { waveNumber: number; name: string; status: string }[] }>({
+    queryKey: ["/api/sops/waves"],
+    staleTime: 30000,
+  });
+
+  const activeWaves = (wavesData?.waves ?? []).filter((w) => w.status === "active" || w.status === "completed");
+
+  const { data: attData, isLoading } = useQuery<WaveAttestationsData>({
+    queryKey: ["/api/sops/waves", selectedWave, "attestations"],
+    enabled: selectedWave !== "all",
+    staleTime: 15000,
+  });
+
+  return (
+    <div className="space-y-5" data-testid="attestations-view">
+      <div>
+        <h2 className="text-lg font-semibold flex items-center gap-2">
+          <Award className="h-5 w-5 text-primary" /> Wave Attestations
+        </h2>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Track which employees have completed all SOPs in each wave, with quiz performance stats.
+        </p>
+      </div>
+
+      <div className="flex items-center gap-3">
+        <Label className="text-sm shrink-0">Select Wave:</Label>
+        <div className="flex flex-wrap gap-2">
+          {activeWaves.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No active or completed waves yet.</p>
+          ) : (
+            activeWaves.map((w) => (
+              <Button
+                key={w.waveNumber}
+                size="sm"
+                variant={selectedWave === String(w.waveNumber) ? "default" : "outline"}
+                onClick={() => setSelectedWave(String(w.waveNumber))}
+                data-testid={`button-wave-select-${w.waveNumber}`}
+              >
+                Wave {w.waveNumber}
+              </Button>
+            ))
+          )}
+        </div>
+      </div>
+
+      {selectedWave === "all" && (
+        <div className="flex flex-col items-center gap-3 py-12 text-center" data-testid="attestations-select-wave">
+          <Award className="h-10 w-10 text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Select a wave above to view attestation status.</p>
+        </div>
+      )}
+
+      {selectedWave !== "all" && isLoading && (
+        <div className="space-y-2">
+          {Array.from({ length: 3 }).map((_, i) => <Skeleton key={i} className="h-12 w-full" />)}
+        </div>
+      )}
+
+      {attData && (
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            <Card>
+              <CardContent className="py-4 text-center">
+                <p className="text-2xl font-bold text-foreground" data-testid="stat-total-impacted">{attData.totalImpacted}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Total impacted</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4 text-center">
+                <p className="text-2xl font-bold text-emerald-600" data-testid="stat-attested">{attData.attestedCount}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Attested</p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardContent className="py-4 text-center">
+                <p className="text-2xl font-bold text-amber-600" data-testid="stat-pending">{attData.pendingCount}</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Pending</p>
+              </CardContent>
+            </Card>
+          </div>
+
+          <Tabs defaultValue="attested">
+            <TabsList className="grid grid-cols-3 w-full">
+              <TabsTrigger value="attested" data-testid="tab-att-attested">
+                Attested ({attData.attestedCount})
+              </TabsTrigger>
+              <TabsTrigger value="pending" data-testid="tab-att-pending">
+                Pending ({attData.pendingCount})
+              </TabsTrigger>
+              <TabsTrigger value="quiz-stats" data-testid="tab-att-quiz-stats">
+                Quiz Stats
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="attested" className="mt-3">
+              {attData.attestations.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="no-attestations">
+                  <Award className="h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No attestations recorded for Wave {attData.waveNumber} yet.</p>
+                </div>
+              ) : (
+                <div className="rounded-md border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Employee</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Attested</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Reference</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Quiz</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {attData.attestations.map((a) => (
+                        <tr key={a.id} data-testid={`row-attestation-${a.userId}`}>
+                          <td className="px-3 py-2">
+                            <p className="font-medium text-sm">{a.name}</p>
+                            <p className="text-xs text-muted-foreground">{a.email}</p>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {new Date(a.attestedAt).toLocaleDateString()}
+                          </td>
+                          <td className="px-3 py-2 text-xs font-mono">{a.refNumber}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">
+                            {a.quizStats ? (
+                              <span>{a.quizStats.sops_passed} passed / {a.quizStats.total_fails} fails</span>
+                            ) : (
+                              <span className="text-muted-foreground/60">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="pending" className="mt-3">
+              {attData.notAttested.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="no-pending">
+                  <CheckCircle2 className="h-8 w-8 text-emerald-500" />
+                  <p className="text-sm text-muted-foreground">All employees have attested Wave {attData.waveNumber}!</p>
+                </div>
+              ) : (
+                <div className="rounded-md border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Employee</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Role</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {attData.notAttested.map((n) => (
+                        <tr key={n.userId} data-testid={`row-pending-${n.userId}`}>
+                          <td className="px-3 py-2">
+                            <p className="font-medium text-sm">{n.name}</p>
+                            <p className="text-xs text-muted-foreground">{n.email}</p>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground capitalize">{n.role?.replace(/_/g, " ")}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="quiz-stats" className="mt-3">
+              {attData.sopQuizStats.length === 0 ? (
+                <div className="flex flex-col items-center gap-2 py-8 text-center" data-testid="no-quiz-stats">
+                  <Brain className="h-8 w-8 text-muted-foreground" />
+                  <p className="text-sm text-muted-foreground">No quiz data yet for Wave {attData.waveNumber}.</p>
+                </div>
+              ) : (
+                <div className="rounded-md border overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50">
+                      <tr>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">SOP</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Pass Rate</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Avg Attempts</th>
+                        <th className="text-left px-3 py-2 text-xs font-medium text-muted-foreground">Coverage</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {attData.sopQuizStats.map((s) => (
+                        <tr key={s.sopId} data-testid={`row-quiz-stat-${s.code}`}>
+                          <td className="px-3 py-2">
+                            <p className="font-mono text-xs text-muted-foreground">{s.code}</p>
+                            <p className="text-sm font-medium truncate max-w-[180px]">{s.title}</p>
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="flex items-center gap-2">
+                              <div className="w-16 bg-muted rounded-full h-1.5">
+                                <div
+                                  className="h-1.5 rounded-full bg-emerald-500"
+                                  style={{ width: `${Math.min(100, s.passRatePct)}%` }}
+                                />
+                              </div>
+                              <span className={`text-xs font-medium ${s.passRatePct >= 70 ? "text-emerald-600" : "text-amber-600"}`}>
+                                {s.passRatePct}%
+                              </span>
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">{s.avgAttempts}</td>
+                          <td className="px-3 py-2 text-xs text-muted-foreground">{s.passedEmployees}/{s.totalEmployees}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
         </div>
       )}
     </div>

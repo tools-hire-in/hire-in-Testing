@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, CheckCircle2, Clock, GraduationCap, AlertTriangle, Lock, X, FileUp, Upload, ChevronDown, ChevronUp } from "lucide-react";
+import { ShieldCheck, CheckCircle2, Clock, GraduationCap, AlertTriangle, Lock, X, FileUp, Upload, ChevronDown, ChevronUp, Brain, Download, Award, RadioTower } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Progress } from "@/components/ui/progress";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
@@ -35,6 +36,18 @@ interface MySopAssignment {
   evidenceText: string | null;
   evidenceFileUrl: string | null;
   evidenceDescription: string | null;
+  quizRequired: boolean;
+  quizPassed: boolean;
+  quizAttempts: number;
+  quizPassedAt: string | null;
+}
+
+interface WaveAttestation {
+  id: string;
+  waveNumber: number;
+  attestedAt: string;
+  refNumber: string;
+  hasCheatSheet: boolean;
 }
 
 interface MyAssignmentsResponse {
@@ -60,7 +73,12 @@ export default function MySops() {
     queryKey: ["/api/sops/my-assignments"],
     staleTime: 30000,
   });
+  const { data: waveAttestations } = useQuery<WaveAttestation[]>({
+    queryKey: ["/api/sops/my-wave-attestations"],
+    staleTime: 60000,
+  });
   const [ackSop, setAckSop] = useState<MySopAssignment | null>(null);
+  const [quizSop, setQuizSop] = useState<MySopAssignment | null>(null);
 
   if (isLoading) {
     return (
@@ -123,20 +141,155 @@ export default function MySops() {
         <SummaryStat label="Queued" value={queued.length} tone="slate" testid="stat-mysops-queued" />
       </div>
 
+      {(waveAttestations ?? []).length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Wave Completions</p>
+          {(waveAttestations ?? []).map((wa) => (
+            <WaveAttestationCard key={wa.waveNumber} attestation={wa} />
+          ))}
+        </div>
+      )}
+
       {actionable.length > 0 && (
-        <SopGroup title="Needs your attention" sops={actionable} onAck={setAckSop} />
+        <SopGroup title="Needs your attention" sops={actionable} onAck={setAckSop} onQuiz={setQuizSop} />
       )}
       {queued.length > 0 && (
-        <SopGroup title="Coming soon (not yet operational)" sops={queued} onAck={setAckSop} />
+        <SopGroup title="Coming soon (not yet operational)" sops={queued} onAck={setAckSop} onQuiz={setQuizSop} />
       )}
       {acknowledged.length > 0 && (
-        <SopGroup title="Acknowledged" sops={acknowledged} onAck={setAckSop} />
+        <SopGroup title="Acknowledged" sops={acknowledged} onAck={setAckSop} onQuiz={setQuizSop} />
       )}
 
       {ackSop && (
         <AcknowledgeDialog sop={ackSop} onClose={() => setAckSop(null)} />
       )}
+      {quizSop && (
+        <QuizDialog
+          sop={quizSop}
+          onClose={() => {
+            setQuizSop(null);
+            queryClient.invalidateQueries({ queryKey: ["/api/sops/my-assignments"] });
+          }}
+          onPassedAndAck={() => {
+            const sopToAck = quizSop;
+            setQuizSop(null);
+            queryClient.invalidateQueries({ queryKey: ["/api/sops/my-assignments"] });
+            setAckSop(sopToAck);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function WaveAttestationCard({ attestation }: { attestation: WaveAttestation }) {
+  const { toast } = useToast();
+  const [content, setContent] = useState<string | null>(null);
+  const [showSheet, setShowSheet] = useState(false);
+
+  const genMut = useMutation({
+    mutationFn: async () =>
+      (await apiRequest("POST", `/api/sops/waves/${attestation.waveNumber}/cheat-sheet`, {})).json(),
+    onSuccess: (res: { content: string }) => {
+      setContent(res.content);
+      setShowSheet(true);
+    },
+    onError: (e: any) => toast({ title: "Could not generate cheat sheet", description: e?.message, variant: "destructive" }),
+  });
+
+  const handleDownload = () => {
+    if (content) { setShowSheet(true); return; }
+    genMut.mutate();
+  };
+
+  return (
+    <>
+      <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-700 px-4 py-2.5" data-testid={`card-wave-attest-${attestation.waveNumber}`}>
+        <div className="flex items-center gap-2.5">
+          <Award className="h-4 w-4 text-emerald-600 shrink-0" />
+          <div>
+            <p className="text-sm font-medium text-emerald-900 dark:text-emerald-200">Wave {attestation.waveNumber} Complete</p>
+            <p className="text-xs text-emerald-700 dark:text-emerald-400">{attestation.refNumber} · {new Date(attestation.attestedAt).toLocaleDateString()}</p>
+          </div>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          className="border-emerald-300 text-emerald-800 hover:bg-emerald-100 dark:text-emerald-200 gap-1.5"
+          onClick={handleDownload}
+          disabled={genMut.isPending}
+          data-testid={`button-cheat-sheet-${attestation.waveNumber}`}
+        >
+          {genMut.isPending ? (
+            <><div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" /> Generating…</>
+          ) : (
+            <><Download className="h-3.5 w-3.5" /> Cheat Sheet</>
+          )}
+        </Button>
+      </div>
+      {showSheet && content && (
+        <CheatSheetDialog
+          waveNumber={attestation.waveNumber}
+          content={content}
+          onClose={() => setShowSheet(false)}
+        />
+      )}
+    </>
+  );
+}
+
+function CheatSheetDialog({ waveNumber, content, onClose }: { waveNumber: number; content: string; onClose: () => void }) {
+  const printRef = useRef<HTMLDivElement>(null);
+  const handlePrint = () => {
+    if (!printRef.current) return;
+    const html = printRef.current.innerHTML;
+    const win = window.open("", "_blank");
+    if (!win) return;
+    win.document.write(`<html><head><title>Wave ${waveNumber} Cheat Sheet</title><style>
+      body { font-family: sans-serif; max-width: 800px; margin: 40px auto; line-height: 1.6; }
+      h1 { font-size: 1.2rem; } p { margin: 0.4rem 0; }
+      strong { display: block; margin-top: 1rem; }
+    </style></head><body>${html}</body></html>`);
+    win.document.close();
+    win.print();
+  };
+
+  // Safe line-by-line renderer — no HTML injection, no dangerouslySetInnerHTML
+  const renderLines = (text: string) =>
+    text.split("\n").map((line, i) => {
+      const stripped = line.replace(/^#{1,3}\s+/, "").replace(/^[-*•]\s+/, "• ");
+      const isBold = /^\*\*.+\*\*$/.test(stripped.trim()) || /^#{1,3}\s/.test(line);
+      const clean = stripped.replace(/\*\*(.*?)\*\*/g, "$1");
+      return (
+        <p key={i} className={`text-sm ${isBold ? "font-semibold mt-2" : ""} ${!clean.trim() ? "h-2" : ""}`}>
+          {clean}
+        </p>
+      );
+    });
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-cheat-sheet">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Brain className="h-4 w-4 text-primary" /> Wave {waveNumber} Cheat Sheet
+          </DialogTitle>
+        </DialogHeader>
+        <div
+          ref={printRef}
+          className="space-y-0.5 text-sm"
+          data-testid="cheat-sheet-content"
+        >
+          {renderLines(content)}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-cheat-sheet-close">Close</Button>
+          <Button onClick={handlePrint} className="gap-1.5" data-testid="button-cheat-sheet-print">
+            <Download className="h-3.5 w-3.5" /> Print / Save PDF
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -372,7 +525,7 @@ function EvidenceSection({ sop }: { sop: MySopAssignment }) {
   );
 }
 
-function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment[]; onAck: (s: MySopAssignment) => void }) {
+function SopGroup({ title, sops, onAck, onQuiz }: { title: string; sops: MySopAssignment[]; onAck: (s: MySopAssignment) => void; onQuiz: (s: MySopAssignment) => void }) {
   const [, setLocation] = useLocation();
   return (
     <div className="space-y-2">
@@ -384,6 +537,7 @@ function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment
           const evidenceRequired = !!(sop.evidenceDescription?.trim());
           const hasEvidence = !!(sop.evidenceText?.trim() || sop.evidenceFileUrl?.trim());
           const ackBlocked = evidenceRequired && !hasEvidence;
+          const quizBlocked = sop.quizRequired && !sop.quizPassed;
           return (
             <Card key={sop.sopId} data-testid={`card-mysop-${sop.code}`}>
               <CardHeader className="pb-2">
@@ -395,9 +549,16 @@ function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment
                     </CardTitle>
                     <p className="text-xs text-muted-foreground mt-1">{sop.category} · v{sop.version}</p>
                   </div>
-                  <Badge variant={meta.variant} className="shrink-0 gap-1" data-testid={`badge-mysop-state-${sop.code}`}>
-                    <Icon className="h-3 w-3" /> {meta.label}
-                  </Badge>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {sop.quizRequired && (
+                      <Badge variant={sop.quizPassed ? "default" : "outline"} className="gap-1 text-[10px]" data-testid={`badge-quiz-${sop.code}`}>
+                        <Brain className="h-2.5 w-2.5" /> {sop.quizPassed ? "Quiz ✓" : `Quiz (${sop.quizAttempts}/3)`}
+                      </Badge>
+                    )}
+                    <Badge variant={meta.variant} className="gap-1" data-testid={`badge-mysop-state-${sop.code}`}>
+                      <Icon className="h-3 w-3" /> {meta.label}
+                    </Badge>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="pt-0 space-y-3">
@@ -433,7 +594,7 @@ function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment
                 )}
 
                 {sop.state !== "queued" && !sop.acknowledgedCurrentVersion && (
-                  <div className="flex gap-2 items-center">
+                  <div className="flex flex-wrap gap-2 items-center">
                     {sop.state === "training_pending" ? (
                       <Button
                         size="sm"
@@ -445,18 +606,35 @@ function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment
                       </Button>
                     ) : (
                       <>
+                        {sop.quizRequired && !sop.quizPassed && (
+                          <Button
+                            size="sm"
+                            variant={sop.quizAttempts > 0 ? "outline" : "default"}
+                            onClick={() => onQuiz(sop)}
+                            disabled={sop.quizAttempts >= 3}
+                            data-testid={`button-mysop-quiz-${sop.code}`}
+                          >
+                            <Brain className="h-3.5 w-3.5 mr-1" />
+                            {sop.quizAttempts === 0 ? "Take Knowledge Check" : sop.quizAttempts >= 3 ? "Attempts exhausted" : `Retry Quiz (${sop.quizAttempts}/3)`}
+                          </Button>
+                        )}
+                        {sop.quizRequired && sop.quizPassed && (
+                          <span className="text-xs text-emerald-600 font-medium flex items-center gap-1" data-testid={`text-quiz-passed-${sop.code}`}>
+                            <CheckCircle2 className="h-3.5 w-3.5" /> Knowledge check passed
+                          </span>
+                        )}
                         <Button
                           size="sm"
                           onClick={() => onAck(sop)}
-                          disabled={ackBlocked}
+                          disabled={ackBlocked || quizBlocked}
                           data-testid={`button-mysop-ack-${sop.code}`}
-                          title={ackBlocked ? "Add evidence first" : undefined}
+                          title={quizBlocked ? "Pass the knowledge check first" : ackBlocked ? "Add evidence first" : undefined}
                         >
                           <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Acknowledge
                         </Button>
-                        {ackBlocked && (
-                          <span className="text-xs text-muted-foreground" data-testid={`text-mysop-evidence-required-${sop.code}`}>
-                            Add evidence first
+                        {(ackBlocked || quizBlocked) && (
+                          <span className="text-xs text-muted-foreground" data-testid={`text-mysop-blocked-${sop.code}`}>
+                            {quizBlocked ? "Pass knowledge check first" : "Add evidence first"}
                           </span>
                         )}
                       </>
@@ -488,6 +666,208 @@ function SopGroup({ title, sops, onAck }: { title: string; sops: MySopAssignment
   );
 }
 
+// ── Quiz Dialog (Task #1419) ──────────────────────────────────────────────────
+interface QuizQuestion {
+  id: string;
+  questionText: string;
+  options: string[];
+  explanation: string | null;
+  position: number;
+}
+
+interface ReviewItem {
+  questionText: string;
+  yourAnswer: number;
+  correctIndex: number;
+  options: string[];
+  explanation: string | null;
+  wasCorrect: boolean;
+}
+
+interface QuizAttemptResult {
+  passed: boolean;
+  scorePct: number;
+  correct: number;
+  total: number;
+  attemptNumber: number;
+  attemptsRemaining: number;
+  cooldownUntil: string | null;
+  reviewItems?: ReviewItem[];
+}
+
+function QuizDialog({ sop, onClose, onPassedAndAck }: { sop: MySopAssignment; onClose: () => void; onPassedAndAck?: () => void }) {
+  const { toast } = useToast();
+  const [answers, setAnswers] = useState<(number | null)[]>([]);
+  const [result, setResult] = useState<QuizAttemptResult | null>(null);
+
+  const { data: questions, isLoading } = useQuery<QuizQuestion[]>({
+    queryKey: ["/api/sops", sop.sopId, "questions"],
+    staleTime: 60000,
+  });
+
+  const submitMut = useMutation({
+    mutationFn: async () =>
+      (await apiRequest("POST", `/api/sops/${sop.sopId}/quiz-attempt`, { answers })).json(),
+    onSuccess: (res: QuizAttemptResult) => {
+      setResult(res);
+      if (res.passed) {
+        toast({ title: "Knowledge check passed!", description: `Score: ${res.scorePct}%` });
+      }
+    },
+    onError: (e: any) => toast({ title: "Could not submit", description: e?.message, variant: "destructive" }),
+  });
+
+  const qs = questions ?? [];
+  const allAnswered = qs.length > 0 && answers.length === qs.length && answers.every((a) => a !== null);
+
+  if (isLoading) {
+    return (
+      <Dialog open onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className="max-w-lg" data-testid="dialog-quiz">
+          <DialogHeader><DialogTitle>Knowledge Check — {sop.code}</DialogTitle></DialogHeader>
+          <div className="flex justify-center py-8"><div className="w-6 h-6 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  if (qs.length === 0) {
+    return (
+      <Dialog open onOpenChange={(o) => !o && onClose()}>
+        <DialogContent className="max-w-lg" data-testid="dialog-quiz">
+          <DialogHeader><DialogTitle>Knowledge Check — {sop.code}</DialogTitle></DialogHeader>
+          <p className="text-sm text-muted-foreground">No questions have been added yet.</p>
+          <DialogFooter><Button variant="outline" onClick={onClose}>Close</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-xl max-h-[85vh] overflow-y-auto" data-testid="dialog-quiz">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Brain className="h-4 w-4 text-primary" /> Knowledge Check — {sop.code}
+          </DialogTitle>
+        </DialogHeader>
+
+        {result ? (
+          <div className="space-y-4 py-2">
+            <div className={`flex flex-col items-center gap-2 rounded-lg border p-6 ${result.passed ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" : "border-red-200 bg-red-50 dark:bg-red-900/20"}`} data-testid="quiz-result">
+              {result.passed ? (
+                <CheckCircle2 className="h-10 w-10 text-emerald-600" />
+              ) : (
+                <AlertTriangle className="h-10 w-10 text-red-500" />
+              )}
+              <p className="text-xl font-bold">{result.scorePct}%</p>
+              <p className="text-sm font-medium">{result.passed ? "Passed!" : "Not passed"}</p>
+              <p className="text-xs text-muted-foreground">{result.correct}/{result.total} correct</p>
+              {!result.passed && result.attemptsRemaining > 0 && (
+                <p className="text-xs text-amber-700 dark:text-amber-400 text-center">
+                  {result.attemptsRemaining} attempt{result.attemptsRemaining > 1 ? "s" : ""} remaining.
+                  {result.cooldownUntil && ` You can retry after ${new Date(result.cooldownUntil).toLocaleTimeString()}.`}
+                </p>
+              )}
+              {!result.passed && result.attemptsRemaining === 0 && (
+                <p className="text-xs text-red-600 text-center">No more attempts available. Contact your manager or HR.</p>
+              )}
+            </div>
+            <Progress value={result.scorePct} className="h-2" />
+
+            {/* Review items — shown on pass or final attempt */}
+            {result.reviewItems && result.reviewItems.length > 0 && (
+              <div className="space-y-3">
+                <p className="text-xs font-semibold tracking-wide text-muted-foreground uppercase">Answer Review</p>
+                {result.reviewItems.map((item, qi) => (
+                  <div key={qi} className="rounded-md border p-3 space-y-2" data-testid={`review-item-${qi}`}>
+                    <p className="text-sm font-medium">{qi + 1}. {item.questionText}</p>
+                    <div className="space-y-1">
+                      {item.options.map((opt, oi) => (
+                        <div
+                          key={oi}
+                          className={`text-xs rounded px-2 py-1 border ${
+                            oi === item.correctIndex
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-300"
+                              : oi === item.yourAnswer && !item.wasCorrect
+                              ? "border-red-200 bg-red-50 text-red-700 dark:bg-red-900/30 dark:text-red-300"
+                              : "border-border text-muted-foreground"
+                          }`}
+                        >
+                          {oi === item.correctIndex && <CheckCircle2 className="h-3 w-3 inline mr-1 text-emerald-600" />}
+                          {oi === item.yourAnswer && !item.wasCorrect && <X className="h-3 w-3 inline mr-1 text-red-500" />}
+                          {opt}
+                        </div>
+                      ))}
+                    </div>
+                    {item.explanation && (
+                      <p className="text-xs text-muted-foreground border-l-2 border-primary/30 pl-2 italic">{item.explanation}</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose} data-testid="button-quiz-close">
+                {result.passed && !onPassedAndAck ? "Continue" : "Close"}
+              </Button>
+              {result.passed && onPassedAndAck && (
+                <Button onClick={() => { onClose(); onPassedAndAck(); }} data-testid="button-quiz-close-and-acknowledge">
+                  <CheckCircle2 className="h-3.5 w-3.5 mr-1.5" /> Close &amp; Acknowledge
+                </Button>
+              )}
+            </DialogFooter>
+          </div>
+        ) : (
+          <div className="space-y-4 py-2">
+            <p className="text-xs text-muted-foreground">
+              {qs.length} question{qs.length > 1 ? "s" : ""} · Pass threshold: 70% · Max 3 attempts per SOP version
+            </p>
+            <div className="space-y-5">
+              {qs.map((q, qi) => (
+                <div key={q.id} className="space-y-2" data-testid={`quiz-question-${qi}`}>
+                  <p className="text-sm font-medium">{qi + 1}. {q.questionText}</p>
+                  <div className="space-y-1.5">
+                    {q.options.map((opt, oi) => (
+                      <button
+                        key={oi}
+                        onClick={() => {
+                          const next = [...answers];
+                          next[qi] = oi;
+                          setAnswers(next);
+                        }}
+                        className={`w-full text-left text-sm rounded-md border px-3 py-2 transition-colors ${
+                          answers[qi] === oi
+                            ? "border-primary bg-primary/10 text-primary font-medium"
+                            : "border-border hover:bg-muted/50"
+                        }`}
+                        data-testid={`quiz-option-${qi}-${oi}`}
+                      >
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={onClose} data-testid="button-quiz-cancel">Cancel</Button>
+              <Button
+                disabled={!allAnswered || submitMut.isPending}
+                onClick={() => submitMut.mutate()}
+                data-testid="button-quiz-submit"
+              >
+                {submitMut.isPending ? "Submitting…" : "Submit Answers"}
+              </Button>
+            </DialogFooter>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function AcknowledgeDialog({ sop, onClose }: { sop: MySopAssignment; onClose: () => void }) {
   const { toast } = useToast();
   const [typedName, setTypedName] = useState("");
@@ -496,12 +876,15 @@ function AcknowledgeDialog({ sop, onClose }: { sop: MySopAssignment; onClose: ()
     onSuccess: (res: { refNumber?: string }) => {
       toast({ title: "SOP acknowledged", description: `Reference: ${res?.refNumber ?? ""}` });
       queryClient.invalidateQueries({ queryKey: ["/api/sops/my-assignments"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/sops/my-wave-attestations"] });
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/compliance-status"] });
       onClose();
     },
     onError: (e: any) => {
       const msg = e?.message ?? "";
-      if (msg.includes("evidence")) {
+      if (msg.includes("quiz_required") || msg.includes("knowledge check")) {
+        toast({ title: "Knowledge check required", description: "Please pass the knowledge check before acknowledging this SOP.", variant: "destructive" });
+      } else if (msg.includes("evidence")) {
         toast({ title: "Evidence required", description: "Please add your evidence before acknowledging this SOP.", variant: "destructive" });
       } else {
         toast({ title: "Cannot acknowledge", description: msg, variant: "destructive" });

@@ -16685,6 +16685,23 @@ Canonical domain: ${BASE}
         }
       }
 
+      // ── Quiz gate — must pass quiz before acknowledging ─────────────────────
+      const qCount = await db.execute(sql`
+        SELECT COUNT(*)::int AS cnt FROM sop_knowledge_checks
+        WHERE sop_master_id = ${doc.sopMasterId} AND archived_at IS NULL
+      `);
+      const questionCount = Number((qCount.rows[0] as any)?.cnt ?? 0);
+      if (questionCount > 0) {
+        const qPass = await db.execute(sql`
+          SELECT id FROM sop_employee_quiz_responses
+          WHERE sop_id = ${doc.id} AND user_id = ${userId} AND passed = true
+          LIMIT 1
+        `);
+        if ((qPass.rows as any[]).length === 0) {
+          return res.status(409).json({ code: "quiz_required", error: "You must pass the knowledge check before acknowledging this SOP" });
+        }
+      }
+
       const typedName = (req.body?.typedName ?? "").toString().trim();
       if (!typedName) return res.status(400).json({ error: "Typed name is required to acknowledge" });
 
@@ -16787,6 +16804,75 @@ Canonical domain: ${BASE}
       if (allAck && sopGov.canTransition(ackFrom, "acknowledged")) {
         await storage.setSopLifecycleStatus(doc.id, "acknowledged");
         await storage.setSopLifecycleStatus(doc.id, "active");
+      }
+
+      // ── Wave attestation trigger (Task #1419) ────────────────────────────────
+      // After acknowledgment: check if the user has now acknowledged ALL SOPs in
+      // every wave that this SOP belongs to. If so, auto-create a signed wave
+      // attestation row (idempotent — UNIQUE constraint prevents duplicates).
+      try {
+        const _waveMemberships = await db.execute(sql`
+          SELECT DISTINCT ws.wave_number
+          FROM wave_sops ws
+          WHERE ws.sop_master_id = ${doc.sopMasterId}
+        `).catch(() => ({ rows: [] }));
+        for (const wm of (_waveMemberships.rows as any[])) {
+          const waveNum: number = wm.wave_number;
+          // Check all SOPs in this wave
+          const waveSOPsResult = await db.execute(sql`
+            SELECT ws.sop_master_id
+            FROM wave_sops ws
+            WHERE ws.wave_number = ${waveNum}
+          `).catch(() => ({ rows: [] }));
+          const waveMasterIds = (waveSOPsResult.rows as any[]).map((r) => r.sop_master_id);
+          if (waveMasterIds.length === 0) continue;
+          // Check if this user has acknowledged all of them
+          const ackCount = await db.execute(sql`
+            SELECT COUNT(DISTINCT sep.sop_master_id)::int AS acked
+            FROM sop_employee_progress sep
+            JOIN sop_documents sd ON sd.sop_master_id = sep.sop_master_id AND sd.is_current = true
+            WHERE sep.user_id = ${userId}
+              AND sep.sop_master_id = ANY(${waveMasterIds})
+              AND sep.acknowledged_at IS NOT NULL
+              AND sep.sop_version = sd.version
+          `).catch(() => ({ rows: [{ acked: 0 }] }));
+          const ackedCount = Number((ackCount.rows[0] as any)?.acked ?? 0);
+          if (ackedCount < waveMasterIds.length) continue;
+          // All SOPs in the wave acknowledged — create attestation if not exists
+          const existing = await db.execute(sql`
+            SELECT id FROM sop_wave_attestations
+            WHERE user_id = ${userId} AND wave_number = ${waveNum}
+          `).catch(() => ({ rows: [] }));
+          if ((existing.rows as any[]).length > 0) continue;
+          const atNow = new Date();
+          const waveSigPayload = `${userId}|${waveNum}|${atNow.toISOString()}`;
+          const _waveSigSecret = process.env.LETTER_HMAC_SECRET || process.env.OFFER_SIGNING_KEY || "wave-attest-dev";
+          const waveHash = crypto.createHmac("sha256", _waveSigSecret).update(waveSigPayload).digest("hex");
+          const randSuffix = crypto.randomBytes(3).toString("hex").toUpperCase();
+          const waveRef = `WAV-${waveNum}-${randSuffix}`;
+          await db.execute(sql`
+            INSERT INTO sop_wave_attestations (user_id, wave_number, attested_at, signature_hash, ref_number)
+            VALUES (${userId}, ${waveNum}, ${atNow}, ${waveHash}, ${waveRef})
+            ON CONFLICT (user_id, wave_number) DO NOTHING
+          `).catch((e: any) => console.error("[wave_attest] Insert failed:", e?.message));
+          // Record in central signatures ledger so wave attestation is auditable via /verify
+          await recordSignature({
+            documentType: "sop",
+            documentId: `wave:${waveNum}:${userId}`,
+            referenceNumber: waveRef,
+            signerName: typedName,
+            signerRole: req.session.role,
+            signerUserId: userId,
+            signedAt: atNow,
+            ipAddress: (req.headers["x-forwarded-for"] as string) || req.ip || null,
+            userAgent: req.headers["user-agent"] || null,
+            contentHash: waveHash,
+            authCode: waveHash.substring(0, 24).toUpperCase().match(/.{1,4}/g)?.join("-") || "",
+            metadata: { waveNumber: waveNum, refNumber: waveRef },
+          }).catch((e: any) => console.error("[wave_attest] Ledger record failed (non-fatal):", e?.message));
+        }
+      } catch (waveAttestErr) {
+        console.error("[sop_acknowledge] Wave attestation trigger failed (non-fatal):", waveAttestErr);
       }
 
       res.json({ progress: updatedProgress, refNumber, authCode });
@@ -17161,6 +17247,341 @@ Canonical domain: ${BASE}
     } catch (error) {
       console.error("SOP compliance summary error:", error);
       res.status(500).json({ error: "Failed to build compliance report" });
+    }
+  });
+
+  // ── Quiz Attempt — employee submits answers (Task #1419) ─────────────────────
+  // POST /api/sops/:id/quiz-attempt
+  // Body: { answers: number[] }  — parallel to position-ordered questions
+  // Max 3 attempts; 10-minute cooldown between failed attempts; pass threshold 70%.
+  app.post("/api/sops/:id/quiz-attempt", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+      const userId = req.session.userId!;
+
+      // Must be assigned
+      const myProgress = (await storage.getSopEmployeeProgressForUser(userId)).find((p) => p.sopMasterId === doc.sopMasterId);
+      if (!myProgress) return res.status(403).json({ error: "This SOP is not assigned to you" });
+
+      // Load questions in order — use sopMasterId (normalized key), fallback correct_index for JSONB-era rows
+      const qResult = await db.execute(sql`
+        SELECT id, COALESCE(correct_option_index, correct_index) AS correct_index
+        FROM sop_knowledge_checks
+        WHERE sop_master_id = ${doc.sopMasterId} AND archived_at IS NULL
+        ORDER BY position ASC
+      `);
+      const questions = qResult.rows as any[];
+      if (questions.length === 0) return res.status(400).json({ error: "No questions defined for this SOP" });
+
+      // Check attempt history
+      const histResult = await db.execute(sql`
+        SELECT attempt_number, passed, attempted_at, cooldown_until
+        FROM sop_employee_quiz_responses
+        WHERE sop_id = ${req.params.id} AND user_id = ${userId}
+        ORDER BY attempt_number ASC
+      `);
+      const history = histResult.rows as any[];
+      const alreadyPassed = history.some((h) => h.passed);
+      if (alreadyPassed) return res.status(409).json({ error: "You have already passed this quiz" });
+
+      const attemptsUsed = history.length;
+      if (attemptsUsed >= 3) return res.status(409).json({ code: "attempts_exhausted", error: "Maximum 3 attempts allowed" });
+
+      // Cooldown check
+      const lastAttempt = history[history.length - 1];
+      if (lastAttempt?.cooldown_until) {
+        const cooldownEnd = new Date(lastAttempt.cooldown_until);
+        if (cooldownEnd > new Date()) {
+          return res.status(429).json({
+            code: "cooldown",
+            error: "Please wait before retrying",
+            cooldownUntil: cooldownEnd.toISOString(),
+          });
+        }
+      }
+
+      const { answers } = req.body;
+      if (!Array.isArray(answers) || answers.length !== questions.length) {
+        return res.status(400).json({ error: `Expected ${questions.length} answers` });
+      }
+
+      // Load full question detail for scoring + post-attempt review reveal
+      const fullQResult = await db.execute(sql`
+        SELECT id, question_text, options, correct_index, explanation
+        FROM sop_knowledge_checks
+        WHERE sop_id = ${req.params.id}
+        ORDER BY position ASC
+      `);
+      const fullQuestions = fullQResult.rows as any[];
+
+      // Score
+      let correct = 0;
+      for (let i = 0; i < fullQuestions.length; i++) {
+        if (answers[i] === fullQuestions[i].correct_index) correct++;
+      }
+      const scorePct = Math.round((correct / fullQuestions.length) * 100);
+      const passed = scorePct >= 70;
+      const attemptNumber = attemptsUsed + 1;
+      const attemptsRemaining = passed ? 0 : 3 - attemptNumber;
+      const cooldownUntil = (!passed && attemptsRemaining > 0) ? new Date(Date.now() + 10 * 60 * 1000) : null;
+
+      await db.execute(sql`
+        INSERT INTO sop_employee_quiz_responses (sop_id, user_id, attempt_number, answers, score_pct, passed, cooldown_until)
+        VALUES (${req.params.id}, ${userId}, ${attemptNumber}, ${JSON.stringify(answers)}, ${scorePct}, ${passed}, ${cooldownUntil})
+      `);
+
+      // Update quiz_passed_at on progress row when passed
+      if (passed) {
+        await db.execute(sql`
+          UPDATE sop_employee_progress SET quiz_passed_at = NOW(), updated_at = NOW()
+          WHERE sop_master_id = ${doc.sopMasterId} AND user_id = ${userId}
+        `).catch(() => null);
+      }
+
+      // Reveal correct answers + explanations on pass OR on final attempt (no retries left)
+      const revealReview = passed || attemptsRemaining === 0;
+      const reviewItems = revealReview ? fullQuestions.map((q, i) => ({
+        questionText: q.question_text,
+        yourAnswer: answers[i],
+        correctIndex: q.correct_index,
+        options: typeof q.options === "string" ? JSON.parse(q.options) : q.options,
+        explanation: q.explanation ?? null,
+        wasCorrect: answers[i] === q.correct_index,
+      })) : undefined;
+
+      res.json({
+        passed,
+        scorePct,
+        correct,
+        total: fullQuestions.length,
+        attemptNumber,
+        attemptsRemaining,
+        cooldownUntil: cooldownUntil?.toISOString() ?? null,
+        reviewItems,
+      });
+    } catch (err) {
+      console.error("SOP quiz attempt error:", err);
+      res.status(500).json({ error: "Failed to record quiz attempt" });
+    }
+  });
+
+  // ── Wave Attestations — HR report (Task #1419) ───────────────────────────────
+  // GET /api/sops/waves/:waveNumber/attestations
+  app.get("/api/sops/waves/:waveNumber/attestations", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled" });
+      const waveNumber = Number(req.params.waveNumber);
+      if (Number.isNaN(waveNumber)) return res.status(400).json({ error: "Invalid wave number" });
+
+      const [attestations, users, quizStats, impactedUsersFullResult, sopQuizStatsResult] = await Promise.all([
+        db.execute(sql`
+          SELECT swa.id, swa.user_id, swa.wave_number, swa.attested_at, swa.ref_number,
+                 au.first_name, au.last_name, au.email
+          FROM sop_wave_attestations swa
+          JOIN admin_users au ON au.id = swa.user_id
+          WHERE swa.wave_number = ${waveNumber}
+          ORDER BY swa.attested_at DESC
+        `).catch(() => ({ rows: [] })),
+        // Total impacted users for this wave
+        db.execute(sql`
+          SELECT DISTINCT sep.user_id
+          FROM sop_employee_progress sep
+          JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+          WHERE ws.wave_number = ${waveNumber}
+        `).catch(() => ({ rows: [] })),
+        // Quiz pass stats per user — join through sop_documents to avoid broken sop_id FK
+        db.execute(sql`
+          SELECT sqr.user_id,
+                 COUNT(DISTINCT sqr.sop_id) AS sops_passed,
+                 SUM(CASE WHEN sqr.passed THEN 1 ELSE 0 END)::int AS total_passes,
+                 SUM(CASE WHEN NOT sqr.passed THEN 1 ELSE 0 END)::int AS total_fails
+          FROM sop_employee_quiz_responses sqr
+          JOIN sop_documents sd ON sd.id = sqr.sop_id
+          JOIN wave_sops ws ON ws.sop_master_id = sd.sop_master_id
+          WHERE ws.wave_number = ${waveNumber}
+          GROUP BY sqr.user_id
+        `).catch(() => ({ rows: [] })),
+        // Full user details for impacted employees (for notAttested list)
+        db.execute(sql`
+          SELECT DISTINCT sep.user_id, au.first_name, au.last_name, au.email, au.role
+          FROM sop_employee_progress sep
+          JOIN wave_sops ws ON ws.sop_master_id = sep.sop_master_id
+          JOIN admin_users au ON au.id = sep.user_id
+          WHERE ws.wave_number = ${waveNumber}
+        `).catch(() => ({ rows: [] })),
+        // Per-SOP quiz statistics for the wave
+        db.execute(sql`
+          SELECT sd.id AS sop_id, sd.sop_master_id AS code, sd.title,
+                 COUNT(sqr.id)::int AS total_attempts,
+                 SUM(CASE WHEN sqr.passed THEN 1 ELSE 0 END)::int AS passed_count,
+                 COUNT(DISTINCT sqr.user_id)::int AS total_employees,
+                 COUNT(DISTINCT CASE WHEN sqr.passed THEN sqr.user_id END)::int AS passed_employees,
+                 CASE WHEN COUNT(DISTINCT sqr.user_id) > 0
+                   THEN ROUND(100.0 * COUNT(DISTINCT CASE WHEN sqr.passed THEN sqr.user_id END) / COUNT(DISTINCT sqr.user_id))::int
+                   ELSE 0 END AS pass_rate_pct,
+                 CASE WHEN COUNT(sqr.id) > 0
+                   THEN ROUND(COUNT(sqr.id)::numeric / NULLIF(COUNT(DISTINCT sqr.user_id), 0), 1)
+                   ELSE 0 END AS avg_attempts
+          FROM wave_sops ws
+          JOIN sop_documents sd ON sd.sop_master_id = ws.sop_master_id AND sd.is_current = true
+          LEFT JOIN sop_employee_quiz_responses sqr ON sqr.sop_id = sd.id
+          WHERE ws.wave_number = ${waveNumber}
+          GROUP BY sd.id, sd.sop_master_id, sd.title
+          ORDER BY sd.sop_master_id ASC
+        `).catch(() => ({ rows: [] })),
+      ]);
+
+      // Not-attested user details
+      const allUserIds = new Set((users.rows as any[]).map((r) => r.user_id));
+      const attestedUserIds = new Set((attestations.rows as any[]).map((r) => r.user_id));
+      // impactedUsersFullResult (4th Promise.all) has full user details with names
+      const impactedUsers = ((impactedUsersFullResult as any)?.rows ?? []) as any[];
+      const totalImpacted = allUserIds.size;
+      const quizByUser = new Map<string, any>((quizStats.rows as any[]).map((r) => [r.user_id, r]));
+
+      res.json({
+        waveNumber,
+        totalImpacted,
+        attestedCount: attestedUserIds.size,
+        pendingCount: totalImpacted - attestedUserIds.size,
+        attestations: (attestations.rows as any[]).map((r) => ({
+          id: r.id,
+          userId: r.user_id,
+          name: `${r.first_name ?? ""} ${r.last_name ?? ""}`.trim() || r.email,
+          email: r.email,
+          attestedAt: r.attested_at,
+          refNumber: r.ref_number,
+          quizStats: quizByUser.get(r.user_id) ?? null,
+        })),
+        notAttested: impactedUsers
+          .filter((u) => !attestedUserIds.has(u.user_id))
+          .map((u) => ({
+            userId: u.user_id,
+            name: `${u.first_name ?? ""} ${u.last_name ?? ""}`.trim() || u.email,
+            email: u.email,
+            role: u.role,
+          })),
+        sopQuizStats: ((sopQuizStatsResult as any)?.rows ?? []).map((s: any) => ({
+          sopId: s.sop_id,
+          code: s.code,
+          title: s.title,
+          totalAttempts: Number(s.total_attempts),
+          passedEmployees: Number(s.passed_employees),
+          totalEmployees: Number(s.total_employees),
+          passRatePct: Number(s.pass_rate_pct),
+          avgAttempts: Number(s.avg_attempts),
+        })),
+      });
+    } catch (err) {
+      console.error("Wave attestations error:", err);
+      res.status(500).json({ error: "Failed to fetch attestations" });
+    }
+  });
+
+  // ── Wave Cheat Sheet — AI-generated, cached per user (Task #1419) ────────────
+  // GET  /api/sops/my-wave-attestations  — employee's own attestation list with cheat-sheet status
+  // POST /api/sops/waves/:waveNumber/cheat-sheet — generate/fetch cheat sheet (any authenticated user)
+  app.get("/api/sops/my-wave-attestations", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled" });
+      const userId = req.session.userId!;
+      const result = await db.execute(sql`
+        SELECT id, wave_number, attested_at, ref_number, cheat_sheet_content IS NOT NULL AS has_cheat_sheet
+        FROM sop_wave_attestations
+        WHERE user_id = ${userId}
+        ORDER BY wave_number ASC
+      `).catch(() => ({ rows: [] }));
+      res.json((result.rows as any[]).map((r) => ({
+        id: r.id,
+        waveNumber: r.wave_number,
+        attestedAt: r.attested_at,
+        refNumber: r.ref_number,
+        hasCheatSheet: Boolean(r.has_cheat_sheet),
+      })));
+    } catch (err) {
+      console.error("My wave attestations error:", err);
+      res.status(500).json({ error: "Failed to fetch wave attestations" });
+    }
+  });
+
+  app.post("/api/sops/waves/:waveNumber/cheat-sheet", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled" });
+      const userId = req.session.userId!;
+      const waveNumber = Number(req.params.waveNumber);
+      if (Number.isNaN(waveNumber)) return res.status(400).json({ error: "Invalid wave number" });
+
+      // Must have an attestation for this wave
+      const attRow = await db.execute(sql`
+        SELECT id, cheat_sheet_content FROM sop_wave_attestations
+        WHERE user_id = ${userId} AND wave_number = ${waveNumber}
+      `).catch(() => ({ rows: [] }));
+      if ((attRow.rows as any[]).length === 0) {
+        return res.status(403).json({ error: "No attestation found for this wave. Complete all SOPs in the wave first." });
+      }
+      const attestation = attRow.rows[0] as any;
+
+      // Return cached cheat sheet if available
+      if (attestation.cheat_sheet_content) {
+        return res.json({ content: attestation.cheat_sheet_content, cached: true });
+      }
+
+      // Generate via AI
+      const sopSummaries = await db.execute(sql`
+        SELECT sd.code, sd.title, sd.summary, sd.kpi_description
+        FROM wave_sops ws
+        JOIN sop_documents sd ON sd.sop_master_id = ws.sop_master_id AND sd.is_current = true
+        WHERE ws.wave_number = ${waveNumber}
+        ORDER BY sd.code ASC
+      `).catch(() => ({ rows: [] }));
+
+      if ((sopSummaries.rows as any[]).length === 0) {
+        return res.status(404).json({ error: "No SOPs found for this wave" });
+      }
+
+      const sopLines = (sopSummaries.rows as any[]).map((s: any) =>
+        `**${s.code} — ${s.title}**\n${s.summary ?? "No summary."}\nKPI: ${s.kpi_description ?? "N/A"}`
+      ).join("\n\n");
+
+      const aiClient = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const aiRes = await aiClient.chat.completions.create({
+        model: "gpt-5.4",
+        max_completion_tokens: 900,
+        messages: [
+          {
+            role: "system",
+            content: "You are an internal compliance coach. Create a concise, actionable cheat sheet for an employee who has just completed a wave of Standard Operating Procedures. Use short bullet points, plain language, and group by SOP. Focus on what the employee must DO and must AVOID. End with a one-line motivational reminder.",
+          },
+          {
+            role: "user",
+            content: `Wave ${waveNumber} SOPs completed:\n\n${sopLines}\n\nCreate a pocket cheat sheet.`,
+          },
+        ],
+      });
+
+      const content = aiRes.choices[0]?.message?.content?.trim() ?? "";
+      if (!content) return res.status(500).json({ error: "AI returned empty content" });
+
+      // Cache in the attestation row
+      await db.execute(sql`
+        UPDATE sop_wave_attestations SET cheat_sheet_content = ${content}
+        WHERE id = ${attestation.id}
+      `).catch((e: any) => console.error("[cheat_sheet] Cache write failed:", e?.message));
+
+      res.json({ content, cached: false });
+    } catch (err) {
+      console.error("Cheat sheet generation error:", err);
+      res.status(500).json({ error: "Failed to generate cheat sheet" });
     }
   });
 
