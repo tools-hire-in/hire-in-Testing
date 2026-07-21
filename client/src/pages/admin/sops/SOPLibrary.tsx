@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2, ExternalLink } from "lucide-react";
+import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2, ExternalLink, BookOpen, Trash2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -65,7 +66,7 @@ function lifecycleVariant(status: string): "default" | "secondary" | "outline" |
   return "outline";
 }
 
-type SopDetail = SopDocument & { versions: SopDocument[]; roleAssignments: SopRoleAssignment[] };
+type SopDetail = SopDocument & { versions: SopDocument[]; roleAssignments: SopRoleAssignment[]; questionCount?: number };
 
 export default function SOPLibrary() {
   const [, setLocation] = useLocation();
@@ -423,7 +424,20 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
                 <TabsTrigger value="reviewers" data-testid="tab-reviewers">Reviewers</TabsTrigger>
                 <TabsTrigger value="comments" data-testid="tab-comments">Comments</TabsTrigger>
                 <TabsTrigger value="progress" data-testid="tab-progress">Team Progress</TabsTrigger>
-                <TabsTrigger value="training" data-testid="tab-training">Training</TabsTrigger>
+                <TabsTrigger value="training" data-testid="tab-training" className="flex items-center gap-1">
+                  Training
+                  {data && (
+                    <span className={`text-[10px] px-1 rounded font-semibold leading-none ${
+                      (data.questionCount ?? 0) === 0
+                        ? "bg-amber-100 text-amber-700"
+                        : (data.questionCount ?? 0) >= 3
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-slate-100 text-slate-600"
+                    }`} data-testid="badge-question-count">
+                      {data.questionCount ?? 0}Q
+                    </span>
+                  )}
+                </TabsTrigger>
                 <TabsTrigger value="audit" data-testid="tab-audit">Audit &amp; Findings</TabsTrigger>
                 {data.code === "OPS-001" && (
                   <TabsTrigger value="access" data-testid="tab-access-requests">Access Requests</TabsTrigger>
@@ -501,7 +515,7 @@ function SopDetailDialog({ id, onClose }: { id: string; onClose: () => void }) {
               </TabsContent>
 
               <TabsContent value="training" className="mt-3">
-                <SopTrainingTab sopCode={data.code} />
+                <SopTrainingTab sopCode={data.code} sopId={id} canManage={canManage} />
               </TabsContent>
 
               <TabsContent value="audit" className="mt-3">
@@ -715,7 +729,16 @@ function findingStatusVariant(s: string): "default" | "secondary" | "outline" | 
   return "outline";
 }
 
-function SopTrainingTab({ sopCode }: { sopCode: string }) {
+type QuestionRow = {
+  id: string;
+  questionText: string;
+  correctOptionIndex: number;
+  explanation: string | null;
+  position: number;
+  options: { id: string; optionText: string; position: number }[];
+};
+
+function SopTrainingTab({ sopCode, sopId, canManage }: { sopCode: string; sopId: string; canManage: boolean }) {
   const { data: tracks = [], isLoading } = useQuery<any[]>({
     queryKey: ["/api/training/by-sop", sopCode],
     queryFn: async () => {
@@ -733,76 +756,429 @@ function SopTrainingTab({ sopCode }: { sopCode: string }) {
     );
   }
 
-  if (tracks.length === 0) {
+  return (
+    <div className="space-y-3">
+      {tracks.length === 0 ? (
+        <div className="py-6 text-center text-muted-foreground">
+          <p className="font-medium text-sm">No training modules linked to this SOP</p>
+          <p className="text-xs mt-1">Import the SOP training catalog from Training Management to link modules.</p>
+        </div>
+      ) : (
+        tracks.map((track: any) => {
+          const statusColors: Record<string, string> = {
+            not_assigned: "bg-gray-100 text-gray-600",
+            not_started: "bg-amber-100 text-amber-700",
+            in_progress: "bg-blue-100 text-blue-700",
+            completed: "bg-green-100 text-green-700",
+          };
+          return (
+            <div key={track.id} className="border rounded-lg p-3 space-y-1.5" data-testid={`card-sop-training-${track.id}`}>
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-medium text-sm leading-tight">{track.title}</p>
+                <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[track.myStatus] || statusColors.not_assigned}`}>
+                  {track.myStatus.replace("_", " ")}
+                </span>
+              </div>
+              <div className="flex items-center gap-2 flex-wrap">
+                {track.sopCategory && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">{track.sopCategory}</span>
+                )}
+                {track.launchWave && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-medium">{track.launchWave}</span>
+                )}
+                {track.trainingId && (
+                  <span className="text-[10px] text-muted-foreground font-mono">{track.trainingId}</span>
+                )}
+              </div>
+              {track.audience && (
+                <p className="text-xs text-muted-foreground">Audience: {track.audience}</p>
+              )}
+              <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
+                <span>{track.sectionCount} section{track.sectionCount !== 1 ? "s" : ""}</span>
+                <span>{track.totalAssignments} assigned · {track.completedAssignments} completed ({track.totalAssignments > 0 ? Math.round((track.completedAssignments / track.totalAssignments) * 100) : 0}%)</span>
+                {track.isGlobal && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold uppercase tracking-wide">
+                    Prerequisite
+                  </span>
+                )}
+              </div>
+              {track.myAssignment?.id ? (
+                <a
+                  href={`/admin/growth?tab=training&track=${track.myAssignment.id}`}
+                  className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium"
+                  data-testid={`link-start-training-${track.id}`}
+                >
+                  <Play className="h-3 w-3" />
+                  {track.myStatus === "completed" ? "View certificate →" : track.myStatus === "in_progress" ? "Resume →" : "Start →"}
+                </a>
+              ) : (
+                <a
+                  href="/admin/growth?tab=training"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline"
+                  data-testid={`link-view-training-${track.id}`}
+                >
+                  <Play className="h-3 w-3" /> View in My Training →
+                </a>
+              )}
+            </div>
+          );
+        })
+      )}
+
+      <KnowledgeCheckSection sopId={sopId} canManage={canManage} />
+    </div>
+  );
+}
+
+function KnowledgeCheckSection({ sopId, canManage }: { sopId: string; canManage: boolean }) {
+  const { toast } = useToast();
+  const [addingNew, setAddingNew] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
+
+  const { data: questions = [], isLoading: qLoading } = useQuery<QuestionRow[]>({
+    queryKey: ["/api/sops", sopId, "questions"],
+    queryFn: async () => {
+      const res = await fetch(`/api/sops/${sopId}/questions`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/sops", sopId, "questions"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/sops", sopId] });
+    queryClient.invalidateQueries({ queryKey: ["/api/sops"] });
+  };
+
+  const deleteMut = useMutation({
+    mutationFn: async (qid: string) =>
+      (await apiRequest("DELETE", `/api/sops/${sopId}/questions/${qid}`, {})).json(),
+    onSuccess: () => {
+      invalidate();
+      setDeleteConfirmId(null);
+      toast({ title: "Question deleted" });
+    },
+    onError: (e: any) => toast({ title: "Delete failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const maxReached = questions.length >= 5;
+
+  return (
+    <div className="space-y-3 pt-4 border-t mt-2">
+      {/* Section header */}
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <BookOpen className="h-4 w-4 text-primary shrink-0" />
+          <span className="font-medium text-sm">Knowledge Check</span>
+          {questions.length > 0 && (
+            <span className="text-xs text-muted-foreground">· {questions.length} question{questions.length !== 1 ? "s" : ""}</span>
+          )}
+        </div>
+        {canManage && (
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => { setAddingNew(true); setEditingId(null); }}
+                    disabled={addingNew || editingId !== null || maxReached}
+                    data-testid="button-add-question"
+                  >
+                    <Plus className="h-3.5 w-3.5 mr-1" /> Add Question
+                  </Button>
+                </span>
+              </TooltipTrigger>
+              {maxReached && <TooltipContent>Maximum 5 questions reached</TooltipContent>}
+            </Tooltip>
+          </TooltipProvider>
+        )}
+      </div>
+
+      <p className="text-xs text-muted-foreground">
+        Employees must answer these questions and score ≥70% before they can acknowledge this SOP. Max 5 questions.
+      </p>
+
+      {/* Loading */}
+      {qLoading && (
+        <div className="flex items-center gap-2 text-muted-foreground text-xs py-2">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading questions…
+        </div>
+      )}
+
+      {/* Empty state */}
+      {!qLoading && questions.length === 0 && !addingNew && (
+        <p className="text-xs text-muted-foreground italic py-1" data-testid="text-no-questions">
+          No questions yet — employees can acknowledge without a quiz.
+        </p>
+      )}
+
+      {/* Amber warning: fewer than 3 questions */}
+      {!qLoading && questions.length > 0 && questions.length < 3 && (
+        <div className="flex items-center gap-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-2">
+          <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+          Add at least 3 questions for a meaningful check.
+        </div>
+      )}
+
+      {/* Question list */}
+      {!qLoading && questions.map((q, idx) => (
+        <div key={q.id}>
+          {editingId === q.id ? (
+            <QuestionForm
+              sopId={sopId}
+              initial={q}
+              onSaved={() => { setEditingId(null); invalidate(); toast({ title: "Question saved" }); }}
+              onCancel={() => setEditingId(null)}
+            />
+          ) : (
+            <div className="rounded border p-3 space-y-2 text-sm" data-testid={`card-question-${q.id}`}>
+              <div className="flex items-start justify-between gap-2">
+                <span className="text-xs font-semibold text-muted-foreground">Q{idx + 1}</span>
+                {canManage && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    {deleteConfirmId === q.id ? (
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs text-muted-foreground">Delete? Responses kept.</span>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => setDeleteConfirmId(null)} data-testid={`button-cancel-delete-${q.id}`}>Cancel</Button>
+                        <Button size="sm" variant="destructive" className="h-6 px-2 text-xs" onClick={() => deleteMut.mutate(q.id)} disabled={deleteMut.isPending} data-testid={`button-confirm-delete-${q.id}`}>Delete</Button>
+                      </div>
+                    ) : (
+                      <>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => { setEditingId(q.id); setAddingNew(false); setDeleteConfirmId(null); }} data-testid={`button-edit-question-${q.id}`}>
+                          <Pencil className="h-3 w-3 mr-1" /> Edit
+                        </Button>
+                        <Button size="sm" variant="ghost" className="h-6 px-2 text-xs text-destructive hover:text-destructive" onClick={() => setDeleteConfirmId(q.id)} data-testid={`button-delete-question-${q.id}`}>
+                          <Trash2 className="h-3 w-3 mr-1" /> Delete
+                        </Button>
+                      </>
+                    )}
+                  </div>
+                )}
+              </div>
+              <p className="text-sm leading-snug">{q.questionText}</p>
+              <div className="space-y-0.5">
+                {q.options.map((opt, i) => (
+                  <div
+                    key={opt.id}
+                    className={`flex items-center gap-2 rounded px-2 py-1 text-xs ${i === q.correctOptionIndex ? "bg-emerald-50 border border-emerald-200" : ""}`}
+                    data-testid={`option-${q.id}-${i}`}
+                  >
+                    <span className="font-semibold w-4 shrink-0">{String.fromCharCode(65 + i)}</span>
+                    <span className="flex-1">{opt.optionText}</span>
+                    {i === q.correctOptionIndex && <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />}
+                  </div>
+                ))}
+              </div>
+              {q.explanation && (
+                <p className="text-xs text-muted-foreground italic border-t pt-2">
+                  Explanation: "{q.explanation}"
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* New question form */}
+      {addingNew && (
+        <QuestionForm
+          sopId={sopId}
+          initial={null}
+          onSaved={() => { setAddingNew(false); invalidate(); toast({ title: "Question saved" }); }}
+          onCancel={() => setAddingNew(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+function QuestionForm({
+  sopId,
+  initial,
+  onSaved,
+  onCancel,
+}: {
+  sopId: string;
+  initial: QuestionRow | null;
+  onSaved: () => void;
+  onCancel: () => void;
+}) {
+  const { toast } = useToast();
+  const [questionText, setQuestionText] = useState(initial?.questionText ?? "");
+  const [options, setOptions] = useState<string[]>(
+    initial ? initial.options.map((o) => o.optionText) : ["", ""]
+  );
+  const [correctOptionIndex, setCorrectOptionIndex] = useState<number | null>(
+    initial != null ? initial.correctOptionIndex : null
+  );
+  const [explanation, setExplanation] = useState(initial?.explanation ?? "");
+  const [touched, setTouched] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
+  const [isDirty, setIsDirty] = useState(false);
+
+  const qtrimmed = questionText.trim();
+  const validOptions = options.map((o) => o.trim());
+  const hasEmptyOption = validOptions.some((o) => o === "");
+  const tooFewOptions = options.length < 2;
+  const missingCorrect = correctOptionIndex === null;
+  const isValid = qtrimmed !== "" && !hasEmptyOption && !tooFewOptions && !missingCorrect;
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      const payload = {
+        questionText: qtrimmed,
+        options: validOptions,
+        correctOptionIndex: correctOptionIndex!,
+        explanation: explanation.trim() || null,
+      };
+      if (initial) {
+        return (await apiRequest("PATCH", `/api/sops/${sopId}/questions/${initial.id}`, payload)).json();
+      }
+      return (await apiRequest("POST", `/api/sops/${sopId}/questions`, payload)).json();
+    },
+    onSuccess: () => onSaved(),
+    onError: (e: any) => toast({ title: "Save failed", description: e?.message, variant: "destructive" }),
+  });
+
+  const handleCancel = () => {
+    if (isDirty) setCancelConfirm(true);
+    else onCancel();
+  };
+
+  const addOption = () => {
+    if (options.length < 4) {
+      setOptions([...options, ""]);
+      setIsDirty(true);
+    }
+  };
+
+  const removeOption = (i: number) => {
+    const next = options.filter((_, idx) => idx !== i);
+    setOptions(next);
+    if (correctOptionIndex === i) setCorrectOptionIndex(null);
+    else if (correctOptionIndex !== null && correctOptionIndex > i) setCorrectOptionIndex(correctOptionIndex - 1);
+    setIsDirty(true);
+  };
+
+  const updateOption = (i: number, val: string) => {
+    const next = [...options];
+    next[i] = val;
+    setOptions(next);
+    setIsDirty(true);
+  };
+
+  if (cancelConfirm) {
     return (
-      <div className="py-8 text-center text-muted-foreground">
-        <p className="font-medium text-sm">No training modules linked to this SOP</p>
-        <p className="text-xs mt-1">Import the SOP training catalog from Training Management to link modules.</p>
+      <div className="rounded border border-primary p-3 space-y-2">
+        <p className="text-sm font-medium">Discard changes?</p>
+        <div className="flex gap-2">
+          <Button size="sm" variant="ghost" onClick={() => setCancelConfirm(false)}>Keep editing</Button>
+          <Button size="sm" variant="destructive" onClick={onCancel}>Discard</Button>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-3">
-      {tracks.map((track: any) => {
-        const statusColors: Record<string, string> = {
-          not_assigned: "bg-gray-100 text-gray-600",
-          not_started: "bg-amber-100 text-amber-700",
-          in_progress: "bg-blue-100 text-blue-700",
-          completed: "bg-green-100 text-green-700",
-        };
-        return (
-          <div key={track.id} className="border rounded-lg p-3 space-y-1.5" data-testid={`card-sop-training-${track.id}`}>
-            <div className="flex items-start justify-between gap-2">
-              <p className="font-medium text-sm leading-tight">{track.title}</p>
-              <span className={`shrink-0 text-xs px-2 py-0.5 rounded-full font-medium ${statusColors[track.myStatus] || statusColors.not_assigned}`}>
-                {track.myStatus.replace("_", " ")}
-              </span>
-            </div>
-            <div className="flex items-center gap-2 flex-wrap">
-              {track.sopCategory && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground font-medium">{track.sopCategory}</span>
-              )}
-              {track.launchWave && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 font-medium">{track.launchWave}</span>
-              )}
-              {track.trainingId && (
-                <span className="text-[10px] text-muted-foreground font-mono">{track.trainingId}</span>
-              )}
-            </div>
-            {track.audience && (
-              <p className="text-xs text-muted-foreground">Audience: {track.audience}</p>
-            )}
-            <div className="flex items-center gap-2 flex-wrap text-xs text-muted-foreground">
-              <span>{track.sectionCount} section{track.sectionCount !== 1 ? "s" : ""}</span>
-              <span>{track.totalAssignments} assigned · {track.completedAssignments} completed ({track.totalAssignments > 0 ? Math.round((track.completedAssignments / track.totalAssignments) * 100) : 0}%)</span>
-              {track.isGlobal && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 font-semibold uppercase tracking-wide">
-                  Prerequisite
-                </span>
-              )}
-            </div>
-            {track.myAssignment?.id ? (
-              <a
-                href={`/admin/growth?tab=training&track=${track.myAssignment.id}`}
-                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline font-medium"
-                data-testid={`link-start-training-${track.id}`}
+    <div className="rounded border border-primary p-3 space-y-3 text-sm" data-testid="form-question">
+      {/* Question text */}
+      <div className="space-y-1">
+        <Label className="text-xs font-medium">Question text *</Label>
+        <div className="relative">
+          <Textarea
+            value={questionText}
+            onChange={(e) => { setQuestionText(e.target.value); setIsDirty(true); }}
+            onBlur={() => setTouched(true)}
+            placeholder="What must you do before requesting access to any system?"
+            className={`resize-none text-sm ${touched && !qtrimmed ? "border-destructive" : ""}`}
+            rows={2}
+            maxLength={500}
+            data-testid="input-question-text"
+          />
+          {questionText.length > 400 && (
+            <span className="absolute bottom-1 right-2 text-[10px] text-muted-foreground">{questionText.length}/500</span>
+          )}
+        </div>
+      </div>
+
+      {/* Answer options */}
+      <div className="space-y-2">
+        <div className="flex items-center justify-between">
+          <Label className="text-xs font-medium">Answer options * <span className="font-normal text-muted-foreground">(mark one correct →)</span></Label>
+        </div>
+        {options.map((opt, i) => (
+          <div key={i} className="flex items-center gap-2">
+            <Input
+              value={opt}
+              onChange={(e) => updateOption(i, e.target.value)}
+              placeholder={`Option ${String.fromCharCode(65 + i)}`}
+              className={`flex-1 h-8 text-xs ${touched && !opt.trim() ? "border-destructive" : ""}`}
+              data-testid={`input-option-${i}`}
+            />
+            <input
+              type="radio"
+              name={`correct-${sopId}-${initial?.id ?? "new"}`}
+              checked={correctOptionIndex === i}
+              onChange={() => { setCorrectOptionIndex(i); setIsDirty(true); }}
+              className="h-4 w-4 cursor-pointer accent-emerald-600"
+              title="Mark as correct"
+              data-testid={`radio-correct-${i}`}
+            />
+            {options.length > 2 && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0 text-muted-foreground"
+                onClick={() => removeOption(i)}
+                data-testid={`button-remove-option-${i}`}
               >
-                <Play className="h-3 w-3" />
-                {track.myStatus === "completed" ? "View certificate →" : track.myStatus === "in_progress" ? "Resume →" : "Start →"}
-              </a>
-            ) : (
-              <a
-                href="/admin/growth?tab=training"
-                className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:underline"
-                data-testid={`link-view-training-${track.id}`}
-              >
-                <Play className="h-3 w-3" /> View in My Training →
-              </a>
+                <X className="h-3.5 w-3.5" />
+              </Button>
             )}
           </div>
-        );
-      })}
+        ))}
+        {touched && tooFewOptions && <p className="text-xs text-destructive">Add at least 2 options</p>}
+        {touched && !tooFewOptions && missingCorrect && <p className="text-xs text-destructive">Mark one correct answer</p>}
+        {touched && hasEmptyOption && !tooFewOptions && <p className="text-xs text-destructive">All options must have text</p>}
+        {options.length < 4 && (
+          <Button size="sm" variant="ghost" className="h-7 text-xs mt-1" onClick={addOption} data-testid="button-add-option">
+            <Plus className="h-3 w-3 mr-1" /> Add option
+          </Button>
+        )}
+      </div>
+
+      {/* Explanation */}
+      <div className="space-y-1">
+        <Label className="text-xs font-medium">Explanation <span className="font-normal text-muted-foreground">(shown to employee on review — optional)</span></Label>
+        <Textarea
+          value={explanation}
+          onChange={(e) => { setExplanation(e.target.value); setIsDirty(true); }}
+          placeholder="Per §3.1, the least-privilege policy must be checked first…"
+          className="resize-none text-sm"
+          rows={2}
+          data-testid="input-explanation"
+        />
+      </div>
+
+      {/* Actions */}
+      <div className="flex items-center justify-between pt-1">
+        <Button size="sm" variant="ghost" onClick={handleCancel} data-testid="button-cancel-question">Cancel</Button>
+        <Button
+          size="sm"
+          onClick={() => { setTouched(true); if (isValid) saveMut.mutate(); }}
+          disabled={saveMut.isPending || (touched && !isValid)}
+          data-testid="button-save-question"
+        >
+          {saveMut.isPending ? (
+            <><Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" /> Saving…</>
+          ) : (
+            "Save Question"
+          )}
+        </Button>
+      </div>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import OpenAI from "openai";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, adminUsers, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, offerLetterAddendums, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, sopReviewAssignments, type SopDocument, waveScheduledLaunches, waveReadinessSignals } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, adminUsers, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, offerLetterAddendums, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, sopReviewAssignments, sopKnowledgeChecks, sopKnowledgeCheckOptions, type SopDocument, waveScheduledLaunches, waveReadinessSignals } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { salaryStructures, salaryStructureRules, stateDeductions, establishmentCoverage, headcountHistory, salaryStructureHistory, payrollSettings, salaryRunPayments, salaryChanges } from "@shared/schema";
 import { getPortalBaseUrl } from "./portalUrl";
@@ -16024,7 +16024,16 @@ Canonical domain: ${BASE}
         owner: owner || undefined,
         currentOnly: all === "true" ? false : true,
       });
-      res.json(docs);
+      // Attach live question counts so the Training tab badge is always fresh.
+      const qCounts = await db.select({
+        sopMasterId: sopKnowledgeChecks.sopMasterId,
+        count: sql<number>`COUNT(*)::int`,
+      })
+        .from(sopKnowledgeChecks)
+        .where(isNull(sopKnowledgeChecks.archivedAt))
+        .groupBy(sopKnowledgeChecks.sopMasterId);
+      const qCountMap = new Map(qCounts.map((r) => [r.sopMasterId, Number(r.count)]));
+      res.json(docs.map((d) => ({ ...d, questionCount: qCountMap.get(d.sopMasterId) ?? 0 })));
     } catch (error) {
       console.error("SOP list error:", error);
       res.status(500).json({ error: "Failed to fetch SOPs" });
@@ -16256,11 +16265,15 @@ Canonical domain: ${BASE}
       if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
       const doc = await storage.getSopDocumentById(req.params.id);
       if (!doc) return res.status(404).json({ error: "SOP not found" });
-      const [versions, roleAssignments] = await Promise.all([
+      const [versions, roleAssignments, qCountResult] = await Promise.all([
         storage.getSopVersionHistory(doc.sopMasterId),
         storage.getSopRoleAssignments(doc.sopMasterId),
+        db.select({ count: sql<number>`COUNT(*)::int` })
+          .from(sopKnowledgeChecks)
+          .where(and(eq(sopKnowledgeChecks.sopMasterId, doc.sopMasterId), isNull(sopKnowledgeChecks.archivedAt))),
       ]);
-      res.json({ ...doc, versions, roleAssignments });
+      const questionCount = Number(qCountResult[0]?.count ?? 0);
+      res.json({ ...doc, versions, roleAssignments, questionCount });
     } catch (error) {
       console.error("SOP get error:", error);
       res.status(500).json({ error: "Failed to fetch SOP" });
@@ -17461,6 +17474,195 @@ Canonical domain: ${BASE}
     } catch (error) {
       console.error("SOP linked goals error:", error);
       res.status(500).json({ error: "Failed to fetch linked goals" });
+    }
+  });
+
+  // ─── SOP Knowledge Check CRUD (Task #1420) ──────────────────────────────────
+  // Questions are keyed by sopMasterId (stable across versions). Write endpoints
+  // are restricted to canManage roles. Soft-archive on DELETE preserves history.
+
+  app.get("/api/sops/:id/questions", requireAuth, requirePermission("sops.view", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+
+      const role = req.session?.role as string | undefined;
+      const canManage = ["super_admin", "admin", "hr", "operations", "manager"].includes(role || "");
+
+      const questions = await db
+        .select()
+        .from(sopKnowledgeChecks)
+        .where(and(
+          eq(sopKnowledgeChecks.sopMasterId, doc.sopMasterId),
+          isNull(sopKnowledgeChecks.archivedAt),
+        ))
+        .orderBy(asc(sopKnowledgeChecks.position), asc(sopKnowledgeChecks.createdAt));
+
+      const questionIds = questions.map((q) => q.id);
+      const options = questionIds.length > 0
+        ? await db
+            .select()
+            .from(sopKnowledgeCheckOptions)
+            .where(inArray(sopKnowledgeCheckOptions.questionId, questionIds))
+            .orderBy(asc(sopKnowledgeCheckOptions.position))
+        : [];
+
+      const optionsByQuestion = new Map<string, typeof options>();
+      for (const opt of options) {
+        const list = optionsByQuestion.get(opt.questionId) ?? [];
+        list.push(opt);
+        optionsByQuestion.set(opt.questionId, list);
+      }
+
+      res.json(questions.map((q) => ({
+        id: q.id,
+        questionText: q.questionText,
+        // Mask correct answer from employees who cannot manage SOPs.
+        correctOptionIndex: canManage ? q.correctOptionIndex : -1,
+        explanation: q.explanation,
+        position: q.position,
+        options: (optionsByQuestion.get(q.id) ?? []).map((o) => ({
+          id: o.id,
+          optionText: o.optionText,
+          position: o.position,
+        })),
+      })));
+    } catch (error) {
+      console.error("SOP questions fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch questions" });
+    }
+  });
+
+  app.post("/api/sops/:id/questions", requireAuth, requirePermission("sops.manage", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+
+      const { questionText, options, correctOptionIndex, explanation } = req.body;
+      if (!questionText?.trim()) return res.status(400).json({ error: "Question text is required" });
+      if (!Array.isArray(options) || options.length < 2 || options.length > 4)
+        return res.status(400).json({ error: "Provide 2–4 answer options" });
+      if ((options as string[]).some((o) => !String(o ?? "").trim()))
+        return res.status(400).json({ error: "All options must have non-empty text" });
+      if (typeof correctOptionIndex !== "number" || correctOptionIndex < 0 || correctOptionIndex >= options.length)
+        return res.status(400).json({ error: "Valid correctOptionIndex required" });
+
+      const existing = await db
+        .select({ id: sopKnowledgeChecks.id })
+        .from(sopKnowledgeChecks)
+        .where(and(eq(sopKnowledgeChecks.sopMasterId, doc.sopMasterId), isNull(sopKnowledgeChecks.archivedAt)));
+      if (existing.length >= 5) return res.status(400).json({ error: "Maximum 5 questions per SOP" });
+
+      const [question] = await db.insert(sopKnowledgeChecks).values({
+        sopMasterId: doc.sopMasterId,
+        questionText: (questionText as string).trim(),
+        correctOptionIndex,
+        explanation: (explanation as string | undefined)?.trim() || null,
+        position: existing.length,
+        createdBy: req.session.userId!,
+      }).returning();
+
+      const optionRows = await db.insert(sopKnowledgeCheckOptions).values(
+        (options as string[]).map((text, i) => ({
+          questionId: question.id,
+          optionText: text.trim(),
+          position: i,
+        }))
+      ).returning();
+
+      res.status(201).json({
+        id: question.id,
+        questionText: question.questionText,
+        correctOptionIndex: question.correctOptionIndex,
+        explanation: question.explanation,
+        position: question.position,
+        options: optionRows.map((o) => ({ id: o.id, optionText: o.optionText, position: o.position })),
+      });
+    } catch (error) {
+      console.error("SOP question create error:", error);
+      res.status(500).json({ error: "Failed to create question" });
+    }
+  });
+
+  app.patch("/api/sops/:id/questions/:qid", requireAuth, requirePermission("sops.manage", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+
+      const [question] = await db
+        .select()
+        .from(sopKnowledgeChecks)
+        .where(and(eq(sopKnowledgeChecks.id, req.params.qid), eq(sopKnowledgeChecks.sopMasterId, doc.sopMasterId)));
+      if (!question || question.archivedAt) return res.status(404).json({ error: "Question not found" });
+
+      const { questionText, options, correctOptionIndex, explanation } = req.body;
+      if (!questionText?.trim()) return res.status(400).json({ error: "Question text is required" });
+      if (!Array.isArray(options) || options.length < 2 || options.length > 4)
+        return res.status(400).json({ error: "Provide 2–4 answer options" });
+      if ((options as string[]).some((o) => !String(o ?? "").trim()))
+        return res.status(400).json({ error: "All options must have non-empty text" });
+      if (typeof correctOptionIndex !== "number" || correctOptionIndex < 0 || correctOptionIndex >= options.length)
+        return res.status(400).json({ error: "Valid correctOptionIndex required" });
+
+      await db.update(sopKnowledgeChecks)
+        .set({
+          questionText: (questionText as string).trim(),
+          correctOptionIndex,
+          explanation: (explanation as string | undefined)?.trim() || null,
+          updatedAt: new Date(),
+        })
+        .where(eq(sopKnowledgeChecks.id, question.id));
+
+      await db.delete(sopKnowledgeCheckOptions).where(eq(sopKnowledgeCheckOptions.questionId, question.id));
+      const newOptions = await db.insert(sopKnowledgeCheckOptions).values(
+        (options as string[]).map((text, i) => ({
+          questionId: question.id,
+          optionText: text.trim(),
+          position: i,
+        }))
+      ).returning();
+
+      res.json({
+        id: question.id,
+        questionText: (questionText as string).trim(),
+        correctOptionIndex,
+        explanation: (explanation as string | undefined)?.trim() || null,
+        position: question.position,
+        options: newOptions.map((o) => ({ id: o.id, optionText: o.optionText, position: o.position })),
+      });
+    } catch (error) {
+      console.error("SOP question update error:", error);
+      res.status(500).json({ error: "Failed to update question" });
+    }
+  });
+
+  app.delete("/api/sops/:id/questions/:qid", requireAuth, requirePermission("sops.manage", "hr", "operations", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { enabled } = await resolveSopAccess(req);
+      if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
+      const doc = await storage.getSopDocumentById(req.params.id);
+      if (!doc) return res.status(404).json({ error: "SOP not found" });
+
+      const [question] = await db
+        .select()
+        .from(sopKnowledgeChecks)
+        .where(and(eq(sopKnowledgeChecks.id, req.params.qid), eq(sopKnowledgeChecks.sopMasterId, doc.sopMasterId)));
+      if (!question || question.archivedAt) return res.status(404).json({ error: "Question not found" });
+
+      await db.update(sopKnowledgeChecks)
+        .set({ archivedAt: new Date() })
+        .where(eq(sopKnowledgeChecks.id, question.id));
+
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("SOP question delete error:", error);
+      res.status(500).json({ error: "Failed to delete question" });
     }
   });
 

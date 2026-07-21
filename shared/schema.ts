@@ -4249,6 +4249,52 @@ export type SopAuditFinding = typeof sopAuditFindings.$inferSelect;
 export type InsertSopAuditFinding = z.infer<typeof insertSopAuditFindingSchema>;
 
 // ==========================================
+// SOP KNOWLEDGE CHECK TABLES (Task #1420)
+// ==========================================
+// One question bank per SOP (keyed by sopMasterId). Questions are soft-archived
+// rather than hard-deleted so employee response history is preserved.
+// Applied via scripts/apply-sop-quiz-schema.ts (raw SQL, avoids drizzle TTY).
+
+export const sopKnowledgeChecks = pgTable("sop_knowledge_checks", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sopMasterId: varchar("sop_master_id").notNull(),
+  questionText: text("question_text").notNull(),
+  // 0-based index into the ordered options for this question.
+  correctOptionIndex: integer("correct_option_index").notNull(),
+  explanation: text("explanation"),
+  position: integer("position").notNull().default(0),
+  // Soft-delete: set when a question is removed so historical responses are kept.
+  archivedAt: timestamp("archived_at"),
+  createdBy: varchar("created_by").references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => ({
+  masterIdx: index("sop_knowledge_checks_master_idx").on(table.sopMasterId),
+}));
+
+export const sopKnowledgeCheckOptions = pgTable("sop_knowledge_check_options", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  questionId: varchar("question_id").notNull().references(() => sopKnowledgeChecks.id, { onDelete: "cascade" }),
+  optionText: text("option_text").notNull(),
+  position: integer("position").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => ({
+  questionIdx: index("sop_knowledge_check_options_question_idx").on(table.questionId),
+}));
+
+export const insertSopKnowledgeCheckSchema = createInsertSchema(sopKnowledgeChecks).omit({
+  id: true, archivedAt: true, createdAt: true, updatedAt: true,
+});
+export type SopKnowledgeCheck = typeof sopKnowledgeChecks.$inferSelect;
+export type InsertSopKnowledgeCheck = z.infer<typeof insertSopKnowledgeCheckSchema>;
+
+export const insertSopKnowledgeCheckOptionSchema = createInsertSchema(sopKnowledgeCheckOptions).omit({
+  id: true, createdAt: true,
+});
+export type SopKnowledgeCheckOption = typeof sopKnowledgeCheckOptions.$inferSelect;
+export type InsertSopKnowledgeCheckOption = z.infer<typeof insertSopKnowledgeCheckOptionSchema>;
+
+// ==========================================
 // SOP WAVE ROLLOUT & ENFORCEMENT (Task #662)
 // ==========================================
 // Successive wave rollout (Wave 0-5) of the SOP launch playbook. Each wave is a
