@@ -323,6 +323,8 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   // SOP Wave Scheduling — delegated go-live scheduling with RBAC approval gates
   "sops.schedule": ["super_admin", "admin", "director"],
   "sops.readiness": ["super_admin", "admin", "hr", "manager"],
+  // Interactive Onboarding Flow — step library management
+  "onboarding_manage": ["super_admin", "admin"],
 };
 
 // ============================================================================

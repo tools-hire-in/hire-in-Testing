@@ -5280,3 +5280,65 @@ export const insertCompanyGoalTemplateSchema = createInsertSchema(companyGoalTem
 });
 export type CompanyGoalTemplate = typeof companyGoalTemplates.$inferSelect;
 export type InsertCompanyGoalTemplate = z.infer<typeof insertCompanyGoalTemplateSchema>;
+
+// ==========================================
+// INTERACTIVE ONBOARDING FLOW
+// ==========================================
+// These tables back the role-scoped onboarding overlay (Part 1 foundation).
+// Tables are created via scripts/apply-onboarding-schema.ts (raw SQL, not drizzle push).
+// Content is seeded from docs/training/*-onboarding-track-source.md via
+// scripts/seed-onboarding-steps.ts which runs on startup if the table is empty.
+
+export const onboardingTrackEnum = pgEnum("onboarding_track", ["employee", "manager", "hr", "executive", "admin"]);
+
+export const onboardingSteps = pgTable("onboarding_steps", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  track: onboardingTrackEnum("track").notNull(),
+  stepNumber: integer("step_number").notNull(),
+  title: varchar("title", { length: 300 }).notNull(),
+  purpose: text("purpose"),
+  whereToFind: text("where_to_find"),
+  navRoute: text("nav_route"),
+  howToUse: text("how_to_use"),
+  importantRules: jsonb("important_rules").notNull().default(sql`'[]'::jsonb`),
+  isHighRisk: boolean("is_high_risk").notNull().default(false),
+  commonMistake: text("common_mistake"),
+  scenario: text("scenario"),
+  practicalExercise: text("practical_exercise"),
+  knowledgeCheck: jsonb("knowledge_check"),
+  whereToGetHelp: text("where_to_get_help"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("onboarding_steps_track_step_unique").on(table.track, table.stepNumber),
+  index("idx_onboarding_steps_track_active").on(table.track, table.isActive),
+]);
+
+export const insertOnboardingStepSchema = createInsertSchema(onboardingSteps).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type OnboardingStep = typeof onboardingSteps.$inferSelect;
+export type InsertOnboardingStep = z.infer<typeof insertOnboardingStepSchema>;
+
+export const userOnboardingProgress = pgTable("user_onboarding_progress", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  role: varchar("role").notNull(),
+  completedStepIds: jsonb("completed_step_ids").notNull().default(sql`'[]'::jsonb`),
+  knowledgeCheckPassed: jsonb("knowledge_check_passed").notNull().default(sql`'{}'::jsonb`),
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  snoozed: boolean("snoozed").notNull().default(false),
+}, (table) => [
+  uniqueIndex("user_onboarding_progress_user_role_unique").on(table.userId, table.role),
+]);
+
+export const insertUserOnboardingProgressSchema = createInsertSchema(userOnboardingProgress).omit({
+  id: true,
+  startedAt: true,
+});
+export type UserOnboardingProgress = typeof userOnboardingProgress.$inferSelect;
+export type InsertUserOnboardingProgress = z.infer<typeof insertUserOnboardingProgressSchema>;

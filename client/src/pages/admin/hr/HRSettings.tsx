@@ -629,6 +629,16 @@ export function FeatureFlagsSection() {
       label: "Attendance Deficit Pool (Two-Tier Engine)",
       description: "When ON, every short-day punch-out feeds a monthly deficit pool accumulating shortfall minutes. On the 1st of each month, the prior month's pool is settled: deficits below the forgiveness threshold are cancelled; excess is converted to fractional LWP days (EL → SL → raw LWP). Turn OFF to disable entirely — no pooling, no month-end settlement.",
     },
+    {
+      key: "onboarding_flow_enabled",
+      label: "Interactive Onboarding Flow",
+      description: "When ON, new portal users see a guided step-by-step onboarding overlay tailored to their role (employee, manager, HR, or executive). The overlay shows only steps relevant to that role's track. Turn OFF to hide the overlay globally without deleting any progress records.",
+    },
+    {
+      key: "onboarding_enforce_always",
+      label: "Onboarding Flow — Always Enforce (Never Snooze)",
+      description: "When ON, users cannot snooze or dismiss the onboarding overlay until all steps for their track are completed. When OFF (default), users may snooze the overlay and continue with normal portal access. Only applies while onboarding_flow_enabled is also ON.",
+    },
   ];
 
   return (
