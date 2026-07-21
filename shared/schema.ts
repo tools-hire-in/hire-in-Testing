@@ -7,7 +7,11 @@ import { z } from "zod";
 export * from "./models/auth";
 
 // User roles enum
-export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee", "executive"]);
+// NOTE: 'director' was added to the DB enum via scripts/apply-wave-scheduling-schema.ts
+// (ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'director') — not via db:push, because
+// additive enum values stall drizzle-kit's interactive prompt. Keep this list in sync
+// with any future ALTER TYPE additions.
+export const userRoleEnum = pgEnum("user_role", ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee", "executive", "director"]);
 
 // Hierarchy level enum
 export const hierarchyLevelEnum = pgEnum("hierarchy_level", ["ceo", "vp", "director", "manager", "team_lead", "delivery_manager", "team_member"]);
@@ -5092,6 +5096,65 @@ export type InsertPendingEmailBlast = z.infer<typeof insertPendingEmailBlastSche
 
 export const insertBlastDeliveryRecordSchema = createInsertSchema(blastDeliveryRecords).omit({ id: true });
 export type BlastDeliveryRecord = typeof blastDeliveryRecords.$inferSelect;
+
+// ---------------------------------------------------------------------------
+// SOP Wave Scheduled Launches — delegated scheduling for wave go-lives
+// Applied via direct SQL script: scripts/apply-wave-scheduling-schema.ts
+// ---------------------------------------------------------------------------
+
+export const waveScheduledLaunchStatusEnum = pgEnum("wave_scheduled_launch_status", [
+  "pending_approval",
+  "approved",
+  "active",
+  "cancelled",
+]);
+
+export const waveScheduledLaunches = pgTable("wave_scheduled_launches", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  waveNumber: integer("wave_number").notNull(),
+  scheduledByUserId: varchar("scheduled_by_user_id").notNull().references(() => adminUsers.id),
+  goLiveDate: date("go_live_date").notNull(),
+  graceDays: integer("grace_days").notNull().default(0),
+  status: waveScheduledLaunchStatusEnum("status").notNull().default("pending_approval"),
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  approvedBy: varchar("approved_by").references(() => adminUsers.id),
+  approvedAt: timestamp("approved_at"),
+  notes: text("notes"),
+}, (t) => [
+  index("idx_wave_scheduled_launches_wave").on(t.waveNumber),
+  index("idx_wave_scheduled_launches_status").on(t.status),
+  index("idx_wave_scheduled_launches_go_live").on(t.goLiveDate),
+]);
+
+export const insertWaveScheduledLaunchSchema = createInsertSchema(waveScheduledLaunches).omit({
+  id: true,
+  submittedAt: true,
+  approvedBy: true,
+  approvedAt: true,
+});
+export type WaveScheduledLaunch = typeof waveScheduledLaunches.$inferSelect;
+export type InsertWaveScheduledLaunch = z.infer<typeof insertWaveScheduledLaunchSchema>;
+
+// ---------------------------------------------------------------------------
+// SOP Wave Readiness Signals — manager signals that their team is ready
+// ---------------------------------------------------------------------------
+
+export const waveReadinessSignals = pgTable("wave_readiness_signals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  waveNumber: integer("wave_number").notNull(),
+  managerId: varchar("manager_id").notNull().references(() => adminUsers.id),
+  signalledAt: timestamp("signalled_at").defaultNow().notNull(),
+}, (t) => [
+  index("idx_wave_readiness_signals_wave").on(t.waveNumber),
+  uniqueIndex("idx_wave_readiness_unique_wave_manager").on(t.waveNumber, t.managerId),
+]);
+
+export const insertWaveReadinessSignalSchema = createInsertSchema(waveReadinessSignals).omit({
+  id: true,
+  signalledAt: true,
+});
+export type WaveReadinessSignal = typeof waveReadinessSignals.$inferSelect;
+export type InsertWaveReadinessSignal = z.infer<typeof insertWaveReadinessSignalSchema>;
 
 // ==========================================
 // OBSERVATION TOWER — COMPANY GOAL TEMPLATES

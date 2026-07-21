@@ -5,7 +5,7 @@ import OpenAI from "openai";
 import { parse } from "csv-parse/sync";
 import * as XLSX from "xlsx";
 import { storage } from "./storage";
-import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, adminUsers, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, offerLetterAddendums, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, sopReviewAssignments, type SopDocument } from "@shared/schema";
+import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, adminUsers, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, offerLetterAddendums, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, sopReviewAssignments, type SopDocument, waveScheduledLaunches, waveReadinessSignals } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
 import { salaryStructures, salaryStructureRules, stateDeductions, establishmentCoverage, headcountHistory, salaryStructureHistory, payrollSettings, salaryRunPayments, salaryChanges } from "@shared/schema";
 import { getPortalBaseUrl } from "./portalUrl";
@@ -15529,6 +15529,303 @@ Canonical domain: ${BASE}
     } catch (error) {
       console.error("SOP operational error:", error);
       res.status(500).json({ error: "Failed to make SOP operational" });
+    }
+  });
+
+  // ── SOP Wave Scheduling endpoints ────────────────────────────────────────
+  // Directors propose go-live dates; waves 0-2 auto-approve, waves 3-5 need
+  // admin sign-off. A cron job fires activation on the go-live date.
+
+  // GET /api/sops/waves/scheduled — list all pending/approved/active scheduled
+  // launches. Admin+ sees all; director sees own submissions only.
+  app.get("/api/sops/waves/scheduled", requireAuth, requirePermission("sops.schedule"), async (req: Request, res: Response) => {
+    try {
+      const role = req.session.role!;
+      const userId = req.session.userId!;
+      const isAdmin = role === "super_admin" || role === "admin";
+
+      let rows;
+      if (isAdmin) {
+        rows = await db
+          .select({
+            id: waveScheduledLaunches.id,
+            waveNumber: waveScheduledLaunches.waveNumber,
+            scheduledByUserId: waveScheduledLaunches.scheduledByUserId,
+            goLiveDate: waveScheduledLaunches.goLiveDate,
+            graceDays: waveScheduledLaunches.graceDays,
+            status: waveScheduledLaunches.status,
+            submittedAt: waveScheduledLaunches.submittedAt,
+            approvedBy: waveScheduledLaunches.approvedBy,
+            approvedAt: waveScheduledLaunches.approvedAt,
+            notes: waveScheduledLaunches.notes,
+          })
+          .from(waveScheduledLaunches)
+          .where(
+            or(
+              eq(waveScheduledLaunches.status, "pending_approval"),
+              eq(waveScheduledLaunches.status, "approved"),
+              eq(waveScheduledLaunches.status, "active"),
+            ),
+          )
+          .orderBy(desc(waveScheduledLaunches.submittedAt));
+      } else {
+        rows = await db
+          .select({
+            id: waveScheduledLaunches.id,
+            waveNumber: waveScheduledLaunches.waveNumber,
+            scheduledByUserId: waveScheduledLaunches.scheduledByUserId,
+            goLiveDate: waveScheduledLaunches.goLiveDate,
+            graceDays: waveScheduledLaunches.graceDays,
+            status: waveScheduledLaunches.status,
+            submittedAt: waveScheduledLaunches.submittedAt,
+            approvedBy: waveScheduledLaunches.approvedBy,
+            approvedAt: waveScheduledLaunches.approvedAt,
+            notes: waveScheduledLaunches.notes,
+          })
+          .from(waveScheduledLaunches)
+          .where(
+            and(
+              eq(waveScheduledLaunches.scheduledByUserId, userId),
+              or(
+                eq(waveScheduledLaunches.status, "pending_approval"),
+                eq(waveScheduledLaunches.status, "approved"),
+                eq(waveScheduledLaunches.status, "active"),
+              ),
+            ),
+          )
+          .orderBy(desc(waveScheduledLaunches.submittedAt));
+      }
+      res.json({ scheduledLaunches: rows });
+    } catch (error) {
+      console.error("SOP scheduled launches list error:", error);
+      res.status(500).json({ error: "Failed to list scheduled launches" });
+    }
+  });
+
+  // POST /api/sops/waves/:waveNumber/schedule — propose a go-live date.
+  // Waves 0-2 → status = approved (no human gate); waves 3-5 → pending_approval.
+  app.post("/api/sops/waves/:waveNumber/schedule", requireAuth, requirePermission("sops.schedule"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber) || waveNumber < 0 || waveNumber > 5) {
+        return res.status(400).json({ error: "Invalid wave number (0-5)" });
+      }
+      const { goLiveDate, graceDays = 0, notes } = req.body as {
+        goLiveDate?: string;
+        graceDays?: number;
+        notes?: string;
+      };
+      if (!goLiveDate || !/^\d{4}-\d{2}-\d{2}$/.test(goLiveDate)) {
+        return res.status(400).json({ error: "goLiveDate is required (YYYY-MM-DD)" });
+      }
+      if (goLiveDate < new Date().toISOString().slice(0, 10)) {
+        return res.status(400).json({ error: "goLiveDate must be today or in the future" });
+      }
+
+      const cadence = await sopRollout.checkCadenceConflict(waveNumber, goLiveDate);
+      if (cadence.blocked) {
+        return res.status(409).json({
+          error: `Another wave (Wave ${cadence.conflictingWave}) is already approved or active for that week. Pick a different week.`,
+          blocked: true,
+          conflictingWave: cadence.conflictingWave,
+        });
+      }
+
+      // Waves 0-2 are low-risk → auto-approved; 3-5 require human approval.
+      const initialStatus = waveNumber <= 2 ? "approved" : "pending_approval";
+
+      const [row] = await db
+        .insert(waveScheduledLaunches)
+        .values({
+          waveNumber,
+          scheduledByUserId: req.session.userId!,
+          goLiveDate,
+          graceDays: Number(graceDays) || 0,
+          status: initialStatus,
+          notes: notes ?? null,
+        })
+        .returning();
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: String(waveNumber),
+        action: "sop_wave_schedule_created",
+        changes: { waveNumber, goLiveDate, graceDays, status: initialStatus, scheduledLaunchId: row.id },
+      });
+
+      res.json({
+        scheduledLaunch: row,
+        warning: cadence.warning,
+        warningWave: cadence.warningWave,
+      });
+    } catch (error) {
+      console.error("SOP schedule create error:", error);
+      res.status(500).json({ error: "Failed to create scheduled launch" });
+    }
+  });
+
+  // POST /api/sops/waves/:waveNumber/schedule/:id/approve — admin+ approves a
+  // pending_approval scheduled launch.
+  app.post("/api/sops/waves/:waveNumber/schedule/:id/approve", requireAuth, requirePermission("sops.rollout"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      const id = req.params.id;
+
+      const [existing] = await db
+        .select()
+        .from(waveScheduledLaunches)
+        .where(and(eq(waveScheduledLaunches.id, id), eq(waveScheduledLaunches.waveNumber, waveNumber)))
+        .limit(1);
+
+      if (!existing) return res.status(404).json({ error: "Scheduled launch not found" });
+      if (existing.status !== "pending_approval") {
+        return res.status(409).json({ error: `Cannot approve a launch with status '${existing.status}'` });
+      }
+
+      const [updated] = await db
+        .update(waveScheduledLaunches)
+        .set({
+          status: "approved",
+          approvedBy: req.session.userId!,
+          approvedAt: new Date(),
+        })
+        .where(eq(waveScheduledLaunches.id, id))
+        .returning();
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: String(waveNumber),
+        action: "sop_wave_schedule_approved",
+        changes: { waveNumber, goLiveDate: existing.goLiveDate, scheduledLaunchId: id },
+      });
+
+      res.json({ scheduledLaunch: updated });
+    } catch (error) {
+      console.error("SOP schedule approve error:", error);
+      res.status(500).json({ error: "Failed to approve scheduled launch" });
+    }
+  });
+
+  // DELETE /api/sops/waves/:waveNumber/schedule/:id — cancel a pending or
+  // approved-but-not-yet-fired schedule (submitter or admin).
+  app.delete("/api/sops/waves/:waveNumber/schedule/:id", requireAuth, requirePermission("sops.schedule"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      const id = req.params.id;
+      const userId = req.session.userId!;
+      const role = req.session.role!;
+
+      const [existing] = await db
+        .select()
+        .from(waveScheduledLaunches)
+        .where(and(eq(waveScheduledLaunches.id, id), eq(waveScheduledLaunches.waveNumber, waveNumber)))
+        .limit(1);
+
+      if (!existing) return res.status(404).json({ error: "Scheduled launch not found" });
+      if (existing.status !== "pending_approval" && existing.status !== "approved") {
+        return res.status(409).json({ error: `Cannot cancel a launch with status '${existing.status}'` });
+      }
+
+      const isAdmin = role === "super_admin" || role === "admin";
+      const isOwner = existing.scheduledByUserId === userId;
+      if (!isAdmin && !isOwner) {
+        return res.status(403).json({ error: "Only the submitter or an admin can cancel this schedule" });
+      }
+
+      const [updated] = await db
+        .update(waveScheduledLaunches)
+        .set({ status: "cancelled" })
+        .where(eq(waveScheduledLaunches.id, id))
+        .returning();
+
+      await storage.createAuditLog({
+        actorId: userId,
+        targetId: String(waveNumber),
+        action: "sop_wave_schedule_cancelled",
+        changes: { waveNumber, goLiveDate: existing.goLiveDate, scheduledLaunchId: id },
+      });
+
+      res.json({ scheduledLaunch: updated });
+    } catch (error) {
+      console.error("SOP schedule cancel error:", error);
+      res.status(500).json({ error: "Failed to cancel scheduled launch" });
+    }
+  });
+
+  // POST /api/sops/waves/:waveNumber/readiness — manager signals team readiness.
+  // Upserts: if a signal already exists for this manager+wave, updates signalled_at.
+  app.post("/api/sops/waves/:waveNumber/readiness", requireAuth, requirePermission("sops.readiness"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber)) return res.status(400).json({ error: "Invalid wave number" });
+
+      const existing = await db
+        .select()
+        .from(waveReadinessSignals)
+        .where(
+          and(
+            eq(waveReadinessSignals.waveNumber, waveNumber),
+            eq(waveReadinessSignals.managerId, req.session.userId!),
+          ),
+        )
+        .limit(1);
+
+      let signal;
+      if (existing.length > 0) {
+        const [updated] = await db
+          .update(waveReadinessSignals)
+          .set({ signalledAt: new Date() })
+          .where(eq(waveReadinessSignals.id, existing[0].id))
+          .returning();
+        signal = updated;
+      } else {
+        const [inserted] = await db
+          .insert(waveReadinessSignals)
+          .values({ waveNumber, managerId: req.session.userId! })
+          .returning();
+        signal = inserted;
+      }
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: String(waveNumber),
+        action: "sop_wave_readiness_signalled",
+        changes: { waveNumber, managerId: req.session.userId! },
+      });
+
+      res.json({ readinessSignal: signal });
+    } catch (error) {
+      console.error("SOP readiness signal error:", error);
+      res.status(500).json({ error: "Failed to record readiness signal" });
+    }
+  });
+
+  // GET /api/sops/waves/:waveNumber/readiness — list readiness signals + manager
+  // names. Restricted to admin+ (sops.rollout) since it exposes PII (manager names/emails).
+  app.get("/api/sops/waves/:waveNumber/readiness", requireAuth, requirePermission("sops.rollout"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber)) return res.status(400).json({ error: "Invalid wave number" });
+
+      const signals = await db
+        .select({
+          id: waveReadinessSignals.id,
+          waveNumber: waveReadinessSignals.waveNumber,
+          managerId: waveReadinessSignals.managerId,
+          signalledAt: waveReadinessSignals.signalledAt,
+          managerFirstName: adminUsers.firstName,
+          managerLastName: adminUsers.lastName,
+          managerEmail: adminUsers.email,
+        })
+        .from(waveReadinessSignals)
+        .leftJoin(adminUsers, eq(adminUsers.id, waveReadinessSignals.managerId))
+        .where(eq(waveReadinessSignals.waveNumber, waveNumber))
+        .orderBy(desc(waveReadinessSignals.signalledAt));
+
+      res.json({ readinessSignals: signals });
+    } catch (error) {
+      console.error("SOP readiness list error:", error);
+      res.status(500).json({ error: "Failed to list readiness signals" });
     }
   });
 

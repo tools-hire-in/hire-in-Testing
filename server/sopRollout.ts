@@ -13,8 +13,8 @@
 
 import { db } from "./db";
 import { storage } from "./storage";
-import { rolloutWaves, waveSops, sopDocuments, sopRoleAssignments } from "@shared/schema";
-import { and, eq, gte, inArray, sql } from "drizzle-orm";
+import { rolloutWaves, waveSops, sopDocuments, sopRoleAssignments, waveScheduledLaunches, waveReadinessSignals, adminUsers } from "@shared/schema";
+import { and, eq, gte, inArray, lte, or, sql } from "drizzle-orm";
 
 // ── Governance cadence helpers ────────────────────────────────────────────────
 // Read a numeric governance setting from system_settings at call time, falling
@@ -537,4 +537,150 @@ export async function getPendingSoftSopsForUser(
     (r) => (r.enforcement === "soft" || r.enforcement === "measured") && r.operational && !r.acknowledgedCurrentVersion,
   );
   return { count: pending.length, titles: pending.map((r) => r.title) };
+}
+
+// ── Wave Scheduled Launch helpers ────────────────────────────────────────────
+
+/** ISO week string "YYYY-Www" for a given date. */
+function isoWeekKey(d: Date): string {
+  const dt = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  const day = dt.getUTCDay() || 7; // Mon=1 … Sun=7
+  dt.setUTCDate(dt.getUTCDate() + 4 - day);
+  const yearStart = new Date(Date.UTC(dt.getUTCFullYear(), 0, 1));
+  const weekNo = Math.ceil(((dt.getTime() - yearStart.getTime()) / 86400000 + 1) / 7);
+  return `${dt.getUTCFullYear()}-W${String(weekNo).padStart(2, "0")}`;
+}
+
+export interface CadenceCheckResult {
+  /** True if a hard block exists (an approved/active schedule already owns that week). */
+  blocked: boolean;
+  /**
+   * Wave number of the conflicting or warning schedule in that week.
+   * Present for both hard blocks (blocked=true) and soft warnings (warning=true).
+   */
+  conflictingWave?: number;
+  /** True if a soft warning applies (total approved+pending launches in that week exceeds CADENCE_MAX_PER_WEEK). */
+  warning: boolean;
+}
+
+/**
+ * Checks whether scheduling waveNumber on goLiveDate would violate cadence rules.
+ *
+ * Hard block: another approved or active launch already occupies that ISO week.
+ * Soft warning: counting the proposed launch, the week would exceed CADENCE_MAX_PER_WEEK
+ *   (applies only to waves 1-5; wave 0 is always-on and exempt).
+ *
+ * @param waveNumber  Wave being scheduled.
+ * @param goLiveDate  ISO date string (YYYY-MM-DD).
+ * @param excludeId   Optional existing row id to exclude (for edits).
+ */
+export async function checkCadenceConflict(
+  waveNumber: number,
+  goLiveDate: string,
+  excludeId?: string,
+): Promise<CadenceCheckResult> {
+  const target = new Date(goLiveDate);
+  const targetWeek = isoWeekKey(target);
+  const cadenceMax = await getGovernanceIntSetting("governance_sop_cadence_max_per_week", CADENCE_MAX_PER_WEEK);
+
+  // Fetch all non-cancelled scheduled launches
+  const rows = await db
+    .select({
+      id: waveScheduledLaunches.id,
+      waveNumber: waveScheduledLaunches.waveNumber,
+      goLiveDate: waveScheduledLaunches.goLiveDate,
+      status: waveScheduledLaunches.status,
+    })
+    .from(waveScheduledLaunches)
+    .where(
+      and(
+        or(
+          eq(waveScheduledLaunches.status, "approved"),
+          eq(waveScheduledLaunches.status, "active"),
+          eq(waveScheduledLaunches.status, "pending_approval"),
+        ),
+      ),
+    );
+
+  const sameWeek = rows.filter((r) => {
+    if (excludeId && r.id === excludeId) return false;
+    return isoWeekKey(new Date(r.goLiveDate as string)) === targetWeek;
+  });
+
+  // Hard block: any approved or active launch in the same week
+  const hardConflict = sameWeek.find(
+    (r) => r.status === "approved" || r.status === "active",
+  );
+  if (hardConflict) {
+    return { blocked: true, conflictingWave: hardConflict.waveNumber, warning: false };
+  }
+
+  // Soft warning: wave 0 is exempt; count pending+approved+this proposal
+  if (waveNumber >= 1) {
+    const countInWeek = sameWeek.length + 1; // +1 for the proposed launch
+    if (countInWeek > cadenceMax) {
+      const warningRow = sameWeek[0];
+      return {
+        blocked: false,
+        warning: true,
+        conflictingWave: warningRow?.waveNumber,
+      };
+    }
+  }
+
+  return { blocked: false, warning: false };
+}
+
+/**
+ * Cron handler — fires daily at 07:00 IST.
+ * Picks up all `approved` rows where go_live_date <= today, calls activateWave,
+ * and marks each row `active`.
+ */
+export async function fireScheduledWaveLaunches(): Promise<{
+  fired: number;
+  errors: number;
+}> {
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  const due = await db
+    .select()
+    .from(waveScheduledLaunches)
+    .where(
+      and(
+        eq(waveScheduledLaunches.status, "approved"),
+        lte(waveScheduledLaunches.goLiveDate, todayIso),
+      ),
+    );
+
+  let fired = 0;
+  let errors = 0;
+
+  for (const row of due) {
+    try {
+      await activateWave(row.waveNumber, row.scheduledByUserId);
+
+      await db
+        .update(waveScheduledLaunches)
+        .set({ status: "active" })
+        .where(eq(waveScheduledLaunches.id, row.id));
+
+      await storage.createAuditLog({
+        actorId: row.scheduledByUserId,
+        targetId: String(row.waveNumber),
+        action: "sop_wave_scheduled_launch_fired",
+        changes: {
+          waveNumber: row.waveNumber,
+          goLiveDate: row.goLiveDate,
+          scheduledLaunchId: row.id,
+        },
+      });
+
+      fired += 1;
+    } catch (err) {
+      console.error(`[sopRollout] fireScheduledWaveLaunches: wave ${row.waveNumber} failed:`, err);
+      errors += 1;
+    }
+  }
+
+  return { fired, errors };
 }

@@ -320,6 +320,9 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "governance.manager": ["super_admin", "admin", "hr", "operations", "manager"],
   "governance.hr": ["super_admin", "admin", "hr"],
   "governance.ceo": ["super_admin", "admin"],
+  // SOP Wave Scheduling — delegated go-live scheduling with RBAC approval gates
+  "sops.schedule": ["super_admin", "admin", "director"],
+  "sops.readiness": ["super_admin", "admin", "hr", "manager"],
 };
 
 // ============================================================================
@@ -394,6 +397,7 @@ export const ACCESS_CONTROL_ROLES: { value: string; label: string }[] = [
   { value: "hr", label: "HR" },
   { value: "finance", label: "Finance" },
   { value: "operations", label: "Operations" },
+  { value: "director", label: "Director" },
   { value: "manager", label: "Manager" },
   { value: "recruiter", label: "Recruiter" },
   { value: "employee", label: "Employee" },

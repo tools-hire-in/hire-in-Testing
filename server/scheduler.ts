@@ -1938,6 +1938,33 @@ export function startScheduler() {
     }
   });
 
+  // ─── SOP wave scheduled launch activation — daily 07:00 IST ─────────────────
+  // Picks up `approved` wave_scheduled_launches rows where go_live_date <= today,
+  // calls activateWave for each, and marks the row `active`.
+  JOB_REGISTRY.set("sop_scheduled_wave_launches", {
+    name: "sop_scheduled_wave_launches",
+    label: "SOP Scheduled Wave Launches",
+    schedule: "Daily 07:00 IST",
+    handler: async () => {
+      const { fireScheduledWaveLaunches } = await import("./sopRollout");
+      const result = await fireScheduledWaveLaunches();
+      console.log(`[scheduler] SOP scheduled wave launches: fired=${result.fired}, errors=${result.errors}`);
+    },
+  });
+
+  cron.schedule("0 7 * * *", async () => {
+    const _entry = JOB_REGISTRY.get("sop_scheduled_wave_launches");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
+    console.log("[scheduler] Running SOP scheduled wave launch activation…");
+    try {
+      const { fireScheduledWaveLaunches } = await import("./sopRollout");
+      const result = await fireScheduledWaveLaunches();
+      console.log(`[scheduler] SOP scheduled wave launches complete: fired=${result.fired}, errors=${result.errors}`);
+    } catch (err) {
+      console.error("[scheduler] SOP scheduled wave launch activation failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -1957,4 +1984,5 @@ export function startScheduler() {
   console.log("  - Recruiter activity nudge: Mon-Fri at 5:30 PM IST → in-app nudge to recruiters who haven't logged today");
   console.log("  - Ceipal morning reminder: daily at 8:30 AM IST → notifies recruiters with unresolved yesterday Ceipal commitments");
   console.log("  - Ceipal escalation sweep: Mon-Fri at 7:30 PM IST → manager alert on 2+ consecutive misses, flag on 5+ in 30 days");
+  console.log("  - SOP scheduled wave launches: daily 07:00 IST → fires approved wave_scheduled_launches where go_live_date <= today");
 }
