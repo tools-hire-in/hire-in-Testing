@@ -656,7 +656,7 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                 data-testid="input-new-article-title"
               />
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className={isInsightsContentType(newType) ? "space-y-2" : "grid grid-cols-2 gap-3"}>
               <div className="space-y-2">
                 <Label htmlFor="new-article-type">Content type</Label>
                 <Select value={newType} onValueChange={setNewType}>
@@ -685,75 +685,6 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                     </SelectGroup>
                   </SelectContent>
                 </Select>
-                {isInsightsContentType(newType) && (
-                  <div className="space-y-3 rounded-md border border-indigo-200 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/30 p-3">
-                    <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
-                      Insights Editorial — AI will generate a planning brief for Gate A review before drafting.
-                    </p>
-                    <div className="space-y-1">
-                      <Label className="text-xs" htmlFor="insights-primary-reader">
-                        Primary Reader <span className="text-red-500">*</span>
-                      </Label>
-                      <Select value={newInsightsPrimaryReader} onValueChange={setNewInsightsPrimaryReader}>
-                        <SelectTrigger id="insights-primary-reader" className="text-xs" data-testid="select-insights-primary-reader">
-                          <SelectValue placeholder="Select reader type…" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Staffing/MSP Operator">Staffing / MSP Operator</SelectItem>
-                          <SelectItem value="HR Director">HR Director</SelectItem>
-                          <SelectItem value="IT Hiring Manager">IT Hiring Manager</SelectItem>
-                          <SelectItem value="Healthcare HR Manager">Healthcare HR Manager</SelectItem>
-                          <SelectItem value="C-Suite Executive">C-Suite Executive</SelectItem>
-                          <SelectItem value="Recruitment Leader">Recruitment Leader</SelectItem>
-                          <SelectItem value="Candidate/Professional">Candidate / Professional</SelectItem>
-                          <SelectItem value="Government/Public Sector HR">Government / Public Sector HR</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs" htmlFor="insights-primary-question">
-                        Primary Reader Question <span className="text-muted-foreground font-normal">(what decision does this help them make?)</span>
-                      </Label>
-                      <Textarea
-                        id="insights-primary-question"
-                        value={newInsightsPrimaryReaderQuestion}
-                        onChange={(e) => setNewInsightsPrimaryReaderQuestion(e.target.value)}
-                        placeholder="e.g. Should we expand our contingent workforce given current market signals?"
-                        rows={2}
-                        className="text-xs"
-                        data-testid="input-insights-primary-question"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs" htmlFor="insights-why-now">
-                        Why This Matters Now <span className="text-red-500">*</span>
-                        <span className="text-muted-foreground font-normal ml-1">(timing / urgency hook for the AI brief)</span>
-                      </Label>
-                      <Input
-                        id="insights-why-now"
-                        value={newInsightsWhyNow}
-                        onChange={(e) => setNewInsightsWhyNow(e.target.value)}
-                        placeholder="e.g. Q3 budget planning season, recent regulatory change…"
-                        className="text-xs"
-                        data-testid="input-insights-why-now"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs" htmlFor="insights-mode">Editorial Mode <span className="text-muted-foreground font-normal">(optional)</span></Label>
-                      <Select value={newInsightsMode || "auto"} onValueChange={(v) => setNewInsightsMode(v === "auto" ? "" : v)}>
-                        <SelectTrigger id="insights-mode" className="text-xs" data-testid="select-insights-mode">
-                          <SelectValue placeholder="Let AI decide" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="auto">Let AI decide</SelectItem>
-                          <SelectItem value="MODE_A_FOCUSED">Mode A — Data-driven / Evidence-led</SelectItem>
-                          <SelectItem value="MODE_B_PRIMARY_PLUS_CONSEQUENCE">Mode B — Narrative / Story-led</SelectItem>
-                          <SelectItem value="MODE_C_SYSTEM">Mode C — Framework / Structured guide</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                  </div>
-                )}
               </div>
               {!isInsightsContentType(newType) && (
                 <div className="space-y-2">
@@ -774,6 +705,75 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                 </div>
               )}
             </div>
+            {isInsightsContentType(newType) && (
+              <div className="space-y-3 rounded-md border border-indigo-200 bg-indigo-50 dark:border-indigo-700 dark:bg-indigo-950/30 p-3">
+                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">
+                  Insights Editorial — AI will generate a planning brief for Gate A review before drafting.
+                </p>
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor="insights-primary-reader">
+                    Primary Reader <span className="text-red-500">*</span>
+                  </Label>
+                  <Select value={newInsightsPrimaryReader} onValueChange={setNewInsightsPrimaryReader}>
+                    <SelectTrigger id="insights-primary-reader" className="text-xs" data-testid="select-insights-primary-reader">
+                      <SelectValue placeholder="Select reader type…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="Staffing/MSP Operator">Staffing / MSP Operator</SelectItem>
+                      <SelectItem value="HR Director">HR Director</SelectItem>
+                      <SelectItem value="IT Hiring Manager">IT Hiring Manager</SelectItem>
+                      <SelectItem value="Healthcare HR Manager">Healthcare HR Manager</SelectItem>
+                      <SelectItem value="C-Suite Executive">C-Suite Executive</SelectItem>
+                      <SelectItem value="Recruitment Leader">Recruitment Leader</SelectItem>
+                      <SelectItem value="Candidate/Professional">Candidate / Professional</SelectItem>
+                      <SelectItem value="Government/Public Sector HR">Government / Public Sector HR</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor="insights-primary-question">
+                    Primary Reader Question <span className="text-muted-foreground font-normal">(what decision does this help them make?)</span>
+                  </Label>
+                  <Textarea
+                    id="insights-primary-question"
+                    value={newInsightsPrimaryReaderQuestion}
+                    onChange={(e) => setNewInsightsPrimaryReaderQuestion(e.target.value)}
+                    placeholder="e.g. Should we expand our contingent workforce given current market signals?"
+                    rows={2}
+                    className="text-xs"
+                    data-testid="input-insights-primary-question"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor="insights-why-now">
+                    Why This Matters Now <span className="text-red-500">*</span>
+                    <span className="text-muted-foreground font-normal ml-1">(timing / urgency hook for the AI brief)</span>
+                  </Label>
+                  <Input
+                    id="insights-why-now"
+                    value={newInsightsWhyNow}
+                    onChange={(e) => setNewInsightsWhyNow(e.target.value)}
+                    placeholder="e.g. Q3 budget planning season, recent regulatory change…"
+                    className="text-xs"
+                    data-testid="input-insights-why-now"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs" htmlFor="insights-mode">Editorial Mode <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                  <Select value={newInsightsMode || "auto"} onValueChange={(v) => setNewInsightsMode(v === "auto" ? "" : v)}>
+                    <SelectTrigger id="insights-mode" className="text-xs" data-testid="select-insights-mode">
+                      <SelectValue placeholder="Let AI decide" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">Let AI decide</SelectItem>
+                      <SelectItem value="MODE_A_FOCUSED">Mode A — Data-driven / Evidence-led</SelectItem>
+                      <SelectItem value="MODE_B_PRIMARY_PLUS_CONSEQUENCE">Mode B — Narrative / Story-led</SelectItem>
+                      <SelectItem value="MODE_C_SYSTEM">Mode C — Framework / Structured guide</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            )}
             {!isInsightsContentType(newType) && (
               <div className="space-y-2">
                 <Label htmlFor="new-article-goal">Content goal <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>

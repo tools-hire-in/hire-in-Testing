@@ -153,7 +153,9 @@ async function getPulse(req: Request, res: Response) {
   if (scopeType === "org") {
     try {
       const ceoData = await buildCeoReportData();
-      exceptionCategories = ceoData.exceptionCategories;
+      exceptionCategories = (ceoData.exceptionCategories ?? []).filter(
+        (c: any) => c.controlType != null && c.controlType !== "",
+      );
       governanceSummary = {
         totalOpen: ceoData.totalOpen,
         totalOverdue: ceoData.totalOverdue,
@@ -180,13 +182,15 @@ async function getPulse(req: Request, res: Response) {
           GROUP BY gc.control_type
           ORDER BY open DESC
         `);
-    exceptionCategories = (gcResult.rows as any[]).map((r) => ({
-      controlType: r.control_type,
-      open: Number(r.open ?? 0),
-      overdue: Number(r.overdue ?? 0),
-      escalated: Number(r.escalated ?? 0),
-      disputed: Number(r.disputed ?? 0),
-    }));
+    exceptionCategories = (gcResult.rows as any[])
+      .filter((r) => r.control_type != null && r.control_type !== "")
+      .map((r) => ({
+        controlType: r.control_type,
+        open: Number(r.open ?? 0),
+        overdue: Number(r.overdue ?? 0),
+        escalated: Number(r.escalated ?? 0),
+        disputed: Number(r.disputed ?? 0),
+      }));
     const totals = exceptionCategories.reduce(
       (acc, c) => ({
         totalOpen: acc.totalOpen + c.open,

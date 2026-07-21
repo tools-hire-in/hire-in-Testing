@@ -1779,12 +1779,6 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       icon: Settings,
       roles: ["super_admin"],
     }] : []),
-    ...(["super_admin", "admin", "hr", "manager"].includes(userRole) ? [{
-      href: "/admin/probation-guide",
-      label: "Probation Guide",
-      icon: ClipboardList,
-      roles: ["super_admin", "admin", "hr", "manager"],
-    }] : []),
   ];
 
   const isNavActive = (item: NavItem) => {
@@ -2008,8 +2002,9 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 </SidebarGroup>
               )}
 
-              {/* PROBATION GUIDE — People & HR sub-link for manager and above */}
-              {["super_admin", "admin", "hr", "operations", "manager"].includes(userRole) && (
+
+              {/* PROBATION GUIDE — People & HR sub-link for super_admin, admin, hr, manager */}
+              {["super_admin", "admin", "hr", "manager"].includes(userRole) && (
                 <SidebarGroup>
                   <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
                     People & HR

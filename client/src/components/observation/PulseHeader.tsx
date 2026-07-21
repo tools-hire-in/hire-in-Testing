@@ -32,7 +32,8 @@ function chipColor(open: number) {
   return "bg-red-50 text-red-700 border-red-200 dark:bg-red-950/30 dark:text-red-300 dark:border-red-800";
 }
 
-function formatControlType(ct: string) {
+function formatControlType(ct: string | null | undefined) {
+  if (!ct) return "Unknown";
   return ct
     .replace(/_/g, " ")
     .replace(/\b\w/g, (c) => c.toUpperCase());
@@ -58,7 +59,7 @@ export function PulseHeader({ lastRefreshed, onRefreshAll, queryRef, scope = "or
 
   if (queryRef) queryRef.current = refetch;
 
-  const categories = data?.exceptionCategories ?? [];
+  const categories = (data?.exceptionCategories ?? []).filter((c) => c.controlType);
   const totalOpen = data?.governanceSummary?.totalOpen ?? 0;
 
   return (
