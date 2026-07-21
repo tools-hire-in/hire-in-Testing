@@ -1,0 +1,63 @@
+chunk-GG6IGNHI.js?v=cf6b7246:21609 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+:5000/api/ceo/goals:1  Failed to load resource: the server responded with a status of 500 (Internal Server Error)
+:5000/api/ceo/goals:1  Failed to load resource: the server responded with a status of 500 (Internal Server Error)
+PulseHeader.tsx:37 Uncaught TypeError: Cannot read properties of undefined (reading 'replace')
+    at formatControlType (PulseHeader.tsx:37:6)
+    at PulseHeader.tsx:117:16
+    at Array.map (<anonymous>)
+    at PulseHeader (PulseHeader.tsx:107:23)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=cf6b7246:11596:26)
+    at updateFunctionComponent (chunk-GG6IGNHI.js?v=cf6b7246:14630:28)
+    at beginWork (chunk-GG6IGNHI.js?v=cf6b7246:15972:22)
+    at HTMLUnknownElement.callCallback2 (chunk-GG6IGNHI.js?v=cf6b7246:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-GG6IGNHI.js?v=cf6b7246:3705:24)
+    at invokeGuardedCallback (chunk-GG6IGNHI.js?v=cf6b7246:3739:39)
+PulseHeader.tsx:37 Uncaught TypeError: Cannot read properties of undefined (reading 'replace')
+    at formatControlType (PulseHeader.tsx:37:6)
+    at PulseHeader.tsx:117:16
+    at Array.map (<anonymous>)
+    at PulseHeader (PulseHeader.tsx:107:23)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=cf6b7246:11596:26)
+    at updateFunctionComponent (chunk-GG6IGNHI.js?v=cf6b7246:14630:28)
+    at beginWork (chunk-GG6IGNHI.js?v=cf6b7246:15972:22)
+    at HTMLUnknownElement.callCallback2 (chunk-GG6IGNHI.js?v=cf6b7246:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-GG6IGNHI.js?v=cf6b7246:3705:24)
+    at invokeGuardedCallback (chunk-GG6IGNHI.js?v=cf6b7246:3739:39)
+chunk-GG6IGNHI.js?v=cf6b7246:14080 The above error occurred in the <PulseHeader> component:
+
+    at PulseHeader (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/components/observation/PulseHeader.tsx:31:31)
+    at div
+    at main
+    at div
+    at div
+    at div
+    at div
+    at Provider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-SAEZPHBS.js?v=cf6b7246:37:15)
+    at TooltipProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=cf6b7246:63:5)
+    at SidebarProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/components/ui/sidebar.tsx:59:3)
+    at AdminLayoutInner (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/components/admin/AdminLayout.tsx:1819:29)
+    at AdminLayout (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/components/admin/AdminLayout.tsx:1786:31)
+    at ObservationTower (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/pages/admin/ObservationTower.tsx:31:31)
+    at Suspense
+    at Route (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=cf6b7246:264:16)
+    at Switch (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=cf6b7246:320:17)
+    at EmployeeRouter
+    at Provider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-SAEZPHBS.js?v=cf6b7246:37:15)
+    at TooltipProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=cf6b7246:63:5)
+    at QueryClientProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=cf6b7246:2747:3)
+    at App (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/App.tsx:4822:24)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+logCapturedError @ chunk-GG6IGNHI.js?v=cf6b7246:14080
+chunk-GG6IGNHI.js?v=cf6b7246:9176 Uncaught TypeError: Cannot read properties of undefined (reading 'replace')
+    at formatControlType (PulseHeader.tsx:37:6)
+    at PulseHeader.tsx:117:16
+    at Array.map (<anonymous>)
+    at PulseHeader (PulseHeader.tsx:107:23)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=cf6b7246:11596:26)
+    at updateFunctionComponent (chunk-GG6IGNHI.js?v=cf6b7246:14630:28)
+    at beginWork (chunk-GG6IGNHI.js?v=cf6b7246:15972:22)
+    at beginWork$1 (chunk-GG6IGNHI.js?v=cf6b7246:19806:22)
+    at performUnitOfWork (chunk-GG6IGNHI.js?v=cf6b7246:19251:20)
+    at workLoopSync (chunk-GG6IGNHI.js?v=cf6b7246:19190:13)
