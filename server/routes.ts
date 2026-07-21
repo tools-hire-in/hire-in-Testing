@@ -29933,8 +29933,29 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   const KNOWLEDGE_HUB_SETTING_KEY = "knowledge_hub_doc_roles";
 
-  const DEFAULT_DOC_ROLES: Record<string, UserRole[]> = {    "training/employee-onboarding-track-source.md": ["employee", "manager", "hr", "admin", "super_admin"],
+  const DEFAULT_DOC_ROLES: Record<string, UserRole[]> = {
+    "training/employee-onboarding-track-source.md": ["employee", "manager", "hr", "admin", "super_admin"],
     "training/manager-onboarding-track-source.md": ["manager", "hr", "admin", "super_admin"],
+    "training/hr-admin-onboarding-track-source.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-feature-flags.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-hr-letters.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-leave-balance.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-offer-letters.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-payroll-run.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-sop-wave.md": ["hr", "admin", "super_admin"],
+    "training/manager-guide-attendance-correction.md": ["manager", "hr", "admin", "super_admin"],
+    "training/manager-guide-employee-plans.md": ["manager", "hr", "admin", "super_admin"],
+    "training/manager-guide-leave-approval.md": ["manager", "hr", "admin", "super_admin"],
+    "training/manager-guide-my-team-nav.md": ["manager", "hr", "admin", "super_admin"],
+    "training/manager-guide-offer-letters.md": ["manager", "hr", "admin", "super_admin"],
+    "training/executive-guide-dashboards.md": ["executive", "finance", "admin", "super_admin"],
+    "training/executive-onboarding-track-source.md": ["executive", "finance", "admin", "super_admin"],
+    "training/candidate-onboarding-track-source.md": ["recruiter", "hr", "admin", "super_admin"],
+    "training/developer-onboarding-track-source.md": ["admin", "super_admin"],
+    "training/rayo-academy-blueprint.md": ["admin", "super_admin"],
+    "training/EXISTING_GUIDES_INDEX.md": ["admin", "super_admin"],
+    "training/TRAINING_GAP_MAP.md": ["admin", "super_admin"],
+    "training/TRAINING_GAP_MAP_V2.md": ["admin", "super_admin"],
     "guides/HR-OPS-TEAM-AI-GUIDE.md": ["hr", "operations", "manager", "admin", "super_admin"],
     "guides/BD-TEAM-AI-GUIDE.md": ["recruiter", "operations", "admin", "super_admin"],
     "guides/CONTENT-TEAM-AI-GUIDE.md": ["recruiter", "operations", "admin", "super_admin"],
@@ -29966,19 +29987,25 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     return roleMap;
   }
 
-  // GET /api/admin/knowledge/docs — full doc list with role assignments (super_admin only)
+  // GET /api/admin/knowledge/docs — doc list filtered by caller role (super_admin gets all + assignedRoles)
   app.get("/api/admin/knowledge/docs", requireAuth, async (req: Request, res: Response) => {
-    if (req.session.role !== "super_admin") {
-      return res.status(403).json({ error: "Super admin access required" });
-    }
     try {
+      const isSuperAdmin = req.session.role === "super_admin";
+      const userRole = req.session.role as string;
       const docs = readDocsDirectory();
       const roleMap = await getOrSeedKnowledgeHubRoles();
-      const enriched = docs.map((doc) => ({
-        ...doc,
-        assignedRoles: roleMap[doc.path] ?? ["super_admin"],
-      }));
-      res.json(enriched);
+      if (isSuperAdmin) {
+        const enriched = docs.map((doc) => ({
+          ...doc,
+          assignedRoles: roleMap[doc.path] ?? ["super_admin"],
+        }));
+        return res.json(enriched);
+      }
+      // Non-super_admin: only return docs assigned to their role
+      const filtered = docs
+        .filter((doc) => (roleMap[doc.path] ?? ["super_admin"]).includes(userRole as UserRole))
+        .map((doc) => ({ ...doc, assignedRoles: roleMap[doc.path] ?? ["super_admin"] }));
+      res.json(filtered);
     } catch (err: any) {
       console.error("[knowledge-hub] GET /api/admin/knowledge/docs:", err);
       res.status(500).json({ error: "Failed to read knowledge docs" });

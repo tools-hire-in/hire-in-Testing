@@ -234,6 +234,13 @@ function CommandCenterSection({
                 </Link>
               </SidebarMenuButton>
             </SidebarMenuItem>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild isActive={location.startsWith("/admin/knowledge-hub")} tooltip="Training Docs">
+                <Link href="/admin/knowledge-hub" data-testid="nav-item-training-docs-collapsed">
+                  <BookOpen className="h-4 w-4 shrink-0" />
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
           </SidebarMenu>
         </SidebarGroupContent>
       </SidebarGroup>
@@ -336,6 +343,20 @@ function CommandCenterSection({
               >
                 <KeyRound className="h-3.5 w-3.5 shrink-0" />
                 <span className="flex-1">My Vault</span>
+              </Link>
+
+              {/* Training Docs — visible to all roles */}
+              <Link
+                href="/admin/knowledge-hub"
+                className={`flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs transition-colors ${
+                  location.startsWith("/admin/knowledge-hub")
+                    ? "bg-accent text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                }`}
+                data-testid="nav-mydesk-sub-training-docs"
+              >
+                <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                <span className="flex-1">Training Docs</span>
               </Link>
             </div>
 

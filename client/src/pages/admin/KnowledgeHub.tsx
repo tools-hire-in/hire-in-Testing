@@ -1,5 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
-import { useLocation } from "wouter";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -31,6 +30,7 @@ import {
   Check,
   FileText,
   ChevronsUpDown,
+  Users,
 } from "lucide-react";
 
 const roleLabels: Record<string, { label: string; color: string }> = {
@@ -47,8 +47,6 @@ const roleLabels: Record<string, { label: string; color: string }> = {
 
 const ALL_ROLES = Object.keys(roleLabels);
 
-// Fixed 9-category list in the required order.
-// The sidebar always shows all 9 with a count (even zero).
 const FIXED_CATEGORIES: { key: string; label: string }[] = [
   { key: "strategy", label: "Strategy" },
   { key: "guides", label: "Guides" },
@@ -68,6 +66,11 @@ interface KnowledgeDoc {
   path: string;
   content: string;
   assignedRoles: string[];
+}
+
+interface ReadEntry {
+  docPath: string;
+  readAt: string;
 }
 
 function DocReader({ content }: { content: string | null }) {
@@ -226,28 +229,186 @@ function RolePopover({
   );
 }
 
-export default function KnowledgeHub() {
-  const { user, isLoading: authLoading } = useAuth();
-  const [, setLocation] = useLocation();
+// ─── Simplified reader view for non-super_admin roles ───────────────────────
 
-  // Role guard — redirect non-super_admin users immediately
-  useEffect(() => {
-    if (!authLoading && user && user.role !== "super_admin") {
-      setLocation("/admin/my-desk");
-    }
-  }, [authLoading, user, setLocation]);
-
-  const { toast } = useToast();
-  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+function SimplifiedTrainingView({
+  docs,
+  isLoading,
+  isError,
+  refetch,
+  readPaths,
+}: {
+  docs: KnowledgeDoc[];
+  isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
+  readPaths: Set<string>;
+}) {
   const [selectedDoc, setSelectedDoc] = useState<KnowledgeDoc | null>(null);
   const [search, setSearch] = useState("");
 
-  const { data: docs = [], isLoading, isError, refetch } = useQuery<KnowledgeDoc[]>({
-    queryKey: ["/api/admin/knowledge/docs"],
-    enabled: !authLoading && user?.role === "super_admin",
-  });
+  const filtered = useMemo(() => {
+    if (!search.trim()) return docs;
+    const q = search.toLowerCase();
+    return docs.filter((d) => d.title.toLowerCase().includes(q));
+  }, [docs, search]);
 
-  // Optimistic local role state — key: doc.path → roles[]
+  return (
+    <div className="h-full flex flex-col">
+      <div className="mb-5 flex items-center gap-3 shrink-0">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <BookOpen className="h-5 w-5" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold tracking-tight" data-testid="text-knowledge-hub-title">
+            Training Docs
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Your role-curated training documents.
+          </p>
+        </div>
+      </div>
+
+      {isError && (
+        <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 mb-4">
+          <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-destructive">Failed to load training docs</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Check server connectivity and try again.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => refetch()} data-testid="button-retry-knowledge">
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Retry
+          </Button>
+        </div>
+      )}
+
+      <div className="flex-1 grid grid-cols-[280px_1fr] gap-0 min-h-0 border rounded-lg overflow-hidden">
+        {/* Left: doc list */}
+        <div className="border-r overflow-y-auto flex flex-col">
+          <div className="p-2 border-b bg-background sticky top-0 z-10">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search docs…"
+                className="pl-8 h-8 text-sm"
+                data-testid="input-knowledge-search"
+              />
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {isLoading && (
+              <div className="p-3 space-y-3">
+                {[1, 2, 3, 4, 5].map((i) => (
+                  <Skeleton key={i} className="h-12 w-full rounded-md" />
+                ))}
+              </div>
+            )}
+
+            {!isLoading && filtered.length === 0 && (
+              <div className="p-6 text-center text-sm text-muted-foreground" data-testid="text-knowledge-no-results">
+                No documents found.
+              </div>
+            )}
+
+            {!isLoading &&
+              filtered.map((doc) => {
+                const isActive = selectedDoc?.id === doc.id;
+                const isRead = readPaths.has(doc.path);
+                return (
+                  <div
+                    key={doc.id}
+                    data-testid={`knowledge-doc-row-${doc.id}`}
+                    onClick={() => setSelectedDoc(doc)}
+                    className={`p-3 border-b cursor-pointer transition-colors flex items-start gap-2 ${
+                      isActive
+                        ? "bg-primary/5 border-l-2 border-l-primary"
+                        : isRead
+                        ? "hover:bg-muted/30"
+                        : "bg-amber-50/60 dark:bg-amber-950/20 hover:bg-amber-100/60 dark:hover:bg-amber-900/20"
+                    }`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p
+                        className={`text-sm font-medium truncate ${
+                          isActive
+                            ? "text-primary"
+                            : isRead
+                            ? "text-muted-foreground"
+                            : "text-foreground"
+                        }`}
+                      >
+                        {doc.title}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                        {doc.category}
+                      </p>
+                    </div>
+                    {isRead ? (
+                      <Check className="h-3.5 w-3.5 text-green-500 shrink-0 mt-0.5" />
+                    ) : (
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                    )}
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
+        {/* Right: reader */}
+        <div className="overflow-y-auto knowledge-hub-reader">
+          {selectedDoc ? (
+            <div className="p-5">
+              <div className="mb-4 pb-4 border-b flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2 className="text-base font-semibold leading-tight" data-testid="text-knowledge-doc-title">
+                    {selectedDoc.title}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">{selectedDoc.path}</p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.print()}
+                  data-testid="button-print-doc"
+                  className="shrink-0"
+                >
+                  <Printer className="h-3.5 w-3.5 mr-1.5" />
+                  Print
+                </Button>
+              </div>
+              <DocReader content={selectedDoc.content} />
+            </div>
+          ) : (
+            <DocReader content={null} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Full admin view for super_admin ────────────────────────────────────────
+
+function SuperAdminView({
+  docs,
+  isLoading,
+  isError,
+  refetch,
+  readCounts,
+}: {
+  docs: KnowledgeDoc[];
+  isLoading: boolean;
+  isError: boolean;
+  refetch: () => void;
+  readCounts: Record<string, number> | null;
+}) {
+  const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
+  const [selectedDoc, setSelectedDoc] = useState<KnowledgeDoc | null>(null);
+  const [search, setSearch] = useState("");
   const [localRoles, setLocalRoles] = useState<Record<string, string[]>>({});
 
   const getAssignedRoles = (doc: KnowledgeDoc) =>
@@ -257,12 +418,10 @@ export default function KnowledgeHub() {
     setLocalRoles((prev) => ({ ...prev, [path]: roles }));
   };
 
-  // Rollback: restore previous roles when a mutation fails
   const handleRolesRollback = (path: string, previousRoles: string[]) => {
     setLocalRoles((prev) => ({ ...prev, [path]: previousRoles }));
   };
 
-  // Count docs per canonical category key
   const categoryCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const doc of docs) {
@@ -286,9 +445,251 @@ export default function KnowledgeHub() {
     return list;
   }, [docs, selectedCategory, search]);
 
-  // Render nothing until auth resolves or if user is not super_admin
+  return (
+    <div className="h-full flex flex-col">
+      <div className="mb-5 flex items-center gap-3 shrink-0">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <BookOpen className="h-5 w-5" />
+        </div>
+        <div>
+          <h1 className="text-xl font-bold tracking-tight" data-testid="text-knowledge-hub-title">
+            Knowledge Hub
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            Manage which roles can see each internal document.
+          </p>
+        </div>
+      </div>
+
+      {isError && (
+        <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 mb-4">
+          <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-destructive">Failed to load knowledge docs</p>
+            <p className="text-xs text-muted-foreground mt-0.5">Check server connectivity and try again.</p>
+          </div>
+          <Button size="sm" variant="outline" onClick={() => refetch()} data-testid="button-retry-knowledge">
+            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            Retry
+          </Button>
+        </div>
+      )}
+
+      <div className="flex-1 grid grid-cols-[200px_1fr_1fr] gap-0 min-h-0 border rounded-lg overflow-hidden">
+        {/* Left: category sidebar */}
+        <div className="knowledge-hub-sidebars border-r overflow-y-auto bg-muted/20">
+          <div className="p-2">
+            <p className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Categories
+            </p>
+            <div className="space-y-0.5">
+              <button
+                data-testid="category-all"
+                onClick={() => setSelectedCategory(null)}
+                className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-sm transition-colors ${
+                  selectedCategory === null
+                    ? "bg-primary/10 text-primary font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                }`}
+              >
+                <span>All</span>
+                <span className="text-xs font-medium tabular-nums">{docs.length}</span>
+              </button>
+
+              {isLoading &&
+                FIXED_CATEGORIES.map((c) => (
+                  <Skeleton key={c.key} className="h-7 w-full rounded-md" />
+                ))}
+
+              {!isLoading &&
+                FIXED_CATEGORIES.map(({ key, label }) => {
+                  const count = categoryCounts[key] ?? 0;
+                  return (
+                    <button
+                      key={key}
+                      data-testid={`category-${key}`}
+                      onClick={() => setSelectedCategory(key)}
+                      className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-sm transition-colors ${
+                        selectedCategory === key
+                          ? "bg-primary/10 text-primary font-medium"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                      }`}
+                    >
+                      <span className="truncate">{label}</span>
+                      <span className="text-xs font-medium tabular-nums ml-1 shrink-0">
+                        {count}
+                      </span>
+                    </button>
+                  );
+                })}
+            </div>
+          </div>
+        </div>
+
+        {/* Centre: doc list with role pickers + read count */}
+        <div className="knowledge-hub-sidebars border-r overflow-y-auto flex flex-col">
+          <div className="p-2 border-b bg-background sticky top-0 z-10">
+            <div className="relative">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Search docs…"
+                className="pl-8 h-8 text-sm"
+                data-testid="input-knowledge-search"
+              />
+            </div>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {isLoading && (
+              <div className="p-3 space-y-3">
+                {[1, 2, 3, 4].map((i) => (
+                  <div key={i} className="space-y-2">
+                    <Skeleton className="h-4 w-3/4" />
+                    <Skeleton className="h-3 w-1/2" />
+                    <Skeleton className="h-5 w-24" />
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!isLoading && filteredDocs.length === 0 && (
+              <div
+                className="p-6 text-center text-sm text-muted-foreground"
+                data-testid="text-knowledge-no-results"
+              >
+                No documents found.
+              </div>
+            )}
+
+            {!isLoading &&
+              filteredDocs.map((doc) => {
+                const isActive = selectedDoc?.id === doc.id;
+                const assignedRoles = getAssignedRoles(doc);
+                const readCount = readCounts?.[doc.path];
+                return (
+                  <div
+                    key={doc.id}
+                    data-testid={`knowledge-doc-row-${doc.id}`}
+                    className={`p-3 border-b cursor-pointer transition-colors ${
+                      isActive
+                        ? "bg-primary/5 border-l-2 border-l-primary"
+                        : "hover:bg-muted/40"
+                    }`}
+                    onClick={() => setSelectedDoc(doc)}
+                  >
+                    <div className="flex items-start justify-between gap-2 mb-1.5">
+                      <div className="flex-1 min-w-0">
+                        <p
+                          className={`text-sm font-medium truncate ${
+                            isActive ? "text-primary" : ""
+                          }`}
+                        >
+                          {doc.title}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground truncate mt-0.5">
+                          {doc.path}
+                        </p>
+                      </div>
+                      <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
+                    </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <RolePopover
+                          docPath={doc.path}
+                          assignedRoles={assignedRoles}
+                          onRolesChange={handleRolesChange}
+                          onRolesRollback={handleRolesRollback}
+                        />
+                      </div>
+                      <span
+                        className="flex items-center gap-1 text-[11px] text-muted-foreground shrink-0"
+                        data-testid={`read-count-${doc.id}`}
+                        title="Users who have read this doc"
+                      >
+                        <Users className="h-3 w-3" />
+                        {readCount != null ? readCount : "—"}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+
+        {/* Right: doc reader */}
+        <div className="overflow-y-auto knowledge-hub-reader">
+          {selectedDoc ? (
+            <div className="p-5">
+              <div className="mb-4 pb-4 border-b flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <h2
+                    className="text-base font-semibold leading-tight"
+                    data-testid="text-knowledge-doc-title"
+                  >
+                    {selectedDoc.title}
+                  </h2>
+                  <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                    {selectedDoc.path}
+                  </p>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => window.print()}
+                  data-testid="button-print-doc"
+                  className="shrink-0"
+                >
+                  <Printer className="h-3.5 w-3.5 mr-1.5" />
+                  Print
+                </Button>
+              </div>
+              <DocReader content={selectedDoc.content} />
+            </div>
+          ) : (
+            <DocReader content={null} />
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main page ───────────────────────────────────────────────────────────────
+
+export default function KnowledgeHub() {
+  const { user, isLoading: authLoading } = useAuth();
+
+  const isSuperAdmin = user?.role === "super_admin";
+
+  const { data: docs = [], isLoading, isError, refetch } = useQuery<KnowledgeDoc[]>({
+    queryKey: ["/api/admin/knowledge/docs"],
+    enabled: !authLoading && !!user,
+  });
+
+  // Defensive read-state fetch — gracefully degrades if endpoint not yet available
+  const { data: readEntries = [] } = useQuery<ReadEntry[]>({
+    queryKey: ["/api/admin/knowledge/reads"],
+    enabled: !authLoading && !!user,
+    retry: false,
+    throwOnError: false,
+  } as any);
+
+  const readPaths = useMemo(
+    () => new Set((readEntries as ReadEntry[]).map((e) => e.docPath)),
+    [readEntries]
+  );
+
+  // Defensive read-counts fetch for super_admin column
+  const { data: readCountsRaw } = useQuery<Record<string, number>>({
+    queryKey: ["/api/admin/knowledge/read-counts"],
+    enabled: !authLoading && isSuperAdmin,
+    retry: false,
+    throwOnError: false,
+  } as any);
+
   if (authLoading || !user) return null;
-  if (user.role !== "super_admin") return null;
 
   return (
     <AdminLayout>
@@ -299,217 +700,23 @@ export default function KnowledgeHub() {
         }
       `}</style>
 
-      <div className="h-full flex flex-col">
-        {/* Page header */}
-        <div className="mb-5 flex items-center gap-3 shrink-0">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <BookOpen className="h-5 w-5" />
-          </div>
-          <div>
-            <h1
-              className="text-xl font-bold tracking-tight"
-              data-testid="text-knowledge-hub-title"
-            >
-              Knowledge Hub
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Manage which roles can see each internal document.
-            </p>
-          </div>
-        </div>
-
-        {/* Error state */}
-        {isError && (
-          <div className="flex items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-4 mb-4">
-            <AlertCircle className="h-5 w-5 text-destructive shrink-0" />
-            <div className="flex-1">
-              <p className="text-sm font-medium text-destructive">
-                Failed to load knowledge docs
-              </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Check server connectivity and try again.
-              </p>
-            </div>
-            <Button
-              size="sm"
-              variant="outline"
-              onClick={() => refetch()}
-              data-testid="button-retry-knowledge"
-            >
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
-              Retry
-            </Button>
-          </div>
-        )}
-
-        {/* Three-column layout */}
-        <div className="flex-1 grid grid-cols-[200px_1fr_1fr] gap-0 min-h-0 border rounded-lg overflow-hidden">
-          {/* Left: fixed 9-category sidebar */}
-          <div className="knowledge-hub-sidebars border-r overflow-y-auto bg-muted/20">
-            <div className="p-2">
-              <p className="px-2 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Categories
-              </p>
-              <div className="space-y-0.5">
-                <button
-                  data-testid="category-all"
-                  onClick={() => setSelectedCategory(null)}
-                  className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-sm transition-colors ${
-                    selectedCategory === null
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                  }`}
-                >
-                  <span>All</span>
-                  <span className="text-xs font-medium tabular-nums">{docs.length}</span>
-                </button>
-
-                {isLoading &&
-                  FIXED_CATEGORIES.map((c) => (
-                    <Skeleton key={c.key} className="h-7 w-full rounded-md" />
-                  ))}
-
-                {!isLoading &&
-                  FIXED_CATEGORIES.map(({ key, label }) => {
-                    const count = categoryCounts[key] ?? 0;
-                    return (
-                      <button
-                        key={key}
-                        data-testid={`category-${key}`}
-                        onClick={() => setSelectedCategory(key)}
-                        className={`flex items-center justify-between w-full px-2 py-1.5 rounded-md text-sm transition-colors ${
-                          selectedCategory === key
-                            ? "bg-primary/10 text-primary font-medium"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                        }`}
-                      >
-                        <span className="truncate">{label}</span>
-                        <span className="text-xs font-medium tabular-nums ml-1 shrink-0">
-                          {count}
-                        </span>
-                      </button>
-                    );
-                  })}
-              </div>
-            </div>
-          </div>
-
-          {/* Centre: doc list with role pickers */}
-          <div className="knowledge-hub-sidebars border-r overflow-y-auto flex flex-col">
-            <div className="p-2 border-b bg-background sticky top-0 z-10">
-              <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-                <Input
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder="Search docs…"
-                  className="pl-8 h-8 text-sm"
-                  data-testid="input-knowledge-search"
-                />
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto">
-              {isLoading && (
-                <div className="p-3 space-y-3">
-                  {[1, 2, 3, 4].map((i) => (
-                    <div key={i} className="space-y-2">
-                      <Skeleton className="h-4 w-3/4" />
-                      <Skeleton className="h-3 w-1/2" />
-                      <Skeleton className="h-5 w-24" />
-                    </div>
-                  ))}
-                </div>
-              )}
-
-              {!isLoading && filteredDocs.length === 0 && (
-                <div
-                  className="p-6 text-center text-sm text-muted-foreground"
-                  data-testid="text-knowledge-no-results"
-                >
-                  No documents found.
-                </div>
-              )}
-
-              {!isLoading &&
-                filteredDocs.map((doc) => {
-                  const isActive = selectedDoc?.id === doc.id;
-                  const assignedRoles = getAssignedRoles(doc);
-                  return (
-                    <div
-                      key={doc.id}
-                      data-testid={`knowledge-doc-row-${doc.id}`}
-                      className={`p-3 border-b cursor-pointer transition-colors ${
-                        isActive
-                          ? "bg-primary/5 border-l-2 border-l-primary"
-                          : "hover:bg-muted/40"
-                      }`}
-                      onClick={() => setSelectedDoc(doc)}
-                    >
-                      <div className="flex items-start justify-between gap-2 mb-1.5">
-                        <div className="flex-1 min-w-0">
-                          <p
-                            className={`text-sm font-medium truncate ${
-                              isActive ? "text-primary" : ""
-                            }`}
-                          >
-                            {doc.title}
-                          </p>
-                          <p className="text-[11px] text-muted-foreground truncate mt-0.5">
-                            {doc.path}
-                          </p>
-                        </div>
-                        <ChevronRight className="h-3.5 w-3.5 text-muted-foreground shrink-0 mt-0.5" />
-                      </div>
-                      <div onClick={(e) => e.stopPropagation()}>
-                        <RolePopover
-                          docPath={doc.path}
-                          assignedRoles={assignedRoles}
-                          onRolesChange={handleRolesChange}
-                          onRolesRollback={handleRolesRollback}
-                        />
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
-          </div>
-
-          {/* Right: doc reader */}
-          <div className="overflow-y-auto knowledge-hub-reader">
-            {selectedDoc ? (
-              <div className="p-5">
-                <div className="mb-4 pb-4 border-b flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <h2
-                      className="text-base font-semibold leading-tight"
-                      data-testid="text-knowledge-doc-title"
-                    >
-                      {selectedDoc.title}
-                    </h2>
-                    <p className="text-xs text-muted-foreground mt-0.5 truncate">
-                      {selectedDoc.path}
-                    </p>
-                  </div>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => window.print()}
-                    data-testid="button-print-doc"
-                    className="shrink-0"
-                  >
-                    <Printer className="h-3.5 w-3.5 mr-1.5" />
-                    Print
-                  </Button>
-                </div>
-                <DocReader content={selectedDoc.content} />
-              </div>
-            ) : (
-              <DocReader content={null} />
-            )}
-          </div>
-        </div>
-      </div>
+      {isSuperAdmin ? (
+        <SuperAdminView
+          docs={docs}
+          isLoading={isLoading}
+          isError={isError}
+          refetch={refetch}
+          readCounts={readCountsRaw ?? null}
+        />
+      ) : (
+        <SimplifiedTrainingView
+          docs={docs}
+          isLoading={isLoading}
+          isError={isError}
+          refetch={refetch}
+          readPaths={readPaths}
+        />
+      )}
     </AdminLayout>
   );
 }
