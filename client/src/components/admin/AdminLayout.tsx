@@ -1,6 +1,6 @@
 import { AnnouncementModal } from "@/components/AnnouncementModal";
 import { Link, useLocation } from "wouter";
-import { useCallback, useEffect, useState, createContext, useContext } from "react";
+import { useCallback, useEffect, useState, useRef, createContext, useContext } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
 import {
@@ -114,6 +114,7 @@ import { useSopAccess } from "@/hooks/use-sop-access";
 import { usePermissions } from "@/hooks/use-permissions";
 import { COMPANY } from "@/lib/constants";
 import { NotificationBell } from "@/components/NotificationBell";
+import { OnboardingWidget } from "@/components/onboarding/OnboardingWidget";
 import logoImage from "@assets/HS_logo_500_1769977401589.jpg";
 
 // Context to detect nested AdminLayout (tab rendering)
@@ -140,6 +141,8 @@ interface NavItem {
   badgeColor?: string;
   regCount?: number;
   gated?: boolean;
+  dotBadge?: boolean;
+  dotBadgeColor?: string;
 }
 
 interface AdminLayoutProps {
@@ -1111,6 +1114,12 @@ function NavItemButton({
                 {item.badge > 9 ? "9+" : item.badge}
               </span>
             ) : null}
+            {!open && item.dotBadge ? (
+              <span
+                className={`absolute -top-1 -right-1 h-2.5 w-2.5 rounded-full animate-pulse ${item.dotBadgeColor || "bg-green-500"}`}
+                data-testid={`badge-nav-dot-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+              />
+            ) : null}
             {!open && item.regCount && item.regCount > 0 ? (
               <span
                 className="absolute -bottom-1.5 -right-1.5 h-2.5 w-2.5 rounded-full bg-orange-500 ring-1 ring-background"
@@ -1137,6 +1146,12 @@ function NavItemButton({
             >
               {item.badge > 9 ? "9+" : item.badge}
             </span>
+          ) : null}
+          {open && item.dotBadge ? (
+            <span
+              className={`ml-auto h-2.5 w-2.5 rounded-full animate-pulse ${item.dotBadgeColor || "bg-green-500"}`}
+              data-testid={`badge-nav-dot-open-${item.label.toLowerCase().replace(/\s+/g, "-")}`}
+            />
           ) : null}
         </Link>
       )}
@@ -1184,6 +1199,43 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const { toast } = useToast();
   const notificationsEnabled = isEnabled("notifications_enabled");
   const studioV2Enabled = isEnabled("studio_v2_enabled");
+  const onboardingFlowEnabled = isEnabled("onboarding_flow_enabled");
+  const onboardingEnforceAlways = isEnabled("onboarding_enforce_always");
+
+  // Onboarding flow progress (for widget badge + first-login trigger)
+  const { data: onboardingFlowData } = useQuery<{
+    track: string;
+    totalSteps: number;
+    completedCount: number;
+    progress: { snoozed?: boolean; completedAt?: string | null } | null;
+  }>({
+    queryKey: ["/api/onboarding/progress"],
+    enabled: !!user && onboardingFlowEnabled,
+    staleTime: 60000,
+  });
+
+  const onboardingFlowComplete =
+    !!onboardingFlowData &&
+    onboardingFlowData.totalSteps > 0 &&
+    onboardingFlowData.completedCount >= onboardingFlowData.totalSteps;
+
+  // First-login trigger: navigate to /admin/onboarding once per session
+  const hasTriggeredOnboarding = useRef(false);
+  useEffect(() => {
+    if (!user || !onboardingFlowEnabled || !onboardingFlowData) return;
+    if (hasTriggeredOnboarding.current) return;
+    if (location === "/admin/onboarding") {
+      hasTriggeredOnboarding.current = true;
+      return;
+    }
+    const { totalSteps, completedCount, progress } = onboardingFlowData;
+    if (totalSteps === 0) return;
+    if (completedCount >= totalSteps && !onboardingEnforceAlways) return;
+    if (progress?.snoozed && !onboardingEnforceAlways) return;
+    hasTriggeredOnboarding.current = true;
+    setLocation("/admin/onboarding");
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, onboardingFlowEnabled, onboardingFlowData, onboardingEnforceAlways]);
 
   const enableNewLook = useCallback(() => {
     setNewLook(true);
@@ -1663,6 +1715,14 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const salaryChangePendingCount = salaryChangePending?.count ?? 0;
 
   const personalNavItems: NavItem[] = [
+    ...(onboardingFlowEnabled && !onboardingFlowComplete ? [{
+      href: "/admin/onboarding",
+      label: "Get Started",
+      icon: Compass,
+      roles: ["all"],
+      dotBadge: true,
+      dotBadgeColor: "bg-green-500",
+    }] : []),
     {
       href: "/admin/profile",
       label: "Profile",
@@ -1855,6 +1915,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/studio/analytics") return location.startsWith("/admin/studio/analytics");
     if (href === "/admin/studio/authors") return location.startsWith("/admin/studio/authors");
     if (href === "/admin/sops/my-reviews") return location === "/admin/sops/my-reviews" || location.startsWith("/admin/sops/my-reviews");
+    if (href === "/admin/onboarding") return location === "/admin/onboarding" || location.startsWith("/admin/onboarding");
     return location.startsWith(href);
   };
 
@@ -2522,6 +2583,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
         </Dialog>
       </SidebarProvider>
       <AnnouncementModal />
+      {onboardingFlowEnabled && <OnboardingWidget />}
     </AdminLayoutMounted.Provider>
   );
 }

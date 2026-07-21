@@ -136,6 +136,7 @@ const DevToolsPage = lazy(() => import("@/pages/admin/DevTools"));
 const NotificationSettings = lazy(() => import("@/pages/admin/NotificationSettings"));
 const NotificationBlasts = lazy(() => import("@/pages/admin/NotificationBlasts"));
 const HelpHub = lazy(() => import("@/pages/admin/HelpHub"));
+const OnboardingFlow = lazy(() => import("@/pages/admin/OnboardingFlow"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -508,6 +509,9 @@ function PublicRouter() {
       <Route path="/admin/help">{() => <Suspense fallback={<AdminFallback />}><HelpHub /></Suspense>}</Route>
       <Route path="/admin/ceo-guide">{() => <Suspense fallback={<AdminFallback />}><CeoGuide /></Suspense>}</Route>
 
+      {/* Onboarding Flow */}
+      <Route path="/admin/onboarding">{() => <Suspense fallback={<AdminFallback />}><OnboardingFlow /></Suspense>}</Route>
+
       {/* Integrations Hub */}
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
 
@@ -728,6 +732,9 @@ function EmployeeRouter() {
       <Route path="/admin/knowledge-hub">{() => <Suspense fallback={<AdminFallback />}><KnowledgeHub /></Suspense>}</Route>
       <Route path="/admin/help">{() => <Suspense fallback={<AdminFallback />}><HelpHub /></Suspense>}</Route>
       <Route path="/admin/ceo-guide">{() => <Suspense fallback={<AdminFallback />}><CeoGuide /></Suspense>}</Route>
+
+      {/* Onboarding Flow */}
+      <Route path="/admin/onboarding">{() => <Suspense fallback={<AdminFallback />}><OnboardingFlow /></Suspense>}</Route>
 
       {/* Integrations Hub */}
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
