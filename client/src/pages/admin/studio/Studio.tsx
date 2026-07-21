@@ -53,9 +53,11 @@ import {
   Lightbulb,
   Share2,
   UserCircle,
+  CalendarDays,
+  Sparkles,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import type { StudioProject, StudioBrandSettings, StudioContentIdea } from "@shared/schema";
+import type { StudioProject, StudioBrandSettings, StudioContentIdea, StudioOccasion } from "@shared/schema";
 import { useStudioProject } from "./useStudioProject";
 import { ArticlesPanel } from "./ArticlesPanel";
 import { AuthorsPanel } from "./AuthorsPanel";
@@ -67,6 +69,7 @@ import { NewsletterSettings } from "./NewsletterSettings";
 import { RegenRequestsQueue } from "./ArticleRegenPanel";
 import { LaunchControlPanel } from "./LaunchControlPanel";
 import { usePermissions } from "@/hooks/use-permissions";
+import { PlanContentForm } from "./Calendar";
 
 interface PulseItem {
   id: string;
@@ -270,6 +273,149 @@ function ContentPulseCard({ projectId }: { projectId: string }) {
             ))}
           </div>
         )}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Upcoming Occasions Panel ─────────────────────────────────────────────────
+// Shows occasions in the next 14 days with content angle + one-click Create Idea.
+// Hidden when the project has no occasionPreferences set (opt-in guard).
+function UpcomingOccasionsPanel({
+  projectId,
+  hasOccasionPreferences,
+}: {
+  projectId: string;
+  hasOccasionPreferences: boolean;
+}) {
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const { data: upcoming, isLoading } = useQuery<StudioOccasion[]>({
+    queryKey: ["/api/admin/studio/occasions/upcoming", { projectId, days: 14 }],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/admin/studio/occasions/upcoming?projectId=${encodeURIComponent(projectId)}&days=14`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!projectId && hasOccasionPreferences,
+    staleTime: 5 * 60 * 1000,
+  });
+
+  // Don't render if project has no occasion preferences set
+  if (!hasOccasionPreferences) return null;
+
+  if (isLoading) {
+    return (
+      <Card data-testid="card-upcoming-occasions">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CalendarDays className="h-4 w-4 text-amber-500" />
+            Coming Up
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+        </CardContent>
+      </Card>
+    );
+  }
+
+  if (!upcoming?.length) {
+    return (
+      <Card data-testid="card-upcoming-occasions-empty">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base">
+            <CalendarDays className="h-4 w-4 text-amber-500" />
+            Coming Up
+            <span className="text-xs font-normal text-muted-foreground">next 14 days</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground" data-testid="text-upcoming-empty">
+            No occasions in the next 14 days for this project.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card data-testid="card-upcoming-occasions">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <CalendarDays className="h-4 w-4 text-amber-500" />
+          Coming Up
+          <span className="text-xs font-normal text-muted-foreground">next 14 days</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="p-0">
+        <div className="divide-y">
+          {upcoming.map((occ) => {
+            const occDate = new Date(`${occ.date}T00:00:00`);
+            const today = new Date();
+            today.setHours(0, 0, 0, 0);
+            const daysUntil = Math.round((occDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+            const daysLabel = daysUntil === 0 ? "today" : daysUntil === 1 ? "tomorrow" : `in ${daysUntil} days`;
+            const isExpanded = expandedId === occ.id;
+
+            return (
+              <div key={occ.id} className="px-4 py-3" data-testid={`upcoming-occasion-${occ.id}`}>
+                <div className="flex items-start gap-3">
+                  <div className="flex h-9 w-9 shrink-0 flex-col items-center justify-center rounded-md bg-amber-50 border border-amber-200 dark:bg-amber-950/30 dark:border-amber-900">
+                    <span className="text-xs font-bold text-amber-700 dark:text-amber-400 tabular-nums leading-none">
+                      {occDate.getDate()}
+                    </span>
+                    <span className="text-[9px] text-amber-600 dark:text-amber-500 uppercase tracking-wide leading-none mt-0.5">
+                      {occDate.toLocaleDateString("en-IN", { month: "short" })}
+                    </span>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium truncate" data-testid={`text-occasion-name-${occ.id}`}>{occ.name}</p>
+                      <span className={`shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium ${
+                        daysUntil === 0 ? "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400"
+                        : daysUntil <= 3 ? "bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400"
+                        : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                      }`} data-testid={`badge-days-until-${occ.id}`}>
+                        {daysLabel}
+                      </span>
+                    </div>
+                    {occ.contentAngle && (
+                      <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground" data-testid={`text-occasion-angle-${occ.id}`}>
+                        {occ.contentAngle}
+                      </p>
+                    )}
+                    {!isExpanded && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="mt-2 h-7 gap-1.5 text-xs"
+                        onClick={() => setExpandedId(occ.id)}
+                        data-testid={`button-create-idea-${occ.id}`}
+                      >
+                        <Sparkles className="h-3 w-3" />
+                        Create Idea
+                      </Button>
+                    )}
+                  </div>
+                </div>
+
+                {isExpanded && (
+                  <div className="mt-3" data-testid={`form-create-idea-${occ.id}`}>
+                    <PlanContentForm
+                      occasion={occ}
+                      projectId={projectId}
+                      onDone={() => setExpandedId(null)}
+                    />
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </CardContent>
     </Card>
   );
@@ -1086,6 +1232,10 @@ export default function Studio() {
                 <ContentPipelineSummaryCard projectId={selectedProjectId} />
                 <TriageCard projectId={selectedProjectId} />
                 <ContentPulseCard projectId={selectedProjectId} />
+                <UpcomingOccasionsPanel
+                  projectId={selectedProjectId}
+                  hasOccasionPreferences={!!(selectedProject?.occasionPreferences)}
+                />
                 <OpenJobsIdeasPanel />
               </>
             )}

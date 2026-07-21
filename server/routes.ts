@@ -25230,6 +25230,50 @@ Canonical domain: ${BASE}
     },
   );
 
+  // Upcoming occasions — convenience endpoint (today → today+N days).
+  // Accepts ?projectId and optional ?days (default 14).
+  // Applies the same occasionPreferences filter as the full range endpoint.
+  app.get(
+    "/api/admin/studio/occasions/upcoming",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === "string" && req.query.projectId
+          ? req.query.projectId
+          : null;
+        const days = Math.min(
+          90,
+          Math.max(1, parseInt(typeof req.query.days === "string" ? req.query.days : "14", 10) || 14),
+        );
+        const fmtDay = (d: Date) =>
+          `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const end = new Date(today);
+        end.setDate(today.getDate() + days);
+        const rows = await storage.getStudioOccasions(fmtDay(today), fmtDay(end), projectId);
+        if (!projectId) return res.json(rows);
+        const project = await storage.getStudioProject(projectId);
+        const prefs = (project as any)?.occasionPreferences;
+        if (!prefs) {
+          // No preferences set → opt-in guard: return only custom project rows
+          return res.json(rows.filter((o) => o.projectId === projectId));
+        }
+        const regions: string[] = Array.isArray(prefs.regions) ? prefs.regions : [];
+        const categories: string[] = Array.isArray(prefs.categories) ? prefs.categories : [];
+        const filtered = rows.filter((o) =>
+          o.projectId === projectId ||
+          (regions.includes(o.region) && categories.includes(o.category)),
+        );
+        res.json(filtered);
+      } catch (error) {
+        console.error("Get upcoming occasions error:", error);
+        res.status(500).json({ error: "Failed to fetch upcoming occasions" });
+      }
+    },
+  );
+
   // Create a custom project occasion (company anniversary, launch date, ...).
   app.post(
     "/api/admin/studio/occasions",

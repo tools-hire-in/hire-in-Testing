@@ -15,6 +15,11 @@ import {
   SheetDescription,
 } from "@/components/ui/sheet";
 import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import {
   Dialog,
   DialogContent,
   DialogHeader,
@@ -137,6 +142,98 @@ function CommentText({ message }: { message: string }) {
   );
 }
 
+// ─── Occasion Chip Popover ────────────────────────────────────────────────────
+// Wraps the star chip on a calendar cell. Clicking shows occasion details and
+// a "Create Idea" button that creates a content idea pre-filled from the occasion.
+function OccasionChipPopover({
+  occasions,
+  projectId,
+  dateKey,
+  canCreate,
+}: {
+  occasions: StudioOccasion[];
+  projectId: string | null;
+  dateKey: string;
+  canCreate: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [planningFor, setPlanningFor] = useState<string | null>(null);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <span
+          className="inline-flex cursor-pointer items-center text-amber-500 hover:text-amber-600 transition-colors"
+          data-testid={`occasion-badge-${dateKey}`}
+          onClick={(e) => { e.stopPropagation(); setOpen(true); }}
+        >
+          <Star className="h-3 w-3 fill-current" />
+        </span>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-72 p-0"
+        side="bottom"
+        align="start"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="divide-y max-h-80 overflow-y-auto">
+          {occasions.map((occ) => {
+            const isPlanningThis = planningFor === occ.id;
+            return (
+              <div key={occ.id} className="p-3" data-testid={`occ-popover-${occ.id}`}>
+                <div className="flex items-start gap-2">
+                  <Star className="h-3.5 w-3.5 fill-current text-amber-500 mt-0.5 shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium leading-snug" data-testid={`occ-name-${occ.id}`}>{occ.name}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5" data-testid={`occ-date-${occ.id}`}>
+                      {new Date(`${occ.date}T12:00:00`).toLocaleDateString(undefined, { month: "long", day: "numeric", year: "numeric" })}
+                    </p>
+                    <div className="mt-1 flex flex-wrap gap-1">
+                      <span className="rounded bg-amber-100 px-1 py-0.5 text-[10px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
+                        {OCCASION_REGION_LABELS[occ.region] ?? occ.region}
+                      </span>
+                      <span className="rounded bg-slate-100 px-1 py-0.5 text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                        {OCCASION_CATEGORY_LABELS[occ.category] ?? occ.category}
+                      </span>
+                    </div>
+                    {occ.contentAngle && (
+                      <p className="mt-1.5 text-xs text-muted-foreground line-clamp-3" data-testid={`occ-angle-${occ.id}`}>
+                        {occ.contentAngle}
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {canCreate && projectId && (
+                  <div className="mt-2">
+                    {isPlanningThis ? (
+                      <PlanContentForm
+                        occasion={occ}
+                        projectId={projectId}
+                        onDone={() => { setPlanningFor(null); setOpen(false); queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] }); }}
+                      />
+                    ) : (
+                      <Button
+                        size="sm"
+                        className="w-full h-7 text-xs gap-1"
+                        onClick={() => setPlanningFor(occ.id)}
+                        data-testid={`button-occ-create-idea-${occ.id}`}
+                      >
+                        <Plus className="h-3 w-3" />
+                        Create Idea
+                      </Button>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ─── AI Plan Dialog ───────────────────────────────────────────────────────────
 function AIPlanDialog({ projectId, monthStart, monthEnd }: { projectId: string | null; monthStart: Date; monthEnd: Date }) {
   const { toast } = useToast();
@@ -219,16 +316,11 @@ function AIPlanDialog({ projectId, monthStart, monthEnd }: { projectId: string |
 }
 
 // ─── Plan Content Form ────────────────────────────────────────────────────────
-function PlanContentForm({ occasion, projectId, onDone }: { occasion: StudioOccasion; projectId: string; onDone: () => void }) {
+export function PlanContentForm({ occasion, projectId, onDone }: { occasion: StudioOccasion; projectId: string; onDone: () => void }) {
   const { toast } = useToast();
-  const dayBefore = (() => {
-    const d = new Date(`${occasion.date}T12:00:00`);
-    d.setDate(d.getDate() - 1);
-    return ymd(d);
-  })();
-  const [topic, setTopic] = useState(`${occasion.name} — ${OCCASION_CATEGORY_LABELS[occasion.category] ?? "occasion"} post`);
+  const [topic, setTopic] = useState(occasion.name);
   const [brief, setBrief] = useState(occasion.contentAngle ?? "");
-  const [scheduledDate, setScheduledDate] = useState(dayBefore);
+  const [scheduledDate, setScheduledDate] = useState(occasion.date);
 
   const createMutation = useMutation({
     mutationFn: async () => {
@@ -1665,9 +1757,12 @@ export default function Calendar() {
                         <span className="flex items-center gap-1 text-xs text-muted-foreground">
                           {cell.getDate()}
                           {dayOccasions.length > 0 && (
-                            <span className="inline-flex items-center text-amber-500" title={dayOccasions.map((o) => o.name).join(" · ")} data-testid={`occasion-badge-${key}`}>
-                              <Star className="h-3 w-3 fill-current" />
-                            </span>
+                            <OccasionChipPopover
+                              occasions={dayOccasions}
+                              projectId={selectedProjectId}
+                              dateKey={key}
+                              canCreate={canCreateArticle}
+                            />
                           )}
                         </span>
                         {canCreateArticle && selectedProjectId && (
@@ -1797,7 +1892,16 @@ export default function Calendar() {
                       >
                         <div className="text-xs text-muted-foreground">{WEEKDAYS[date.getDay()]}</div>
                         <div className={`text-sm font-semibold ${key === todayKey ? "text-primary" : ""}`}>{date.getDate()}</div>
-                        {dayOccasions.length > 0 && <Star className="h-3 w-3 text-amber-500 fill-current mx-auto mt-0.5" />}
+                        {dayOccasions.length > 0 && (
+                          <div className="mx-auto mt-0.5" onClick={(e) => e.stopPropagation()}>
+                            <OccasionChipPopover
+                              occasions={dayOccasions}
+                              projectId={selectedProjectId}
+                              dateKey={key}
+                              canCreate={canCreateArticle}
+                            />
+                          </div>
+                        )}
                       </button>
                       {/* Cards */}
                       <div className="p-1.5 space-y-1 min-h-[120px]">
