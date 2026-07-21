@@ -7,7 +7,8 @@ export type PeopleHrTab =
   | "policy"
   | "audit"
   | "escalations"
-  | "org-pulse";
+  | "org-pulse"
+  | "onboarding";
 
 type TabGate = "all" | "hr" | "admin" | "superadmin";
 
@@ -27,6 +28,7 @@ export const PEOPLE_HR_TAB_DEFS: PeopleHrTabDef[] = [
   { value: "policy", label: "Policy Compliance", testId: "tab-policy", gate: "hr" },
   { value: "audit", label: "Audit Logs", testId: "tab-audit", gate: "admin" },
   { value: "escalations", label: "Attendance Escalations", testId: "tab-escalations", gate: "hr" },
+  { value: "onboarding", label: "Onboarding", testId: "tab-onboarding", gate: "hr" },
   { value: "org-pulse", label: "Org Pulse", testId: "tab-org-pulse", gate: "admin" },
 ];
 

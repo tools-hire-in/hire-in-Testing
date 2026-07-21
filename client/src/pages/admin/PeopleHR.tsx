@@ -15,6 +15,7 @@ import { PolicyComplianceContent } from "./hr/PolicyCompliance";
 import { AuditLogsContent } from "@/pages/admin/AuditLogs";
 import AttendanceExceptions from "./hr/AttendanceExceptions";
 import BalanceAdjustments from "./hr/BalanceAdjustments";
+import { OnboardingDashboard } from "./hr/OnboardingDashboard";
 import { PulseHeader } from "@/components/observation/PulseHeader";
 import { PlansBoard } from "@/components/observation/PlansBoard";
 import { ComplianceRadar } from "@/components/observation/ComplianceRadar";
@@ -174,6 +175,20 @@ export default function PeopleHR() {
           {isAdmin && (
             <TabsContent value="audit" className="mt-4">
               <AuditLogsContent />
+            </TabsContent>
+          )}
+
+          {isHR && (
+            <TabsContent value="onboarding" className="mt-4">
+              <div className="space-y-2">
+                <div>
+                  <h2 className="text-lg font-semibold mb-1">Onboarding Completion</h2>
+                  <p className="text-sm text-muted-foreground">
+                    Track who has completed onboarding, who is stuck, and which knowledge checks have been seen.
+                  </p>
+                </div>
+                <OnboardingDashboard />
+              </div>
             </TabsContent>
           )}
 

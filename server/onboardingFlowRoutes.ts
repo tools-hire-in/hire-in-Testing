@@ -30,8 +30,8 @@
 
 import type { Express, Request, Response, NextFunction } from "express";
 import { db } from "./db";
-import { onboardingSteps, userOnboardingProgress } from "@shared/schema";
-import { eq, and, asc } from "drizzle-orm";
+import { onboardingSteps, userOnboardingProgress, adminUsers, auditLogs } from "@shared/schema";
+import { eq, and, asc, sql } from "drizzle-orm";
 import { resolveRoles } from "@shared/accessControl";
 
 // ── Permission middleware ─────────────────────────────────────────────────────
@@ -138,12 +138,21 @@ export function registerOnboardingFlowRoutes(app: Express) {
     const { knowledgeCheckPassed } = req.body as { knowledgeCheckPassed?: boolean };
 
     try {
+      const track = roleToTrack(role);
+
+      // Validate step exists
       const [step] = await db
         .select({ id: onboardingSteps.id })
         .from(onboardingSteps)
         .where(eq(onboardingSteps.id, stepId));
 
       if (!step) return res.status(404).json({ error: "Step not found" });
+
+      // Count total active steps for the track so we can detect completion
+      const [{ total }] = await db
+        .select({ total: sql<number>`count(*)::int` })
+        .from(onboardingSteps)
+        .where(and(eq(onboardingSteps.track, track as any), eq(onboardingSteps.isActive, true)));
 
       const [existing] = await db
         .select()
@@ -154,21 +163,29 @@ export function registerOnboardingFlowRoutes(app: Express) {
         const completedStepIds = [stepId];
         const kcPassed: Record<string, boolean> = {};
         if (knowledgeCheckPassed !== undefined) kcPassed[stepId] = knowledgeCheckPassed;
+        const nowComplete = completedStepIds.length >= total;
         await db.insert(userOnboardingProgress).values({
           userId,
           role,
           completedStepIds,
           knowledgeCheckPassed: kcPassed,
+          ...(nowComplete ? { completedAt: new Date() } : {}),
         });
       } else {
         const completedIds: string[] = (existing.completedStepIds as string[]) ?? [];
         if (!completedIds.includes(stepId)) completedIds.push(stepId);
         const kcPassed = (existing.knowledgeCheckPassed as Record<string, boolean>) ?? {};
         if (knowledgeCheckPassed !== undefined) kcPassed[stepId] = knowledgeCheckPassed;
+        const nowComplete = completedIds.length >= total;
+        const completedAtValue = nowComplete && !existing.completedAt ? new Date() : existing.completedAt;
 
         await db
           .update(userOnboardingProgress)
-          .set({ completedStepIds: completedIds, knowledgeCheckPassed: kcPassed })
+          .set({
+            completedStepIds: completedIds,
+            knowledgeCheckPassed: kcPassed,
+            ...(completedAtValue ? { completedAt: completedAtValue } : {}),
+          })
           .where(and(eq(userOnboardingProgress.userId, userId), eq(userOnboardingProgress.role, role)));
       }
 
@@ -236,6 +253,228 @@ export function registerOnboardingFlowRoutes(app: Express) {
       res.status(500).json({ error: "Failed to snooze onboarding" });
     }
   });
+
+  // ── Dashboard & admin wipe (requirePermission('onboarding_view'/'onboarding_manage')) ──
+
+  /**
+   * GET /api/onboarding/dashboard
+   * Returns aggregated progress across all users.
+   * hr: read-only (onboarding_view); admin/super_admin: full (onboarding_manage).
+   */
+  app.get(
+    "/api/onboarding/dashboard",
+    requirePermission("onboarding_view", "hr"),
+    async (req: Request, res: Response) => {
+      try {
+        // 1. All active users
+        const allUsers = await db
+          .select({
+            id: adminUsers.id,
+            firstName: adminUsers.firstName,
+            lastName: adminUsers.lastName,
+            email: adminUsers.email,
+            role: adminUsers.role,
+          })
+          .from(adminUsers)
+          .where(eq(adminUsers.isActive, true));
+
+        // 2. All progress rows
+        const progressRows = await db
+          .select()
+          .from(userOnboardingProgress);
+
+        // 3. Steps per track (id + title for display in expanded row)
+        const allSteps = await db
+          .select({
+            track: onboardingSteps.track,
+            id: onboardingSteps.id,
+            title: onboardingSteps.title,
+            stepNumber: onboardingSteps.stepNumber,
+          })
+          .from(onboardingSteps)
+          .where(eq(onboardingSteps.isActive, true))
+          .orderBy(asc(onboardingSteps.stepNumber));
+
+        const stepsByTrack: Record<string, { id: string; title: string; stepNumber: number }[]> = {};
+        for (const s of allSteps) {
+          const t = s.track as string;
+          if (!stepsByTrack[t]) stepsByTrack[t] = [];
+          stepsByTrack[t].push({ id: s.id, title: s.title, stepNumber: s.stepNumber });
+        }
+
+        const stepsPerTrack: Record<string, number> = {};
+        for (const [t, rows] of Object.entries(stepsByTrack)) {
+          stepsPerTrack[t] = rows.length;
+        }
+
+        // 4. Build per-user result
+        const users = allUsers.map((u) => {
+          const track = roleToTrack(u.role);
+          const progress = progressRows.find(
+            (p) => p.userId === u.id && p.role === u.role
+          );
+          const totalSteps = stepsPerTrack[track] ?? 0;
+          const completedStepIds = (progress?.completedStepIds as string[]) ?? [];
+          const completedSteps = completedStepIds.length;
+          const knowledgeChecksPassed = (progress?.knowledgeCheckPassed as Record<string, boolean>) ?? {};
+          const lastActivityAt = progress?.completedAt ?? progress?.startedAt ?? null;
+
+          return {
+            userId: u.id,
+            name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email,
+            email: u.email,
+            role: u.role,
+            track,
+            totalSteps,
+            completedSteps,
+            completedStepIds,
+            steps: stepsByTrack[track] ?? [],
+            knowledgeChecksPassed,
+            completedAt: progress?.completedAt ? progress.completedAt.toISOString() : null,
+            startedAt: progress?.startedAt ? progress.startedAt.toISOString() : null,
+            snoozed: progress?.snoozed ?? false,
+            lastActivityAt,
+          };
+        });
+
+        res.json({ users });
+      } catch (err) {
+        console.error("[onboarding-flow] GET /api/onboarding/dashboard error:", err);
+        res.status(500).json({ error: "Failed to fetch onboarding dashboard" });
+      }
+    },
+  );
+
+  /**
+   * GET /api/onboarding/dashboard/stuck
+   * Subset of dashboard: only users who are snoozed OR stalled (started > 48h
+   * ago, not complete, fewer steps than total).
+   */
+  app.get(
+    "/api/onboarding/dashboard/stuck",
+    requirePermission("onboarding_view", "hr"),
+    async (req: Request, res: Response) => {
+      try {
+        const allUsers = await db
+          .select({
+            id: adminUsers.id,
+            firstName: adminUsers.firstName,
+            lastName: adminUsers.lastName,
+            email: adminUsers.email,
+            role: adminUsers.role,
+          })
+          .from(adminUsers)
+          .where(eq(adminUsers.isActive, true));
+
+        const progressRows = await db
+          .select()
+          .from(userOnboardingProgress);
+
+        const allStepsStuck = await db
+          .select({
+            track: onboardingSteps.track,
+            id: onboardingSteps.id,
+            title: onboardingSteps.title,
+            stepNumber: onboardingSteps.stepNumber,
+          })
+          .from(onboardingSteps)
+          .where(eq(onboardingSteps.isActive, true))
+          .orderBy(asc(onboardingSteps.stepNumber));
+
+        const stepsByTrackStuck: Record<string, { id: string; title: string; stepNumber: number }[]> = {};
+        for (const s of allStepsStuck) {
+          const t = s.track as string;
+          if (!stepsByTrackStuck[t]) stepsByTrackStuck[t] = [];
+          stepsByTrackStuck[t].push({ id: s.id, title: s.title, stepNumber: s.stepNumber });
+        }
+
+        const stepsPerTrack: Record<string, number> = {};
+        for (const [t, rows] of Object.entries(stepsByTrackStuck)) {
+          stepsPerTrack[t] = rows.length;
+        }
+
+        const cutoff = new Date(Date.now() - 48 * 60 * 60 * 1000);
+
+        const users = allUsers
+          .map((u) => {
+            const track = roleToTrack(u.role);
+            const progress = progressRows.find(
+              (p) => p.userId === u.id && p.role === u.role
+            );
+            const totalSteps = stepsPerTrack[track] ?? 0;
+            const completedStepIds = (progress?.completedStepIds as string[]) ?? [];
+            const completedSteps = completedStepIds.length;
+            const knowledgeChecksPassed = (progress?.knowledgeCheckPassed as Record<string, boolean>) ?? {};
+            const snoozed = progress?.snoozed ?? false;
+            const startedAt = progress?.startedAt ?? null;
+            const completedAt = progress?.completedAt ?? null;
+            const lastActivityAt = completedAt ?? startedAt ?? null;
+
+            const isStalled =
+              startedAt &&
+              new Date(startedAt) < cutoff &&
+              !completedAt &&
+              completedSteps < totalSteps;
+
+            if (!snoozed && !isStalled) return null;
+
+            return {
+              userId: u.id,
+              name: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email,
+              email: u.email,
+              role: u.role,
+              track,
+              totalSteps,
+              completedSteps,
+              completedStepIds,
+              steps: stepsByTrackStuck[track] ?? [],
+              knowledgeChecksPassed,
+              completedAt: completedAt ? completedAt.toISOString() : null,
+              startedAt: startedAt ? startedAt.toISOString() : null,
+              snoozed,
+              lastActivityAt,
+            };
+          })
+          .filter(Boolean);
+
+        res.json({ users });
+      } catch (err) {
+        console.error("[onboarding-flow] GET /api/onboarding/dashboard/stuck error:", err);
+        res.status(500).json({ error: "Failed to fetch stuck users" });
+      }
+    },
+  );
+
+  /**
+   * DELETE /api/onboarding/progress/:userId
+   * Wipe all progress rows for a user. Admin only. Audit logged.
+   */
+  app.delete(
+    "/api/onboarding/progress/:userId",
+    requirePermission("onboarding_manage", "admin"),
+    async (req: Request, res: Response) => {
+      const { userId } = req.params;
+      const actorId = req.session.userId!;
+
+      try {
+        await db
+          .delete(userOnboardingProgress)
+          .where(eq(userOnboardingProgress.userId, userId));
+
+        await db.insert(auditLogs).values({
+          actorId,
+          targetId: userId,
+          action: "onboarding_progress_wiped",
+          changes: { wiped: true, byAdmin: actorId },
+        });
+
+        res.json({ ok: true });
+      } catch (err) {
+        console.error("[onboarding-flow] DELETE /api/onboarding/progress/:userId error:", err);
+        res.status(500).json({ error: "Failed to wipe progress" });
+      }
+    },
+  );
 
   // ── Admin step CRUD (requirePermission('onboarding_manage')) ─────────────
 

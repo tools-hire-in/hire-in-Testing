@@ -325,6 +325,8 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "sops.readiness": ["super_admin", "admin", "hr", "manager"],
   // Interactive Onboarding Flow — step library management
   "onboarding_manage": ["super_admin", "admin"],
+  // Interactive Onboarding Flow — read-only visibility for HR
+  "onboarding_view": ["super_admin", "admin", "hr"],
 };
 
 // ============================================================================

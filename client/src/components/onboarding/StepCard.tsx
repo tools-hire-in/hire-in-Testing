@@ -49,6 +49,7 @@ interface StepCardProps {
   onSkip?: () => void;
   onClose?: () => void;
   isSubmitting?: boolean;
+  previewMode?: boolean;
 }
 
 export function StepCard({
@@ -61,6 +62,7 @@ export function StepCard({
   onSkip,
   onClose,
   isSubmitting = false,
+  previewMode = false,
 }: StepCardProps) {
   const [scenarioOpen, setScenarioOpen] = useState(false);
   const [kcComplete, setKcComplete] = useState(false);
@@ -335,7 +337,15 @@ export function StepCard({
           data-testid="button-step-confirm"
         >
           <ClipboardCheck className="h-4 w-4" />
-          {isSubmitting ? "Saving…" : stepIndex === totalSteps - 1 ? "Complete!" : "Got it, next →"}
+          {previewMode
+            ? stepIndex === totalSteps - 1
+              ? "End preview"
+              : "Next (preview)"
+            : isSubmitting
+              ? "Saving…"
+              : stepIndex === totalSteps - 1
+                ? "Complete!"
+                : "Got it, next →"}
         </Button>
       </div>
     </div>

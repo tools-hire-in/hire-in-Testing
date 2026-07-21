@@ -13,7 +13,17 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { CheckCircle2, ChevronDown, ChevronUp, ExternalLink, ImagePlus, Loader2, User } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { CheckCircle2, ChevronDown, ChevronUp, ExternalLink, ImagePlus, Loader2, RefreshCw, User } from "lucide-react";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import HRProfile from "./hr/Profile";
 import MyDocuments from "./hr/MyDocuments";
@@ -292,6 +302,75 @@ function AuthorProfileSection() {
   );
 }
 
+function ResetOnboardingSection() {
+  const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
+  const resetMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/onboarding/reset", {});
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/progress"] });
+      toast({ title: "Onboarding reset", description: "Your progress has been cleared. Redirecting…" });
+      setTimeout(() => setLocation("/admin/onboarding"), 800);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
+  return (
+    <>
+      <Card data-testid="card-reset-onboarding">
+        <CardHeader className="pb-2">
+          <div className="flex items-center gap-2">
+            <RefreshCw className="h-4 w-4 text-muted-foreground" />
+            <CardTitle className="text-sm">Onboarding</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="space-y-3 pt-0">
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Re-run your onboarding flow from the beginning — useful after a content update or to refresh your knowledge. Your track and role stay the same.
+          </p>
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5 h-8"
+            onClick={() => setConfirmOpen(true)}
+            data-testid="button-reset-onboarding"
+          >
+            <RefreshCw className="h-3.5 w-3.5" />
+            Reset my onboarding
+          </Button>
+        </CardContent>
+      </Card>
+
+      <AlertDialog open={confirmOpen} onOpenChange={setConfirmOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Reset your onboarding?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This will clear your onboarding progress and restart the flow from the beginning. Your track content and role will stay the same.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel data-testid="button-reset-onboarding-cancel">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => { setConfirmOpen(false); resetMutation.mutate(); }}
+              disabled={resetMutation.isPending}
+              data-testid="button-reset-onboarding-confirm"
+            >
+              {resetMutation.isPending ? "Resetting…" : "Yes, reset"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </>
+  );
+}
+
 export default function MyProfile() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
@@ -339,6 +418,7 @@ export default function MyProfile() {
           <TabsContent value="profile" className="mt-4 space-y-4">
             <HRProfile />
             <AuthorProfileSection />
+            <ResetOnboardingSection />
           </TabsContent>
           <TabsContent value="documents" className="mt-4">
             <MyDocuments />
