@@ -1071,7 +1071,7 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
       probationSalaryInWords: formData.splitProbationSalary ? formData.probationSalaryInWords || null : null,
       postProbationSalary: formData.splitProbationSalary && formData.postProbationSalary ? String(formData.postProbationSalary) : null,
       postProbationSalaryInWords: formData.splitProbationSalary ? formData.postProbationSalaryInWords || null : null,
-      probationPeriodMonths: (formData.splitProbationSalary || formData.performanceProbationReview) ? formData.probationPeriodMonths : null,
+      probationPeriodMonths: formData.probationPeriodMonths,
       extendedProbationMonths: (formData.splitProbationSalary || formData.performanceProbationReview) && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : null,
       performanceProbationReview: formData.performanceProbationReview,
       maxRevisionSalary: formData.performanceProbationReview && formData.maxRevisionSalary ? String(formData.maxRevisionSalary) : null,
@@ -1114,7 +1114,7 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
           probationSalaryInWords: (formData.splitProbationSalary || formData.performanceProbationReview) ? formData.probationSalaryInWords || undefined : undefined,
           postProbationSalary: formData.splitProbationSalary && formData.postProbationSalary ? formData.postProbationSalary : undefined,
           postProbationSalaryInWords: formData.splitProbationSalary ? formData.postProbationSalaryInWords || undefined : undefined,
-          probationPeriodMonths: (formData.splitProbationSalary || formData.performanceProbationReview) ? formData.probationPeriodMonths : undefined,
+          probationPeriodMonths: formData.probationPeriodMonths,
           extendedProbationMonths: (formData.splitProbationSalary || formData.performanceProbationReview) && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : undefined,
           performanceProbationReview: formData.performanceProbationReview,
           maxRevisionSalary: formData.performanceProbationReview && formData.maxRevisionSalary ? formData.maxRevisionSalary : undefined,
@@ -1169,7 +1169,7 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
         probationSalaryInWords: (formData.splitProbationSalary || formData.performanceProbationReview) ? formData.probationSalaryInWords || undefined : undefined,
         postProbationSalary: formData.splitProbationSalary && formData.postProbationSalary ? formData.postProbationSalary : undefined,
         postProbationSalaryInWords: formData.splitProbationSalary ? formData.postProbationSalaryInWords || undefined : undefined,
-        probationPeriodMonths: (formData.splitProbationSalary || formData.performanceProbationReview) ? formData.probationPeriodMonths : undefined,
+        probationPeriodMonths: formData.probationPeriodMonths,
         extendedProbationMonths: (formData.splitProbationSalary || formData.performanceProbationReview) && formData.extendedProbationMonths > 0 ? formData.extendedProbationMonths : undefined,
         performanceProbationReview: formData.performanceProbationReview,
         maxRevisionSalary: formData.performanceProbationReview && formData.maxRevisionSalary ? formData.maxRevisionSalary : undefined,
@@ -1494,14 +1494,31 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
               </div>
 
               {!formData.splitProbationSalary && !formData.performanceProbationReview ? (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label>Monthly Salary / CTC (₹)</Label>
-                    <Input data-testid="input-offer-salary" type="number" value={formData.salary || ""} onChange={e => updateField("salary", parseFloat(e.target.value) || 0)} />
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Monthly Salary / CTC (₹)</Label>
+                      <Input data-testid="input-offer-salary" type="number" value={formData.salary || ""} onChange={e => updateField("salary", parseFloat(e.target.value) || 0)} />
+                    </div>
+                    <div>
+                      <Label>Salary in Words</Label>
+                      <Input data-testid="input-offer-salary-words" value={formData.salaryInWords} onChange={e => updateField("salaryInWords", e.target.value)} />
+                    </div>
                   </div>
-                  <div>
-                    <Label>Salary in Words</Label>
-                    <Input data-testid="input-offer-salary-words" value={formData.salaryInWords} onChange={e => updateField("salaryInWords", e.target.value)} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label>Probation Duration</Label>
+                      <Select value={String(formData.probationPeriodMonths)} onValueChange={v => updateField("probationPeriodMonths", parseInt(v))}>
+                        <SelectTrigger data-testid="select-standard-probation-months">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {[1, 2, 3, 4, 5, 6].map(m => (
+                            <SelectItem key={m} value={String(m)}>{m} month{m !== 1 ? "s" : ""}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                 </div>
               ) : formData.performanceProbationReview ? (

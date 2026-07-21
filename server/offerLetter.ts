@@ -365,24 +365,74 @@ export async function generateOfferLetterDocx(data: OfferLetterData): Promise<Bu
     ];
   })();
 
-  const probationParagraphs: Paragraph[] = [
-    subHeading("2a. Probationary Period and Performance Review"),
-    bodyText(
-      "Your employment will commence with an initial probation period of three (3) months from your date of joining. During this probation period, either party may terminate the employment by providing one (1) week's written notice."
-    ),
-    new Paragraph({ spacing: { after: 80 }, children: [] }),
-    bodyText(
-      "Upon completion of the initial probation period, the Company will conduct a performance and delivery review. Subject to your performance, achievement of assigned goals, quality of delivery, consistency, professional conduct, and overall contribution, your compensation may be reconsidered."
-    ),
-    new Paragraph({ spacing: { after: 80 }, children: [] }),
-    bodyText(
-      "Employees who significantly exceed the expected goals and demonstrate strong ownership, consistent delivery, and measurable business impact may be considered for a salary revision up to the post-probation amount stated above. Any salary revision shall not be automatic and will be at the sole discretion of the Company, subject to management review, business requirements, and confirmed separately in writing. Mention of a review amount does not constitute a guarantee or automatic entitlement to a salary increase."
-    ),
-    new Paragraph({ spacing: { after: 80 }, children: [] }),
-    bodyText(
-      "The Company may extend the probation period up to six (6) months if required, based on performance, delivery, conduct, or business needs."
-    ),
-  ];
+  const probationParagraphs: Paragraph[] = (() => {
+    const probMonths = data.probationPeriodMonths ?? 3;
+    const probMonthLabel = probMonths === 1 ? "one (1) month" : `${probMonths === 2 ? "two (2)" : probMonths === 3 ? "three (3)" : probMonths === 4 ? "four (4)" : probMonths === 5 ? "five (5)" : "six (6)"} months`;
+
+    const isCommitted = !!(data.probationSalary && data.postProbationSalary);
+    const isPerformance = !!data.performanceProbationReview;
+
+    if (isCommitted) {
+      return [
+        subHeading("2a. Probationary Period and Performance Review"),
+        bodyText(
+          `Your employment will commence with an initial probation period of ${probMonthLabel} from your date of joining. During this probation period, either party may terminate the employment by providing one (1) week's written notice.`
+        ),
+        new Paragraph({ spacing: { after: 80 }, children: [] }),
+        bodyText(
+          "Upon completion of the initial probation period, the Company will conduct a performance and delivery review. Subject to your performance, achievement of assigned goals, quality of delivery, consistency, professional conduct, and overall contribution, your compensation may be reconsidered."
+        ),
+        new Paragraph({ spacing: { after: 80 }, children: [] }),
+        bodyText(
+          "Employees who significantly exceed the expected goals and demonstrate strong ownership, consistent delivery, and measurable business impact may be considered for a salary revision up to the post-probation amount stated above. Any salary revision shall not be automatic and will be at the sole discretion of the Company, subject to management review, business requirements, and confirmed separately in writing. Mention of a review amount does not constitute a guarantee or automatic entitlement to a salary increase."
+        ),
+        new Paragraph({ spacing: { after: 80 }, children: [] }),
+        bodyText(
+          "The Company may extend the probation period up to six (6) months if required, based on performance, delivery, conduct, or business needs."
+        ),
+      ];
+    }
+
+    if (isPerformance) {
+      return [
+        subHeading("2a. Probationary Period and Performance Review"),
+        bodyText(
+          `Your employment will commence with an initial probation period of ${probMonthLabel} from your date of joining. During this probation period, either party may terminate the employment by providing one (1) week's written notice.`
+        ),
+        new Paragraph({ spacing: { after: 80 }, children: [] }),
+        bodyText(
+          "Upon completion of the initial probation period, the Company will conduct a performance and delivery review. Subject to your performance, achievement of assigned goals, quality of delivery, consistency, professional conduct, and overall contribution, your compensation may be reconsidered."
+        ),
+        new Paragraph({ spacing: { after: 80 }, children: [] }),
+        bodyText(
+          "Employees who significantly exceed the expected goals and demonstrate strong ownership, consistent delivery, and measurable business impact may be considered for a salary revision up to the maximum revision amount stated in your compensation terms above. Any salary revision shall not be automatic and will be at the sole discretion of the Company, subject to management review, business requirements, and confirmed separately in writing. Mention of a review amount does not constitute a guarantee or automatic entitlement to a salary increase."
+        ),
+        new Paragraph({ spacing: { after: 80 }, children: [] }),
+        bodyText(
+          "The Company may extend the probation period up to six (6) months if required, based on performance, delivery, conduct, or business needs."
+        ),
+      ];
+    }
+
+    return [
+      subHeading("2a. Probationary Period"),
+      bodyText(
+        `Your employment will commence with an initial probation period of ${probMonthLabel} from your date of joining. During this probation period, either party may terminate the employment by providing one (1) week's written notice.`
+      ),
+      new Paragraph({ spacing: { after: 80 }, children: [] }),
+      bodyText(
+        "Your salary during and after the probation period is fixed at the amount stated in the compensation section above. Completion of the probation period does not automatically entitle you to a salary revision or increment of any kind."
+      ),
+      new Paragraph({ spacing: { after: 80 }, children: [] }),
+      bodyText(
+        "Any future change to your compensation will be at the sole discretion of the Company, subject to management review and business requirements, and will be confirmed separately in writing."
+      ),
+      new Paragraph({ spacing: { after: 80 }, children: [] }),
+      bodyText(
+        "The Company may extend the probation period up to six (6) months if required, based on performance, delivery, conduct, or business needs."
+      ),
+    ];
+  })();
 
   const policyAnnexureListParagraphs: Paragraph[] = (() => {
     if (!data.policyAnnexures || data.policyAnnexures.length === 0) return [];
