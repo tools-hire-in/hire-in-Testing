@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -68,9 +68,9 @@ interface KnowledgeDoc {
   assignedRoles: string[];
 }
 
-interface ReadEntry {
-  docPath: string;
-  readAt: string;
+interface ReadsResponse {
+  readPaths: string[];
+  readCounts?: Record<string, number>;
 }
 
 function DocReader({ content }: { content: string | null }) {
@@ -237,15 +237,51 @@ function SimplifiedTrainingView({
   isError,
   refetch,
   readPaths,
+  readCounts,
 }: {
   docs: KnowledgeDoc[];
   isLoading: boolean;
   isError: boolean;
   refetch: () => void;
   readPaths: Set<string>;
+  readCounts: Record<string, number> | null;
 }) {
+  const queryClient = useQueryClient();
   const [selectedDoc, setSelectedDoc] = useState<KnowledgeDoc | null>(null);
   const [search, setSearch] = useState("");
+  const readTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const markReadMutation = useMutation({
+    mutationFn: async (docPath: string) => {
+      const res = await fetch("/api/admin/knowledge/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ doc_path: docPath }),
+      });
+      if (!res.ok) throw new Error("Failed to mark read");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/knowledge/reads"] });
+    },
+  });
+
+  const handleSelectDoc = (doc: KnowledgeDoc) => {
+    if (readTimerRef.current) clearTimeout(readTimerRef.current);
+    setSelectedDoc(doc);
+    if (!readPaths.has(doc.path)) {
+      readTimerRef.current = setTimeout(() => {
+        markReadMutation.mutate(doc.path);
+      }, 30000);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (readTimerRef.current) clearTimeout(readTimerRef.current);
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     if (!search.trim()) return docs;
@@ -318,11 +354,12 @@ function SimplifiedTrainingView({
               filtered.map((doc) => {
                 const isActive = selectedDoc?.id === doc.id;
                 const isRead = readPaths.has(doc.path);
+                const readCount = readCounts?.[doc.path];
                 return (
                   <div
                     key={doc.id}
                     data-testid={`knowledge-doc-row-${doc.id}`}
-                    onClick={() => setSelectedDoc(doc)}
+                    onClick={() => handleSelectDoc(doc)}
                     className={`p-3 border-b cursor-pointer transition-colors flex items-start gap-2 ${
                       isActive
                         ? "bg-primary/5 border-l-2 border-l-primary"
@@ -345,6 +382,11 @@ function SimplifiedTrainingView({
                       </p>
                       <p className="text-[11px] text-muted-foreground truncate mt-0.5">
                         {doc.category}
+                        {readCounts != null && (
+                          <span className="ml-1.5 text-muted-foreground/70">
+                            · {readCount ?? 0} read
+                          </span>
+                        )}
                       </p>
                     </div>
                     {isRead ? (
@@ -399,17 +441,53 @@ function SuperAdminView({
   isError,
   refetch,
   readCounts,
+  readPaths,
 }: {
   docs: KnowledgeDoc[];
   isLoading: boolean;
   isError: boolean;
   refetch: () => void;
   readCounts: Record<string, number> | null;
+  readPaths: Set<string>;
 }) {
+  const queryClient = useQueryClient();
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [selectedDoc, setSelectedDoc] = useState<KnowledgeDoc | null>(null);
   const [search, setSearch] = useState("");
   const [localRoles, setLocalRoles] = useState<Record<string, string[]>>({});
+  const readTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const markReadMutation = useMutation({
+    mutationFn: async (docPath: string) => {
+      const res = await fetch("/api/admin/knowledge/read", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ doc_path: docPath }),
+      });
+      if (!res.ok) throw new Error("Failed to mark read");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/knowledge/reads"] });
+    },
+  });
+
+  const handleSelectDoc = (doc: KnowledgeDoc) => {
+    if (readTimerRef.current) clearTimeout(readTimerRef.current);
+    setSelectedDoc(doc);
+    if (!readPaths.has(doc.path)) {
+      readTimerRef.current = setTimeout(() => {
+        markReadMutation.mutate(doc.path);
+      }, 30000);
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (readTimerRef.current) clearTimeout(readTimerRef.current);
+    };
+  }, []);
 
   const getAssignedRoles = (doc: KnowledgeDoc) =>
     localRoles[doc.path] ?? doc.assignedRoles;
@@ -577,7 +655,7 @@ function SuperAdminView({
                         ? "bg-primary/5 border-l-2 border-l-primary"
                         : "hover:bg-muted/40"
                     }`}
-                    onClick={() => setSelectedDoc(doc)}
+                    onClick={() => handleSelectDoc(doc)}
                   >
                     <div className="flex items-start justify-between gap-2 mb-1.5">
                       <div className="flex-1 min-w-0">
@@ -662,14 +740,16 @@ export default function KnowledgeHub() {
   const { user, isLoading: authLoading } = useAuth();
 
   const isSuperAdmin = user?.role === "super_admin";
+  const isHr = user?.role === "hr";
+  const canSeeReadCounts = isSuperAdmin || isHr;
 
   const { data: docs = [], isLoading, isError, refetch } = useQuery<KnowledgeDoc[]>({
     queryKey: ["/api/admin/knowledge/docs"],
     enabled: !authLoading && !!user,
   });
 
-  // Defensive read-state fetch — gracefully degrades if endpoint not yet available
-  const { data: readEntries = [] } = useQuery<ReadEntry[]>({
+  // Unified reads endpoint returns { readPaths, readCounts? }
+  const { data: readsData } = useQuery<ReadsResponse>({
     queryKey: ["/api/admin/knowledge/reads"],
     enabled: !authLoading && !!user,
     retry: false,
@@ -677,17 +757,11 @@ export default function KnowledgeHub() {
   } as any);
 
   const readPaths = useMemo(
-    () => new Set((readEntries as ReadEntry[]).map((e) => e.docPath)),
-    [readEntries]
+    () => new Set(readsData?.readPaths ?? []),
+    [readsData]
   );
 
-  // Defensive read-counts fetch for super_admin column
-  const { data: readCountsRaw } = useQuery<Record<string, number>>({
-    queryKey: ["/api/admin/knowledge/read-counts"],
-    enabled: !authLoading && isSuperAdmin,
-    retry: false,
-    throwOnError: false,
-  } as any);
+  const readCounts = readsData?.readCounts ?? null;
 
   if (authLoading || !user) return null;
 
@@ -706,7 +780,8 @@ export default function KnowledgeHub() {
           isLoading={isLoading}
           isError={isError}
           refetch={refetch}
-          readCounts={readCountsRaw ?? null}
+          readCounts={readCounts}
+          readPaths={readPaths}
         />
       ) : (
         <SimplifiedTrainingView
@@ -715,6 +790,7 @@ export default function KnowledgeHub() {
           isError={isError}
           refetch={refetch}
           readPaths={readPaths}
+          readCounts={canSeeReadCounts ? readCounts : null}
         />
       )}
     </AdminLayout>

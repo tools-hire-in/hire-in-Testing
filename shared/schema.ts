@@ -5342,3 +5342,18 @@ export const insertUserOnboardingProgressSchema = createInsertSchema(userOnboard
 });
 export type UserOnboardingProgress = typeof userOnboardingProgress.$inferSelect;
 export type InsertUserOnboardingProgress = z.infer<typeof insertUserOnboardingProgressSchema>;
+
+// ─── Knowledge Hub Read Tracking ─────────────────────────────────────────────
+// Tracks which docs each user has read (marked after 30-second dwell time).
+// Applied via direct SQL (db.execute) at startup — not via db:push — to avoid
+// interactive prompts from drizzle-kit.
+export const knowledgeHubReads = pgTable("knowledge_hub_reads", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id, { onDelete: "cascade" }),
+  docPath: text("doc_path").notNull(),
+  readAt: timestamp("read_at").notNull().defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_knowledge_hub_reads_user_doc").on(table.userId, table.docPath),
+]);
+
+export type KnowledgeHubRead = typeof knowledgeHubReads.$inferSelect;

@@ -4787,6 +4787,25 @@ async function runStartupTasks() {
     console.error("[startup] Onboarding flow schema/seed error (non-fatal):", err);
   }
 
+  // Knowledge Hub read-tracking table
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS knowledge_hub_reads (
+        id        INTEGER PRIMARY KEY GENERATED ALWAYS AS IDENTITY,
+        user_id   VARCHAR NOT NULL REFERENCES admin_users(id) ON DELETE CASCADE,
+        doc_path  TEXT NOT NULL,
+        read_at   TIMESTAMP NOT NULL DEFAULT NOW()
+      )
+    `);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_knowledge_hub_reads_user_doc
+        ON knowledge_hub_reads (user_id, doc_path)
+    `);
+    log("knowledge_hub_reads table ensured");
+  } catch (err) {
+    console.error("[startup] knowledge_hub_reads ensure error (non-fatal):", err);
+  }
+
   // Cron/scheduled jobs start only after schema is ensured so they query
   // tables that are guaranteed to exist.
   startScheduler();

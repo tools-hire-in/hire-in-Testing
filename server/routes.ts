@@ -30088,6 +30088,87 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     }
   });
 
+  // POST /api/admin/knowledge/read — mark a doc as read for the current user (idempotent upsert)
+  app.post("/api/admin/knowledge/read", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { doc_path } = req.body as { doc_path?: string };
+      if (!doc_path || typeof doc_path !== "string" || !doc_path.trim()) {
+        return res.status(400).json({ error: "doc_path is required" });
+      }
+      await db.execute(sql`
+        INSERT INTO knowledge_hub_reads (user_id, doc_path, read_at)
+        VALUES (${userId}, ${doc_path.trim()}, NOW())
+        ON CONFLICT (user_id, doc_path) DO UPDATE SET read_at = NOW()
+      `);
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[knowledge-hub] POST /api/admin/knowledge/read:", err);
+      res.status(500).json({ error: "Failed to record read" });
+    }
+  });
+
+  // GET /api/admin/knowledge/reads — returns { readPaths, readCounts? } for current user.
+  // readPaths: string[] of doc_path values the current user has read.
+  // readCounts: Record<string, number> (doc_path → distinct user count) — included for
+  //   super_admin and hr roles so they can see "Read by N users" per doc.
+  app.get("/api/admin/knowledge/reads", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId;
+      const role = req.session.role as string;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const userRows = await db.execute(sql`
+        SELECT doc_path FROM knowledge_hub_reads WHERE user_id = ${userId}
+      `);
+      const readPaths = (userRows.rows as Array<{ doc_path: string }>).map((r) => r.doc_path);
+
+      const canSeeReadCounts = role === "super_admin" || role === "hr";
+      if (!canSeeReadCounts) {
+        return res.json({ readPaths });
+      }
+
+      const countRows = await db.execute(sql`
+        SELECT doc_path, COUNT(DISTINCT user_id)::int AS user_count
+        FROM knowledge_hub_reads
+        GROUP BY doc_path
+      `);
+      const readCounts: Record<string, number> = {};
+      for (const row of countRows.rows as Array<{ doc_path: string; user_count: number }>) {
+        readCounts[row.doc_path] = row.user_count;
+      }
+      res.json({ readPaths, readCounts });
+    } catch (err: any) {
+      console.error("[knowledge-hub] GET /api/admin/knowledge/reads:", err);
+      res.status(500).json({ error: "Failed to fetch reads" });
+    }
+  });
+
+  // GET /api/admin/knowledge/read-counts — super_admin/hr: per-doc distinct user read counts
+  // (kept for backward compat; reads endpoint now returns this too for these roles)
+  app.get("/api/admin/knowledge/read-counts", requireAuth, async (req: Request, res: Response) => {
+    const role = req.session.role as string;
+    if (role !== "super_admin" && role !== "hr") {
+      return res.status(403).json({ error: "Access restricted" });
+    }
+    try {
+      const rows = await db.execute(sql`
+        SELECT doc_path, COUNT(DISTINCT user_id)::int AS user_count
+        FROM knowledge_hub_reads
+        GROUP BY doc_path
+      `);
+      const readCounts: Record<string, number> = {};
+      for (const row of rows.rows as Array<{ doc_path: string; user_count: number }>) {
+        readCounts[row.doc_path] = row.user_count;
+      }
+      res.json(readCounts);
+    } catch (err: any) {
+      console.error("[knowledge-hub] GET /api/admin/knowledge/read-counts:", err);
+      res.status(500).json({ error: "Failed to fetch read counts" });
+    }
+  });
+
   // GET /api/admin/help/docs — filtered doc list for the requesting user's role
   app.get("/api/admin/help/docs", requireAuth, async (req: Request, res: Response) => {
     try {

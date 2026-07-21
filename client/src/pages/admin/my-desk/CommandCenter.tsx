@@ -19,6 +19,8 @@ import {
   ArrowRight,
   KeyRound,
   ShieldAlert,
+  BookOpen,
+  CheckCircle2,
 } from "lucide-react";
 import CeipalComplianceModal, { CeipalComplianceCard } from "@/components/admin/CeipalComplianceModal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -180,6 +182,19 @@ export default function CommandCenter() {
     },
     enabled: isAuthenticated,
     refetchInterval: 120000,
+  });
+
+  // Knowledge Hub: doc list + read paths for the Training card
+  const { data: knowledgeDocs = [] } = useQuery<Array<{ id: string; path: string; title: string; assignedRoles: string[] }>>({
+    queryKey: ["/api/admin/knowledge/docs"],
+    enabled: isAuthenticated,
+    staleTime: 300000,
+  });
+
+  const { data: knowledgeReadsData } = useQuery<{ readPaths: string[]; readCounts?: Record<string, number> }>({
+    queryKey: ["/api/admin/knowledge/reads"],
+    enabled: isAuthenticated,
+    retry: false,
   });
 
   const { data: trainingAlerts } = useQuery<{ overdue: number; dueSoon: number; total: number }>({
@@ -628,6 +643,70 @@ export default function CommandCenter() {
 
       {/* ── Guided onboarding checklist (non-blocking; hides when complete) ── */}
       <OnboardingChecklist />
+
+      {/* ── Your Training card ── */}
+      {(() => {
+        const totalCount = knowledgeDocs.length;
+        const readSet = new Set(knowledgeReadsData?.readPaths ?? []);
+        const readCount = knowledgeDocs.filter((d) => readSet.has(d.path)).length;
+        const unreadCount = totalCount - readCount;
+        const progressPct = totalCount > 0 ? Math.round((readCount / totalCount) * 100) : 0;
+        const allDone = totalCount > 0 && readCount === totalCount;
+        if (totalCount === 0) return null;
+        return (
+          <Card
+            className={`shadow-sm cursor-pointer transition-colors hover:bg-muted/30 ${allDone ? "border-green-200 bg-green-50/40 dark:bg-green-950/20 dark:border-green-800" : ""}`}
+            data-testid="cc-training-docs-card"
+            onClick={() => setLocation("/admin/knowledge-hub")}
+          >
+            <CardHeader className="pb-2 pt-3 px-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {allDone
+                    ? <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    : <BookOpen className="h-4 w-4 text-primary" />
+                  }
+                  <CardTitle className="text-sm font-semibold">
+                    {allDone ? "Training Docs" : "Your Training"}
+                  </CardTitle>
+                  {!allDone && unreadCount > 0 && (
+                    <span
+                      className="inline-flex items-center justify-center rounded-full bg-amber-500 text-white text-[10px] font-bold min-w-[18px] h-[18px] px-1"
+                      data-testid="cc-training-unread-badge"
+                    >
+                      {unreadCount}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-muted-foreground" data-testid="cc-training-progress-text">
+                  {readCount} / {totalCount} read
+                </span>
+              </div>
+            </CardHeader>
+            <CardContent className="px-4 pb-3 space-y-2">
+              {allDone ? (
+                <p className="text-xs text-green-700 dark:text-green-400 font-medium flex items-center gap-1.5">
+                  <CheckCircle2 className="h-3.5 w-3.5 shrink-0" />
+                  All caught up — you've read all your training docs
+                </p>
+              ) : (
+                <>
+                  <div className="h-1.5 w-full rounded-full bg-muted overflow-hidden">
+                    <div
+                      className="h-full rounded-full bg-primary transition-all duration-500"
+                      style={{ width: `${progressPct}%` }}
+                      data-testid="cc-training-progress-bar"
+                    />
+                  </div>
+                  <p className="text-[11px] text-muted-foreground">
+                    {unreadCount} unread doc{unreadCount === 1 ? "" : "s"} — tap to open Training Docs
+                  </p>
+                </>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })()}
 
       {/* ── Smart action cards row ── */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
