@@ -994,6 +994,7 @@ function SettingsSection({
   const settingsSubItems: NavItem[] = [
     { href: "/admin/settings/leave-attendance", label: "Leave & Attendance", icon: CalendarDays, roles: [] },
     { href: "/admin/settings/organization", label: "Organization", icon: Briefcase, roles: [] },
+    { href: "/admin/settings/onboarding", label: "Onboarding", icon: GraduationCap, roles: ["super_admin", "admin"] },
   ];
 
   const isSettingsActive = location.startsWith("/admin/settings");

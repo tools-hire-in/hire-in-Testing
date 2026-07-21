@@ -17,7 +17,7 @@
  *   PATCH  /api/onboarding/steps/:id           – edit a step
  *   DELETE /api/onboarding/steps/:id           – soft-delete (isActive=false)
  *   POST   /api/onboarding/steps/reorder       – reorder steps within a track
- *   GET    /api/onboarding/steps/export        – export steps for PDF gen (?track=)
+ *   GET    /api/onboarding/steps/export        – export steps; add ?format=pdf for PDF download
  *
  * Role → track mapping (aligned with source doc target audiences):
  *   employee              → "employee" track
@@ -33,6 +33,8 @@ import { db } from "./db";
 import { onboardingSteps, userOnboardingProgress, adminUsers, auditLogs } from "@shared/schema";
 import { eq, and, asc, sql } from "drizzle-orm";
 import { resolveRoles } from "@shared/accessControl";
+import PDFDocument from "pdfkit";
+import type { OnboardingStep } from "@shared/schema";
 
 // ── Permission middleware ─────────────────────────────────────────────────────
 // Mirrors the `requirePermission` factory in routes.ts — returns Express
@@ -669,14 +671,16 @@ export function registerOnboardingFlowRoutes(app: Express) {
   );
 
   /**
-   * GET /api/onboarding/steps/export?track=manager
-   * Returns all active steps for a track — used by PDF generation.
+   * GET /api/onboarding/steps/export?track=manager[&format=pdf]
+   * Returns all active steps for a track.
+   * Without format=pdf: returns JSON.
+   * With format=pdf: generates and streams a formatted PDF guide.
    */
   app.get(
     "/api/onboarding/steps/export",
     requirePermission("onboarding_manage", "admin"),
     async (req: Request, res: Response) => {
-      const { track } = req.query as { track?: string };
+      const { track, format } = req.query as { track?: string; format?: string };
 
       if (!track) {
         return res.status(400).json({ error: "track query param is required" });
@@ -689,11 +693,227 @@ export function registerOnboardingFlowRoutes(app: Express) {
           .where(and(eq(onboardingSteps.track, track as any), eq(onboardingSteps.isActive, true)))
           .orderBy(asc(onboardingSteps.stepNumber));
 
-        res.json(rows);
+        if (format !== "pdf") {
+          return res.json(rows);
+        }
+
+        const pdfBuffer = await generateOnboardingGuidePdf(track, rows);
+        const dateStr = new Date().toISOString().split("T")[0];
+        const filename = `${track}-onboarding-guide-${dateStr}.pdf`;
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+        res.setHeader("Content-Length", pdfBuffer.length);
+        res.end(pdfBuffer);
       } catch (err) {
         console.error("[onboarding-flow] GET /api/onboarding/steps/export error:", err);
         res.status(500).json({ error: "Failed to export steps" });
       }
     },
   );
+}
+
+// ── PDF generation ────────────────────────────────────────────────────────────
+
+const NAVY = "#1F3A6E";
+const ORANGE = "#F47C20";
+const RED_RISK = "#B91C1C";
+const AMBER_BOX = "#92400E";
+const MUTED = "#6B7280";
+const TEXT = "#111827";
+
+const TRACK_LABELS: Record<string, string> = {
+  employee: "Employee",
+  manager: "Manager",
+  hr: "HR / Admin",
+  executive: "Executive",
+  admin: "Admin / Super Admin",
+};
+
+function generateOnboardingGuidePdf(track: string, steps: OnboardingStep[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const doc = new (PDFDocument as any)({
+      size: "A4",
+      margins: { top: 56, bottom: 56, left: 60, right: 60 },
+      autoFirstPage: false,
+      bufferPages: true,
+    });
+
+    const chunks: Buffer[] = [];
+    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
+    doc.on("end", () => resolve(Buffer.concat(chunks)));
+    doc.on("error", reject);
+
+    const pageW = 595.28 - 60 - 60;
+    const exportDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
+    const trackLabel = TRACK_LABELS[track] ?? track.charAt(0).toUpperCase() + track.slice(1);
+    const guideTitle = `${trackLabel} Track — Portal Onboarding Guide`;
+
+    // ── Cover page ────────────────────────────────────────────────────────────
+    doc.addPage();
+    doc.rect(0, 0, 595.28, 180).fill(NAVY);
+    doc.fillColor("#FFFFFF").fontSize(22).font("Helvetica-Bold")
+      .text(guideTitle, 60, 60, { width: 475 });
+    doc.fillColor("#CBD5E1").fontSize(11).font("Helvetica")
+      .text(`Generated on ${exportDate}  ·  ${steps.length} step${steps.length !== 1 ? "s" : ""}`, 60, 110);
+    doc.fillColor(MUTED).fontSize(9).font("Helvetica")
+      .text("This guide is always generated from the current live content. Re-download after any updates.", 60, 145, { width: 475 });
+
+    doc.moveDown(8);
+    doc.fillColor(TEXT).fontSize(10).font("Helvetica")
+      .text("Contents", 60, 200, { underline: true, continued: false });
+    doc.moveDown(0.5);
+    steps.forEach((s, i) => {
+      const prefix = s.isHighRisk ? "⚠ " : "";
+      doc.fillColor(TEXT).fontSize(9.5).font("Helvetica")
+        .text(`${i + 1}.  ${prefix}${s.title}`, 60, undefined, { width: pageW });
+    });
+
+    // ── One page per step ─────────────────────────────────────────────────────
+    steps.forEach((step) => {
+      doc.addPage();
+
+      let y = 56;
+
+      // Step header bar
+      doc.rect(0, 0, 595.28, 48).fill(NAVY);
+      doc.fillColor("#FFFFFF").fontSize(8).font("Helvetica")
+        .text(`Step ${step.stepNumber}  ·  ${trackLabel} Track`, 60, 12);
+      doc.fillColor("#FFFFFF").fontSize(13).font("Helvetica-Bold")
+        .text(step.title, 60, 26, { width: 400 });
+
+      if (step.isHighRisk) {
+        doc.rect(460, 8, 80, 18).fill(RED_RISK);
+        doc.fillColor("#FFFFFF").fontSize(8).font("Helvetica-Bold")
+          .text("HIGH RISK", 462, 13);
+      }
+
+      y = 68;
+
+      const section = (label: string, color = NAVY) => {
+        doc.fillColor(color).fontSize(8).font("Helvetica-Bold")
+          .text(label.toUpperCase(), 60, y, { width: pageW });
+        y = (doc as any).y + 3;
+        doc.moveTo(60, y).lineTo(60 + pageW, y).strokeColor(color).lineWidth(0.5).stroke();
+        y += 6;
+      };
+
+      const body = (text: string, opts?: object) => {
+        doc.fillColor(TEXT).fontSize(9.5).font("Helvetica")
+          .text(text, 60, y, { width: pageW, lineGap: 2, ...opts });
+        y = (doc as any).y + 8;
+      };
+
+      const ensureSpace = (needed: number) => {
+        if (y + needed > 780) {
+          doc.addPage();
+          y = 56;
+        }
+      };
+
+      // Purpose
+      if (step.purpose) {
+        ensureSpace(40);
+        section("Purpose");
+        body(step.purpose);
+      }
+
+      // Where to find
+      if (step.whereToFind) {
+        ensureSpace(30);
+        section("Where to Find It");
+        const locText = step.navRoute ? `${step.whereToFind}  (${step.navRoute})` : step.whereToFind;
+        body(locText);
+      }
+
+      // How to use
+      if (step.howToUse) {
+        ensureSpace(40);
+        section("How to Use It");
+        const plainText = step.howToUse.replace(/\*\*(.+?)\*\*/g, "$1").replace(/#+\s/g, "").replace(/`([^`]+)`/g, "$1");
+        body(plainText);
+      }
+
+      // Important rules
+      const rules = Array.isArray(step.importantRules) ? step.importantRules as string[] : [];
+      if (rules.length > 0) {
+        ensureSpace(40);
+        section("Important Rules");
+        rules.forEach((rule) => {
+          ensureSpace(20);
+          doc.fillColor(TEXT).fontSize(9.5).font("Helvetica")
+            .text(`•  ${rule}`, 68, y, { width: pageW - 8, lineGap: 2 });
+          y = (doc as any).y + 5;
+        });
+        y += 3;
+      }
+
+      // Common mistake (HIGH RISK only)
+      if (step.isHighRisk && step.commonMistake) {
+        ensureSpace(50);
+        doc.rect(60, y, pageW, 1).fill(AMBER_BOX);
+        y += 4;
+        doc.rect(60, y, pageW, 14).fill("#FEF3C7");
+        doc.fillColor(AMBER_BOX).fontSize(7.5).font("Helvetica-Bold")
+          .text("⚠  COMMON MISTAKE", 64, y + 3);
+        y += 18;
+        doc.fillColor(AMBER_BOX).fontSize(9.5).font("Helvetica")
+          .text(step.commonMistake, 64, y, { width: pageW - 8, lineGap: 2 });
+        y = (doc as any).y + 10;
+      }
+
+      // Scenario
+      if (step.scenario) {
+        ensureSpace(50);
+        section("Scenario");
+        const plainScenario = step.scenario.replace(/\*\*(.+?)\*\*/g, "$1").replace(/#+\s/g, "");
+        doc.rect(60, y, pageW, (doc.heightOfString(plainScenario, { width: pageW - 8 }) || 60) + 12)
+          .fillAndStroke("#F9FAFB", "#E5E7EB");
+        y += 6;
+        body(plainScenario);
+      }
+
+      // Practical exercise
+      if (step.practicalExercise) {
+        ensureSpace(50);
+        section("Practical Exercise", "#1D4ED8");
+        const plainEx = step.practicalExercise.replace(/\*\*(.+?)\*\*/g, "$1").replace(/#+\s/g, "");
+        body(plainEx);
+      }
+
+      // Knowledge check
+      const kc = Array.isArray(step.knowledgeCheck) ? step.knowledgeCheck as Array<{ question: string; answer: string }> : null;
+      if (kc && kc.length > 0) {
+        ensureSpace(50);
+        section("Knowledge Check");
+        kc.forEach((item, qi) => {
+          ensureSpace(30);
+          doc.fillColor(TEXT).fontSize(9.5).font("Helvetica-Bold")
+            .text(`Q${qi + 1}: ${item.question}`, 60, y, { width: pageW });
+          y = (doc as any).y + 3;
+          doc.fillColor(MUTED).fontSize(9.5).font("Helvetica")
+            .text(`Answer: ${item.answer}`, 68, y, { width: pageW - 8, lineGap: 2 });
+          y = (doc as any).y + 8;
+        });
+      }
+
+      // Where to get help
+      if (step.whereToGetHelp) {
+        ensureSpace(30);
+        section("Where to Get Help");
+        body(step.whereToGetHelp);
+      }
+    });
+
+    // ── Page footers ──────────────────────────────────────────────────────────
+    const totalPages = (doc as any).bufferedPageRange().count;
+    for (let i = 0; i < totalPages; i++) {
+      doc.switchToPage(i);
+      doc.fillColor(MUTED).fontSize(8).font("Helvetica")
+        .text(`${guideTitle}  ·  ${exportDate}  ·  Page ${i + 1} of ${totalPages}`,
+          60, 820, { width: pageW, align: "center" });
+    }
+
+    doc.end();
+  });
 }

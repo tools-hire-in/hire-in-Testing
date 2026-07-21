@@ -23,6 +23,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { cn } from "@/lib/utils";
 import { DEFAULT_COMPANY_PROFILE, type CompanyProfile } from "@shared/companyProfile";
 import { SalaryStructuresSection, StateRegistrationsSection, CoverageSection } from "./settings/PayrollSettings";
+import { OnboardingStepsManager } from "./settings/OnboardingStepsManager";
 import CeipalComplianceModal from "@/components/admin/CeipalComplianceModal";
 
 interface LeaveType {
@@ -3518,7 +3519,8 @@ function ProfessionalTaxSettingsCard() {
 export type SettingsGroupKey =
   | "leave-attendance"
   | "organization"
-  | "payroll";
+  | "payroll"
+  | "onboarding";
 
 interface SettingsGroupItem {
   id: string;
@@ -3560,6 +3562,13 @@ export const SETTINGS_GROUPS: Record<
       { id: "salary-structures", label: "Salary Structures", hrOnly: true },
       { id: "state-registrations", label: "State Registrations", hrOnly: true },
       { id: "coverage", label: "EPF & ESI Coverage", hrOnly: true },
+    ],
+  },
+  onboarding: {
+    label: "Onboarding",
+    description: "Manage interactive onboarding steps for each role track",
+    items: [
+      { id: "onboarding-steps", label: "Step Library" },
     ],
   },
 };
@@ -4742,6 +4751,18 @@ export default function HRSettings({ group }: { group?: string }) {
 
           {activeSection === "coverage" && (
             <CoverageSection />
+          )}
+
+          {activeSection === "onboarding-steps" && (
+            <>
+              <div>
+                <h1 className="text-2xl font-bold" data-testid="text-onboarding-steps-heading">Onboarding Step Library</h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Manage, reorder, and preview interactive onboarding steps for each role track. Changes take effect immediately for all users who have not yet completed that step.
+                </p>
+              </div>
+              <OnboardingStepsManager />
+            </>
           )}
 
         </div>
