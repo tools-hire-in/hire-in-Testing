@@ -15752,6 +15752,65 @@ Canonical domain: ${BASE}
     }
   });
 
+  // ── AI-assisted wave scheduling endpoints ────────────────────────────────────
+  // GET /api/sops/waves/:waveNumber/ai/suggestions — 3 ranked go-live windows.
+  app.get("/api/sops/waves/:waveNumber/ai/suggestions", requireAuth, requirePermission("sops.schedule"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber) || waveNumber < 0 || waveNumber > 5) {
+        return res.status(400).json({ error: "Invalid wave number (0-5)" });
+      }
+      const { suggestLaunchWindows } = await import("./services/sopWaveAiService");
+      const result = await suggestLaunchWindows(waveNumber);
+      res.json(result);
+    } catch (error) {
+      console.error("SOP AI suggestions error:", error);
+      res.json({ available: false });
+    }
+  });
+
+  // POST /api/sops/waves/:waveNumber/ai/predict — live ack-rate prediction.
+  // Body: { goLiveDate: "YYYY-MM-DD", graceDays: number }
+  app.post("/api/sops/waves/:waveNumber/ai/predict", requireAuth, requirePermission("sops.schedule"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber) || waveNumber < 0 || waveNumber > 5) {
+        return res.status(400).json({ error: "Invalid wave number (0-5)" });
+      }
+      const { goLiveDate, graceDays } = req.body as { goLiveDate?: string; graceDays?: number };
+      if (!goLiveDate || !/^\d{4}-\d{2}-\d{2}$/.test(goLiveDate)) {
+        return res.status(400).json({ error: "goLiveDate is required (YYYY-MM-DD)" });
+      }
+      const { predictAckRate } = await import("./services/sopWaveAiService");
+      const result = await predictAckRate(waveNumber, goLiveDate, Number(graceDays) || 14);
+      res.json(result);
+    } catch (error) {
+      console.error("SOP AI predict error:", error);
+      res.json({ available: false });
+    }
+  });
+
+  // POST /api/sops/waves/:waveNumber/ai/narrative — impact summary for admin approval.
+  // Body: { scheduledLaunchId: string }
+  app.post("/api/sops/waves/:waveNumber/ai/narrative", requireAuth, requirePermission("sops.rollout"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber) || waveNumber < 0 || waveNumber > 5) {
+        return res.status(400).json({ error: "Invalid wave number (0-5)" });
+      }
+      const { scheduledLaunchId } = req.body as { scheduledLaunchId?: string };
+      if (!scheduledLaunchId) {
+        return res.status(400).json({ error: "scheduledLaunchId is required" });
+      }
+      const { generateImpactNarrative } = await import("./services/sopWaveAiService");
+      const result = await generateImpactNarrative(waveNumber, scheduledLaunchId);
+      res.json(result);
+    } catch (error) {
+      console.error("SOP AI narrative error:", error);
+      res.json({ available: false });
+    }
+  });
+
   // POST /api/sops/waves/:waveNumber/readiness — manager signals team readiness.
   // Upserts: if a signal already exists for this manager+wave, updates signalled_at.
   app.post("/api/sops/waves/:waveNumber/readiness", requireAuth, requirePermission("sops.readiness"), async (req: Request, res: Response) => {

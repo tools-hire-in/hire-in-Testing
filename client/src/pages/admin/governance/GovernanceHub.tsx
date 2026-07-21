@@ -32,6 +32,9 @@ import {
   Clock,
   Zap,
   Calendar,
+  Sparkles,
+  RefreshCw,
+  ShieldAlert,
 } from "lucide-react";
 
 interface GovernancePulse {
@@ -591,6 +594,14 @@ function ManagerKpiTable() {
 
 const WAVE_CONFIRM_PHRASE = "I understand the impact";
 
+interface ImpactNarrative {
+  narrative: string;
+  riskRating: "LOW" | "MEDIUM" | "HIGH";
+  affectedCount: number;
+  predictedCompletionRate: number;
+  redFlags: string[];
+}
+
 function WaveApprovalModal({
   launch,
   onClose,
@@ -607,6 +618,33 @@ function WaveApprovalModal({
   const [confirmText, setConfirmText] = useState("");
   const isSuperAdmin = user?.role === "super_admin";
   const confirmed = confirmText.trim() === WAVE_CONFIRM_PHRASE;
+
+  // AI Impact Narrative state
+  const [impactNarrative, setImpactNarrative] = useState<ImpactNarrative | null>(null);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
+  const [narrativeDismissed, setNarrativeDismissed] = useState(false);
+
+  const fetchNarrative = () => {
+    setNarrativeLoading(true);
+    setImpactNarrative(null);
+    apiRequest("POST", `/api/sops/waves/${launch.waveNumber}/ai/narrative`, {
+      scheduledLaunchId: launch.id,
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.available && data.impact) {
+          setImpactNarrative(data.impact as ImpactNarrative);
+        } else {
+          setImpactNarrative(null);
+        }
+      })
+      .catch(() => setImpactNarrative(null))
+      .finally(() => setNarrativeLoading(false));
+  };
+
+  useEffect(() => {
+    fetchNarrative();
+  }, [launch.id]);
 
   const approveMut = useMutation({
     mutationFn: async () => {
@@ -651,13 +689,29 @@ function WaveApprovalModal({
       toast({ title: "Activation failed", description: e?.message, variant: "destructive" }),
   });
 
+  function riskBadgeClass(risk: ImpactNarrative["riskRating"]) {
+    if (risk === "HIGH") return "bg-red-100 text-red-700 border-red-300 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700";
+    if (risk === "MEDIUM") return "bg-amber-100 text-amber-700 border-amber-300 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700";
+    return "bg-green-100 text-green-700 border-green-300 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700";
+  }
+
   return (
     <Dialog open onOpenChange={(o) => !o && onClose()}>
-      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-wave-approval">
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-wave-approval">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
+          <DialogTitle className="flex items-center gap-2 flex-wrap">
+            <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0" />
             Review Wave Launch
+            {/* Risk badge in header once narrative is loaded */}
+            {impactNarrative && !narrativeDismissed && (
+              <Badge
+                className={`text-xs border font-medium ml-auto ${riskBadgeClass(impactNarrative.riskRating)}`}
+                data-testid="badge-risk-rating"
+              >
+                <ShieldAlert className="h-3 w-3 mr-1" />
+                {impactNarrative.riskRating} RISK
+              </Badge>
+            )}
           </DialogTitle>
         </DialogHeader>
 
@@ -715,6 +769,76 @@ function WaveApprovalModal({
               )}
             </div>
           </div>
+
+          {/* ── AI Wave Impact Summary ─────────────────────────────
+               Only rendered while loading or when a narrative is available.
+               Hidden entirely if AI returned available:false.            */}
+          {!narrativeDismissed && (narrativeLoading || impactNarrative) && (
+            <div
+              className="rounded-lg border border-primary/20 bg-primary/5 dark:border-primary/30 dark:bg-primary/10 p-3 space-y-2"
+              data-testid="ai-impact-summary"
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5 text-xs font-medium text-primary">
+                  <Sparkles className="h-3.5 w-3.5" />
+                  AI Wave Impact Summary
+                </span>
+                {!narrativeLoading && impactNarrative && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      className="rounded p-1 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
+                      title="Regenerate"
+                      onClick={fetchNarrative}
+                      data-testid="button-regenerate-narrative"
+                    >
+                      <RefreshCw className="h-3 w-3" />
+                    </button>
+                    <button
+                      className="rounded p-1 text-muted-foreground hover:text-muted-foreground/70 hover:bg-muted/50 transition-colors"
+                      title="Dismiss"
+                      onClick={() => setNarrativeDismissed(true)}
+                      data-testid="button-dismiss-narrative"
+                    >
+                      <XCircle className="h-3 w-3" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {narrativeLoading ? (
+                <div className="flex items-center gap-2 py-1 text-xs text-muted-foreground">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  Analysing wave impact…
+                </div>
+              ) : impactNarrative ? (
+                <>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs text-muted-foreground">
+                      ~{impactNarrative.predictedCompletionRate}% predicted completion
+                    </span>
+                    {impactNarrative.affectedCount > 0 && (
+                      <span className="text-xs text-muted-foreground">
+                        · {impactNarrative.affectedCount} employees affected
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-xs text-foreground leading-relaxed" data-testid="text-impact-narrative">
+                    {impactNarrative.narrative}
+                  </p>
+                  {impactNarrative.redFlags.length > 0 && (
+                    <ul className="space-y-0.5" data-testid="list-red-flags">
+                      {impactNarrative.redFlags.map((flag, i) => (
+                        <li key={i} className="flex items-start gap-1.5 text-xs text-amber-700 dark:text-amber-300">
+                          <AlertTriangle className="h-3 w-3 shrink-0 mt-0.5" />
+                          {flag}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </>
+              ) : null}
+            </div>
+          )}
 
           {launch.waveNumber >= 3 && (
             <div

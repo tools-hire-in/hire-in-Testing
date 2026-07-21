@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2, ExternalLink, BookOpen, Brain, Award, Trash2, GripVertical, CalendarDays } from "lucide-react";
+import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2, ExternalLink, BookOpen, Brain, Award, Trash2, GripVertical, CalendarDays, Sparkles, ChevronDown, ChevronUp, TrendingUp } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -2803,6 +2803,20 @@ interface ScheduledLaunch {
   requiresApproval: boolean;
 }
 
+interface LaunchWindowSuggestion {
+  startDate: string;
+  endDate: string;
+  reason: string;
+  historicalAckRate: number;
+  rank: number;
+}
+
+interface AckPrediction {
+  predictedAckRate: number;
+  confidence: "high" | "medium" | "low";
+  rationale: string;
+}
+
 function ScheduleRolloutDrawer({
   waveNumber,
   waveName,
@@ -2829,6 +2843,70 @@ function ScheduleRolloutDrawer({
 
   const [scheduledDate, setScheduledDate] = useState(minDate);
   const [gracePeriodDays, setGracePeriodDays] = useState<string>("14");
+
+  // AI Suggested Windows state
+  const [aiSuggestionsOpen, setAiSuggestionsOpen] = useState(true);
+  const [suggestions, setSuggestions] = useState<LaunchWindowSuggestion[] | null>(null);
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+
+  // AI Ack-rate prediction state (debounced)
+  const [prediction, setPrediction] = useState<AckPrediction | null>(null);
+  const [predictionLoading, setPredictionLoading] = useState(false);
+  const predictionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Fetch suggestions once when drawer opens
+  useEffect(() => {
+    if (!open) {
+      setSuggestions(null);
+      setPrediction(null);
+      return;
+    }
+    let cancelled = false;
+    setSuggestionsLoading(true);
+    apiRequest("GET", `/api/sops/waves/${waveNumber}/ai/suggestions`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.available && Array.isArray(data.suggestions)) {
+          setSuggestions(data.suggestions as LaunchWindowSuggestion[]);
+        } else {
+          setSuggestions([]);
+        }
+      })
+      .catch(() => { if (!cancelled) setSuggestions([]); })
+      .finally(() => { if (!cancelled) setSuggestionsLoading(false); });
+    return () => { cancelled = true; };
+  }, [open, waveNumber]);
+
+  // Debounced prediction when date or grace period changes
+  const fetchPrediction = useCallback(() => {
+    if (!scheduledDate) return;
+    setPredictionLoading(true);
+    setPrediction(null);
+    apiRequest("POST", `/api/sops/waves/${waveNumber}/ai/predict`, {
+      goLiveDate: scheduledDate,
+      graceDays: Number(gracePeriodDays),
+    })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data?.available && data.prediction) {
+          setPrediction(data.prediction as AckPrediction);
+        } else {
+          setPrediction(null);
+        }
+      })
+      .catch(() => setPrediction(null))
+      .finally(() => setPredictionLoading(false));
+  }, [scheduledDate, gracePeriodDays, waveNumber]);
+
+  useEffect(() => {
+    if (!open || !scheduledDate) return;
+    if (predictionTimerRef.current) clearTimeout(predictionTimerRef.current);
+    predictionTimerRef.current = setTimeout(fetchPrediction, 300);
+    return () => {
+      if (predictionTimerRef.current) clearTimeout(predictionTimerRef.current);
+    };
+  }, [open, scheduledDate, gracePeriodDays, fetchPrediction]);
 
   const isCurrentWeek = (dateStr: string) => {
     const d = new Date(dateStr);
@@ -2872,9 +2950,23 @@ function ScheduleRolloutDrawer({
       toast({ title: "Failed to schedule rollout", description: e?.message, variant: "destructive" }),
   });
 
+  function applyWindow(w: LaunchWindowSuggestion) {
+    setScheduledDate(w.startDate);
+  }
+
+  function predictionBadgeClass(rate: number): string {
+    if (rate >= 85) return "bg-green-100 text-green-700 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700";
+    if (rate >= 60) return "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300 dark:border-amber-700";
+    return "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700";
+  }
+
+  function confidenceLabel(c: AckPrediction["confidence"]) {
+    return c === "high" ? "High confidence" : c === "medium" ? "Medium confidence" : "Low confidence";
+  }
+
   return (
     <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
-      <SheetContent side="right" className="w-full max-w-md" data-testid="drawer-schedule-rollout">
+      <SheetContent side="right" className="w-full max-w-md overflow-y-auto" data-testid="drawer-schedule-rollout">
         <SheetHeader className="pb-4 border-b">
           <SheetTitle className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5 text-primary" />
@@ -2886,6 +2978,71 @@ function ScheduleRolloutDrawer({
         </SheetHeader>
 
         <div className="space-y-5 pt-5">
+          {/* ── AI Suggested Windows ─────────────────────────────── */}
+          <div className="rounded-lg border border-primary/20 bg-primary/5 dark:border-primary/30 dark:bg-primary/10" data-testid="ai-suggestions-panel">
+            <button
+              className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium text-primary"
+              onClick={() => setAiSuggestionsOpen((v) => !v)}
+              data-testid="button-toggle-ai-suggestions"
+            >
+              <span className="flex items-center gap-1.5">
+                <Sparkles className="h-3.5 w-3.5" />
+                AI Suggested Windows
+              </span>
+              {aiSuggestionsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+            </button>
+
+            {aiSuggestionsOpen && (
+              <div className="px-3 pb-3 space-y-2 border-t border-primary/15">
+                {suggestionsLoading ? (
+                  <div className="flex items-center gap-2 py-3 text-xs text-muted-foreground">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    Analysing holidays, payroll dates &amp; past ack rates…
+                  </div>
+                ) : suggestions === null || suggestions.length === 0 ? (
+                  <p className="py-2 text-xs text-muted-foreground">
+                    {suggestions === null ? "Unable to generate suggestions right now." : "No conflict-free windows found in the next 60 days."}
+                  </p>
+                ) : (
+                  suggestions.map((s) => (
+                    <div
+                      key={s.rank}
+                      className="mt-2 flex items-start justify-between gap-2 rounded border border-primary/15 bg-background px-2.5 py-2"
+                      data-testid={`ai-suggestion-${s.rank}`}
+                    >
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-foreground">
+                          {new Date(s.startDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                          {" — "}
+                          {new Date(s.endDate).toLocaleDateString("en-IN", { day: "numeric", month: "short" })}
+                          {s.rank === 1 && (
+                            <Badge className="ml-1.5 text-[10px] h-4 px-1 bg-primary/15 text-primary border-0">
+                              Best
+                            </Badge>
+                          )}
+                        </p>
+                        <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-2">{s.reason}</p>
+                        <div className="mt-1 flex items-center gap-1">
+                          <TrendingUp className="h-3 w-3 text-muted-foreground" />
+                          <span className="text-[11px] text-muted-foreground">Est. {s.historicalAckRate}% ack rate</span>
+                        </div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="h-7 text-xs shrink-0"
+                        onClick={() => applyWindow(s)}
+                        data-testid={`button-apply-suggestion-${s.rank}`}
+                      >
+                        Use
+                      </Button>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
           {showCadenceWarning && (
             <div
               className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/30 px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
@@ -2941,6 +3098,34 @@ function ScheduleRolloutDrawer({
               Employees get this many days after go-live before nudges begin.
             </p>
           </div>
+
+          {/* ── AI Ack-Rate Prediction Badge ─────────────────────── */}
+          {scheduledDate && (predictionLoading || prediction) && (
+            <div
+              className="flex items-center gap-2 rounded border px-3 py-2"
+              data-testid="ai-prediction-badge"
+            >
+              <Sparkles className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              {predictionLoading ? (
+                <span className="text-xs text-muted-foreground flex items-center gap-1.5">
+                  <Loader2 className="h-3 w-3 animate-spin" /> Predicting ack rate…
+                </span>
+              ) : prediction ? (
+                <div className="flex flex-wrap items-center gap-2 min-w-0">
+                  <Badge
+                    className={`text-xs border ${predictionBadgeClass(prediction.predictedAckRate)}`}
+                    data-testid="badge-predicted-ack-rate"
+                  >
+                    ~{prediction.predictedAckRate}% predicted ack rate
+                  </Badge>
+                  <span className="text-[11px] text-muted-foreground">{confidenceLabel(prediction.confidence)}</span>
+                  {prediction.rationale && (
+                    <p className="w-full text-[11px] text-muted-foreground">{prediction.rationale}</p>
+                  )}
+                </div>
+              ) : null}
+            </div>
+          )}
 
           <div className="pt-2 flex gap-3">
             <Button
