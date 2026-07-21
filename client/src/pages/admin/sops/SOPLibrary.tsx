@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2, ExternalLink, BookOpen, Trash2 } from "lucide-react";
+import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2, ExternalLink, BookOpen, Trash2, CalendarDays } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -2273,6 +2273,190 @@ function ManageReviewersDrawer({
   );
 }
 
+// ── Wave Scheduling (Task #1408) ─────────────────────────────────────────────
+
+interface ScheduledLaunch {
+  id: string;
+  waveNumber: number;
+  waveName: string;
+  scheduledDate: string;
+  gracePeriodDays: number;
+  status: "pending_approval" | "approved" | "rejected" | "cancelled" | "activated";
+  submittedBy: string;
+  submittedByName: string;
+  submittedAt: string;
+  approvedBy: string | null;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  enforcement: string;
+  affectedEmployeeCount: number;
+  requiresApproval: boolean;
+}
+
+function ScheduleRolloutDrawer({
+  waveNumber,
+  waveName,
+  waveEnforcement,
+  open,
+  onClose,
+  onScheduled,
+  cadenceWindowCount,
+  cadenceMax,
+}: {
+  waveNumber: number;
+  waveName: string;
+  waveEnforcement: string;
+  open: boolean;
+  onClose: () => void;
+  onScheduled: () => void;
+  cadenceWindowCount?: number;
+  cadenceMax?: number;
+}) {
+  const { toast } = useToast();
+  const tomorrow = new Date();
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  const minDate = tomorrow.toISOString().split("T")[0];
+
+  const [scheduledDate, setScheduledDate] = useState(minDate);
+  const [gracePeriodDays, setGracePeriodDays] = useState<string>("14");
+
+  const isCurrentWeek = (dateStr: string) => {
+    const d = new Date(dateStr);
+    const now = new Date();
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    const endOfWeek = new Date(startOfWeek);
+    endOfWeek.setDate(startOfWeek.getDate() + 6);
+    return d >= startOfWeek && d <= endOfWeek;
+  };
+
+  const showCadenceWarning =
+    !!scheduledDate &&
+    isCurrentWeek(scheduledDate) &&
+    typeof cadenceWindowCount === "number" &&
+    typeof cadenceMax === "number" &&
+    cadenceWindowCount >= cadenceMax;
+
+  const requiresApproval = waveNumber >= 3;
+
+  const scheduleMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/sops/waves/${waveNumber}/schedule`, {
+        scheduledDate,
+        gracePeriodDays: Number(gracePeriodDays),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({
+        title: "Wave rollout scheduled",
+        description: requiresApproval
+          ? "Submitted for Admin approval before going live."
+          : `Scheduled for ${new Date(scheduledDate).toLocaleDateString()}`,
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/sops/waves/scheduled"] });
+      onScheduled();
+      onClose();
+    },
+    onError: (e: any) =>
+      toast({ title: "Failed to schedule rollout", description: e?.message, variant: "destructive" }),
+  });
+
+  return (
+    <Sheet open={open} onOpenChange={(o) => !o && onClose()}>
+      <SheetContent side="right" className="w-full max-w-md" data-testid="drawer-schedule-rollout">
+        <SheetHeader className="pb-4 border-b">
+          <SheetTitle className="flex items-center gap-2">
+            <CalendarDays className="h-5 w-5 text-primary" />
+            Schedule Rollout
+          </SheetTitle>
+          <p className="text-sm text-muted-foreground">
+            Wave {waveNumber}: {waveName}
+          </p>
+        </SheetHeader>
+
+        <div className="space-y-5 pt-5">
+          {showCadenceWarning && (
+            <div
+              className="flex items-start gap-2 rounded border border-amber-300 bg-amber-50 dark:border-amber-700 dark:bg-amber-900/30 px-3 py-2 text-sm text-amber-700 dark:text-amber-300"
+              data-testid="banner-cadence-warning"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                The selected week is at the cadence limit ({cadenceWindowCount}/{cadenceMax} operational SOPs this
+                week). Scheduling here may require an override when the wave goes live.
+              </span>
+            </div>
+          )}
+
+          {requiresApproval && (
+            <div
+              className="flex items-start gap-2 rounded border border-blue-200 bg-blue-50 dark:border-blue-700 dark:bg-blue-900/30 px-3 py-2 text-sm text-blue-700 dark:text-blue-300"
+              data-testid="notice-approval-required"
+            >
+              <Clock className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                <strong>Wave {waveNumber} requires Admin approval</strong> before going live. Submitting will queue
+                it for review in the Governance Hub.
+              </span>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Go-live date</Label>
+            <Input
+              type="date"
+              value={scheduledDate}
+              min={minDate}
+              onChange={(e) => setScheduledDate(e.target.value)}
+              data-testid="input-schedule-date"
+            />
+            <p className="text-xs text-muted-foreground">Earliest: tomorrow</p>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-medium">Grace period</Label>
+            <Select value={gracePeriodDays} onValueChange={setGracePeriodDays}>
+              <SelectTrigger data-testid="select-grace-period">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="7">7 days</SelectItem>
+                <SelectItem value="14">14 days</SelectItem>
+                <SelectItem value="21">21 days</SelectItem>
+                <SelectItem value="30">30 days</SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">
+              Employees get this many days after go-live before nudges begin.
+            </p>
+          </div>
+
+          <div className="pt-2 flex gap-3">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={onClose}
+              data-testid="button-cancel-schedule"
+            >
+              Cancel
+            </Button>
+            <Button
+              className="flex-1"
+              onClick={() => scheduleMut.mutate()}
+              disabled={!scheduledDate || scheduleMut.isPending}
+              data-testid="button-confirm-schedule"
+            >
+              {scheduleMut.isPending ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : null}
+              {requiresApproval ? "Submit for Approval" : "Schedule Launch"}
+            </Button>
+          </div>
+        </div>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
 // ── Wave Rollout management (Task #662) ──────────────────────────────────────
 
 interface WaveSopRow {
@@ -2310,10 +2494,25 @@ interface WavesResponse {
 
 function RolloutView({ onViewDetails }: { onViewDetails?: (id: string) => void }) {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const canSchedule = ["super_admin", "admin", "director"].includes(user?.role || "");
+
   const { data, isLoading } = useQuery<WavesResponse>({
     queryKey: ["/api/sops/waves"],
     staleTime: 15000,
   });
+
+  const { data: scheduledData } = useQuery<{ launches: ScheduledLaunch[] }>({
+    queryKey: ["/api/sops/waves/scheduled"],
+    staleTime: 30000,
+    enabled: canSchedule,
+  });
+
+  const [scheduleDrawerWave, setScheduleDrawerWave] = useState<{
+    waveNumber: number;
+    name: string;
+    enforcement: string;
+  } | null>(null);
 
   const refresh = (res?: WavesResponse) => {
     if (res?.waves) queryClient.setQueryData(["/api/sops/waves"], { waves: res.waves, cadence: res.cadence });
@@ -2345,6 +2544,22 @@ function RolloutView({ onViewDetails }: { onViewDetails?: (id: string) => void }
     },
     onError: (e: any) => toast({ title: "Could not make SOP operational", description: e?.message, variant: "destructive" }),
   });
+
+  const cancelScheduleMut = useMutation({
+    mutationFn: async (scheduleId: string) =>
+      (await apiRequest("DELETE", `/api/sops/waves/schedule/${scheduleId}`, {})).json(),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/sops/waves/scheduled"] });
+      toast({ title: "Schedule cancelled" });
+    },
+    onError: (e: any) =>
+      toast({ title: "Failed to cancel schedule", description: e?.message, variant: "destructive" }),
+  });
+
+  const getScheduledLaunch = (waveNumber: number) =>
+    (scheduledData?.launches ?? []).find(
+      (l) => l.waveNumber === waveNumber && ["pending_approval", "approved"].includes(l.status),
+    );
 
   const handleActivateSop = (waveNumber: number, code: string, cadenceFull: boolean) => {
     if (cadenceFull) {
@@ -2390,124 +2605,184 @@ function RolloutView({ onViewDetails }: { onViewDetails?: (id: string) => void }
         </CardContent>
       </Card>
 
-      {waves.map((wave) => (
-        <Card key={wave.waveNumber} data-testid={`card-wave-${wave.waveNumber}`}>
-          <CardHeader className="pb-3">
-            <div className="flex items-start justify-between gap-3 flex-wrap">
-              <div className="min-w-0">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Layers className="h-4 w-4 text-primary" />
-                  Wave {wave.waveNumber}: {wave.name}
-                  <Badge
-                    variant={wave.status === "active" ? "default" : wave.status === "completed" ? "secondary" : "outline"}
-                    data-testid={`badge-wave-status-${wave.waveNumber}`}
-                  >
-                    {wave.status}
-                  </Badge>
-                  <Badge
-                    variant={wave.enforcement === "full" ? "destructive" : wave.enforcement === "measured" ? "secondary" : "outline"}
-                    data-testid={`badge-wave-enforcement-${wave.waveNumber}`}
-                  >
-                    {ENFORCEMENT_LABELS[wave.enforcement]}
-                  </Badge>
-                </CardTitle>
-                {wave.description && <p className="text-xs text-muted-foreground mt-1">{wave.description}</p>}
-                {wave.audience && <p className="text-xs text-muted-foreground mt-1">Audience: {wave.audience}</p>}
-                <p className="text-xs text-muted-foreground mt-1">
-                  {wave.operationalCount}/{wave.totalCount} SOPs operational
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                {wave.status === "planned" && (
-                  <Button
-                    size="sm"
-                    onClick={() => activateWaveMut.mutate(wave.waveNumber)}
-                    disabled={activateWaveMut.isPending}
-                    data-testid={`button-activate-wave-${wave.waveNumber}`}
-                  >
-                    <Play className="h-3.5 w-3.5 mr-1" /> Activate wave
-                  </Button>
-                )}
-                <Select
-                  value={wave.enforcement}
-                  onValueChange={(v) => updateWaveMut.mutate({ waveNumber: wave.waveNumber, enforcement: v })}
-                >
-                  <SelectTrigger className="h-8 w-[150px]" data-testid={`select-enforcement-${wave.waveNumber}`}>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="soft">Soft (coaching)</SelectItem>
-                    <SelectItem value="measured">Measured (audit)</SelectItem>
-                    <SelectItem value="full">Full (lock)</SelectItem>
-                  </SelectContent>
-                </Select>
-                {wave.status === "active" && (
+      {waves.map((wave) => {
+        const scheduledLaunch = getScheduledLaunch(wave.waveNumber);
+        return (
+          <Card key={wave.waveNumber} data-testid={`card-wave-${wave.waveNumber}`}>
+            <CardHeader className="pb-3">
+              <div className="flex items-start justify-between gap-3 flex-wrap">
+                <div className="min-w-0">
+                  <CardTitle className="text-base flex items-center gap-2 flex-wrap">
+                    <Layers className="h-4 w-4 text-primary" />
+                    Wave {wave.waveNumber}: {wave.name}
+                    <Badge
+                      variant={wave.status === "active" ? "default" : wave.status === "completed" ? "secondary" : "outline"}
+                      data-testid={`badge-wave-status-${wave.waveNumber}`}
+                    >
+                      {wave.status}
+                    </Badge>
+                    <Badge
+                      variant={wave.enforcement === "full" ? "destructive" : wave.enforcement === "measured" ? "secondary" : "outline"}
+                      data-testid={`badge-wave-enforcement-${wave.waveNumber}`}
+                    >
+                      {ENFORCEMENT_LABELS[wave.enforcement]}
+                    </Badge>
+                    {scheduledLaunch && (
+                      <span className="inline-flex items-center gap-1" data-testid={`scheduled-chip-${wave.waveNumber}`}>
+                        <Badge
+                          variant="secondary"
+                          className="gap-1 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border-blue-200"
+                        >
+                          <CalendarDays className="h-3 w-3" />
+                          Scheduled —{" "}
+                          {new Date(scheduledLaunch.scheduledDate).toLocaleDateString("en-IN", {
+                            day: "numeric",
+                            month: "short",
+                          })}
+                          {scheduledLaunch.status === "pending_approval" && " (pending approval)"}
+                        </Badge>
+                        <button
+                          className="ml-0.5 rounded p-0.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
+                          title="Cancel scheduled rollout"
+                          onClick={() => {
+                            if (window.confirm("Cancel this scheduled rollout?")) {
+                              cancelScheduleMut.mutate(scheduledLaunch.id);
+                            }
+                          }}
+                          data-testid={`button-cancel-schedule-${wave.waveNumber}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </span>
+                    )}
+                  </CardTitle>
+                  {wave.description && <p className="text-xs text-muted-foreground mt-1">{wave.description}</p>}
+                  {wave.audience && <p className="text-xs text-muted-foreground mt-1">Audience: {wave.audience}</p>}
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {wave.operationalCount}/{wave.totalCount} SOPs operational
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {canSchedule && !scheduledLaunch && ["planned", "active"].includes(wave.status) && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() =>
+                        setScheduleDrawerWave({
+                          waveNumber: wave.waveNumber,
+                          name: wave.name,
+                          enforcement: wave.enforcement,
+                        })
+                      }
+                      data-testid={`button-schedule-wave-${wave.waveNumber}`}
+                    >
+                      <CalendarDays className="h-3.5 w-3.5 mr-1" /> Schedule Rollout
+                    </Button>
+                  )}
+                  {wave.status === "planned" && (
+                    <Button
+                      size="sm"
+                      onClick={() => activateWaveMut.mutate(wave.waveNumber)}
+                      disabled={activateWaveMut.isPending}
+                      data-testid={`button-activate-wave-${wave.waveNumber}`}
+                    >
+                      <Play className="h-3.5 w-3.5 mr-1" /> Activate wave
+                    </Button>
+                  )}
                   <Select
-                    value={wave.status}
-                    onValueChange={(v) => updateWaveMut.mutate({ waveNumber: wave.waveNumber, status: v })}
+                    value={wave.enforcement}
+                    onValueChange={(v) => updateWaveMut.mutate({ waveNumber: wave.waveNumber, enforcement: v })}
                   >
-                    <SelectTrigger className="h-8 w-[130px]" data-testid={`select-status-${wave.waveNumber}`}>
+                    <SelectTrigger className="h-8 w-[150px]" data-testid={`select-enforcement-${wave.waveNumber}`}>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="active">Active</SelectItem>
-                      <SelectItem value="completed">Completed</SelectItem>
+                      <SelectItem value="soft">Soft (coaching)</SelectItem>
+                      <SelectItem value="measured">Measured (audit)</SelectItem>
+                      <SelectItem value="full">Full (lock)</SelectItem>
                     </SelectContent>
                   </Select>
-                )}
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0">
-            <div className="space-y-1.5">
-              {wave.sops.map((sop) => (
-                <div
-                  key={sop.sopMasterId}
-                  className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
-                  data-testid={`row-wave-sop-${sop.code}`}
-                >
-                  <div className="min-w-0 flex items-center gap-2">
-                    <span className="font-mono text-xs text-muted-foreground">{sop.code}</span>
-                    <span className="text-sm truncate">{sop.title ?? "(not seeded)"}</span>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {sop.operational ? (
-                      <Badge variant="secondary" className="gap-1" data-testid={`badge-sop-operational-${sop.code}`}>
-                        <CheckCircle2 className="h-3 w-3" /> Operational
-                      </Badge>
-                    ) : wave.status === "active" ? (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-7"
-                        onClick={() => handleActivateSop(wave.waveNumber, sop.code, wave.waveNumber >= 1 && cadenceFull)}
-                        disabled={activateSopMut.isPending}
-                        data-testid={`button-activate-sop-${sop.code}`}
-                      >
-                        <Zap className="h-3.5 w-3.5 mr-1" /> Make operational
-                      </Button>
-                    ) : (
-                      <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" /> Queued</Badge>
-                    )}
-                    {onViewDetails && sop.sopId && (
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="h-7 px-2"
-                        onClick={() => onViewDetails(sop.sopId!)}
-                        data-testid={`button-view-sop-detail-${sop.code}`}
-                      >
-                        <ExternalLink className="h-3.5 w-3.5" />
-                        <span className="sr-only">Details</span>
-                      </Button>
-                    )}
-                  </div>
+                  {wave.status === "active" && (
+                    <Select
+                      value={wave.status}
+                      onValueChange={(v) => updateWaveMut.mutate({ waveNumber: wave.waveNumber, status: v })}
+                    >
+                      <SelectTrigger className="h-8 w-[130px]" data-testid={`select-status-${wave.waveNumber}`}>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="active">Active</SelectItem>
+                        <SelectItem value="completed">Completed</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      ))}
+              </div>
+            </CardHeader>
+            <CardContent className="pt-0">
+              <div className="space-y-1.5">
+                {wave.sops.map((sop) => (
+                  <div
+                    key={sop.sopMasterId}
+                    className="flex items-center justify-between gap-3 rounded-md border px-3 py-2"
+                    data-testid={`row-wave-sop-${sop.code}`}
+                  >
+                    <div className="min-w-0 flex items-center gap-2">
+                      <span className="font-mono text-xs text-muted-foreground">{sop.code}</span>
+                      <span className="text-sm truncate">{sop.title ?? "(not seeded)"}</span>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {sop.operational ? (
+                        <Badge variant="secondary" className="gap-1" data-testid={`badge-sop-operational-${sop.code}`}>
+                          <CheckCircle2 className="h-3 w-3" /> Operational
+                        </Badge>
+                      ) : wave.status === "active" ? (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7"
+                          onClick={() => handleActivateSop(wave.waveNumber, sop.code, wave.waveNumber >= 1 && cadenceFull)}
+                          disabled={activateSopMut.isPending}
+                          data-testid={`button-activate-sop-${sop.code}`}
+                        >
+                          <Zap className="h-3.5 w-3.5 mr-1" /> Make operational
+                        </Button>
+                      ) : (
+                        <Badge variant="outline" className="gap-1"><Clock className="h-3 w-3" /> Queued</Badge>
+                      )}
+                      {onViewDetails && sop.sopId && (
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 px-2"
+                          onClick={() => onViewDetails(sop.sopId!)}
+                          data-testid={`button-view-sop-detail-${sop.code}`}
+                        >
+                          <ExternalLink className="h-3.5 w-3.5" />
+                          <span className="sr-only">Details</span>
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      })}
+
+      {scheduleDrawerWave && (
+        <ScheduleRolloutDrawer
+          waveNumber={scheduleDrawerWave.waveNumber}
+          waveName={scheduleDrawerWave.name}
+          waveEnforcement={scheduleDrawerWave.enforcement}
+          open={!!scheduleDrawerWave}
+          onClose={() => setScheduleDrawerWave(null)}
+          onScheduled={() => setScheduleDrawerWave(null)}
+          cadenceWindowCount={cadence.windowCount}
+          cadenceMax={cadence.max}
+        />
+      )}
     </div>
   );
 }

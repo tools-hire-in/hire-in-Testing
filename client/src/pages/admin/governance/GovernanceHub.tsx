@@ -3,14 +3,17 @@ import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
 import { useLocation } from "wouter";
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { ActionRequiredFeed, type ActionItem } from "@/components/admin/governance/ActionRequiredFeed";
 import GovernanceSettingsPanel from "@/components/admin/governance/GovernanceSettingsPanel";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
   ShieldCheck,
@@ -28,6 +31,7 @@ import {
   XCircle,
   Clock,
   Zap,
+  Calendar,
 } from "lucide-react";
 
 interface GovernancePulse {
@@ -102,6 +106,25 @@ interface WaveApprovalStatus {
   approvedBy: string | null;
   approvedAt: string | null;
   approvalNotes: string | null;
+}
+
+interface ScheduledLaunch {
+  id: string;
+  waveNumber: number;
+  waveName: string;
+  scheduledDate: string;
+  gracePeriodDays: number;
+  status: "pending_approval" | "approved" | "rejected" | "cancelled" | "activated";
+  submittedBy: string;
+  submittedByName: string;
+  submittedAt: string;
+  approvedBy: string | null;
+  approvedByName: string | null;
+  approvedAt: string | null;
+  enforcement: string;
+  affectedEmployeeCount: number;
+  preAckCount?: number;
+  requiresApproval: boolean;
 }
 
 function PulseStatCard({
@@ -564,12 +587,396 @@ function ManagerKpiTable() {
   );
 }
 
+// ── Wave Scheduling: pending approvals + manager readiness cards ──────────────
+
+const WAVE_CONFIRM_PHRASE = "I understand the impact";
+
+function WaveApprovalModal({
+  launch,
+  onClose,
+  onApproved,
+  onRejected,
+}: {
+  launch: ScheduledLaunch;
+  onClose: () => void;
+  onApproved: () => void;
+  onRejected: () => void;
+}) {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [confirmText, setConfirmText] = useState("");
+  const isSuperAdmin = user?.role === "super_admin";
+  const confirmed = confirmText.trim() === WAVE_CONFIRM_PHRASE;
+
+  const approveMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/sops/waves/${launch.waveNumber}/approve-launch`, {
+        scheduleId: launch.id,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Wave launch approved" });
+      onApproved();
+    },
+    onError: (e: any) =>
+      toast({ title: "Failed to approve", description: e?.message, variant: "destructive" }),
+  });
+
+  const rejectMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/sops/waves/${launch.waveNumber}/reject-launch`, {
+        scheduleId: launch.id,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Wave launch rejected" });
+      onRejected();
+    },
+    onError: (e: any) =>
+      toast({ title: "Failed to reject", description: e?.message, variant: "destructive" }),
+  });
+
+  const overrideMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/sops/waves/${launch.waveNumber}/activate`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: `Wave ${launch.waveNumber} activated immediately` });
+      onApproved();
+    },
+    onError: (e: any) =>
+      toast({ title: "Activation failed", description: e?.message, variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open onOpenChange={(o) => !o && onClose()}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto" data-testid="dialog-wave-approval">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            Review Wave Launch
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4">
+          <div
+            className="rounded-lg border p-3 space-y-2 text-sm bg-muted/30"
+            data-testid="wave-approval-summary"
+          >
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <span className="font-semibold">
+                Wave {launch.waveNumber} — {launch.waveName}
+              </span>
+              <Badge
+                variant={
+                  launch.enforcement === "full"
+                    ? "destructive"
+                    : launch.enforcement === "measured"
+                    ? "secondary"
+                    : "outline"
+                }
+                className="capitalize"
+              >
+                {launch.enforcement} enforcement
+              </Badge>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-muted-foreground">
+              <span>
+                Submitted by:{" "}
+                <strong className="text-foreground">{launch.submittedByName}</strong>
+              </span>
+              <span>
+                Submitted:{" "}
+                <strong className="text-foreground">
+                  {new Date(launch.submittedAt).toLocaleDateString()}
+                </strong>
+              </span>
+              <span>
+                Go-live:{" "}
+                <strong className="text-foreground">
+                  {new Date(launch.scheduledDate).toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </strong>
+              </span>
+              {launch.affectedEmployeeCount > 0 && (
+                <span>
+                  Affected:{" "}
+                  <strong className="text-foreground">
+                    {launch.affectedEmployeeCount} employee
+                    {launch.affectedEmployeeCount !== 1 ? "s" : ""}
+                  </strong>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {launch.waveNumber >= 3 && (
+            <div
+              className="flex items-start gap-2 rounded border border-red-200 bg-red-50 dark:bg-red-950/20 p-3 text-sm text-red-700 dark:text-red-300"
+              data-testid="compliance-lock-warning"
+            >
+              <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+              <span>
+                <strong>Compliance locks will fire</strong> for overdue employees in this wave
+                (enforcement: {launch.enforcement}). Ensure your team is prepared before approving.
+              </span>
+            </div>
+          )}
+
+          <div className="space-y-2">
+            <Label className="text-sm">
+              Type <strong>"{WAVE_CONFIRM_PHRASE}"</strong> to confirm
+            </Label>
+            <Input
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              placeholder={WAVE_CONFIRM_PHRASE}
+              data-testid="input-confirm-phrase"
+            />
+          </div>
+        </div>
+
+        <DialogFooter className="flex-col sm:flex-row gap-2 pt-2">
+          {isSuperAdmin && (
+            <Button
+              variant="destructive"
+              onClick={() => overrideMut.mutate()}
+              disabled={!confirmed || overrideMut.isPending}
+              data-testid="button-activate-now-override"
+              className="sm:mr-auto"
+            >
+              {overrideMut.isPending ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : null}
+              Activate Now — Override
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            onClick={() => rejectMut.mutate()}
+            disabled={rejectMut.isPending}
+            data-testid="button-reject-launch"
+          >
+            {rejectMut.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : null}
+            Reject
+          </Button>
+          <Button
+            onClick={() => approveMut.mutate()}
+            disabled={!confirmed || approveMut.isPending}
+            data-testid="button-approve-schedule"
+          >
+            {approveMut.isPending ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : null}
+            Approve &amp; Schedule
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function PendingWaveApprovalsCard() {
+  const [approvalModal, setApprovalModal] = useState<ScheduledLaunch | null>(null);
+
+  const { data, isLoading } = useQuery<{ launches: ScheduledLaunch[] }>({
+    queryKey: ["/api/sops/waves/scheduled"],
+    staleTime: 30000,
+  });
+
+  const pendingLaunches = (data?.launches ?? []).filter((l) => l.status === "pending_approval");
+
+  if (isLoading || pendingLaunches.length === 0) return null;
+
+  return (
+    <>
+      <Card
+        className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800"
+        data-testid="pending-wave-approvals-card"
+      >
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2 text-amber-700 dark:text-amber-300">
+            <Calendar className="h-4 w-4" />
+            Pending Wave Approvals
+            <Badge className="bg-amber-500 text-white text-[10px] h-5 min-w-5 flex items-center justify-center">
+              {pendingLaunches.length}
+            </Badge>
+          </CardTitle>
+          <p className="text-xs text-amber-600 dark:text-amber-400">
+            These waves require Admin approval before going live.
+          </p>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {pendingLaunches.map((launch) => (
+            <div
+              key={launch.id}
+              className="flex items-center justify-between gap-3 rounded-lg border border-amber-200 bg-white dark:bg-amber-950/30 p-3"
+              data-testid={`pending-launch-row-${launch.waveNumber}`}
+            >
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">
+                  Wave {launch.waveNumber} — {launch.waveName}
+                </p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Submitted by {launch.submittedByName} &middot; Go-live:{" "}
+                  {new Date(launch.scheduledDate).toLocaleDateString("en-IN", {
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                  })}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 border-amber-300 text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:text-amber-300 dark:hover:bg-amber-900/30"
+                onClick={() => setApprovalModal(launch)}
+                data-testid={`button-review-launch-${launch.waveNumber}`}
+              >
+                Review &amp; Approve
+              </Button>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {approvalModal && (
+        <WaveApprovalModal
+          launch={approvalModal}
+          onClose={() => setApprovalModal(null)}
+          onApproved={() => {
+            setApprovalModal(null);
+            queryClient.invalidateQueries({ queryKey: ["/api/sops/waves/scheduled"] });
+          }}
+          onRejected={() => {
+            setApprovalModal(null);
+            queryClient.invalidateQueries({ queryKey: ["/api/sops/waves/scheduled"] });
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+function ManagerReadinessCard() {
+  const { toast } = useToast();
+  const [readinessSent, setReadinessSent] = useState<Set<number>>(new Set());
+
+  const { data, isLoading } = useQuery<{ launches: ScheduledLaunch[] }>({
+    queryKey: ["/api/sops/waves/scheduled"],
+    staleTime: 30000,
+  });
+
+  const readinessMut = useMutation({
+    mutationFn: (waveNumber: number) =>
+      apiRequest("POST", `/api/sops/waves/${waveNumber}/readiness`, {}),
+    onSuccess: (_: unknown, waveNumber: number) => {
+      setReadinessSent((prev) => new Set([...prev, waveNumber]));
+      toast({ title: "Team readiness confirmed" });
+    },
+    onError: () => toast({ title: "Failed to signal readiness", variant: "destructive" }),
+  });
+
+  const now = new Date();
+  const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  const upcomingLaunches = (data?.launches ?? []).filter((l) => {
+    if (!["pending_approval", "approved"].includes(l.status)) return false;
+    const d = new Date(l.scheduledDate);
+    return d >= now && d <= in30Days;
+  });
+
+  if (isLoading || upcomingLaunches.length === 0) return null;
+
+  return (
+    <Card
+      className="border-blue-200 bg-blue-50 dark:bg-blue-950/20 dark:border-blue-800"
+      data-testid="manager-readiness-card"
+    >
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2 text-blue-700 dark:text-blue-300">
+          <CalendarCheck className="h-4 w-4" />
+          Upcoming Wave
+        </CardTitle>
+        <p className="text-xs text-blue-600 dark:text-blue-400">
+          A wave launches within the next 30 days. Confirm your team is ready.
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        {upcomingLaunches.map((launch) => {
+          const sent = readinessSent.has(launch.waveNumber);
+          return (
+            <div
+              key={launch.id}
+              className="rounded-lg border border-blue-200 bg-white dark:bg-blue-950/30 p-3"
+              data-testid={`readiness-row-${launch.waveNumber}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-medium">
+                    Wave {launch.waveNumber} — {launch.waveName}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Go-live:{" "}
+                    {new Date(launch.scheduledDate).toLocaleDateString("en-IN", {
+                      day: "numeric",
+                      month: "short",
+                      year: "numeric",
+                    })}
+                    {launch.affectedEmployeeCount > 0 &&
+                      ` · ${launch.affectedEmployeeCount} employees`}
+                  </p>
+                  {launch.preAckCount !== undefined && (
+                    <p className="text-xs text-muted-foreground">
+                      {launch.preAckCount} team members pre-acknowledged
+                    </p>
+                  )}
+                </div>
+                {sent ? (
+                  <div
+                    className="flex items-center gap-1.5 text-green-600 text-sm font-medium shrink-0"
+                    data-testid={`text-readiness-sent-${launch.waveNumber}`}
+                  >
+                    <CheckCircle className="h-4 w-4" /> Confirmed
+                  </div>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="shrink-0 border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300 dark:hover:bg-blue-900/30"
+                    onClick={() => readinessMut.mutate(launch.waveNumber)}
+                    disabled={readinessMut.isPending}
+                    data-testid={`button-confirm-readiness-${launch.waveNumber}`}
+                  >
+                    {readinessMut.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                    ) : null}
+                    Confirm Team Readiness
+                  </Button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
 export default function GovernanceHub() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const role = user?.role;
 
-  const ALLOWED_ROLES = ["super_admin", "admin", "hr"];
+  const ALLOWED_ROLES = ["super_admin", "admin", "hr", "manager"];
   const canAccess = !!role && ALLOWED_ROLES.includes(role);
   const isHrReadOnly = role === "hr";
 
@@ -656,6 +1063,16 @@ export default function GovernanceHub() {
           </TabsList>
 
           <TabsContent value="overview">
+            {["super_admin", "admin"].includes(role || "") && (
+              <div className="mb-4">
+                <PendingWaveApprovalsCard />
+              </div>
+            )}
+            {role === "manager" && (
+              <div className="mb-4">
+                <ManagerReadinessCard />
+              </div>
+            )}
             {pulse && (
               <>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 mb-6" data-testid="pulse-cards">

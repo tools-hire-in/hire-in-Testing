@@ -1610,6 +1610,22 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   });
   const sopReviewPendingCount = sopReviewCountData?.pending ?? 0;
 
+  // Pending wave launch approvals badge (super_admin + admin only)
+  const { data: pendingWaveLaunchData } = useQuery<{ count: number }>({
+    queryKey: ["/api/sops/waves/scheduled/pending-count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/sops/waves/scheduled/pending-count", { credentials: "include" });
+        if (!res.ok) return { count: 0 };
+        return res.json();
+      } catch { return { count: 0 }; }
+    },
+    refetchInterval: 120000,
+    staleTime: 60000,
+    enabled: !!user && ["super_admin", "admin"].includes(user?.role || ""),
+  });
+  const pendingWaveLaunchCount = pendingWaveLaunchData?.count ?? 0;
+
   // Manual salary-change requests awaiting Super-Admin approval (maker-checker)
   const { data: salaryChangePending } = useQuery<{ count: number }>({
     queryKey: ["/api/hr/salary-changes/pending-count"],
@@ -1725,6 +1741,8 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       label: "SOP Governance",
       icon: ShieldCheck,
       roles: ["super_admin", "admin", "hr", "operations"],
+      badge: pendingWaveLaunchCount > 0 && ["super_admin", "admin"].includes(userRole) ? pendingWaveLaunchCount : undefined,
+      badgeColor: "bg-amber-500",
     }] : []),
     ...(hasHRAccess ? [{
       href: "/admin/training/catalog",
