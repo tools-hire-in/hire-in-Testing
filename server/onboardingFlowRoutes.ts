@@ -67,19 +67,20 @@ const requireAuth = (req: Request, res: Response, next?: NextFunction): boolean 
 /**
  * Map a portal role to its onboarding track.
  *
- * hr, admin, and super_admin all receive the "hr" track — the HR/Admin source
- * document (docs/training/hr-admin-onboarding-track-source.md) explicitly
- * covers all three roles in a single shared track.
+ * manager, operations, admin, and super_admin all receive the "manager" track.
+ * hr receives the "hr" track (HR/Admin source doc covers hr role's specialist training).
+ * employee → "employee", executive → "executive".
  */
 function roleToTrack(role: string): string {
   switch (role) {
-    case "employee":  return "employee";
-    case "manager":   return "manager";
-    case "hr":
+    case "employee":    return "employee";
+    case "manager":
+    case "operations":
     case "admin":
-    case "super_admin": return "hr";
-    case "executive": return "executive";
-    default:          return "employee";
+    case "super_admin": return "manager";
+    case "hr":          return "hr";
+    case "executive":   return "executive";
+    default:            return "employee";
   }
 }
 
@@ -669,6 +670,104 @@ export function registerOnboardingFlowRoutes(app: Express) {
       }
     },
   );
+
+  /**
+   * GET /api/onboarding/command-card
+   * Returns structured JSON for the Manager Command Card.
+   * Content: probation cadence, PIP weekly rule, 3-strike escalation,
+   * correction window, leave LWP warning, outcome options, SOP enforcement
+   * levels, training compliance lock trigger.
+   * Gate: requireAuth (any authenticated user — managers use it, HR should
+   * also be able to reference it).
+   */
+  app.get("/api/onboarding/command-card", async (req: Request, res: Response) => {
+    if (!requireAuth(req, res)) return;
+
+    res.json({
+      probationCadence: {
+        title: "Probation Check-in Cadence",
+        description: "8 check-ins auto-generated from the plan start date.",
+        days: [1, 7, 15, 30, 45, 60, 75, 90],
+        formalMilestoneDays: [30, 60, 90],
+        note: "Days 30, 60, and 90 are formal milestone reviews requiring a rating score.",
+      },
+      pipRule: {
+        title: "PIP Check-in Rule",
+        description:
+          "PIP plans auto-generate weekly check-ins for the full plan duration. Miss none — each missed check-in counts toward the 3-strike escalation.",
+      },
+      threeStrikeEscalation: {
+        title: "3-Strike Escalation",
+        description:
+          "If 3 consecutive check-ins are missed on any plan, the plan status is escalated and an escalation notification is sent to HR. Avoid missing check-ins — escalations are visible to HR and executive leadership.",
+        trigger: "3 consecutive missed check-ins on a probation or PIP plan",
+        consequence: "Plan escalated; HR notified automatically",
+      },
+      correctionWindow: {
+        title: "Attendance Correction Window",
+        description:
+          "Corrections can only be made within 3 calendar days of the attendance date. Beyond 3 days, the employee must raise a regularization ticket via Help Desk; HR then reviews and applies the correction.",
+        windowDays: 3,
+        beyondWindow:
+          "Employee raises regularization ticket → HR review queue",
+      },
+      leaveLwpWarning: {
+        title: "Leave LWP Warning",
+        description:
+          "Always check the LWP component before approving a leave request. If the employee applied for more days than their EL/SL balance allows, the deficit automatically becomes Leave Without Pay (LWP). Approving the request locks in the LWP deduction — there is no undo button for managers.",
+        checkBefore: "Review the EL portion and LWP portion in the request summary",
+        undoPath: "Escalate to HR to reverse an incorrectly approved request",
+      },
+      planOutcomes: {
+        title: "Plan Outcome Options",
+        description:
+          "Available outcomes to set on a probation or PIP plan. Outcome is locked after setting.",
+        options: [
+          { value: "passed", label: "Passed", description: "Employee completes the plan successfully." },
+          { value: "extended", label: "Extended", description: "Plan duration is extended; new check-ins are generated." },
+          { value: "failed", label: "Failed", description: "Employee did not meet the plan criteria." },
+          { value: "converted", label: "Converted to Growth", description: "Probation converts to a Growth plan." },
+          { value: "terminated", label: "Terminated", description: "Employment is terminated at the end of the plan." },
+        ],
+      },
+      sopEnforcementLevels: {
+        title: "SOP Enforcement Levels",
+        description:
+          "Enforcement level is set per rollout wave and determines what happens when a user misses an SOP acknowledgment or training deadline.",
+        levels: [
+          {
+            value: "soft",
+            label: "Soft",
+            description: "Warning banner shown on dashboard. Portal access unrestricted.",
+          },
+          {
+            value: "measured",
+            label: "Measured",
+            description: "Prominent warning shown. Access unrestricted.",
+          },
+          {
+            value: "full",
+            label: "Full",
+            description:
+              "Compliance lock activates if deadline is missed. Portal access blocked until overdue items are completed or HR grants an exception.",
+          },
+        ],
+      },
+      trainingComplianceLock: {
+        title: "Training Compliance Lock Trigger",
+        description:
+          "Two conditions must BOTH be true for a compliance lock to activate:",
+        conditions: [
+          "Training is past its due date",
+          "The employee's rollout wave is set to 'full' enforcement",
+        ],
+        resolution:
+          "Complete the overdue training (restores access immediately) OR ask HR to grant a training exception.",
+        managerNote:
+          "You cannot clear a lock for a team member yourself. Submit a training extension request to HR.",
+      },
+    });
+  });
 
   /**
    * GET /api/onboarding/steps/export?track=manager[&format=pdf]

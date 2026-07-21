@@ -76,6 +76,7 @@ const PerformanceFeedback = lazy(() => import("@/pages/admin/performance/Feedbac
 const PerformanceReviewCycles = lazy(() => import("@/pages/admin/performance/ReviewCycles"));
 const PerformanceAnalytics = lazy(() => import("@/pages/admin/performance/Analytics"));
 const ProbationGuide = lazy(() => import("@/pages/admin/probation/ProbationGuide"));
+const ManagerCommandCardPage = lazy(() => import("@/pages/admin/ManagerCommandCardPage"));
 const PolicyGate = lazy(() => import("@/pages/admin/PolicyGate"));
 const NewHire = lazy(() => import("@/pages/admin/NewHire"));
 const ContractsHub = lazy(() => import("@/pages/admin/finance/ContractsHub"));
@@ -512,6 +513,9 @@ function PublicRouter() {
       {/* Onboarding Flow */}
       <Route path="/admin/onboarding">{() => <Suspense fallback={<AdminFallback />}><OnboardingFlow /></Suspense>}</Route>
 
+      {/* Manager Command Card */}
+      <Route path="/admin/command-card">{() => <Suspense fallback={<AdminFallback />}><ManagerCommandCardPage /></Suspense>}</Route>
+
       {/* Integrations Hub */}
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
 
@@ -735,6 +739,9 @@ function EmployeeRouter() {
 
       {/* Onboarding Flow */}
       <Route path="/admin/onboarding">{() => <Suspense fallback={<AdminFallback />}><OnboardingFlow /></Suspense>}</Route>
+
+      {/* Manager Command Card */}
+      <Route path="/admin/command-card">{() => <Suspense fallback={<AdminFallback />}><ManagerCommandCardPage /></Suspense>}</Route>
 
       {/* Integrations Hub */}
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>

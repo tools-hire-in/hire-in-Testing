@@ -17,6 +17,7 @@
 
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { isRouteReachableByTrack } from "@shared/onboardingRbac";
 import { readFileSync } from "fs";
 import { join, dirname } from "path";
 import { fileURLToPath } from "url";
@@ -274,4 +275,387 @@ export async function seedOnboardingSteps(): Promise<void> {
   }
 
   console.log(`[onboarding-flow-seed] Done — ${allSteps.length} steps seeded.`);
+}
+
+// ── Manager gap-filling steps (Steps 6–9) ─────────────────────────────────────
+// These four steps are not in the manager source doc (confirmed gaps in
+// docs/training/TRAINING_GAP_MAP.md §Persona 3 Manager). They are derived
+// from platform behaviour (routes, schema, business rules) and seeded via an
+// always-run upsert so they survive re-deployments.
+//
+// Step 8 is seeded with isActive=false because the performance_management flag
+// is OFF by default. An admin content manager can activate it when the flag is ON.
+
+interface GapStep {
+  stepNumber: number;
+  title: string;
+  isHighRisk: boolean;
+  purpose: string;
+  whereToFind: string;
+  navRoute: string;
+  howToUse: string;
+  importantRules: string[];
+  commonMistake: string | null;
+  scenario: string | null;
+  practicalExercise: string | null;
+  knowledgeCheck: KnowledgeCheckItem[];
+  whereToGetHelp: string;
+  isActive: boolean;
+}
+
+const MANAGER_GAP_STEPS: GapStep[] = [
+  // ── Step 6: Team Training Compliance ───────────────────────────────────────
+  {
+    stepNumber: 6,
+    title: "Team Training Compliance",
+    isHighRisk: false,
+    purpose:
+      "Read your team's training completion status, identify who is overdue, understand how the compliance lock affects team members, and know how to request a training extension on their behalf.",
+    whereToFind: "My Team → Training tab (/admin/hr/my-team?tab=training-progress)",
+    navRoute: "/admin/hr/my-team?tab=training-progress",
+    howToUse: `**Reading training progress:**
+1. Go to My Team → Training tab.
+2. Each row shows the employee's completion percentage and any overdue assignments.
+3. A member with 0% on an overdue track is the highest-priority risk.
+
+**When a team member is at risk of a compliance lock:**
+1. Identify the overdue track and its due date.
+2. If the member is in a \`full\` enforcement wave and is past the due date, they will be locked out of the portal.
+3. You cannot clear a compliance lock yourself.
+
+**Submitting a training extension request:**
+1. Contact HR with the employee's name, the overdue training track, and the reason more time is needed.
+2. HR reviews the request and, if approved, updates the due date in the system.
+3. The lock lifts automatically once HR applies the extension — no further action required.`,
+    importantRules: [
+      "A compliance lock activates only when two conditions are both true: training is overdue past the due date, AND the employee's rollout wave is set to `full` enforcement.",
+      "Employees in `soft` or `measured` waves see a warning banner but are not locked out.",
+      "You cannot clear a compliance lock for a team member — only HR can apply an extension (updates due date) or exception (permanently bypasses the requirement).",
+      "The best prevention is coaching your team to complete training before the due date.",
+    ],
+    commonMistake: null,
+    scenario: null,
+    practicalExercise: null,
+    knowledgeCheck: [
+      {
+        question:
+          "A team member is in a 'measured' enforcement wave and their training is overdue. Will they be locked out of the portal?",
+        answer:
+          "No. Compliance locks only activate in 'full' enforcement waves. Measured enforcement shows a warning banner but does not restrict portal access.",
+      },
+      {
+        question:
+          "What must you do if a team member needs more time to complete an overdue training track?",
+        answer:
+          "Submit a training extension request to HR with the employee's name, the overdue track, and the reason. HR approves and updates the due date — you cannot do this yourself.",
+      },
+      {
+        question:
+          "Where do you see each team member's training completion percentage and overdue assignments?",
+        answer:
+          "My Team → Training tab (/admin/hr/my-team?tab=training-progress).",
+      },
+      {
+        question:
+          "Can a manager directly remove a compliance lock for a team member?",
+        answer:
+          "No. Only HR can remove a compliance lock, by granting either a training extension (updates the due date) or a training exception (permanently bypasses the requirement).",
+      },
+    ],
+    whereToGetHelp:
+      "Contact HR to submit a training extension request for a team member, or to clarify which rollout wave an employee belongs to.",
+    isActive: true,
+  },
+
+  // ── Step 7: SOP Reading and Acknowledgment ─────────────────────────────────
+  {
+    stepNumber: 7,
+    title: "SOP Reading and Acknowledgment",
+    isHighRisk: false,
+    purpose:
+      "Understand how SOPs are assigned to your role by wave, what soft, measured, and full enforcement means for you personally, how to find and acknowledge your unread SOPs, and what happens if you miss your own SOP deadline under full enforcement.",
+    whereToFind: "SOP Library (/admin/sops)",
+    navRoute: "/admin/sops",
+    howToUse: `**Finding your assigned SOPs:**
+1. Go to /admin/sops.
+2. Unacknowledged SOPs assigned to your role are highlighted. Filter by "Pending acknowledgment" to see only unread assignments.
+3. Click on an SOP to read its full content.
+4. Click "Acknowledge" to confirm you have read and understood it.
+
+**Understanding enforcement levels:**
+Your rollout wave determines how the system responds if you miss the acknowledgment deadline.
+- \`soft\`: A banner appears on your dashboard. Portal access is unrestricted.
+- \`measured\`: A more prominent warning is shown. Access remains unrestricted.
+- \`full\`: If you miss the deadline, the compliance lock activates — you are blocked from the portal until you complete the overdue acknowledgment.
+
+**Connection to your team:**
+- If a team member hits a compliance lock, you will see it in My Team → Training tab.
+- Your own SOP compliance and your team's compliance are tracked separately.`,
+    importantRules: [
+      "As a manager, you are subject to the same wave enforcement rules as your team members — including the compliance lock under full enforcement.",
+      "Unacknowledged SOPs assigned to your role remain visible in /admin/sops until you acknowledge them.",
+      "SOPs are versioned — acknowledging a version locks your acknowledgment to that content. A major published update may require a fresh acknowledgment.",
+      "SOP acknowledgment (policy compliance) is separate from training track completion — both systems can generate compliance locks independently.",
+    ],
+    commonMistake: null,
+    scenario: null,
+    practicalExercise: null,
+    knowledgeCheck: [
+      {
+        question:
+          "You are in a 'measured' enforcement wave and miss your SOP acknowledgment deadline. Will you be locked out of the portal?",
+        answer:
+          "No. Measured enforcement shows a warning but does not lock portal access. Only 'full' enforcement triggers a compliance lock.",
+      },
+      {
+        question:
+          "Where do you go to find SOPs that are assigned to your role and pending acknowledgment?",
+        answer:
+          "/admin/sops — filter by 'Pending acknowledgment' to see only unread assignments.",
+      },
+      {
+        question:
+          "What happens to your portal access if you are in a 'full' enforcement wave and miss your SOP deadline?",
+        answer:
+          "The compliance lock activates — you are blocked from the portal until you complete the overdue acknowledgment.",
+      },
+      {
+        question:
+          "If a team member hits a compliance lock, where do you see this?",
+        answer:
+          "My Team → Training tab (/admin/hr/my-team?tab=training-progress) — it shows each team member's compliance status.",
+      },
+    ],
+    whereToGetHelp:
+      "Contact HR for questions about your assigned SOPs or your rollout wave. Contact the Operations team for SOP governance questions.",
+    isActive: true,
+  },
+
+  // ── Step 8: Performance Goals and Check-ins (flag-gated, seeded inactive) ──
+  {
+    stepNumber: 8,
+    title: "Performance Goals and Check-ins",
+    isHighRisk: false,
+    purpose:
+      "Set and track performance goals for your team members, create check-in records from your 1:1 conversations, understand the review cycle timeline, and distinguish performance check-ins from probation milestones.",
+    whereToFind:
+      "Performance → Goals (/admin/performance/goals) and Check-ins (/admin/performance/check-ins)",
+    navRoute: "/admin/performance/goals",
+    howToUse: `**Setting a goal for a team member:**
+1. Go to /admin/performance/goals → click "New Goal".
+2. Select the team member, goal type (individual / team / company alignment), title, description, and target date.
+3. Link a KPI or SOP if applicable.
+4. Click "Save" — the goal appears in your team member's goals view.
+
+**Creating a performance check-in:**
+1. Go to /admin/performance/check-ins → click "New Check-in".
+2. Select the team member and the conversation date.
+3. Add notes, observations, and any agreed next steps.
+4. Save — this is saved as a freeform conversation record (not a plan milestone).
+
+**Submitting a manager review:**
+1. HR creates review cycles that define the period and participants.
+2. You submit a manager review for each team member in the cycle.
+3. Both your review and the employee's self-review become visible after the submission deadline — neither party sees the other's review until then.
+
+**Key distinction — performance vs. probation:**
+- A performance check-in is a freeform conversation record in the performance module.
+- A probation plan check-in is a formal scheduled milestone (Day 1/7/15/30/45/60/75/90) that affects the plan cadence and triggers 3-strike escalation if missed.
+- Completing a performance check-in does NOT count as completing a probation milestone.`,
+    importantRules: [
+      "Performance goals are separate from probation plan milestones — do not use one to satisfy the other.",
+      "Goal types: individual (personal development), team (shared team target), company alignment (linked to company OKRs).",
+      "This feature is controlled by the Performance Management feature flag. Contact your Admin to enable it.",
+      "Performance review scores are confidential — neither party sees the other's review until after the submission deadline.",
+    ],
+    commonMistake: null,
+    scenario: null,
+    practicalExercise: null,
+    knowledgeCheck: [
+      {
+        question:
+          "What is the key difference between a performance check-in and a probation plan check-in?",
+        answer:
+          "A performance check-in is a freeform conversation record in the performance module. A probation check-in is a formal scheduled milestone (Day 1/7/15/30/45/60/75/90) that affects plan cadence and triggers 3-strike escalation if missed. They are separate features.",
+      },
+      {
+        question:
+          "What are the three goal types available in the performance module?",
+        answer:
+          "Individual (personal development), Team (shared team target), and Company Alignment (linked to company OKRs).",
+      },
+      {
+        question:
+          "If you cannot see the performance goals menu, what is the most likely cause?",
+        answer:
+          "The Performance Management feature flag is OFF. Contact your Admin to enable it.",
+      },
+      {
+        question:
+          "After you submit a manager review in a review cycle, when can the employee see your review?",
+        answer:
+          "After the submission deadline — both the manager review and the employee self-review become visible at the same time once the deadline passes.",
+      },
+    ],
+    whereToGetHelp:
+      "This feature is controlled by the Performance Management feature flag. Contact your Admin to enable it. For review cycle setup, contact HR.",
+    isActive: false, // Seeded inactive — activate when performance_management flag is ON
+  },
+
+  // ── Step 9: Salary Advance Approvals ───────────────────────────────────────
+  {
+    stepNumber: 9,
+    title: "Salary Advance Approvals",
+    isHighRisk: false,
+    purpose:
+      "Understand when a team member's advance request reaches you for approval, the 50% threshold CEO escalation rule, how overpayments differ from standard advances, and how automatic payroll recovery works.",
+    whereToFind: "Salary Advance — Approvals tab (/admin/salary-advance)",
+    navRoute: "/admin/salary-advance",
+    howToUse: `**Approving a team member's advance request:**
+1. Go to /admin/salary-advance → Approvals tab.
+2. Review pending requests from your direct reports.
+3. Check the requested amount, number of installments, and any outstanding balance.
+4. Click "Approve" or "Reject" (provide a reason if rejecting).
+5. After your approval, the request moves to HR for final approval and disbursement.
+
+**50% threshold and CEO escalation:**
+- If the amount exceeds 50% of the employee's monthly net salary, it is automatically escalated to super_admin (CEO) for a second approval — after yours.
+- For amounts within the 50% threshold, your approval and HR final approval are sufficient.
+
+**Overpayment vs. standard advance:**
+- A standard advance is requested by the employee and approved: manager → HR → disbursed.
+- An overpayment is recorded by HR (not requested by the employee) when salary was paid in excess. The full overpayment is recovered from the next payroll run; shortfalls carry forward.
+- You do not approve overpayment recordings — those are HR-managed directly.
+
+**Recovery:**
+- Recovery is automatic each month: the payroll run deducts one installment.
+- If net pay is insufficient in a recovery month, the shortfall carries forward to the next month — nothing is lost or forgiven.`,
+    importantRules: [
+      "Advance requests above 50% of net monthly salary require super_admin (CEO) approval in addition to your approval.",
+      "Your approval scope is limited to your direct reports — you cannot act on requests from employees outside your team.",
+      "Overpayments are recorded and managed by HR — manager approval is not required.",
+      "Recovery is fully automatic from payroll. Shortfalls carry forward — they do not require manual intervention.",
+      "The salary_advance_enabled flag must be ON for self-service requests. HR can record advances manually even when the flag is OFF.",
+    ],
+    commonMistake: null,
+    scenario: null,
+    practicalExercise: null,
+    knowledgeCheck: [
+      {
+        question:
+          "A team member requests an advance of 60% of their monthly net salary. What happens after you approve it?",
+        answer:
+          "The request is automatically escalated to super_admin (CEO) for a second approval, because it exceeds the 50% threshold.",
+      },
+      {
+        question:
+          "Does a manager need to approve an overpayment that HR records for a team member?",
+        answer:
+          "No. Overpayments are recorded and managed directly by HR — manager approval is not required.",
+      },
+      {
+        question:
+          "What happens to the advance recovery installment if the employee's net salary in a given month is too small to cover it?",
+        answer:
+          "The shortfall carries forward to the next month automatically — it is not cancelled or forgiven.",
+      },
+      {
+        question:
+          "Can a manager approve an advance request for an employee who is not in their direct team?",
+        answer:
+          "No. Manager approval scope is limited to direct reports only.",
+      },
+    ],
+    whereToGetHelp:
+      "Contact HR for advance status questions, overpayment queries, or if an employee needs a manually recorded advance when the self-service flag is OFF.",
+    isActive: true,
+  },
+];
+
+/**
+ * Upsert the 4 gap-filling manager steps (6–9) derived from platform behaviour.
+ * Runs on every startup after seedOnboardingSteps() — uses ON CONFLICT DO UPDATE
+ * so the content is kept current without requiring a table wipe.
+ */
+export async function seedManagerGapSteps(): Promise<void> {
+  try {
+    const existingResult = await db.execute(
+      sql`SELECT COUNT(*)::int AS count FROM onboarding_steps WHERE track = 'manager'`,
+    );
+    const managerCount = (existingResult.rows[0] as { count: number })?.count ?? 0;
+
+    if (managerCount === 0) {
+      console.log(
+        "[onboarding-flow-seed] Manager track not yet seeded — gap steps will be added when the main seed runs.",
+      );
+      return;
+    }
+
+    // ── RBAC navRoute pre-validation ─────────────────────────────────────────
+    // Verify every navRoute is reachable by the manager track before upserting.
+    // Step 8 is seeded inactive (flag-gated) — its navRoute is still validated
+    // so that activating it later doesn't silently point to an unreachable route.
+    for (const step of MANAGER_GAP_STEPS) {
+      const reachable = isRouteReachableByTrack(step.navRoute, "manager");
+      if (!reachable) {
+        console.warn(
+          `[onboarding-flow-seed] WARNING: manager gap step ${step.stepNumber} ` +
+          `navRoute '${step.navRoute}' is NOT in the manager RBAC route list. ` +
+          `Add it to shared/onboardingRbac.ts before activating this step.`,
+        );
+      }
+    }
+
+    console.log(`[onboarding-flow-seed] Upserting ${MANAGER_GAP_STEPS.length} manager gap steps...`);
+
+    for (const step of MANAGER_GAP_STEPS) {
+      await db.execute(sql`
+        INSERT INTO onboarding_steps (
+          track, step_number, title, purpose, where_to_find, nav_route, how_to_use,
+          important_rules, is_high_risk, common_mistake, scenario, practical_exercise,
+          knowledge_check, where_to_get_help, is_active
+        ) VALUES (
+          'manager'::onboarding_track,
+          ${step.stepNumber},
+          ${step.title},
+          ${step.purpose},
+          ${step.whereToFind},
+          ${step.navRoute},
+          ${step.howToUse},
+          ${JSON.stringify(step.importantRules)}::jsonb,
+          ${step.isHighRisk},
+          ${step.commonMistake},
+          ${step.scenario},
+          ${step.practicalExercise},
+          ${JSON.stringify(step.knowledgeCheck)}::jsonb,
+          ${step.whereToGetHelp},
+          ${step.isActive}
+        )
+        ON CONFLICT (track, step_number) DO UPDATE SET
+          title           = EXCLUDED.title,
+          purpose         = EXCLUDED.purpose,
+          where_to_find   = EXCLUDED.where_to_find,
+          nav_route       = EXCLUDED.nav_route,
+          how_to_use      = EXCLUDED.how_to_use,
+          important_rules = EXCLUDED.important_rules,
+          is_high_risk    = EXCLUDED.is_high_risk,
+          common_mistake  = EXCLUDED.common_mistake,
+          scenario        = EXCLUDED.scenario,
+          practical_exercise = EXCLUDED.practical_exercise,
+          knowledge_check = EXCLUDED.knowledge_check,
+          where_to_get_help = EXCLUDED.where_to_get_help,
+          is_active       = CASE
+                              WHEN onboarding_steps.knowledge_check IS NULL THEN EXCLUDED.is_active
+                              ELSE onboarding_steps.is_active
+                            END,
+          updated_at      = NOW()
+      `);
+    }
+
+    console.log(
+      `[onboarding-flow-seed] Manager gap steps (6–9) upserted successfully.`,
+    );
+  } catch (err) {
+    console.error("[onboarding-flow-seed] seedManagerGapSteps error (non-fatal):", err);
+  }
 }

@@ -71,6 +71,15 @@ export const ONBOARDING_ROLE_ROUTES: Record<OnboardingTrack, string[]> = {
     "/admin/sops",
     "/admin/sops/compliance",
     "/admin/sops/my-reviews",
+    // performance module routes (visible when performance_management flag is ON)
+    "/admin/performance/goals",
+    "/admin/performance/check-ins",
+    "/admin/performance/reviews",
+    "/admin/performance/feedback",
+    "/admin/performance/cycles",
+    "/admin/performance/analytics",
+    // command card reference page
+    "/admin/command-card",
   ],
   hr: [
     // inherits manager routes

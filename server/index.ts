@@ -9,7 +9,7 @@ import { startScheduler } from "./scheduler";
 import { checkAndAutoCreateRun } from "./attendanceReport";
 import { db, runMigrations, pool } from "./db";
 import { seedUniversalPolicies } from "./onboardingSeed";
-import { seedOnboardingSteps } from "./onboardingFlowSeed";
+import { seedOnboardingSteps, seedManagerGapSteps } from "./onboardingFlowSeed";
 import { adminUsers, holidays, attendance, regionalHolidaySelections, hrLetters, offerLetters, offerLetterAddendums } from "@shared/schema";
 import { SOP_SEED } from "./sopSeedData";
 import { WAVE_DEFS, resolveWaveMembership } from "./sopRollout";
@@ -4783,6 +4783,7 @@ async function runStartupTasks() {
     `);
     log("Onboarding flow tables ensured");
     await seedOnboardingSteps();
+    await seedManagerGapSteps();
   } catch (err) {
     console.error("[startup] Onboarding flow schema/seed error (non-fatal):", err);
   }

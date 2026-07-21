@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, Redirect } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { StepCard, type OnboardingStep } from "@/components/onboarding/StepCard";
+import { ManagerCommandCard } from "@/components/onboarding/ManagerCommandCard";
 import { useAuth } from "@/hooks/use-auth";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -21,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2, Eye, Rocket, X } from "lucide-react";
+import { CheckCircle2, Eye, Rocket, X, ExternalLink, Printer } from "lucide-react";
 
 interface ProgressResponse {
   track: string;
@@ -355,10 +356,13 @@ export default function OnboardingFlow() {
   };
 
   if (allDone || (data.completedCount >= data.totalSteps && !enforceAlways)) {
+    const isManagerTrack = data.track === "manager";
+
     return (
       <AdminLayout>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center space-y-4 max-w-md">
+        <div className={isManagerTrack ? "max-w-4xl mx-auto py-6 px-4" : "flex items-center justify-center min-h-[60vh]"}>
+          {/* Completion banner */}
+          <div className={`text-center space-y-4 ${isManagerTrack ? "mb-8" : "max-w-md"}`}>
             <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto">
               <CheckCircle2 className="h-10 w-10 text-green-600" />
             </div>
@@ -366,11 +370,13 @@ export default function OnboardingFlow() {
               <h2 className="text-2xl font-bold" data-testid="text-onboarding-complete">
                 Onboarding complete! 🎉
               </h2>
-              <p className="text-muted-foreground text-sm leading-relaxed">
-                You've reviewed all the steps for your role. You're ready to go — your portal is fully unlocked.
+              <p className="text-muted-foreground text-sm leading-relaxed max-w-md mx-auto">
+                {isManagerTrack
+                  ? "You've reviewed all manager steps. Your portal is fully unlocked. Keep this reference card for quick access to key rules and cadences."
+                  : "You've reviewed all the steps for your role. You're ready to go — your portal is fully unlocked."}
               </p>
             </div>
-            <div className="flex flex-col items-center gap-2">
+            <div className="flex items-center justify-center gap-2 flex-wrap">
               <Button onClick={() => setLocation("/admin/my-desk")} className="gap-2" data-testid="button-go-to-dashboard">
                 <Rocket className="h-4 w-4" />
                 Go to Dashboard
@@ -381,8 +387,37 @@ export default function OnboardingFlow() {
                   Preview Track
                 </Button>
               )}
+              {isManagerTrack && (
+                <>
+                  <Button
+                    variant="outline"
+                    onClick={() => setLocation("/admin/command-card")}
+                    className="gap-2"
+                    data-testid="button-open-command-card"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Open Full Reference Card
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => window.print()}
+                    className="gap-2 print:hidden"
+                    data-testid="button-print-command-card-completion"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Print
+                  </Button>
+                </>
+              )}
             </div>
           </div>
+
+          {/* Manager Command Card — shown inline on completion */}
+          {isManagerTrack && (
+            <div className="border-t pt-8" data-testid="completion-command-card">
+              <ManagerCommandCard />
+            </div>
+          )}
         </div>
         <PreviewStartDialog open={showPreviewDialog} onClose={() => setShowPreviewDialog(false)} onStart={() => { setShowPreviewDialog(false); setPreviewOpen(true); }} />
         {previewOpen && <PreviewOverlay onClose={() => setPreviewOpen(false)} />}

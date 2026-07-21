@@ -386,6 +386,8 @@ const MY_TEAM_SUB_ITEMS = [
   { label: "SOP Compliance", tab: "sop-compliance", icon: ShieldCheck, sopOnly: true },
 ] as const;
 
+const MANAGER_COMMAND_CARD_ROLES = ["manager", "hr", "admin", "super_admin", "operations"];
+
 const NEW_HIRE_SUB_ITEMS = [
   { label: "New Offer Letter", tab: "new-offer-letter", icon: FilePlus },
   { label: "Letters", tab: null, icon: FileText },
@@ -580,6 +582,22 @@ function TeamSection({
                       </Link>
                     );
                   })}
+
+                  {/* Permanent Command Card link — manager-track roles only */}
+                  {MANAGER_COMMAND_CARD_ROLES.includes(role) && (
+                    <Link
+                      href="/admin/command-card"
+                      className={`flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs transition-colors ${
+                        location === "/admin/command-card"
+                          ? "bg-accent text-foreground font-medium"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                      } ${isComplianceLocked ? "opacity-40 pointer-events-none" : ""}`}
+                      data-testid="nav-myteam-sub-command-card"
+                    >
+                      <BookOpen className="h-3.5 w-3.5 shrink-0" />
+                      <span className="flex-1">Reference Card</span>
+                    </Link>
+                  )}
                 </div>
               </>
             )}
