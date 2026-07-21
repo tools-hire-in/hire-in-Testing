@@ -6,7 +6,44 @@
 // single canonical internal shape before it is ever returned or stored.
 
 import OpenAI from "openai";
-import pRetry, { AbortError } from "p-retry";
+// NOTE: p-retry v5+ is ESM-only and crashes esbuild's CommonJS bundling output
+// (the default export resolves to undefined, producing the minified error
+// "(0 , Xv.default) is not a function"). We inline a minimal retry helper instead.
+class AbortError extends Error {
+  readonly originalError: Error;
+  constructor(error: Error | string) {
+    const msg = typeof error === "string" ? error : error.message;
+    super(msg);
+    this.name = "AbortError";
+    this.originalError = typeof error === "string" ? new Error(error) : error;
+  }
+}
+
+async function pRetry<T>(
+  fn: () => Promise<T>,
+  opts: { retries: number; minTimeout: number; maxTimeout: number },
+): Promise<T> {
+  let lastError: any;
+  for (let attempt = 0; attempt <= opts.retries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      if (err instanceof AbortError) {
+        // Non-retryable — surface the wrapped error immediately.
+        throw err.originalError ?? err;
+      }
+      lastError = err;
+      if (attempt < opts.retries) {
+        const delay = Math.min(
+          opts.minTimeout * Math.pow(2, attempt),
+          opts.maxTimeout,
+        );
+        await new Promise((r) => setTimeout(r, delay));
+      }
+    }
+  }
+  throw lastError;
+}
 import {
   ARTICLE_DRAFT_JSON_SCHEMA,
   SOCIAL_KIT_JSON_SCHEMA,
