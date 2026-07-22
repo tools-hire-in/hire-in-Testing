@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { useFeatureFlags } from "@/hooks/use-feature-flags";
-import { CheckCircle2, ChevronRight, X } from "lucide-react";
+import { CheckCircle2, ChevronRight, Sparkles, X } from "lucide-react";
 
 interface OnboardingProgress {
   track: string;
@@ -78,6 +78,34 @@ export function OnboardingWidget() {
 
   if (!flowEnabled || !user || !progressData || total === 0) return null;
   if (fadedOut) return null;
+
+  // Zero-progress state: user has never started (no progress row yet)
+  if (progressData.progress === null && !dismissed) {
+    return (
+      <div
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-3 bg-background border shadow-lg rounded-full px-4 py-2.5 text-sm"
+        data-testid="widget-onboarding-start"
+      >
+        <Sparkles className="h-4 w-4 text-primary shrink-0" />
+        <span className="text-muted-foreground font-medium">Start your onboarding</span>
+        <Link
+          href="/admin/onboarding"
+          className="flex items-center gap-1 font-semibold text-primary hover:underline underline-offset-2"
+          data-testid="link-widget-start"
+        >
+          Begin
+          <ChevronRight className="h-3.5 w-3.5" />
+        </Link>
+        <button
+          onClick={handleDismiss}
+          className="text-muted-foreground hover:text-foreground transition-colors"
+          data-testid="button-widget-start-dismiss"
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      </div>
+    );
+  }
 
   // Collapsed: pulsing green dot
   if (dismissed && !isComplete) {

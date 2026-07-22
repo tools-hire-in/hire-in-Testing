@@ -1249,6 +1249,14 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     }
     const { totalSteps, completedCount, progress } = onboardingFlowData;
     if (totalSteps === 0) return;
+
+    // Brand-new user: no progress row at all → always redirect once per session
+    if (progress === null) {
+      hasTriggeredOnboarding.current = true;
+      setLocation("/admin/onboarding");
+      return;
+    }
+
     if (completedCount >= totalSteps && !onboardingEnforceAlways) return;
     if (progress?.snoozed && !onboardingEnforceAlways) return;
     hasTriggeredOnboarding.current = true;
