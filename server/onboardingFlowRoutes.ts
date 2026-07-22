@@ -88,6 +88,9 @@ function hasAdminAdditions(role: string): boolean {
   return role === "admin" || role === "super_admin";
 }
 
+/** Alias: map a role to its primary onboarding track. */
+const roleToTrack = primaryTrack;
+
 /**
  * Fetch all active steps for a role. admin/super_admin receive hr + admin
  * tracks merged, with admin steps' stepNumbers offset so they sort after hr steps.
@@ -492,7 +495,7 @@ export function registerOnboardingFlowRoutes(app: Express) {
    */
   app.delete(
     "/api/onboarding/progress/:userId",
-    requirePermission("onboarding_manage", "admin"),
+    requirePermission("onboarding_manage", "admin", "hr"),
     async (req: Request, res: Response) => {
       const { userId } = req.params;
       const actorId = req.session.userId!;

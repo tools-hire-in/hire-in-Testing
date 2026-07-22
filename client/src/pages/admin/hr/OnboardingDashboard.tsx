@@ -216,10 +216,42 @@ function ExpandedRow({ row }: { row: OnboardingUserRow }) {
   );
 }
 
+const TRACK_LABELS: Record<string, string> = {
+  employee: "Employee",
+  manager: "Manager",
+  hr: "HR",
+  executive: "Executive",
+  admin: "Admin",
+};
+
+interface TrackSummary {
+  track: string;
+  total: number;
+  completed: number;
+  pct: number;
+}
+
+function buildTrackSummaries(users: OnboardingUserRow[]): TrackSummary[] {
+  const map: Record<string, { total: number; completed: number }> = {};
+  for (const u of users) {
+    if (!map[u.track]) map[u.track] = { total: 0, completed: 0 };
+    map[u.track].total++;
+    if (u.completedAt) map[u.track].completed++;
+  }
+  return Object.entries(map)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([track, { total, completed }]) => ({
+      track,
+      total,
+      completed,
+      pct: total > 0 ? Math.round((completed / total) * 100) : 0,
+    }));
+}
+
 export function OnboardingDashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const isAdmin = user?.role === "super_admin" || user?.role === "admin";
+  const isAdmin = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
 
   const [search, setSearch] = useState("");
   const [trackFilter, setTrackFilter] = useState<string>("all");
@@ -254,6 +286,7 @@ export function OnboardingDashboard() {
   const totalOnboarded = users.filter((u) => u.completedAt).length;
   const totalSnoozed = users.filter((u) => u.snoozed && !u.completedAt).length;
   const completionPct = users.length > 0 ? Math.round((totalOnboarded / users.length) * 100) : 0;
+  const trackSummaries = buildTrackSummaries(users);
 
   const tracks = Array.from(new Set(users.map((u) => u.track))).sort();
   const roles = Array.from(new Set(users.map((u) => u.role))).sort();
@@ -319,6 +352,31 @@ export function OnboardingDashboard() {
           <p className="text-2xl font-bold mt-0.5 text-amber-600">{totalSnoozed}</p>
         </div>
       </div>
+
+      {/* Per-track completion summary strip */}
+      {trackSummaries.length > 0 && (
+        <div className="rounded-lg border bg-card px-4 py-3" data-testid="onboarding-track-summary">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Completion by Track</p>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
+            {trackSummaries.map((ts) => (
+              <button
+                key={ts.track}
+                type="button"
+                className={`text-left rounded-md border px-3 py-2 transition-colors hover:bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring ${trackFilter === ts.track ? "border-primary bg-primary/5" : "bg-muted/20"}`}
+                onClick={() => setTrackFilter(trackFilter === ts.track ? "all" : ts.track)}
+                data-testid={`track-summary-${ts.track}`}
+              >
+                <p className="text-xs font-medium text-foreground">{TRACK_LABELS[ts.track] ?? ts.track}</p>
+                <p className="text-lg font-bold mt-0.5 leading-none">
+                  {ts.pct}<span className="text-xs font-normal text-muted-foreground">%</span>
+                </p>
+                <Progress value={ts.pct} className="h-1 mt-1.5" />
+                <p className="text-[10px] text-muted-foreground mt-1">{ts.completed}/{ts.total} done</p>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* Filters & controls */}
       <div className="flex flex-wrap items-center gap-2" data-testid="onboarding-filters">
