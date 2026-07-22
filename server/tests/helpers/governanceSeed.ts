@@ -193,10 +193,22 @@ export async function teardownGovernanceTestHierarchy(): Promise<void> {
       ${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID},
       ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID}
     )
+       OR manager_id IN (
+      ${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID},
+      ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID}
+    )
   `);
   await db.execute(sql`
     DELETE FROM employee_plans
     WHERE employee_id IN (
+      ${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID},
+      ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID}
+    )
+       OR manager_id IN (
+      ${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID},
+      ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID}
+    )
+       OR created_by IN (
       ${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID},
       ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID}
     )
@@ -292,6 +304,33 @@ export async function teardownGovernanceTestHierarchy(): Promise<void> {
   await db.execute(sql`
     DELETE FROM copilot_conversations
     WHERE user_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+
+  // Nuclear safety sweep: second-pass DELETE + NULL-out for performance_goals and employee_plans.
+  // Any background job or concurrent test setup that re-seeded rows between the earlier deletes
+  // (lines above) and the final admin_users delete below would block the admin_users delete.
+  // This pass closes that window for the dual-FK tables that have both employee_id and manager_id.
+  await db.execute(sql`
+    DELETE FROM performance_goals
+    WHERE employee_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+       OR manager_id  IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+  await db.execute(sql`
+    UPDATE performance_goals
+    SET manager_id = NULL
+    WHERE manager_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+  await db.execute(sql`
+    DELETE FROM employee_plans
+    WHERE employee_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+       OR manager_id  IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+       OR created_by  IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+  await db.execute(sql`
+    UPDATE employee_plans
+    SET manager_id = NULL, created_by = NULL
+    WHERE manager_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+       OR created_by IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
   `).catch(() => {});
 
   await db.execute(sql`

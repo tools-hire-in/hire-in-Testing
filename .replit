@@ -32,15 +32,15 @@ args = "schema-drift"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
-args = "governance-tests"
-
-[[workflows.workflow.tasks]]
-task = "workflow.run"
 args = "merge-conflict-check"
 
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "feature-flags-tests"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "governance-tests"
 
 [[workflows.workflow]]
 name = "Start application"
@@ -66,17 +66,6 @@ args = "bash scripts/check-schema-drift.sh"
 isValidation = true
 
 [[workflows.workflow]]
-name = "governance-tests"
-author = "agent"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "npx tsx --test server/tests/governance.test.ts server/tests/governancePulse.test.ts"
-
-[workflows.workflow.metadata]
-isValidation = true
-
-[[workflows.workflow]]
 name = "merge-conflict-check"
 author = "agent"
 
@@ -94,6 +83,17 @@ author = "agent"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npx tsx --test server/tests/featureFlags.test.ts"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow]]
+name = "governance-tests"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "bash scripts/governance-tests.sh"
 
 [workflows.workflow.metadata]
 outputType = "console"
