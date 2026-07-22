@@ -12,7 +12,7 @@
  *   manager    → role: manager
  *   hr         → role: hr, admin, super_admin  (HR/Admin source doc covers all three)
  *   executive  → role: executive
- *   admin      → enum value reserved; currently no separate track seeded
+ *   admin      → role: admin, super_admin (2 admin-specific additions appended after hr steps)
  */
 
 import { db } from "./db";
@@ -60,7 +60,9 @@ interface ParsedStep {
  */
 function extractNavRoute(whereToFind: string): string | null {
   const m = whereToFind.match(/(`|")?(\/admin\/[^\s`")\n]+)/);
-  return m ? m[2] : null;
+  if (!m) return null;
+  // Strip trailing punctuation (period, comma, semicolon) that may be part of the sentence
+  return m[2].replace(/[.,;]+$/, "");
 }
 
 /**
@@ -218,6 +220,108 @@ function parseTrackFile(
   );
 }
 
+// ── Admin-specific steps (not from a source doc file) ─────────────────────────
+/**
+ * Two admin/super_admin-only steps that extend the HR track.
+ * These cover the onboarding flow itself — enabling it in production and the
+ * QA enforcer flag used during testing.
+ */
+const ADMIN_SPECIFIC_STEPS: ParsedStep[] = [
+  {
+    track: "admin",
+    stepNumber: 1,
+    title: "Enable the Onboarding Flow in Production",
+    isHighRisk: false,
+    purpose:
+      "Activate the interactive onboarding overlay for all users by toggling the master feature flag. Without this, no user sees the onboarding flow regardless of their role.",
+    whereToFind: "/admin/settings/feature-flags",
+    navRoute: "/admin/settings/feature-flags",
+    howToUse:
+      "1. Go to `/admin/settings/feature-flags`.\n2. Locate the `onboarding_flow_enabled` flag.\n3. Toggle it ON.\n4. Log out and log back in to confirm the onboarding overlay appears in your own session.\n\nThis is the master switch — it controls whether any user sees the onboarding flow. Turning it OFF hides the flow for all users immediately.",
+    importantRules: [
+      "Only super_admin and admin can toggle feature flags.",
+      "Changes take effect immediately — there is no staging step.",
+      "The flag controls visibility only — existing progress records are not deleted when the flag is OFF.",
+      "Confirm the overlay appears in your own session after enabling before announcing it to users.",
+    ],
+    commonMistake: null,
+    scenario: null,
+    practicalExercise:
+      "Toggle `onboarding_flow_enabled` ON, log out, log back in, and confirm that the onboarding overlay appears. Then navigate to your role's first step and verify the step content loads correctly.",
+    knowledgeCheck: [
+      {
+        question: "What is the master switch that controls whether any user sees the onboarding flow?",
+        answer: "The `onboarding_flow_enabled` feature flag at /admin/settings/feature-flags.",
+      },
+      {
+        question: "If you turn the onboarding flow flag OFF, are existing user progress records deleted?",
+        answer: "No — progress records are preserved. The flag only hides the overlay.",
+      },
+      {
+        question: "Who can toggle the onboarding_flow_enabled flag?",
+        answer: "super_admin and admin only.",
+      },
+      {
+        question: "When do flag changes take effect?",
+        answer: "Immediately — there is no staging or confirmation step.",
+      },
+      {
+        question: "How do you confirm the flag change worked?",
+        answer: "Log out and log back in — the onboarding overlay should appear in your own session.",
+      },
+    ],
+    whereToGetHelp:
+      "Feature flag engineering rules: `docs/engineering/ENGINEERING_RUNBOOK.md` §Feature Flags.",
+  },
+  {
+    track: "admin",
+    stepNumber: 2,
+    title: "QA Enforcer Flag (Dev/QA Only)",
+    isHighRisk: false,
+    purpose:
+      "Use the `onboarding_enforce_always` flag to force the onboarding overlay to re-appear on every login, regardless of prior completion. This is for testing role tracks without resetting the database.",
+    whereToFind: "/admin/settings/feature-flags",
+    navRoute: "/admin/settings/feature-flags",
+    howToUse:
+      "1. Go to `/admin/settings/feature-flags`.\n2. Locate `onboarding_enforce_always`.\n3. Toggle it ON.\n4. Log out, log back in — the overlay re-appears even if you previously completed all steps.\n5. Walk through the flow to verify content and guardrails work correctly.\n6. **Toggle OFF before releasing to production.**",
+    importantRules: [
+      "This flag must be OFF before releasing to production. It is for testing only.",
+      "With this flag ON, all users see the onboarding overlay on every login, regardless of completion status.",
+      "Use this to QA-test any role track without needing DB resets or new test accounts.",
+      "The flag does not affect knowledge check results or progress records — they are still written normally.",
+    ],
+    commonMistake:
+      "Leaving `onboarding_enforce_always` ON when releasing to production. Every user will see the onboarding overlay on every login, including users who completed onboarding weeks ago. Always turn this flag OFF before a production release.",
+    scenario: null,
+    practicalExercise:
+      "Toggle `onboarding_enforce_always` ON. Log out, log back in. Confirm the onboarding overlay re-appears. Walk all steps for your role. Verify: HIGH RISK badge appears on payroll steps, knowledge check blocks the confirm button until all questions are reviewed. Then toggle the flag OFF.",
+    knowledgeCheck: [
+      {
+        question: "What does the `onboarding_enforce_always` flag do?",
+        answer: "Forces the onboarding overlay to re-appear on every login, regardless of completion status.",
+      },
+      {
+        question: "When must this flag be turned OFF?",
+        answer: "Before every production release — it is for dev/QA testing only.",
+      },
+      {
+        question: "Why is this flag useful for testing?",
+        answer: "You can QA-test any role track without DB resets or creating new test accounts.",
+      },
+      {
+        question: "Does enabling this flag delete existing progress records?",
+        answer: "No — progress and knowledge check records are still written normally.",
+      },
+      {
+        question: "Which roles are affected when this flag is ON?",
+        answer: "All users — every role sees the overlay on every login while the flag is ON.",
+      },
+    ],
+    whereToGetHelp:
+      "Feature flag engineering rules: `docs/engineering/ENGINEERING_RUNBOOK.md` §Feature Flags.",
+  },
+];
+
 // ── Seed function ─────────────────────────────────────────────────────────────
 
 export async function seedOnboardingSteps(): Promise<void> {
@@ -241,10 +345,12 @@ export async function seedOnboardingSteps(): Promise<void> {
     // (see "Training track target audience" in the source file header).
     ...parseTrackFile("hr-admin-onboarding-track-source.md", "hr"),
     ...parseTrackFile("executive-onboarding-track-source.md", "executive"),
+    // Admin-specific additions (2 steps for admin/super_admin, appended after hr steps)
+    ...ADMIN_SPECIFIC_STEPS,
   ];
 
   console.log(
-    `[onboarding-flow-seed] Seeding ${allSteps.length} steps across 4 tracks...`,
+    `[onboarding-flow-seed] Seeding ${allSteps.length} steps across 5 tracks...`,
   );
 
   for (const step of allSteps) {
@@ -658,4 +764,44 @@ export async function seedManagerGapSteps(): Promise<void> {
   } catch (err) {
     console.error("[onboarding-flow-seed] seedManagerGapSteps error (non-fatal):", err);
   }
+
+/**
+ * Upserts the 2 admin-specific onboarding steps unconditionally.
+ *
+ * The main `seedOnboardingSteps()` skips when any rows are already present,
+ * which means admin steps added after the initial seed run (Task 1) would
+ * never be inserted on existing databases.  This function runs on every
+ * server startup and uses `ON CONFLICT DO NOTHING` so it is safe to call
+ * repeatedly — it is a no-op when the rows already exist.
+ */
+export async function ensureAdminOnboardingSteps(): Promise<void> {
+  for (const step of ADMIN_SPECIFIC_STEPS) {
+    await db.execute(sql`
+      INSERT INTO onboarding_steps (
+        track, step_number, title, purpose, where_to_find, nav_route, how_to_use,
+        important_rules, is_high_risk, common_mistake, scenario, practical_exercise,
+        knowledge_check, where_to_get_help, is_active
+      ) VALUES (
+        ${step.track}::onboarding_track,
+        ${step.stepNumber},
+        ${step.title},
+        ${step.purpose},
+        ${step.whereToFind},
+        ${step.navRoute},
+        ${step.howToUse},
+        ${JSON.stringify(step.importantRules)}::jsonb,
+        ${step.isHighRisk},
+        ${step.commonMistake},
+        ${step.scenario},
+        ${step.practicalExercise},
+        ${step.knowledgeCheck ? JSON.stringify(step.knowledgeCheck) : null}::jsonb,
+        ${step.whereToGetHelp},
+        true
+      )
+      ON CONFLICT (track, step_number) DO NOTHING
+    `);
+  }
+  console.log(
+    `[onboarding-flow-seed] ensureAdminOnboardingSteps — ${ADMIN_SPECIFIC_STEPS.length} admin steps checked/inserted.`,
+  );
 }

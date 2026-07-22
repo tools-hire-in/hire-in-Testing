@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { CheckCircle2, Eye, Rocket, X, ExternalLink, Printer } from "lucide-react";
+import { CheckCircle2, Download, Eye, Loader2, Rocket, X, ExternalLink, Printer } from "lucide-react";
 
 interface ProgressResponse {
   track: string;
@@ -230,10 +230,19 @@ function PreviewStartDialog({ open, onClose, onStart }: PreviewStartDialogProps)
 
 // ── Main component ────────────────────────────────────────────────────────────
 
+const TRACK_LABELS: Record<string, string> = {
+  employee: "Employee",
+  manager: "Manager",
+  hr: "HR Administrator",
+  executive: "Executive / Finance",
+  admin: "Administrator",
+};
+
 export default function OnboardingFlow() {
   const { user } = useAuth();
   const { isEnabled, isLoading: flagsLoading } = useFeatureFlags();
   const [, setLocation] = useLocation();
+  const [pdfDownloading, setPdfDownloading] = useState(false);
 
   const flowEnabled = isEnabled("onboarding_flow_enabled");
   const enforceAlways = isEnabled("onboarding_enforce_always");
@@ -281,6 +290,33 @@ export default function OnboardingFlow() {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/progress"] });
     },
   });
+
+  const handleDownloadPdf = async () => {
+    if (pdfDownloading || !data) return;
+    setPdfDownloading(true);
+    try {
+      const track = data.track;
+      const res = await fetch(
+        `/api/onboarding/steps/export?track=${encodeURIComponent(track)}&format=pdf`,
+        { credentials: "include" },
+      );
+      if (!res.ok) throw new Error("PDF generation failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const trackLabel = TRACK_LABELS[track] ?? track;
+      a.download = `HIS-Onboarding-Guide-${trackLabel.replace(/\s+/g, "-")}-${new Date().toISOString().slice(0, 10)}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("PDF download failed:", err);
+    } finally {
+      setPdfDownloading(false);
+    }
+  };
 
   // Spec: flag OFF → return null immediately (renders nothing)
   if (!flagsLoading && !flowEnabled) {
@@ -357,6 +393,7 @@ export default function OnboardingFlow() {
 
   if (allDone || (data.completedCount >= data.totalSteps && !enforceAlways)) {
     const isManagerTrack = data.track === "manager";
+    const trackLabel = TRACK_LABELS[data.track] ?? data.track;
 
     return (
       <AdminLayout>
@@ -376,39 +413,70 @@ export default function OnboardingFlow() {
                   : "You've reviewed all the steps for your role. You're ready to go — your portal is fully unlocked."}
               </p>
             </div>
-            <div className="flex items-center justify-center gap-2 flex-wrap">
-              <Button onClick={() => setLocation("/admin/my-desk")} className="gap-2" data-testid="button-go-to-dashboard">
-                <Rocket className="h-4 w-4" />
-                Go to Dashboard
-              </Button>
-              {isAdmin && (
-                <Button variant="outline" className="gap-2" onClick={() => setShowPreviewDialog(true)} data-testid="button-preview-track">
-                  <Eye className="h-4 w-4" />
-                  Preview Track
+
+            <div className="flex flex-col items-center gap-4">
+              {/* PDF download — replaces any static printed or shared guides */}
+              <div className="rounded-lg border bg-muted/40 p-4 space-y-2 text-left w-full max-w-md">
+                <p className="text-sm font-medium">Your portable reference guide</p>
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  Download a PDF copy of your onboarding guide. This reflects your current portal setup — re-download after any major content update.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleDownloadPdf}
+                  disabled={pdfDownloading}
+                  className="gap-2 mt-1 w-full sm:w-auto"
+                  data-testid="button-download-guide"
+                >
+                  {pdfDownloading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Generating PDF…
+                    </>
+                  ) : (
+                    <>
+                      <Download className="h-4 w-4" />
+                      Download {trackLabel} Onboarding Guide (PDF)
+                    </>
+                  )}
                 </Button>
-              )}
-              {isManagerTrack && (
-                <>
-                  <Button
-                    variant="outline"
-                    onClick={() => setLocation("/admin/command-card")}
-                    className="gap-2"
-                    data-testid="button-open-command-card"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Open Full Reference Card
+              </div>
+
+              <div className="flex items-center justify-center gap-2 flex-wrap w-full max-w-md">
+                <Button onClick={() => setLocation("/admin/my-desk")} className="gap-2 flex-1" data-testid="button-go-to-dashboard">
+                  <Rocket className="h-4 w-4" />
+                  Go to Dashboard
+                </Button>
+                {isAdmin && (
+                  <Button variant="outline" className="gap-2 flex-1" onClick={() => setShowPreviewDialog(true)} data-testid="button-preview-track">
+                    <Eye className="h-4 w-4" />
+                    Preview Track
                   </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => window.print()}
-                    className="gap-2 print:hidden"
-                    data-testid="button-print-command-card-completion"
-                  >
-                    <Printer className="h-4 w-4" />
-                    Print
-                  </Button>
-                </>
-              )}
+                )}
+                {isManagerTrack && (
+                  <>
+                    <Button
+                      variant="outline"
+                      onClick={() => setLocation("/admin/command-card")}
+                      className="gap-2 w-full"
+                      data-testid="button-open-command-card"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      Open Full Reference Card
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      onClick={() => window.print()}
+                      className="gap-2 print:hidden w-full"
+                      data-testid="button-print-command-card-completion"
+                    >
+                      <Printer className="h-4 w-4" />
+                      Print
+                    </Button>
+                  </>
+                )}
+              </div>
             </div>
           </div>
 

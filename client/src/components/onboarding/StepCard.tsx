@@ -75,7 +75,7 @@ export function StepCard({
   const hasKC = Array.isArray(step.knowledgeCheck) && step.knowledgeCheck.length > 0;
   const hasExercise = !!step.practicalExercise;
   const hasScenario = !!step.scenario;
-  const hasCommonMistake = step.isHighRisk && !!step.commonMistake;
+  const hasCommonMistake = !!step.commonMistake;
   const hasRules = Array.isArray(step.importantRules) && step.importantRules.length > 0;
   const hasHelp = !!step.whereToGetHelp;
 

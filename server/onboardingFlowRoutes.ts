@@ -17,15 +17,14 @@
  *   PATCH  /api/onboarding/steps/:id           – edit a step
  *   DELETE /api/onboarding/steps/:id           – soft-delete (isActive=false)
  *   POST   /api/onboarding/steps/reorder       – reorder steps within a track
- *   GET    /api/onboarding/steps/export        – export steps; add ?format=pdf for PDF download
+ *   GET    /api/onboarding/steps/export        – JSON export (admin, ?track=) OR PDF guide download (any user, ?track=&format=pdf)
  *
  * Role → track mapping (aligned with source doc target audiences):
  *   employee              → "employee" track
  *   manager               → "manager"  track
- *   hr / admin / super_admin → "hr"   track  (HR/Admin source doc covers all three)
+ *   hr                    → "hr"       track  (HR/Admin source doc covers hr/admin/super_admin)
+ *   admin / super_admin   → "hr"       track  + "admin" additions merged
  *   executive             → "executive" track
- *   The "admin" enum value is reserved in onboarding_track for a future
- *   admin-specific track if the content ever diverges from the hr track.
  */
 
 import type { Express, Request, Response, NextFunction } from "express";
@@ -33,8 +32,7 @@ import { db } from "./db";
 import { onboardingSteps, userOnboardingProgress, adminUsers, auditLogs } from "@shared/schema";
 import { eq, and, asc, sql } from "drizzle-orm";
 import { resolveRoles } from "@shared/accessControl";
-import PDFDocument from "pdfkit";
-import type { OnboardingStep } from "@shared/schema";
+import { generateOnboardingGuidePdf } from "./onboardingGuidePdf";
 
 // ── Permission middleware ─────────────────────────────────────────────────────
 // Mirrors the `requirePermission` factory in routes.ts — returns Express
@@ -65,23 +63,66 @@ const requireAuth = (req: Request, res: Response, next?: NextFunction): boolean 
 // ── Role → track mapping ─────────────────────────────────────────────────────
 
 /**
- * Map a portal role to its onboarding track.
- *
- * manager, operations, admin, and super_admin all receive the "manager" track.
- * hr receives the "hr" track (HR/Admin source doc covers hr role's specialist training).
- * employee → "employee", executive → "executive".
+ * Primary track for a role. admin/super_admin use "hr" as their primary track;
+ * their additional admin-specific steps are fetched from the "admin" track and
+ * merged (see fetchStepsForRole). operations falls back to the "manager" track.
  */
-function roleToTrack(role: string): string {
+function primaryTrack(role: string): string {
   switch (role) {
     case "employee":    return "employee";
     case "manager":
-    case "operations":
-    case "admin":
-    case "super_admin": return "manager";
+    case "operations":  return "manager";
     case "hr":          return "hr";
+    case "admin":
+    case "super_admin": return "hr";
     case "executive":   return "executive";
     default:            return "employee";
   }
+}
+
+/**
+ * Whether this role also receives the admin-specific additions
+ * (steps seeded under the "admin" track).
+ */
+function hasAdminAdditions(role: string): boolean {
+  return role === "admin" || role === "super_admin";
+}
+
+/**
+ * Fetch all active steps for a role. admin/super_admin receive hr + admin
+ * tracks merged, with admin steps' stepNumbers offset so they sort after hr steps.
+ */
+async function fetchStepsForRole(role: string) {
+  const primary = primaryTrack(role);
+
+  const hrSteps = await db
+    .select()
+    .from(onboardingSteps)
+    .where(and(eq(onboardingSteps.track, primary as any), eq(onboardingSteps.isActive, true)))
+    .orderBy(asc(onboardingSteps.stepNumber));
+
+  if (!hasAdminAdditions(role)) {
+    return { steps: hrSteps, track: primary };
+  }
+
+  // Merge admin-specific additions
+  const adminSteps = await db
+    .select()
+    .from(onboardingSteps)
+    .where(and(eq(onboardingSteps.track, "admin" as any), eq(onboardingSteps.isActive, true)))
+    .orderBy(asc(onboardingSteps.stepNumber));
+
+  // Offset admin step numbers so they sort after all hr steps
+  const hrCount = hrSteps.length;
+  const merged = [
+    ...hrSteps,
+    ...adminSteps.map((s) => ({
+      ...s,
+      stepNumber: hrCount + s.stepNumber,
+    })),
+  ];
+
+  return { steps: merged, track: primary };
 }
 
 // ── Route registration ────────────────────────────────────────────────────────
@@ -94,19 +135,16 @@ export function registerOnboardingFlowRoutes(app: Express) {
    * GET /api/onboarding/progress
    * Returns the steps for the user's current role-track merged with their
    * completion state. Single call — the client needs no second request.
+   *
+   * admin/super_admin users receive hr steps + admin additions merged.
    */
   app.get("/api/onboarding/progress", async (req: Request, res: Response) => {
     if (!requireAuth(req, res)) return;
     const userId = req.session.userId!;
     const role = req.session.role!;
-    const track = roleToTrack(role);
 
     try {
-      const steps = await db
-        .select()
-        .from(onboardingSteps)
-        .where(and(eq(onboardingSteps.track, track as any), eq(onboardingSteps.isActive, true)))
-        .orderBy(asc(onboardingSteps.stepNumber));
+      const { steps, track } = await fetchStepsForRole(role);
 
       const [progress] = await db
         .select()
@@ -771,18 +809,84 @@ export function registerOnboardingFlowRoutes(app: Express) {
 
   /**
    * GET /api/onboarding/steps/export?track=manager[&format=pdf]
-   * Returns all active steps for a track.
-   * Without format=pdf: returns JSON.
-   * With format=pdf: generates and streams a formatted PDF guide.
+   *
+   * Two modes:
+   *   • JSON mode (no `format` param, requires onboarding_manage permission):
+   *     Returns all active steps as JSON — used by the admin content editor.
+   *   • PDF mode (`format=pdf`, any authenticated user):
+   *     Validates that the requested `track` is accessible by the session role,
+   *     generates a branded PDF guide, and streams it as a file download.
+   *     admin/super_admin receive the merged hr+admin guide regardless of the
+   *     track param they pass.
+   *
+   * This is the completion-screen download endpoint — replaces any static
+   * printed or shared guides. Always reflects current portal content.
    */
   app.get(
     "/api/onboarding/steps/export",
-    requirePermission("onboarding_manage", "admin"),
     async (req: Request, res: Response) => {
+      if (!requireAuth(req, res)) return;
+
       const { track, format } = req.query as { track?: string; format?: string };
+      const role = req.session.role!;
 
       if (!track) {
         return res.status(400).json({ error: "track query param is required" });
+      }
+
+      // ── PDF mode: any authenticated user for their own track ──────────────
+      if (format === "pdf") {
+        // Validate: the requested track must be accessible to the session role.
+        // admin/super_admin can request 'hr' or 'admin' (they see both merged).
+        const validTracksForRole: Record<string, string[]> = {
+          employee:    ["employee"],
+          manager:     ["manager"],
+          hr:          ["hr"],
+          admin:       ["hr", "admin"],
+          super_admin: ["hr", "admin"],
+          executive:   ["executive"],
+        };
+        const allowed = validTracksForRole[role] ?? ["employee"];
+        if (!allowed.includes(track)) {
+          return res.status(403).json({ error: "You cannot export a guide for that track" });
+        }
+
+        try {
+          // admin/super_admin get the merged hr+admin guide (full 8-step set).
+          // All other roles get just their own track.
+          const { steps, track: resolvedTrack } = hasAdminAdditions(role)
+            ? await fetchStepsForRole(role)
+            : {
+                steps: await db
+                  .select()
+                  .from(onboardingSteps)
+                  .where(and(eq(onboardingSteps.track, track as any), eq(onboardingSteps.isActive, true)))
+                  .orderBy(asc(onboardingSteps.stepNumber)),
+                track,
+              };
+
+          if (steps.length === 0) {
+            return res.status(404).json({ error: "No onboarding steps found for your role" });
+          }
+
+          const pdfBuffer = await generateOnboardingGuidePdf(steps, resolvedTrack);
+          const trackLabel = resolvedTrack.charAt(0).toUpperCase() + resolvedTrack.slice(1);
+          const filename = `HIS-Onboarding-Guide-${trackLabel}-${new Date().toISOString().slice(0, 10)}.pdf`;
+
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+          res.setHeader("Content-Length", pdfBuffer.length);
+          return res.send(pdfBuffer);
+        } catch (err) {
+          console.error("[onboarding-flow] GET /api/onboarding/steps/export PDF error:", err);
+          return res.status(500).json({ error: "Failed to generate onboarding guide PDF" });
+        }
+      }
+
+      // ── JSON mode: admin content editor (requires onboarding_manage) ──────
+      const allowed = resolveRoles("onboarding_manage", ["super_admin", "admin"]);
+      if (!allowed.includes(role)) {
+        return res.status(403).json({ error: "Insufficient permissions" });
       }
 
       try {
@@ -792,18 +896,7 @@ export function registerOnboardingFlowRoutes(app: Express) {
           .where(and(eq(onboardingSteps.track, track as any), eq(onboardingSteps.isActive, true)))
           .orderBy(asc(onboardingSteps.stepNumber));
 
-        if (format !== "pdf") {
-          return res.json(rows);
-        }
-
-        const pdfBuffer = await generateOnboardingGuidePdf(track, rows);
-        const dateStr = new Date().toISOString().split("T")[0];
-        const filename = `${track}-onboarding-guide-${dateStr}.pdf`;
-
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
-        res.setHeader("Content-Length", pdfBuffer.length);
-        res.end(pdfBuffer);
+        res.json(rows);
       } catch (err) {
         console.error("[onboarding-flow] GET /api/onboarding/steps/export error:", err);
         res.status(500).json({ error: "Failed to export steps" });
@@ -812,207 +905,3 @@ export function registerOnboardingFlowRoutes(app: Express) {
   );
 }
 
-// ── PDF generation ────────────────────────────────────────────────────────────
-
-const NAVY = "#1F3A6E";
-const ORANGE = "#F47C20";
-const RED_RISK = "#B91C1C";
-const AMBER_BOX = "#92400E";
-const MUTED = "#6B7280";
-const TEXT = "#111827";
-
-const TRACK_LABELS: Record<string, string> = {
-  employee: "Employee",
-  manager: "Manager",
-  hr: "HR / Admin",
-  executive: "Executive",
-  admin: "Admin / Super Admin",
-};
-
-function generateOnboardingGuidePdf(track: string, steps: OnboardingStep[]): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const doc = new (PDFDocument as any)({
-      size: "A4",
-      margins: { top: 56, bottom: 56, left: 60, right: 60 },
-      autoFirstPage: false,
-      bufferPages: true,
-    });
-
-    const chunks: Buffer[] = [];
-    doc.on("data", (chunk: Buffer) => chunks.push(chunk));
-    doc.on("end", () => resolve(Buffer.concat(chunks)));
-    doc.on("error", reject);
-
-    const pageW = 595.28 - 60 - 60;
-    const exportDate = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
-    const trackLabel = TRACK_LABELS[track] ?? track.charAt(0).toUpperCase() + track.slice(1);
-    const guideTitle = `${trackLabel} Track — Portal Onboarding Guide`;
-
-    // ── Cover page ────────────────────────────────────────────────────────────
-    doc.addPage();
-    doc.rect(0, 0, 595.28, 180).fill(NAVY);
-    doc.fillColor("#FFFFFF").fontSize(22).font("Helvetica-Bold")
-      .text(guideTitle, 60, 60, { width: 475 });
-    doc.fillColor("#CBD5E1").fontSize(11).font("Helvetica")
-      .text(`Generated on ${exportDate}  ·  ${steps.length} step${steps.length !== 1 ? "s" : ""}`, 60, 110);
-    doc.fillColor(MUTED).fontSize(9).font("Helvetica")
-      .text("This guide is always generated from the current live content. Re-download after any updates.", 60, 145, { width: 475 });
-
-    doc.moveDown(8);
-    doc.fillColor(TEXT).fontSize(10).font("Helvetica")
-      .text("Contents", 60, 200, { underline: true, continued: false });
-    doc.moveDown(0.5);
-    steps.forEach((s, i) => {
-      const prefix = s.isHighRisk ? "⚠ " : "";
-      doc.fillColor(TEXT).fontSize(9.5).font("Helvetica")
-        .text(`${i + 1}.  ${prefix}${s.title}`, 60, undefined, { width: pageW });
-    });
-
-    // ── One page per step ─────────────────────────────────────────────────────
-    steps.forEach((step) => {
-      doc.addPage();
-
-      let y = 56;
-
-      // Step header bar
-      doc.rect(0, 0, 595.28, 48).fill(NAVY);
-      doc.fillColor("#FFFFFF").fontSize(8).font("Helvetica")
-        .text(`Step ${step.stepNumber}  ·  ${trackLabel} Track`, 60, 12);
-      doc.fillColor("#FFFFFF").fontSize(13).font("Helvetica-Bold")
-        .text(step.title, 60, 26, { width: 400 });
-
-      if (step.isHighRisk) {
-        doc.rect(460, 8, 80, 18).fill(RED_RISK);
-        doc.fillColor("#FFFFFF").fontSize(8).font("Helvetica-Bold")
-          .text("HIGH RISK", 462, 13);
-      }
-
-      y = 68;
-
-      const section = (label: string, color = NAVY) => {
-        doc.fillColor(color).fontSize(8).font("Helvetica-Bold")
-          .text(label.toUpperCase(), 60, y, { width: pageW });
-        y = (doc as any).y + 3;
-        doc.moveTo(60, y).lineTo(60 + pageW, y).strokeColor(color).lineWidth(0.5).stroke();
-        y += 6;
-      };
-
-      const body = (text: string, opts?: object) => {
-        doc.fillColor(TEXT).fontSize(9.5).font("Helvetica")
-          .text(text, 60, y, { width: pageW, lineGap: 2, ...opts });
-        y = (doc as any).y + 8;
-      };
-
-      const ensureSpace = (needed: number) => {
-        if (y + needed > 780) {
-          doc.addPage();
-          y = 56;
-        }
-      };
-
-      // Purpose
-      if (step.purpose) {
-        ensureSpace(40);
-        section("Purpose");
-        body(step.purpose);
-      }
-
-      // Where to find
-      if (step.whereToFind) {
-        ensureSpace(30);
-        section("Where to Find It");
-        const locText = step.navRoute ? `${step.whereToFind}  (${step.navRoute})` : step.whereToFind;
-        body(locText);
-      }
-
-      // How to use
-      if (step.howToUse) {
-        ensureSpace(40);
-        section("How to Use It");
-        const plainText = step.howToUse.replace(/\*\*(.+?)\*\*/g, "$1").replace(/#+\s/g, "").replace(/`([^`]+)`/g, "$1");
-        body(plainText);
-      }
-
-      // Important rules
-      const rules = Array.isArray(step.importantRules) ? step.importantRules as string[] : [];
-      if (rules.length > 0) {
-        ensureSpace(40);
-        section("Important Rules");
-        rules.forEach((rule) => {
-          ensureSpace(20);
-          doc.fillColor(TEXT).fontSize(9.5).font("Helvetica")
-            .text(`•  ${rule}`, 68, y, { width: pageW - 8, lineGap: 2 });
-          y = (doc as any).y + 5;
-        });
-        y += 3;
-      }
-
-      // Common mistake (HIGH RISK only)
-      if (step.isHighRisk && step.commonMistake) {
-        ensureSpace(50);
-        doc.rect(60, y, pageW, 1).fill(AMBER_BOX);
-        y += 4;
-        doc.rect(60, y, pageW, 14).fill("#FEF3C7");
-        doc.fillColor(AMBER_BOX).fontSize(7.5).font("Helvetica-Bold")
-          .text("⚠  COMMON MISTAKE", 64, y + 3);
-        y += 18;
-        doc.fillColor(AMBER_BOX).fontSize(9.5).font("Helvetica")
-          .text(step.commonMistake, 64, y, { width: pageW - 8, lineGap: 2 });
-        y = (doc as any).y + 10;
-      }
-
-      // Scenario
-      if (step.scenario) {
-        ensureSpace(50);
-        section("Scenario");
-        const plainScenario = step.scenario.replace(/\*\*(.+?)\*\*/g, "$1").replace(/#+\s/g, "");
-        doc.rect(60, y, pageW, (doc.heightOfString(plainScenario, { width: pageW - 8 }) || 60) + 12)
-          .fillAndStroke("#F9FAFB", "#E5E7EB");
-        y += 6;
-        body(plainScenario);
-      }
-
-      // Practical exercise
-      if (step.practicalExercise) {
-        ensureSpace(50);
-        section("Practical Exercise", "#1D4ED8");
-        const plainEx = step.practicalExercise.replace(/\*\*(.+?)\*\*/g, "$1").replace(/#+\s/g, "");
-        body(plainEx);
-      }
-
-      // Knowledge check
-      const kc = Array.isArray(step.knowledgeCheck) ? step.knowledgeCheck as Array<{ question: string; answer: string }> : null;
-      if (kc && kc.length > 0) {
-        ensureSpace(50);
-        section("Knowledge Check");
-        kc.forEach((item, qi) => {
-          ensureSpace(30);
-          doc.fillColor(TEXT).fontSize(9.5).font("Helvetica-Bold")
-            .text(`Q${qi + 1}: ${item.question}`, 60, y, { width: pageW });
-          y = (doc as any).y + 3;
-          doc.fillColor(MUTED).fontSize(9.5).font("Helvetica")
-            .text(`Answer: ${item.answer}`, 68, y, { width: pageW - 8, lineGap: 2 });
-          y = (doc as any).y + 8;
-        });
-      }
-
-      // Where to get help
-      if (step.whereToGetHelp) {
-        ensureSpace(30);
-        section("Where to Get Help");
-        body(step.whereToGetHelp);
-      }
-    });
-
-    // ── Page footers ──────────────────────────────────────────────────────────
-    const totalPages = (doc as any).bufferedPageRange().count;
-    for (let i = 0; i < totalPages; i++) {
-      doc.switchToPage(i);
-      doc.fillColor(MUTED).fontSize(8).font("Helvetica")
-        .text(`${guideTitle}  ·  ${exportDate}  ·  Page ${i + 1} of ${totalPages}`,
-          60, 820, { width: pageW, align: "center" });
-    }
-
-    doc.end();
-  });
-}

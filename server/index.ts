@@ -9,7 +9,7 @@ import { startScheduler } from "./scheduler";
 import { checkAndAutoCreateRun } from "./attendanceReport";
 import { db, runMigrations, pool } from "./db";
 import { seedUniversalPolicies } from "./onboardingSeed";
-import { seedOnboardingSteps, seedManagerGapSteps } from "./onboardingFlowSeed";
+import { seedOnboardingSteps, seedManagerGapSteps, ensureAdminOnboardingSteps } from "./onboardingFlowSeed";
 import { adminUsers, holidays, attendance, regionalHolidaySelections, hrLetters, offerLetters, offerLetterAddendums } from "@shared/schema";
 import { SOP_SEED } from "./sopSeedData";
 import { WAVE_DEFS, resolveWaveMembership } from "./sopRollout";
@@ -4784,6 +4784,10 @@ async function runStartupTasks() {
     log("Onboarding flow tables ensured");
     await seedOnboardingSteps();
     await seedManagerGapSteps();
+    // Upserts admin-specific steps unconditionally — safe no-op if already present.
+    // Needed because seedOnboardingSteps() skips entirely when any rows exist,
+    // so admin steps added after the initial seed run must be applied separately.
+    await ensureAdminOnboardingSteps();
   } catch (err) {
     console.error("[startup] Onboarding flow schema/seed error (non-fatal):", err);
   }
