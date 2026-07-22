@@ -324,18 +324,20 @@ const ADMIN_SPECIFIC_STEPS: ParsedStep[] = [
 
 // ── Seed function ─────────────────────────────────────────────────────────────
 
+/**
+ * Upsert all onboarding steps from the source markdown docs on every startup.
+ *
+ * Behaviour:
+ * - New rows are inserted.
+ * - Existing rows are updated only when content has changed (IS DISTINCT FROM
+ *   comparison on every content field — no-op writes are avoided).
+ * - `is_active` is preserved from the DB value so that admin toggles survive
+ *   restarts.  Set REFRESH_ONBOARDING_SEED=true to also reset is_active back to
+ *   the seeded default (useful after a doc restructure or a track-level reset).
+ * - User progress records (user_onboarding_progress) are never touched.
+ */
 export async function seedOnboardingSteps(): Promise<void> {
-  const countResult = await db.execute(
-    sql`SELECT COUNT(*)::int AS count FROM onboarding_steps`,
-  );
-  const count = (countResult.rows[0] as { count: number })?.count ?? 0;
-
-  if (count > 0) {
-    console.log(
-      `[onboarding-flow-seed] onboarding_steps already has ${count} rows — skipping.`,
-    );
-    return;
-  }
+  const forceRefresh = process.env.REFRESH_ONBOARDING_SEED === "true";
 
   // Parse all four source docs
   const allSteps: ParsedStep[] = [
@@ -350,11 +352,14 @@ export async function seedOnboardingSteps(): Promise<void> {
   ];
 
   console.log(
-    `[onboarding-flow-seed] Seeding ${allSteps.length} steps across 5 tracks...`,
+    `[onboarding-flow-seed] Upserting ${allSteps.length} steps across 5 tracks (forceRefresh=${forceRefresh})...`,
   );
 
+  let updated = 0;
+  let unchanged = 0;
+
   for (const step of allSteps) {
-    await db.execute(sql`
+    const result = await db.execute(sql`
       INSERT INTO onboarding_steps (
         track, step_number, title, purpose, where_to_find, nav_route, how_to_use,
         important_rules, is_high_risk, common_mistake, scenario, practical_exercise,
@@ -376,11 +381,48 @@ export async function seedOnboardingSteps(): Promise<void> {
         ${step.whereToGetHelp},
         true
       )
-      ON CONFLICT (track, step_number) DO NOTHING
+      ON CONFLICT (track, step_number) DO UPDATE SET
+        title              = EXCLUDED.title,
+        purpose            = EXCLUDED.purpose,
+        where_to_find      = EXCLUDED.where_to_find,
+        nav_route          = EXCLUDED.nav_route,
+        how_to_use         = EXCLUDED.how_to_use,
+        important_rules    = EXCLUDED.important_rules,
+        is_high_risk       = EXCLUDED.is_high_risk,
+        common_mistake     = EXCLUDED.common_mistake,
+        scenario           = EXCLUDED.scenario,
+        practical_exercise = EXCLUDED.practical_exercise,
+        knowledge_check    = EXCLUDED.knowledge_check,
+        where_to_get_help  = EXCLUDED.where_to_get_help,
+        is_active          = CASE WHEN ${forceRefresh} THEN EXCLUDED.is_active
+                                  ELSE onboarding_steps.is_active END,
+        updated_at         = NOW()
+      WHERE (
+        ${forceRefresh} OR
+        onboarding_steps.title              IS DISTINCT FROM EXCLUDED.title OR
+        onboarding_steps.purpose            IS DISTINCT FROM EXCLUDED.purpose OR
+        onboarding_steps.where_to_find      IS DISTINCT FROM EXCLUDED.where_to_find OR
+        onboarding_steps.nav_route          IS DISTINCT FROM EXCLUDED.nav_route OR
+        onboarding_steps.how_to_use         IS DISTINCT FROM EXCLUDED.how_to_use OR
+        onboarding_steps.important_rules    IS DISTINCT FROM EXCLUDED.important_rules OR
+        onboarding_steps.is_high_risk       IS DISTINCT FROM EXCLUDED.is_high_risk OR
+        onboarding_steps.common_mistake     IS DISTINCT FROM EXCLUDED.common_mistake OR
+        onboarding_steps.scenario           IS DISTINCT FROM EXCLUDED.scenario OR
+        onboarding_steps.practical_exercise IS DISTINCT FROM EXCLUDED.practical_exercise OR
+        onboarding_steps.knowledge_check    IS DISTINCT FROM EXCLUDED.knowledge_check OR
+        onboarding_steps.where_to_get_help  IS DISTINCT FROM EXCLUDED.where_to_get_help
+      )
     `);
+    if ((result.rowCount ?? 0) > 0) {
+      updated++;
+    } else {
+      unchanged++;
+    }
   }
 
-  console.log(`[onboarding-flow-seed] Done — ${allSteps.length} steps seeded.`);
+  console.log(
+    `[onboarding-flow-seed] Done — ${updated} steps updated/inserted, ${unchanged} unchanged.`,
+  );
 }
 
 // ── Manager gap-filling steps (Steps 6–9) ─────────────────────────────────────
@@ -764,17 +806,21 @@ export async function seedManagerGapSteps(): Promise<void> {
   } catch (err) {
     console.error("[onboarding-flow-seed] seedManagerGapSteps error (non-fatal):", err);
   }
+}
 
 /**
- * Upserts the 2 admin-specific onboarding steps unconditionally.
+ * Upserts the 2 admin-specific onboarding steps on every startup.
  *
- * The main `seedOnboardingSteps()` skips when any rows are already present,
- * which means admin steps added after the initial seed run (Task 1) would
- * never be inserted on existing databases.  This function runs on every
- * server startup and uses `ON CONFLICT DO NOTHING` so it is safe to call
- * repeatedly — it is a no-op when the rows already exist.
+ * Now that `seedOnboardingSteps()` always upserts (no longer skips on row count),
+ * this function is a safety-net for admin steps that may be added between
+ * deployments.  It uses the same content-comparing DO UPDATE pattern so that
+ * content changes in ADMIN_SPECIFIC_STEPS are applied on the next restart
+ * without a table wipe.  `is_active` is preserved from the DB unless
+ * REFRESH_ONBOARDING_SEED=true.
  */
 export async function ensureAdminOnboardingSteps(): Promise<void> {
+  const forceRefresh = process.env.REFRESH_ONBOARDING_SEED === "true";
+
   for (const step of ADMIN_SPECIFIC_STEPS) {
     await db.execute(sql`
       INSERT INTO onboarding_steps (
@@ -798,10 +844,40 @@ export async function ensureAdminOnboardingSteps(): Promise<void> {
         ${step.whereToGetHelp},
         true
       )
-      ON CONFLICT (track, step_number) DO NOTHING
+      ON CONFLICT (track, step_number) DO UPDATE SET
+        title              = EXCLUDED.title,
+        purpose            = EXCLUDED.purpose,
+        where_to_find      = EXCLUDED.where_to_find,
+        nav_route          = EXCLUDED.nav_route,
+        how_to_use         = EXCLUDED.how_to_use,
+        important_rules    = EXCLUDED.important_rules,
+        is_high_risk       = EXCLUDED.is_high_risk,
+        common_mistake     = EXCLUDED.common_mistake,
+        scenario           = EXCLUDED.scenario,
+        practical_exercise = EXCLUDED.practical_exercise,
+        knowledge_check    = EXCLUDED.knowledge_check,
+        where_to_get_help  = EXCLUDED.where_to_get_help,
+        is_active          = CASE WHEN ${forceRefresh} THEN EXCLUDED.is_active
+                                  ELSE onboarding_steps.is_active END,
+        updated_at         = NOW()
+      WHERE (
+        ${forceRefresh} OR
+        onboarding_steps.title              IS DISTINCT FROM EXCLUDED.title OR
+        onboarding_steps.purpose            IS DISTINCT FROM EXCLUDED.purpose OR
+        onboarding_steps.where_to_find      IS DISTINCT FROM EXCLUDED.where_to_find OR
+        onboarding_steps.nav_route          IS DISTINCT FROM EXCLUDED.nav_route OR
+        onboarding_steps.how_to_use         IS DISTINCT FROM EXCLUDED.how_to_use OR
+        onboarding_steps.important_rules    IS DISTINCT FROM EXCLUDED.important_rules OR
+        onboarding_steps.is_high_risk       IS DISTINCT FROM EXCLUDED.is_high_risk OR
+        onboarding_steps.common_mistake     IS DISTINCT FROM EXCLUDED.common_mistake OR
+        onboarding_steps.scenario           IS DISTINCT FROM EXCLUDED.scenario OR
+        onboarding_steps.practical_exercise IS DISTINCT FROM EXCLUDED.practical_exercise OR
+        onboarding_steps.knowledge_check    IS DISTINCT FROM EXCLUDED.knowledge_check OR
+        onboarding_steps.where_to_get_help  IS DISTINCT FROM EXCLUDED.where_to_get_help
+      )
     `);
   }
   console.log(
-    `[onboarding-flow-seed] ensureAdminOnboardingSteps — ${ADMIN_SPECIFIC_STEPS.length} admin steps checked/inserted.`,
+    `[onboarding-flow-seed] ensureAdminOnboardingSteps — ${ADMIN_SPECIFIC_STEPS.length} admin steps upserted.`,
   );
 }
