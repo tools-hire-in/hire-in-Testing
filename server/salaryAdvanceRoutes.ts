@@ -75,9 +75,8 @@ export function requirePermission(featureKey: string, ...allowedRoles: string[])
 // In-app notification, gated by the global notifications feature flag.
 async function notify(opts: { userId: string; type: string; title: string; message: string; link?: string }) {
   try {
-    const flagsSetting = await storage.getSystemSetting("feature_flags");
-    const flags = (flagsSetting?.value as Record<string, any>) || {};
-    if (flags.notifications_enabled === false) return;
+    const { getFeatureFlag } = await import("./featureFlags");
+    if (!(await getFeatureFlag("notifications_enabled"))) return;
     await storage.createNotification({
       userId: opts.userId,
       type: opts.type,
@@ -329,9 +328,8 @@ export function registerSalaryAdvanceRoutes(app: Express) {
   };
   app.use("/api/salary-advances", async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const setting = await storage.getSystemSetting("feature_flags");
-      const flags = (setting?.value as Record<string, boolean>) || {};
-      if (flags.salary_advance_enabled === true) return next();
+      const { getFeatureFlag } = await import("./featureFlags");
+      if (await getFeatureFlag("salary_advance_enabled")) return next();
       const role = req.session?.role || "";
       // req.path is relative to the "/api/salary-advances" mount point here.
       if (FLAG_OFF_PRIVILEGED_ROLES.includes(role) && isAdminToolRequest(req.method, req.path)) {

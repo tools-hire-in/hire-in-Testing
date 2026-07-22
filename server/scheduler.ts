@@ -559,9 +559,8 @@ export function startScheduler() {
         const result = await storage.runYearEndBatch(priorYear);
         console.log(`[scheduler] Year-end batch done for ${priorYear}: ${result.processed} users, ${result.elCarried} EL carried, ${result.slLapsed} SL lapsed, ${result.coCleared} CO expired.`);
 
-        const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-        const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-        const notificationsEnabled = featureFlags.notifications_enabled === true;
+        const { getFeatureFlag: _getFF } = await import("./featureFlags");
+        const notificationsEnabled = await _getFF("notifications_enabled");
 
         if (notificationsEnabled) {
           const userYearEndMap = new Map<string, { email: string; name: string; events: { action: string; leaveTypeName: string; days: number }[] }>();
@@ -614,9 +613,8 @@ export function startScheduler() {
       console.log(`[scheduler] Accrual done for ${month}/${year}: ${result.usersProcessed} processed, ${result.accrualsMade} accruals made, ${result.skippedUsers.length} skipped.`);
 
       // Send per-employee in-app notifications and email
-      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-      const notificationsEnabled = featureFlags.notifications_enabled === true;
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      const notificationsEnabled = await _getFF("notifications_enabled");
 
       const monthName = new Date(year, month - 1).toLocaleString("en-IN", { month: "long" });
 
@@ -680,9 +678,8 @@ export function startScheduler() {
     // Settle the PRIOR month (month that just ended). We're now on the 1st of the
     // new month so the priorMonth is trivially the month before getIstDateTime().
     try {
-      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-      if (featureFlags.attendance_deficit_pool_enabled) {
+      const { getFeatureFlag: _ffDeficit } = await import("./featureFlags");
+      if (await _ffDeficit("attendance_deficit_pool_enabled")) {
         const { year: nowY, month: nowM } = getIstDateTime();
         let priorYear = nowY;
         let priorMonth = nowM - 1;
@@ -802,8 +799,8 @@ export function startScheduler() {
         // Respects the notifications_enabled feature flag.
         if (result.created > 0) {
           try {
-            const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
-            if (flags?.notifications_enabled) {
+            const { getFeatureFlag: _getFF3 } = await import("./featureFlags");
+            if (await _getFF3("notifications_enabled")) {
               const superAdmins = await db.select({ id: adminUsers.id })
                 .from(adminUsers)
                 .where(and(
@@ -978,7 +975,8 @@ export function startScheduler() {
         const monthName = new Date(run.year, run.month - 1, 1).toLocaleString("en-US", { month: "long" });
         const deadline = new Date(run.deadline_at);
         const { sendAttendanceApprovalRequestEmail } = await import("./email");
-        const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
+        const { getFeatureFlag: _getFFReminder } = await import("./featureFlags");
+        const _remindNotif = await _getFFReminder("notifications_enabled");
 
         for (const mgr of pendingManagers) {
           sendAttendanceApprovalRequestEmail({
@@ -991,7 +989,7 @@ export function startScheduler() {
             policyType: "attendance_approval_reminder",
           }).catch(console.error);
 
-          if (flags?.notifications_enabled) {
+          if (_remindNotif) {
             await storage.createNotification({
               userId: mgr.manager_id,
               title: "Reminder: Attendance Approval Due Soon",
@@ -1318,8 +1316,8 @@ export function startScheduler() {
   // Uses notified_at on check_ins to prevent duplicate sends.
   cron.schedule("0 8 * * *", async () => {
     try {
-      const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
-      if (!flags?.notifications_enabled) return;
+      const { getFeatureFlag: _getFF4 } = await import("./featureFlags");
+      if (!(await _getFF4("notifications_enabled"))) return;
 
       const now = new Date();
       const tomorrow = new Date(now);
@@ -1592,8 +1590,8 @@ export function startScheduler() {
   // nudge — never blocks anything. Respects the notifications_enabled flag.
   cron.schedule("0 10 * * 1", async () => {
     try {
-      const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
-      if (!flags?.notifications_enabled) return;
+      const { getFeatureFlag: _getFF4 } = await import("./featureFlags");
+      if (!(await _getFF4("notifications_enabled"))) return;
 
       const { computeOnboardingChecklist } = await import("./onboardingChecklist");
       const users = await db

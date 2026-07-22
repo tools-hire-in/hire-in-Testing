@@ -149,9 +149,8 @@ export async function resolveSopAccessForUser(
   userId: string | undefined,
   role: string | undefined,
 ): Promise<{ masterOn: boolean; enabled: boolean; rollout: SopRolloutScope }> {
-  const flagSetting = await storage.getSystemSetting("feature_flags");
-  const flags = (flagSetting?.value as Record<string, boolean>) || {};
-  const masterOn = flags.process_governance === true;
+  const { getFeatureFlag } = await import("./featureFlags");
+  const masterOn = await getFeatureFlag("process_governance");
   const rollout = await getSopRolloutScope();
   let enabled = false;
   if (masterOn) {

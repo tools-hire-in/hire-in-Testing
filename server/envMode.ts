@@ -18,14 +18,14 @@ export function invalidateEnvModeCache() {
 }
 
 export async function getEnvMode(): Promise<EnvMode> {
-  if (process.env.APP_ENV === "production") return "production";
+  const { config } = await import("./config");
+  if (config.isProduction) return "production";
 
   // Non-prod hard gate: if APP_ENV is explicitly set to a non-production value,
   // return it immediately without touching the DB or cache. This prevents a
   // misconfigured DB row from overriding the process-level environment.
-  if (process.env.APP_ENV && process.env.APP_ENV !== "production") {
-    const appEnv = process.env.APP_ENV;
-    return (appEnv === "qa" ? "qa" : "dev") as EnvMode;
+  if (config.appEnv !== "dev" || config.hasExplicitAppEnv) {
+    return config.appEnv;
   }
 
   const now = Date.now();

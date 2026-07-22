@@ -1674,8 +1674,8 @@ export class DatabaseStorage implements IStorage {
     // any employee whose probation end date has not passed AND whose probation plan
     // has not been explicitly confirmed (outcome='confirmed' in employee_plans).
     // This is ON by default; HR can toggle it off without a deploy via Feature Flags.
-    const featureFlagSetting = await this.getSystemSetting("feature_flags");
-    const featureFlags = (featureFlagSetting?.value as Record<string, boolean>) || {};
+    const { getAllFeatureFlags: _getFlags } = await import("./featureFlags");
+    const featureFlags = await _getFlags();
     const enforceProbationGate = featureFlags.enforce_probation_leave_gate !== false;
 
     const activeUsers = await db.select().from(adminUsers).where(eq(adminUsers.isActive, true));

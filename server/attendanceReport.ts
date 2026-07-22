@@ -461,8 +461,8 @@ export async function notifyManagersForRun(
 
   let notificationsEnabled = false;
   try {
-    const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
-    notificationsEnabled = !!flags?.notifications_enabled;
+    const { getFeatureFlag } = await import("./featureFlags");
+    notificationsEnabled = await getFeatureFlag("notifications_enabled");
   } catch { /* notifications best-effort */ }
 
   for (const mgr of managers) {

@@ -1192,9 +1192,8 @@ export function registerOnboardingRoutes(app: Express) {
       const trackTitle = track?.title || "Training track";
       const reqLabel = requestType === "exception" ? "Exception" : "Extension";
 
-      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-      const notificationsEnabled = featureFlags.notifications_enabled !== false;
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      const notificationsEnabled = await _getFF("notifications_enabled");
 
       if (requester) {
         // Find manager/HR to notify
@@ -1464,9 +1463,8 @@ export function registerOnboardingRoutes(app: Express) {
       const reqType = request.requestType || "extension";
       const reqLabel = reqType === "exception" ? "Exception" : "Extension";
 
-      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-      const notificationsEnabled = featureFlags.notifications_enabled !== false;
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      const notificationsEnabled = await _getFF("notifications_enabled");
 
       const { action } = req.body;
       const isManagerDirectReport = myRole === "manager" && requester.role === "employee" && requester.managerId === req.session.userId!;
@@ -1684,9 +1682,8 @@ export function registerOnboardingRoutes(app: Express) {
         .from(learningTracks).where(eq(learningTracks.id, assignment.trackId)) : [null];
       const trackTitle = track?.title || "Training track";
 
-      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-      const notificationsEnabled = featureFlags.notifications_enabled !== false;
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      const notificationsEnabled = await _getFF("notifications_enabled");
 
       if (employee && notificationsEnabled) {
         await storage.createNotification({
@@ -2635,9 +2632,8 @@ export function registerOnboardingRoutes(app: Express) {
       const trackTitle = track?.title || "Training track";
 
       if (employee) {
-        const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-        const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-        const notificationsEnabled = featureFlags.notifications_enabled !== false;
+        const { getFeatureFlag: _getFF } = await import("./featureFlags");
+        const notificationsEnabled = await _getFF("notifications_enabled");
 
         if (notificationsEnabled) {
           await storage.createNotification({

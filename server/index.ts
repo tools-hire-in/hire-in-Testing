@@ -3702,6 +3702,9 @@ async function runStartupTasks() {
         })}::jsonb || system_settings.value
     `);
     log("Feature flag defaults ensured");
+    // Validate that every KNOWN_FLAG was seeded — warns in logs if any are missing.
+    const { validateFeatureFlags } = await import("./featureFlags");
+    await validateFeatureFlags();
   } catch (err) {
     console.error("Feature flag defaults seed error (non-fatal):", err);
   }

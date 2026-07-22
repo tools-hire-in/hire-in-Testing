@@ -62,14 +62,13 @@ export function registerCollector(name: string, fn: CollectorFn): void {
  * collector. Goal and SOP escalations go through governanceService.applyEscalation().
  */
 export async function runDailySweep(): Promise<void> {
-  const flags =
-    ((await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined) ?? {};
-
-  if (!flags.notifications_enabled) {
+  const { getFeatureFlag, getAllFeatureFlags } = await import("./featureFlags");
+  if (!(await getFeatureFlag("notifications_enabled"))) {
     console.log("[complianceSweep] Skipped — notifications_enabled is off");
     return;
   }
 
+  const flags = await getAllFeatureFlags();
   const byUser = new Map<string, ComplianceFinding[]>();
   const collectorStats: { name: string; count: number }[] = [];
 
@@ -463,8 +462,8 @@ registerCollector("pip_coaching_prompt", async (_flags) => {
  * handled by governanceService.applyEscalation().
  */
 export async function collectOverdueItems(): Promise<GovernanceFinding[]> {
-  const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
-  if (!flags?.notifications_enabled) return [];
+  const { getFeatureFlag } = await import("./featureFlags");
+  if (!(await getFeatureFlag("notifications_enabled"))) return [];
 
   // Read DB-backed governance cadence settings (fall back to hardcoded defaults)
   let goalCoachingThresholdDays = 5;

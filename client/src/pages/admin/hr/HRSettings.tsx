@@ -577,7 +577,7 @@ export function FeatureFlagsSection() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/system/feature-flags"] });
-      toast({ title: "Feature flag updated" });
+      toast({ title: "Feature flag updated", description: "Active sessions reflect the change within 2 minutes." });
     },
     onError: () => toast({ title: "Failed to update feature flag", variant: "destructive" }),
   });

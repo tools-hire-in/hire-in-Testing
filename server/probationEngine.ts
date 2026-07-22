@@ -56,8 +56,8 @@ export async function backfillProbationCadence(): Promise<{ inserted: number }> 
  * NO writes. NO notifications.
  */
 export async function collectProbationMilestoneEvents(): Promise<GovernanceFinding[]> {
-  const flags = (await storage.getSystemSetting("feature_flags"))?.value as Record<string, boolean> | undefined;
-  if (!flags?.notifications_enabled) return [];
+  const { getFeatureFlag } = await import("./featureFlags");
+  if (!(await getFeatureFlag("notifications_enabled"))) return [];
 
   const cfg = (await storage.getSystemSetting("probation_escalation"))?.value as
     | { milestoneEscalateAfterDays?: number; strikeThreshold?: number }

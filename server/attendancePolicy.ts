@@ -157,9 +157,8 @@ export async function computeDayCompletionStatus(
   // month-end settlement never charges LWP for a deficit that was later corrected.
   if (opts?.employeeId && opts?.date) {
     try {
-      const flags = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (flags?.value as Record<string, boolean>) || {};
-      if (featureFlags.attendance_deficit_pool_enabled) {
+      const { getFeatureFlag } = await import("./featureFlags");
+      if (await getFeatureFlag("attendance_deficit_pool_enabled")) {
         const poolMin = result.status === "short_day"
           ? Math.max(0, Math.round((fullThreshold - totalHoursNum) * 60))
           : 0; // 0 clears stale short_day entry for this date

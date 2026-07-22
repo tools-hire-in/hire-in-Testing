@@ -26,8 +26,8 @@ function requireHrOrAdmin(req: Request, res: Response, next: any) {
 }
 
 async function getFeatureFlags() {
-  const setting = await storage.getSystemSetting("feature_flags");
-  return (setting?.value as Record<string, boolean>) || {};
+  const { getAllFeatureFlags } = await import("./featureFlags");
+  return getAllFeatureFlags();
 }
 
 async function notifyUsers(userIds: string[], notification: { title: string; message: string; type?: string }) {

@@ -6,6 +6,7 @@ import { db, pool } from "./db";
 import { adminUsers } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { resolveRoles } from "@shared/accessControl";
+import { config } from "./config";
 
 const SALT_ROUNDS = 12;
 
@@ -54,7 +55,7 @@ export function setupSession(app: Express) {
 
   const cookieConfig: session.CookieOptions = {
     httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
+    secure: config.isProductionSecurity,
     maxAge: sessionTtlMs,
     sameSite: "lax" as const,
   };
@@ -97,7 +98,7 @@ const TOTP_EXEMPT_PATHS = [
 ];
 
 export async function require2FA(req: Request, res: Response, next: NextFunction) {
-  if (process.env.NODE_ENV !== "production") {
+  if (!config.isProductionSecurity) {
     return next();
   }
 

@@ -288,9 +288,8 @@ async function recordAttendanceException(opts: {
   }
   try {
     if (!opts.managerId) return;
-    const setting = await storage.getSystemSetting("feature_flags");
-    const flags = (setting?.value as Record<string, boolean>) || {};
-    if (!flags.notifications_enabled) return;
+    const { getFeatureFlag: _getFF } = await import("./featureFlags");
+    if (!(await _getFF("notifications_enabled"))) return;
     await storage.createNotification({
       userId: opts.managerId,
       title: opts.title,
@@ -317,9 +316,8 @@ async function checkMonthlyLatesAndNotify(opts: {
   employeeName: string;
 }): Promise<void> {
   try {
-    const setting = await storage.getSystemSetting("feature_flags");
-    const flags = (setting?.value as Record<string, boolean>) || {};
-    if (!flags.notifications_enabled) return;
+    const { getFeatureFlag: _getFF } = await import("./featureFlags");
+    if (!(await _getFF("notifications_enabled"))) return;
 
     // Count late punch-ins in the current calendar month.
     const now = new Date();
@@ -615,9 +613,8 @@ export async function registerRoutes(
   // through to the SPA and renders the classic experience unchanged.
   app.get(/^\/admin\/studio(\/.*)?$/, async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const setting = await storage.getSystemSetting("feature_flags");
-      const flags = (setting?.value as Record<string, boolean>) || {};
-      if (!flags.studio_v2_enabled) return next();
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      if (!(await _getFF("studio_v2_enabled"))) return next();
       const suffix = req.path.replace(/^\/admin\/studio/, "");
       const qs = req.originalUrl.includes("?") ? req.originalUrl.slice(req.originalUrl.indexOf("?")) : "";
       return res.redirect(302, `/studio${suffix}${qs}`);
@@ -3087,9 +3084,8 @@ Canonical domain: ${BASE}
       let deficitMinutes = 0;
       let deficitPoolEnabled = false;
       try {
-        const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-        const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-        if (featureFlags.attendance_deficit_pool_enabled) {
+        const { getFeatureFlag: _getFF } = await import("./featureFlags");
+        if (await _getFF("attendance_deficit_pool_enabled")) {
           deficitPoolEnabled = true;
           const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
           const poolRow = await db.execute(sql`
@@ -3586,9 +3582,8 @@ Canonical domain: ${BASE}
           // half_day/full_day so stale short_day entries are cleared on correction.
           // computeDayCompletionStatus is not called for shiftless, so we call directly.
           try {
-            const flags = await storage.getSystemSetting("feature_flags");
-            const featureFlags = (flags?.value as Record<string, boolean>) || {};
-            if (featureFlags.attendance_deficit_pool_enabled) {
+            const { getFeatureFlag: _getFFPool } = await import("./featureFlags");
+            if (await _getFFPool("attendance_deficit_pool_enabled")) {
               const dateStr = (existing.date as string).slice(0, 10);
               const { upsertDeficitPool } = await import("./attendancePolicy");
               const poolMin = updatedStatus === "short_day"
@@ -4410,9 +4405,8 @@ Canonical domain: ${BASE}
       const result = await storage.accrueMonthlyLeaves(targetYear, targetMonth);
 
       // Emit per-employee in-app notifications (same as scheduler path)
-      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-      const notificationsEnabled = featureFlags.notifications_enabled === true;
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      const notificationsEnabled = await _getFF("notifications_enabled");
       if (notificationsEnabled) {
         const monthName = new Date(targetYear, targetMonth - 1).toLocaleString("en-IN", { month: "long" });
         const userMap = new Map<string, { types: { leaveTypeName: string; days: number; newBalance: number; accrualType: string }[] }>();
@@ -5158,9 +5152,8 @@ Canonical domain: ${BASE}
           }
 
           if (approver.id) {
-            const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-            const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-            if (featureFlags.notifications_enabled) {
+            const { getFeatureFlag: _getFF } = await import("./featureFlags");
+            if (await _getFF("notifications_enabled")) {
               await storage.createNotification({
                 userId: approver.id,
                 type: "leave_request_pending",
@@ -5316,9 +5309,8 @@ Canonical domain: ${BASE}
             reviewComment: reviewComment || null,
           });
 
-          const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-          const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-          if (featureFlags.notifications_enabled) {
+          const { getFeatureFlag: _getFF } = await import("./featureFlags");
+          if (await _getFF("notifications_enabled")) {
             const isApproved = status === "approved";
             await storage.createNotification({
               userId: lr.userId,
@@ -5493,8 +5485,8 @@ Canonical domain: ${BASE}
         WHERE employee_id = ${userId} AND month = ${month}
         LIMIT 1
       `);
-      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+      const { getAllFeatureFlags: _getAllFF } = await import("./featureFlags");
+      const featureFlags = await _getAllFF();
       const thresholdSetting = await storage.getSystemSetting("attendance_deficit_pool_threshold_minutes");
       const threshold = (thresholdSetting?.value && typeof thresholdSetting.value === "number") ? thresholdSetting.value : 120;
       const data = (row.rows as any[])[0] || null;
@@ -5757,9 +5749,8 @@ Canonical domain: ${BASE}
 
           let notificationsEnabled = true;
           try {
-            const setting = await storage.getSystemSetting("feature_flags");
-            const flags = (setting?.value as Record<string, boolean>) || {};
-            notificationsEnabled = flags.notifications_enabled !== false;
+            const { getFeatureFlag: _getFF } = await import("./featureFlags");
+            notificationsEnabled = await _getFF("notifications_enabled");
           } catch { /* default enabled */ }
 
           const { sendManagerRegularizationSubmittedEmail } = await import("./email");
@@ -6132,9 +6123,8 @@ Canonical domain: ${BASE}
 
       let notificationsEnabled = true;
       try {
-        const setting = await storage.getSystemSetting("feature_flags");
-        const flags = (setting?.value as Record<string, boolean>) || {};
-        notificationsEnabled = flags.notifications_enabled !== false;
+        const { getFeatureFlag: _getFF } = await import("./featureFlags");
+        notificationsEnabled = await _getFF("notifications_enabled");
       } catch { /* default to enabled */ }
 
       if (notificationsEnabled) {
@@ -8066,9 +8056,8 @@ Canonical domain: ${BASE}
           console.error(`[salary_run:${run.id}] executive ready email failed:`, mailErr);
         }
         try {
-          const flagsSetting = await storage.getSystemSetting("feature_flags");
-          const flags = (flagsSetting?.value as Record<string, boolean>) || {};
-          if (flags.notifications_enabled) {
+          const { getFeatureFlag: _getFF } = await import("./featureFlags");
+          if (await _getFF("notifications_enabled")) {
             for (const exec of executives) {
               await storage.createNotification({
                 userId: exec.id,
@@ -8199,9 +8188,8 @@ Canonical domain: ${BASE}
     }
     if (!opts.userId) return;
     try {
-      const flagsSetting = await storage.getSystemSetting("feature_flags");
-      const flags = (flagsSetting?.value as Record<string, boolean>) || {};
-      if (flags.notifications_enabled) {
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      if (await _getFF("notifications_enabled")) {
         await storage.createNotification({
           userId: opts.userId,
           type: "salary_deposited",
@@ -9770,9 +9758,8 @@ Canonical domain: ${BASE}
 
       // Notify super admins of the pending approval.
       try {
-        const flagsSetting = await storage.getSystemSetting("feature_flags");
-        const flags = (flagsSetting?.value as Record<string, any>) || {};
-        if (flags.notifications_enabled !== false) {
+        const { getFeatureFlag: _getFF } = await import("./featureFlags");
+        if (await _getFF("notifications_enabled")) {
           const users = await storage.getAdminUsers();
           for (const u of users.filter(x => x.role === "super_admin" && x.isActive)) {
             await storage.createNotification({
@@ -9850,9 +9837,8 @@ Canonical domain: ${BASE}
       await storage.createAuditLog({ action: "salary_change_approved", actorId, changes: { changeId: change.id, employeeId: change.employeeId, oldSalary, newSalary } });
 
       try {
-        const flagsSetting = await storage.getSystemSetting("feature_flags");
-        const flags = (flagsSetting?.value as Record<string, any>) || {};
-        if (flags.notifications_enabled !== false && change.initiatedBy) {
+        const { getFeatureFlag: _getFF } = await import("./featureFlags");
+        if ((await _getFF("notifications_enabled")) && change.initiatedBy) {
           await storage.createNotification({
             userId: change.initiatedBy,
             type: "salary_change_approved",
@@ -9890,9 +9876,8 @@ Canonical domain: ${BASE}
       await storage.createAuditLog({ action: "salary_change_rejected", actorId, changes: { changeId: change.id, employeeId: change.employeeId, reason: parsed.data.reason } });
 
       try {
-        const flagsSetting = await storage.getSystemSetting("feature_flags");
-        const flags = (flagsSetting?.value as Record<string, any>) || {};
-        if (flags.notifications_enabled !== false && change.initiatedBy) {
+        const { getFeatureFlag: _getFF } = await import("./featureFlags");
+        if ((await _getFF("notifications_enabled")) && change.initiatedBy) {
           await storage.createNotification({
             userId: change.initiatedBy,
             type: "salary_change_rejected",
@@ -10535,9 +10520,8 @@ Canonical domain: ${BASE}
       });
 
       try {
-        const flagsSetting = await storage.getSystemSetting("feature_flags");
-        const flags = (flagsSetting?.value as Record<string, any>) || {};
-        if (flags.notifications_enabled !== false) {
+        const { getFeatureFlag: _getFF } = await import("./featureFlags");
+        if (await _getFF("notifications_enabled")) {
           const users = await storage.getAdminUsers();
           for (const u of users.filter(x => x.role === "super_admin" && x.isActive)) {
             await storage.createNotification({
@@ -10965,8 +10949,8 @@ Canonical domain: ${BASE}
       const docs = await storage.getEmployeeDocuments(req.params.userId);
       const pendingDocs = docs.filter(d => d.isRequired && d.status === "pending");
 
-      const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
+      const { getAllFeatureFlags: _getAllFF } = await import("./featureFlags");
+      const featureFlags = await _getAllFF();
       const emailEnabled = featureFlags.document_reminder_email_enabled === true;
 
       // Reporting manager gets a copy so they can follow up with their team member
@@ -11351,9 +11335,8 @@ Canonical domain: ${BASE}
 
         // Create in-app notifications for super_admin users only
         try {
-          const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-          const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-          if (featureFlags.notifications_enabled) {
+          const { getFeatureFlag: _getFF } = await import("./featureFlags");
+          if (await _getFF("notifications_enabled")) {
             const allUsers = await storage.getAdminUsers();
             const superAdmins = allUsers.filter(u => u.role === "super_admin" && u.isActive);
             for (const sa of superAdmins) {
@@ -11603,9 +11586,8 @@ Canonical domain: ${BASE}
         });
 
         try {
-          const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-          const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-          if (featureFlags.notifications_enabled) {
+          const { getFeatureFlag: _getFF } = await import("./featureFlags");
+          if (await _getFF("notifications_enabled")) {
             const allUsers = await storage.getAdminUsers();
             const superAdmins = allUsers.filter(u => u.role === "super_admin" && u.isActive);
             for (const sa of superAdmins) {
@@ -11711,9 +11693,8 @@ Canonical domain: ${BASE}
         });
 
         try {
-          const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-          const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-          if (featureFlags.notifications_enabled) {
+          const { getFeatureFlag: _getFF } = await import("./featureFlags");
+          if (await _getFF("notifications_enabled")) {
             await storage.createNotification({
               userId: creator.id,
               type: "offer_letter_approved",
@@ -11773,9 +11754,8 @@ Canonical domain: ${BASE}
         });
 
         try {
-          const featureFlagsSetting = await storage.getSystemSetting("feature_flags");
-          const featureFlags = (featureFlagsSetting?.value as Record<string, boolean>) || {};
-          if (featureFlags.notifications_enabled) {
+          const { getFeatureFlag: _getFF } = await import("./featureFlags");
+          if (await _getFF("notifications_enabled")) {
             await storage.createNotification({
               userId: creator.id,
               type: "offer_letter_rejected",
@@ -14881,22 +14861,33 @@ Canonical domain: ${BASE}
   // Public endpoint — returns only the UX flags needed by the unauthenticated signing pages.
   app.get("/api/public/esign-config", async (req: Request, res: Response) => {
     try {
-      const setting = await storage.getSystemSetting("feature_flags");
-      const flags = (setting?.value as Record<string, boolean>) || {};
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      const esignEnabled = await _getFF("esign_docusign_flow");
       res.set("Cache-Control", "public, max-age=60");
-      res.json({ esignDocusignFlow: flags.esign_docusign_flow === true });
+      res.json({ esignDocusignFlow: esignEnabled });
     } catch {
       res.json({ esignDocusignFlow: false });
     }
   });
 
+  // Health endpoint — returns current flag state + any missing KNOWN_FLAGS.
+  // Use this after a DB restore in staging/production to verify the seed ran correctly.
+  // Returns HTTP 200 even when unhealthy so the payload is always readable.
+  app.get("/api/system/feature-flags/health", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
+    try {
+      const { validateFeatureFlags, getAllFeatureFlags: _getAllFF } = await import("./featureFlags");
+      const [{ healthy, missingFlags }, flags] = await Promise.all([validateFeatureFlags(), _getAllFF()]);
+      res.json({ healthy, missingFlags, flags, checkedAt: new Date().toISOString() });
+    } catch (error) {
+      console.error("Feature flags health check error:", error);
+      res.status(500).json({ error: "Failed to run health check" });
+    }
+  });
+
   app.get("/api/system/feature-flags", requireAuth, async (req: Request, res: Response) => {
     try {
-      const setting = await storage.getSystemSetting("feature_flags");
-      const flags = (setting?.value as Record<string, boolean>) || {
-        notifications_enabled: false,
-        document_reminder_email_enabled: false,
-      };
+      const { getAllFeatureFlags: _getAllFF } = await import("./featureFlags");
+      const flags = await _getAllFF();
       res.json(flags);
     } catch (error) {
       console.error("Get feature flags error:", error);
@@ -14970,6 +14961,8 @@ Canonical domain: ${BASE}
       };
       const merged = { ...currentFlags, ...validated };
       await storage.upsertSystemSetting("feature_flags", merged, req.session.userId);
+      const { invalidateFeatureFlagsCache } = await import("./featureFlags");
+      invalidateFeatureFlagsCache();
       res.json({ ...merged, ...governanceSaved });
     } catch (error) {
       console.error("Update feature flags error:", error);
@@ -18777,8 +18770,8 @@ Canonical domain: ${BASE}
       const masterRow = await storage.getSystemSetting("emails_master_enabled");
       const emailsMasterEnabled = masterRow ? masterRow.value !== false : true;
 
-      const flagRow = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (flagRow?.value as Record<string, boolean>) ?? {};
+      const { getAllFeatureFlags: _getAllFF } = await import("./featureFlags");
+      const featureFlags = await _getAllFF();
       const notificationsEnabled = featureFlags.notifications_enabled !== false;
 
       const savedConfigs = await storage.getCommunicationConfigs();
@@ -18829,6 +18822,8 @@ Canonical domain: ${BASE}
         const flagRow = await storage.getSystemSetting("feature_flags");
         const current = (flagRow?.value as Record<string, boolean>) ?? {};
         await storage.upsertSystemSetting("feature_flags", { ...current, notifications_enabled: notificationsEnabled }, req.session.userId);
+        const { invalidateFeatureFlagsCache: _inv } = await import("./featureFlags");
+        _inv();
       }
       res.json({ ok: true });
     } catch (error) {
@@ -26128,9 +26123,8 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   app.get("/api/notifications", requireAuth, async (req: Request, res: Response) => {
     try {
-      const flagSetting = await storage.getSystemSetting("feature_flags");
-      const flags = (flagSetting?.value as Record<string, boolean>) || {};
-      if (!flags.notifications_enabled) {
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      if (!(await _getFF("notifications_enabled"))) {
         return res.json([]);
       }
       const userNotifications = await storage.getNotificationsByUser(req.session.userId!);
@@ -26143,9 +26137,8 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   app.patch("/api/notifications/:id/read", requireAuth, async (req: Request, res: Response) => {
     try {
-      const flagSetting = await storage.getSystemSetting("feature_flags");
-      const flags = (flagSetting?.value as Record<string, boolean>) || {};
-      if (!flags.notifications_enabled) {
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      if (!(await _getFF("notifications_enabled"))) {
         return res.status(404).json({ error: "Notifications not enabled" });
       }
       const userNotifications = await storage.getNotificationsByUser(req.session.userId!);
@@ -26229,9 +26222,8 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   app.post("/api/notifications/mark-all-read", requireAuth, async (req: Request, res: Response) => {
     try {
-      const flagSetting = await storage.getSystemSetting("feature_flags");
-      const flags = (flagSetting?.value as Record<string, boolean>) || {};
-      if (!flags.notifications_enabled) {
+      const { getFeatureFlag: _getFF } = await import("./featureFlags");
+      if (!(await _getFF("notifications_enabled"))) {
         return res.status(404).json({ error: "Notifications not enabled" });
       }
       await storage.markAllNotificationsRead(req.session.userId!);
@@ -27915,10 +27907,8 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   app.post("/api/admin/announcements/send-email", requirePermission("admin.announcements.sendEmail", "hr", "admin", "super_admin"), async (req, res) => {
     try {
       const adminId = req.session.userId!;
-      const featureFlags = await (async () => {
-        const setting = await storage.getSystemSetting("feature_flags");
-        return (setting?.value as Record<string, boolean>) || {};
-      })();
+      const { getAllFeatureFlags: _getAllFF } = await import("./featureFlags");
+        const featureFlags = await _getAllFF();
 
       if (!featureFlags.notifications_enabled) {
         return res.status(403).json({ error: "Email notifications are disabled. Enable the notifications feature flag first." });

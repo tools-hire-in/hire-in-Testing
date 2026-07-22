@@ -57,10 +57,8 @@ async function getAttendanceSettings(): Promise<{
 }
 
 async function getFeatureFlags(): Promise<Record<string, boolean>> {
-  try {
-    const s = await storage.getSystemSetting("feature_flags");
-    return (s?.value as Record<string, boolean>) || {};
-  } catch { return {}; }
+  const { getAllFeatureFlags } = await import("./featureFlags");
+  return getAllFeatureFlags();
 }
 
 /**

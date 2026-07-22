@@ -1,4 +1,5 @@
 import rateLimit from "express-rate-limit";
+import { config } from "./config";
 
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -27,7 +28,7 @@ export const vaultCopyLimiter = rateLimit({
   skip: () => false,
 });
 
-const isProd = process.env.NODE_ENV === "production";
+const isProd = config.isProductionSecurity;
 
 export const tokenLookupLimiter = rateLimit({
   windowMs: 60 * 1000,

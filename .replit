@@ -38,6 +38,10 @@ args = "governance-tests"
 task = "workflow.run"
 args = "merge-conflict-check"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "feature-flags-tests"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -82,6 +86,17 @@ args = "bash scripts/pre-merge-conflict-check.sh"
 
 [workflows.workflow.metadata]
 isValidation = true
+
+[[workflows.workflow]]
+name = "feature-flags-tests"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx tsx --test server/tests/featureFlags.test.ts"
+
+[workflows.workflow.metadata]
+outputType = "console"
 
 [agent]
 integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:2.0.0", "javascript_object_storage:2.0.0", "sendgrid:1.0.0", "javascript_openai_ai_integrations:2.0.0"]

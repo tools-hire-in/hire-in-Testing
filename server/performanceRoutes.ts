@@ -522,9 +522,8 @@ const storage = new DatabaseStorage();
 
 async function isPlanNotificationsEnabled(): Promise<boolean> {
   try {
-    const setting = await storage.getSystemSetting("feature_flags");
-    const flags = (setting?.value as Record<string, boolean>) || {};
-    return flags.notifications_enabled === true;
+    const { getFeatureFlag } = await import("./featureFlags");
+    return getFeatureFlag("notifications_enabled");
   } catch { return false; }
 }
 

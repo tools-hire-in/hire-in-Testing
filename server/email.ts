@@ -230,7 +230,8 @@ export async function getUncachableSendGridClient(): Promise<{
   } catch (err: any) {
     // Fail CLOSED in non-production: if we can't determine the environment,
     // suppress rather than risk a real send from dev/QA.
-    if (process.env.APP_ENV !== "production") {
+    const { config: _cfg } = await import("./config");
+    if (!_cfg.isProduction) {
       console.warn("[env-guard] Env check failed — suppressing send (non-production fail-safe):", err?.message);
       const failSafeClient = {
         send: async (msg: any) => {
@@ -389,7 +390,8 @@ export async function dispatchAutomatedEmail(
     }
   } catch (_interceptErr) {
     // Intercept failure: default to dry_run in non-production to avoid accidental real sends.
-    if (process.env.APP_ENV !== "production") {
+    const { config: _icfg } = await import("./config");
+    if (!_icfg.isProduction) {
       console.warn(`[email-intercept] Intercept check failed — suppressing send as dry_run (non-production fail-safe):`, _interceptErr);
       await storage.createCommunicationLog({
         ...baseLog,

@@ -7,13 +7,14 @@
 import { Router, type Request, type Response } from "express";
 import { getEnvMode, invalidateEnvModeCache } from "./envMode";
 import { storage } from "./storage";
+import { config } from "./config";
 
 function isSuperAdmin(req: Request): boolean {
   return (req.session as any)?.role === "super_admin";
 }
 
 function productionGate(_req: Request, res: Response, next: Function) {
-  if (process.env.APP_ENV === "production") {
+  if (config.isProduction) {
     res.status(404).json({ error: "Not found" });
     return;
   }
