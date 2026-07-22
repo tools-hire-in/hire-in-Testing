@@ -402,6 +402,7 @@ function TeamSection({
   isNavActive,
   isComplianceLocked,
   location,
+  role,
   myTeamBadge,
   leaveApprovalsCount,
   trainingReqBadge,
@@ -414,6 +415,7 @@ function TeamSection({
   isNavActive: (item: NavItem) => boolean;
   isComplianceLocked: boolean;
   location: string;
+  role: string;
   myTeamBadge: number;
   leaveApprovalsCount: number;
   trainingReqBadge: number;
@@ -2101,6 +2103,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 isNavActive={isNavActive}
                 isComplianceLocked={isComplianceLocked}
                 location={location}
+                role={user?.role ?? ""}
                 myTeamBadge={myTeamBadge}
                 leaveApprovalsCount={leaveApprovalsCount ?? 0}
                 trainingReqBadge={trainingReqBadge}

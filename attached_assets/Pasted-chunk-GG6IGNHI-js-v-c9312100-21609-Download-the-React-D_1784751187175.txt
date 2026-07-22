@@ -1,0 +1,65 @@
+chunk-GG6IGNHI.js?v=c9312100:21609 Download the React DevTools for a better development experience: https://reactjs.org/link/react-devtools
+:5000/api/auth/me:1  Failed to load resource: the server responded with a status of 401 (Unauthorized)
+AdminLayout.tsx:587 Uncaught ReferenceError: role is not defined
+    at TeamSection (AdminLayout.tsx:587:56)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=c9312100:11596:26)
+    at mountIndeterminateComponent (chunk-GG6IGNHI.js?v=c9312100:14974:21)
+    at beginWork (chunk-GG6IGNHI.js?v=c9312100:15962:22)
+    at HTMLUnknownElement.callCallback2 (chunk-GG6IGNHI.js?v=c9312100:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-GG6IGNHI.js?v=c9312100:3705:24)
+    at invokeGuardedCallback (chunk-GG6IGNHI.js?v=c9312100:3739:39)
+    at beginWork$1 (chunk-GG6IGNHI.js?v=c9312100:19818:15)
+    at performUnitOfWork (chunk-GG6IGNHI.js?v=c9312100:19251:20)
+    at workLoopConcurrent (chunk-GG6IGNHI.js?v=c9312100:19242:13)
+AdminLayout.tsx:587 Uncaught ReferenceError: role is not defined
+    at TeamSection (AdminLayout.tsx:587:56)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=c9312100:11596:26)
+    at mountIndeterminateComponent (chunk-GG6IGNHI.js?v=c9312100:14974:21)
+    at beginWork (chunk-GG6IGNHI.js?v=c9312100:15962:22)
+    at HTMLUnknownElement.callCallback2 (chunk-GG6IGNHI.js?v=c9312100:3680:22)
+    at Object.invokeGuardedCallbackDev (chunk-GG6IGNHI.js?v=c9312100:3705:24)
+    at invokeGuardedCallback (chunk-GG6IGNHI.js?v=c9312100:3739:39)
+    at beginWork$1 (chunk-GG6IGNHI.js?v=c9312100:19818:15)
+    at performUnitOfWork (chunk-GG6IGNHI.js?v=c9312100:19251:20)
+    at workLoopSync (chunk-GG6IGNHI.js?v=c9312100:19190:13)
+chunk-GG6IGNHI.js?v=c9312100:14080 The above error occurred in the <TeamSection> component:
+
+    at TeamSection (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/components/admin/AdminLayout.tsx:548:3)
+    at div
+    at SidebarContent (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/components/ui/sidebar.tsx:537:27)
+    at div
+    at div
+    at div
+    at Sidebar (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/components/ui/sidebar.tsx:151:3)
+    at div
+    at div
+    at div
+    at Provider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-SAEZPHBS.js?v=c9312100:37:15)
+    at TooltipProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=c9312100:63:5)
+    at SidebarProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/components/ui/sidebar.tsx:59:3)
+    at AdminLayoutInner (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/components/admin/AdminLayout.tsx:1935:29)
+    at AdminLayout (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/components/admin/AdminLayout.tsx:1902:31)
+    at MyDesk (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/pages/admin/my-desk/MyDesk.tsx:238:27)
+    at Suspense
+    at Route (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=c9312100:264:16)
+    at Switch (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=c9312100:320:17)
+    at EmployeeRouter
+    at Provider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-SAEZPHBS.js?v=c9312100:37:15)
+    at TooltipProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=c9312100:63:5)
+    at QueryClientProvider (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=c9312100:2747:3)
+    at App (https://f57467c9-ea39-4978-b9c3-aa108d2165f8-00-1zxjyaoy169sc.kirk.replit.dev:5000/src/App.tsx?t=1784750943179:4894:24)
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+logCapturedError @ chunk-GG6IGNHI.js?v=c9312100:14080
+chunk-GG6IGNHI.js?v=c9312100:19466 Uncaught ReferenceError: role is not defined
+    at TeamSection (AdminLayout.tsx:587:56)
+    at renderWithHooks (chunk-GG6IGNHI.js?v=c9312100:11596:26)
+    at mountIndeterminateComponent (chunk-GG6IGNHI.js?v=c9312100:14974:21)
+    at beginWork (chunk-GG6IGNHI.js?v=c9312100:15962:22)
+    at beginWork$1 (chunk-GG6IGNHI.js?v=c9312100:19806:22)
+    at performUnitOfWork (chunk-GG6IGNHI.js?v=c9312100:19251:20)
+    at workLoopSync (chunk-GG6IGNHI.js?v=c9312100:19190:13)
+    at renderRootSync (chunk-GG6IGNHI.js?v=c9312100:19169:15)
+    at recoverFromConcurrentError (chunk-GG6IGNHI.js?v=c9312100:18786:28)
+    at performConcurrentWorkOnRoot (chunk-GG6IGNHI.js?v=c9312100:18734:30)
