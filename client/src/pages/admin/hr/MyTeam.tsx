@@ -62,9 +62,11 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
+import { StepIndicator } from "@/components/ui/step-indicator";
 import {
   Table,
   TableBody,
@@ -1100,6 +1102,7 @@ function SalaryChangeDialog({ employeeId, currentSalary, open, onOpenChange }: {
             Record a manual salary change. Changes you make may require Super Admin approval before they apply.
           </DialogDescription>
         </DialogHeader>
+        <DialogBody>
         <div className="space-y-3">
           <div>
             <label className="text-sm font-medium">Current Salary</label>
@@ -1134,6 +1137,7 @@ function SalaryChangeDialog({ employeeId, currentSalary, open, onOpenChange }: {
             <Textarea id="salary-reason" data-testid="input-salary-reason" value={reason} onChange={e => setReason(e.target.value)} placeholder="Why is this salary changing?" rows={3} />
           </div>
         </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-salary-change">Cancel</Button>
           <Button onClick={() => submit.mutate()} disabled={!canSubmit || submit.isPending} data-testid="button-submit-salary-change">
@@ -1402,6 +1406,7 @@ function PayrollProfileCard({ employeeId }: { employeeId: string }) {
               Assign a salary structure and configure statutory exemption flags for this employee.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
           {draft && (
             <div className="space-y-5 py-2">
               <div className="space-y-1.5">
@@ -1452,6 +1457,7 @@ function PayrollProfileCard({ employeeId }: { employeeId: string }) {
               </div>
             </div>
           )}
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
             <Button
@@ -1585,6 +1591,7 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
 
   // ── Record dialog state ──────────────────────────────────────────────────
   const [showRecord, setShowRecord] = useState(false);
+  const [recStep, setRecStep] = useState(0);
   const now = new Date();
   const todayStr = now.toISOString().slice(0, 10);
   const defaultStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
@@ -1937,6 +1944,7 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
                   Already-deducted installments are not affected.
                 </DialogDescription>
               </DialogHeader>
+              <DialogBody>
               <div className="grid grid-cols-2 gap-3 py-2">
                 <div className="space-y-1">
                   <Label className="text-xs">New start month</Label>
@@ -1950,6 +1958,7 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
                   <Input type="number" min={2020} max={2100} value={adjYear} onChange={e => setAdjYear(e.target.value)} data-testid="input-adj-new-year" />
                 </div>
               </div>
+              </DialogBody>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setAdjustRow(null)}>Cancel</Button>
                 <Button
@@ -1964,113 +1973,134 @@ function EmployeeAdvancesCard({ employeeId, role }: { employeeId: string; role: 
         )}
 
         {/* Record adjustment dialog */}
-        <Dialog open={showRecord} onOpenChange={(o) => !o && setShowRecord(false)}>
+        <Dialog open={showRecord} onOpenChange={(o) => { if (!o) { setShowRecord(false); setRecStep(0); } }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle>Record Salary Adjustment</DialogTitle>
               <DialogDescription>Submitted adjustments require super admin approval before affecting payroll.</DialogDescription>
+              <StepIndicator steps={["Type", "Details"]} current={recStep} className="mt-2" />
             </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label className="text-xs">Type</Label>
-                <div className="flex gap-2">
-                  <Button size="sm" variant={recKind === "advance" ? "default" : "outline"}
-                    onClick={() => setRecKind("advance")} data-testid="btn-kind-advance">Advance</Button>
-                  <Button size="sm" variant={recKind === "overpayment" ? "default" : "outline"}
-                    onClick={() => setRecKind("overpayment")} data-testid="btn-kind-overpayment">Overpayment</Button>
-                  <Button size="sm" variant={recKind === "salary_credit" ? "default" : "outline"}
-                    onClick={() => setRecKind("salary_credit")} data-testid="btn-kind-salary-credit">Salary Credit</Button>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  {recKind === "advance"
-                    ? "Backfill an already-given advance. Recovery runs over the chosen months. Created active immediately."
-                    : recKind === "overpayment"
-                      ? "Records an overpayment to be recovered from salary in installments."
-                      : "Records a one-time credit to be added to a specific payroll month."}
-                </p>
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs">Amount (₹)</Label>
-                <Input type="number" min={1} value={recAmount} onChange={e => setRecAmount(e.target.value)} placeholder="e.g. 5000" data-testid="input-adj-amount" />
-              </div>
-              {recKind === "advance" && (
-                <>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Date of Disbursement</Label>
-                    <Input type="date" value={recDisbursedAt} onChange={e => setRecDisbursedAt(e.target.value)} data-testid="input-adj-disbursed-at" />
-                    <p className="text-xs text-muted-foreground">When was the cash actually given to the employee?</p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3">
-                    <div className="space-y-1">
-                      <Label className="text-xs">Repayment months</Label>
-                      <Input type="number" min={1} max={36} value={recMonths} onChange={e => setRecMonths(e.target.value)} data-testid="input-adj-months" />
+            <DialogBody className="py-4">
+              {/* Step 0: choose type */}
+              {recStep === 0 && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Adjustment Type</Label>
+                    <div className="flex flex-col gap-2">
+                      {([
+                        { kind: "advance", label: "Advance", desc: "Backfill an already-given cash advance. Recovery runs over the chosen months." },
+                        { kind: "overpayment", label: "Overpayment", desc: "Records an overpayment to be recovered from salary in installments." },
+                        { kind: "salary_credit", label: "Salary Credit", desc: "Records a one-time credit to be added to a specific payroll month." },
+                      ] as const).map(({ kind, label, desc }) => (
+                        <button
+                          key={kind}
+                          type="button"
+                          data-testid={`btn-kind-${kind}`}
+                          onClick={() => setRecKind(kind)}
+                          className={`w-full rounded-lg border px-4 py-3 text-left transition-colors ${recKind === kind ? "bg-[#1F3A6E] text-white border-[#1F3A6E]" : "bg-muted/30 border-border hover:bg-muted/50"}`}
+                        >
+                          <p className="text-sm font-medium">{label}</p>
+                          <p className={`text-xs mt-0.5 ${recKind === kind ? "text-white/80" : "text-muted-foreground"}`}>{desc}</p>
+                        </button>
+                      ))}
                     </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Start month</Label>
-                      <select value={recStartMonth} onChange={e => setRecStartMonth(e.target.value)}
-                        className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-adj-start-month">
-                        {ADJ_RECORD_MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-                      </select>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-xs">Start year</Label>
-                      <Input type="number" min={2000} max={2100} value={recStartYear} onChange={e => setRecStartYear(e.target.value)} data-testid="input-adj-start-year" />
-                    </div>
-                  </div>
-                </>
-              )}
-              {recKind === "overpayment" && (
-                <div className="grid grid-cols-3 gap-3">
-                  <div className="space-y-1">
-                    <Label className="text-xs">Recovery months</Label>
-                    <Input type="number" min={1} max={36} value={recMonths} onChange={e => setRecMonths(e.target.value)} data-testid="input-adj-months" />
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">First recovery month</Label>
-                    <select value={recStartMonth} onChange={e => setRecStartMonth(e.target.value)}
-                      className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-adj-ovp-start-month">
-                      {ADJ_RECORD_MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1">
-                    <Label className="text-xs">Start year</Label>
-                    <Input type="number" min={2000} max={2100} value={recStartYear} onChange={e => setRecStartYear(e.target.value)} data-testid="input-adj-ovp-start-year" />
                   </div>
                 </div>
               )}
-              {recKind === "salary_credit" && (
-                <div className="grid grid-cols-2 gap-3">
+              {/* Step 1: amount, dates, context */}
+              {recStep === 1 && (
+                <div className="space-y-4">
                   <div className="space-y-1">
-                    <Label className="text-xs">Target month</Label>
-                    <select value={recTargetMonth} onChange={e => setRecTargetMonth(e.target.value)}
-                      className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-adj-target-month">
-                      {ADJ_RECORD_MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-                    </select>
+                    <Label className="text-xs">Amount (₹) <span className="text-red-500">*</span></Label>
+                    <Input type="number" min={1} value={recAmount} onChange={e => setRecAmount(e.target.value)} placeholder="e.g. 5000" data-testid="input-adj-amount" />
                   </div>
+                  {recKind === "advance" && (
+                    <>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Date of Disbursement</Label>
+                        <Input type="date" value={recDisbursedAt} onChange={e => setRecDisbursedAt(e.target.value)} data-testid="input-adj-disbursed-at" />
+                        <p className="text-xs text-muted-foreground">When was the cash actually given to the employee?</p>
+                      </div>
+                      <div className="grid grid-cols-3 gap-3">
+                        <div className="space-y-1">
+                          <Label className="text-xs">Repayment months</Label>
+                          <Input type="number" min={1} max={36} value={recMonths} onChange={e => setRecMonths(e.target.value)} data-testid="input-adj-months" />
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Start month</Label>
+                          <select value={recStartMonth} onChange={e => setRecStartMonth(e.target.value)}
+                            className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-adj-start-month">
+                            {ADJ_RECORD_MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <Label className="text-xs">Start year</Label>
+                          <Input type="number" min={2000} max={2100} value={recStartYear} onChange={e => setRecStartYear(e.target.value)} data-testid="input-adj-start-year" />
+                        </div>
+                      </div>
+                    </>
+                  )}
+                  {recKind === "overpayment" && (
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Recovery months</Label>
+                        <Input type="number" min={1} max={36} value={recMonths} onChange={e => setRecMonths(e.target.value)} data-testid="input-adj-months" />
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">First recovery month</Label>
+                        <select value={recStartMonth} onChange={e => setRecStartMonth(e.target.value)}
+                          className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-adj-ovp-start-month">
+                          {ADJ_RECORD_MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Start year</Label>
+                        <Input type="number" min={2000} max={2100} value={recStartYear} onChange={e => setRecStartYear(e.target.value)} data-testid="input-adj-ovp-start-year" />
+                      </div>
+                    </div>
+                  )}
+                  {recKind === "salary_credit" && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-1">
+                        <Label className="text-xs">Target month</Label>
+                        <select value={recTargetMonth} onChange={e => setRecTargetMonth(e.target.value)}
+                          className="w-full rounded-md border bg-background px-2 py-2 text-sm" data-testid="select-adj-target-month">
+                          {ADJ_RECORD_MONTHS.slice(1).map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <Label className="text-xs">Target year</Label>
+                        <Input type="number" min={2000} max={2100} value={recTargetYear} onChange={e => setRecTargetYear(e.target.value)} data-testid="input-adj-target-year" />
+                      </div>
+                    </div>
+                  )}
                   <div className="space-y-1">
-                    <Label className="text-xs">Target year</Label>
-                    <Input type="number" min={2000} max={2100} value={recTargetYear} onChange={e => setRecTargetYear(e.target.value)} data-testid="input-adj-target-year" />
+                    <Label className="text-xs">Description / Context (optional)</Label>
+                    <Textarea value={recReason} onChange={e => setRecReason(e.target.value)} rows={2} placeholder="Why is this adjustment needed?" data-testid="input-adj-reason" />
                   </div>
                 </div>
               )}
-              <div className="space-y-1">
-                <Label className="text-xs">Description / Context (optional)</Label>
-                <Textarea value={recReason} onChange={e => setRecReason(e.target.value)} rows={2} placeholder="Why is this adjustment needed?" data-testid="input-adj-reason" />
-              </div>
-            </div>
+            </DialogBody>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setShowRecord(false)}>Cancel</Button>
-              <Button
-                disabled={
-                  !recAmount || parseFloat(recAmount) <= 0 ||
-                  (recKind === "advance" && (parseInt(recMonths, 10) <= 0 || !recStartMonth)) ||
-                  (recKind === "overpayment" && (parseInt(recMonths, 10) <= 0 || !recStartMonth || !recStartYear)) ||
-                  submitRecord.isPending
-                }
-                onClick={() => submitRecord.mutate()}
-                data-testid="button-submit-adj">
-                {recKind === "advance" ? "Record Advance" : "Submit for Approval"}
-              </Button>
+              <Button variant="outline" onClick={() => { setShowRecord(false); setRecStep(0); }}>Cancel</Button>
+              {recStep > 0 && (
+                <Button variant="ghost" onClick={() => setRecStep(0)} data-testid="button-adj-back">← Back</Button>
+              )}
+              {recStep === 0 ? (
+                <Button onClick={() => setRecStep(1)} data-testid="button-adj-next">Next →</Button>
+              ) : (
+                <Button
+                  disabled={
+                    !recAmount || parseFloat(recAmount) <= 0 ||
+                    (recKind === "advance" && (parseInt(recMonths, 10) <= 0 || !recStartMonth)) ||
+                    (recKind === "overpayment" && (parseInt(recMonths, 10) <= 0 || !recStartMonth || !recStartYear)) ||
+                    submitRecord.isPending
+                  }
+                  onClick={() => submitRecord.mutate()}
+                  data-testid="button-submit-adj">
+                  {recKind === "advance" ? "Record Advance" : "Submit for Approval"}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -3010,6 +3040,7 @@ function LeaveTrackingTab({ userId }: { userId: string }) {
               Apply retroactive leave for {leaveData.employee.firstName} {leaveData.employee.lastName}. Only past dates are allowed.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Leave Type *</Label>
@@ -3083,6 +3114,7 @@ function LeaveTrackingTab({ userId }: { userId: string }) {
               </p>
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setApplyLeaveOpen(false)} data-testid="button-cancel-apply-leave">Cancel</Button>
             <Button
@@ -3103,6 +3135,7 @@ function LeaveTrackingTab({ userId }: { userId: string }) {
               {reviewData?.action === "approved" ? "Approve" : "Reject"} Leave Request
             </DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Comment (optional)</Label>
@@ -3114,6 +3147,7 @@ function LeaveTrackingTab({ userId }: { userId: string }) {
               />
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setReviewData(null)} data-testid="button-cancel-review">Cancel</Button>
             <Button
@@ -3426,7 +3460,7 @@ function CompleteCheckInModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ClipboardList className="h-5 w-5" />
@@ -3436,7 +3470,7 @@ function CompleteCheckInModal({
             Scheduled: {formatDate(checkIn.scheduled_date)}
           </DialogDescription>
         </DialogHeader>
-
+        <DialogBody>
         <div className="space-y-5 py-2">
           {isPip ? (
             <>
@@ -3508,7 +3542,7 @@ function CompleteCheckInModal({
             </>
           )}
         </div>
-
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="button-cancel-checkin">Cancel</Button>
           <Button
@@ -3550,10 +3584,12 @@ function PlanDetailPanel({
   if (isLoading) {
     return (
       <Dialog open onOpenChange={onClose}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
+          <DialogBody>
           <div className="space-y-4 py-4">
             {[1, 2, 3, 4].map(i => <Skeleton key={i} className="h-20 w-full" />)}
           </div>
+          </DialogBody>
         </DialogContent>
       </Dialog>
     );
@@ -3590,7 +3626,7 @@ function PlanDetailPanel({
   return (
     <>
       <Dialog open onOpenChange={onClose}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 flex-wrap">
               <Badge className={PLAN_TYPE_COLORS[plan.plan_type]}>
@@ -3610,7 +3646,7 @@ function PlanDetailPanel({
               </span>
             </DialogDescription>
           </DialogHeader>
-
+          <DialogBody>
           <div className="space-y-6 py-2">
             {/* Manager accountability banner */}
             {(() => {
@@ -3838,6 +3874,7 @@ function PlanDetailPanel({
               </div>
             )}
           </div>
+          </DialogBody>
         </DialogContent>
       </Dialog>
 
@@ -3980,7 +4017,7 @@ function NewPlanModal({
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-xl">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Plus className="h-5 w-5" />
@@ -3990,7 +4027,7 @@ function NewPlanModal({
             {step === 1 ? "Choose plan type and employee" : "Edit or add goals for this plan before creating"}
           </DialogDescription>
         </DialogHeader>
-
+        <DialogBody>
         {step === 1 ? (
           <div className="space-y-4 py-2">
             <div className="space-y-1">
@@ -4141,7 +4178,7 @@ function NewPlanModal({
             </div>
           </div>
         )}
-
+        </DialogBody>
         <DialogFooter>
           {step === 2 && (
             <Button variant="outline" onClick={() => setStep(1)} data-testid="button-new-plan-back">Back</Button>
@@ -4358,6 +4395,7 @@ export default function MyTeam() {
   const [editAttendanceOpen, setEditAttendanceOpen] = useState(false);
   const [editAttendanceRecord, setEditAttendanceRecord] = useState<AttendanceRecord | null>(null);
   const [editProfileOpen, setEditProfileOpen] = useState(false);
+  const [editProfileStep, setEditProfileStep] = useState(0);
   const [payrollConfigOpen, setPayrollConfigOpen] = useState(false);
   const [addHolidayOpen, setAddHolidayOpen] = useState(false);
   const [addContactOpen, setAddContactOpen] = useState(false);
@@ -4709,6 +4747,7 @@ export default function MyTeam() {
             <DialogHeader>
               <DialogTitle>Edit Attendance - {editAttendanceRecord?.date}</DialogTitle>
             </DialogHeader>
+            <DialogBody>
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium">Punch In</label>
@@ -4740,6 +4779,7 @@ export default function MyTeam() {
                 {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
               </div>
             </div>
+            </DialogBody>
             <DialogFooter>
               <Button data-testid="button-cancel-attendance" variant="outline" onClick={() => setEditAttendanceOpen(false)}>Cancel</Button>
               <Button
@@ -4760,165 +4800,189 @@ export default function MyTeam() {
           </DialogContent>
         </Dialog>
 
-        <Dialog open={editProfileOpen} onOpenChange={setEditProfileOpen}>
+        <Dialog open={editProfileOpen} onOpenChange={(o) => { setEditProfileOpen(o); if (!o) setEditProfileStep(0); }}>
           <DialogContent>
             <DialogHeader>
               <DialogTitle>Edit Profile</DialogTitle>
+              <StepIndicator
+                steps={["Role & Org", "Employment", "Flags & Audit"]}
+                current={editProfileStep}
+                className="mt-3"
+              />
             </DialogHeader>
-            <div className="space-y-4">
-              <div>
-                <label className="text-sm font-medium">Designation</label>
-                <Input data-testid="input-designation" value={formDesignation} onChange={e => setFormDesignation(e.target.value)} />
-              </div>
-              <div>
-                <label className="text-sm font-medium">Department</label>
-                <Select value={formDepartmentId} onValueChange={setFormDepartmentId}>
-                  <SelectTrigger data-testid="select-department">
-                    <SelectValue placeholder="Select department" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {(departmentsQuery.data || []).map(d => (
-                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Hierarchy Level</label>
-                <Select value={formHierarchyLevel} onValueChange={setFormHierarchyLevel}>
-                  <SelectTrigger data-testid="select-hierarchy">
-                    <SelectValue placeholder="Select level" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="ceo">CEO</SelectItem>
-                    <SelectItem value="vp">VP</SelectItem>
-                    <SelectItem value="director">Director</SelectItem>
-                    <SelectItem value="manager">Manager</SelectItem>
-                    <SelectItem value="team_lead">Team Lead</SelectItem>
-                    <SelectItem value="delivery_manager">Delivery Manager</SelectItem>
-                    <SelectItem value="team_member">Team Member</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Gender</label>
-                <Select value={formGender} onValueChange={v => {
-                  setFormGender(v);
-                  if (v === "Female") setFormMaternityLeaveEligible(true);
-                }}>
-                  <SelectTrigger data-testid="select-profile-gender">
-                    <SelectValue placeholder="Select gender..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Male">Male</SelectItem>
-                    <SelectItem value="Female">Female</SelectItem>
-                    <SelectItem value="Other">Other</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Employment Type</label>
-                <Select value={formEmploymentType} onValueChange={setFormEmploymentType}>
-                  <SelectTrigger data-testid="select-profile-employment-type">
-                    <SelectValue placeholder="Select type..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="Full-time / Regular">Full-time / Regular</SelectItem>
-                    <SelectItem value="Part-time">Part-time</SelectItem>
-                    <SelectItem value="Contract">Contract</SelectItem>
-                    <SelectItem value="Intern">Intern</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Employee Category</label>
-                <Select value={formEmployeeCategory} onValueChange={setFormEmployeeCategory}>
-                  <SelectTrigger data-testid="select-profile-employee-category">
-                    <SelectValue placeholder="Select category..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="experienced">Experienced</SelectItem>
-                    <SelectItem value="fresher">Fresher</SelectItem>
-                    <SelectItem value="intern">Intern</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="border rounded-lg p-3 space-y-3">
-                <label className="text-sm font-medium">Exemption Flags</label>
-                <div className="flex items-center justify-between" data-testid="check-profile-attendance-exempt">
+            <DialogBody className="py-4">
+              {editProfileStep === 0 && (
+                <div className="space-y-4">
                   <div>
-                    <p className="text-sm font-medium">Attendance Exempt</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Exempt from punch in/out requirements.</p>
+                    <label className="text-sm font-medium">Designation</label>
+                    <Input data-testid="input-designation" value={formDesignation} onChange={e => setFormDesignation(e.target.value)} />
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={formAttendanceExempt}
-                    onClick={() => setFormAttendanceExempt(v => !v)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formAttendanceExempt ? "bg-primary" : "bg-input"}`}
-                  >
-                    <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formAttendanceExempt ? "translate-x-5" : "translate-x-0"}`} />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between" data-testid="check-profile-training-exempt">
                   <div>
-                    <p className="text-sm font-medium">Training Exempt</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Exempt from training compliance lock.</p>
+                    <label className="text-sm font-medium">Department</label>
+                    <Select value={formDepartmentId} onValueChange={setFormDepartmentId}>
+                      <SelectTrigger data-testid="select-department">
+                        <SelectValue placeholder="Select department" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(departmentsQuery.data || []).map(d => (
+                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={formTrainingExempt}
-                    onClick={() => setFormTrainingExempt(v => !v)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formTrainingExempt ? "bg-primary" : "bg-input"}`}
-                  >
-                    <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formTrainingExempt ? "translate-x-5" : "translate-x-0"}`} />
-                  </button>
-                </div>
-                <div className="flex items-center justify-between" data-testid="check-profile-maternity-eligible">
                   <div>
-                    <p className="text-sm font-medium">Maternity Leave Eligible</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">Can apply for maternity leave.</p>
+                    <label className="text-sm font-medium">Hierarchy Level</label>
+                    <Select value={formHierarchyLevel} onValueChange={setFormHierarchyLevel}>
+                      <SelectTrigger data-testid="select-hierarchy">
+                        <SelectValue placeholder="Select level" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="ceo">CEO</SelectItem>
+                        <SelectItem value="vp">VP</SelectItem>
+                        <SelectItem value="director">Director</SelectItem>
+                        <SelectItem value="manager">Manager</SelectItem>
+                        <SelectItem value="team_lead">Team Lead</SelectItem>
+                        <SelectItem value="delivery_manager">Delivery Manager</SelectItem>
+                        <SelectItem value="team_member">Team Member</SelectItem>
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={formMaternityLeaveEligible}
-                    onClick={() => setFormMaternityLeaveEligible(v => !v)}
-                    className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formMaternityLeaveEligible ? "bg-primary" : "bg-input"}`}
-                  >
-                    <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formMaternityLeaveEligible ? "translate-x-5" : "translate-x-0"}`} />
-                  </button>
                 </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium">Reason for change *</label>
-                <Textarea data-testid="input-profile-reason" value={formNote} onChange={e => setFormNote(e.target.value)} placeholder="Why are you making this change?" />
-                {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
-              </div>
-            </div>
+              )}
+              {editProfileStep === 1 && (
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium">Gender</label>
+                    <Select value={formGender} onValueChange={v => {
+                      setFormGender(v);
+                      if (v === "Female") setFormMaternityLeaveEligible(true);
+                    }}>
+                      <SelectTrigger data-testid="select-profile-gender">
+                        <SelectValue placeholder="Select gender..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Male">Male</SelectItem>
+                        <SelectItem value="Female">Female</SelectItem>
+                        <SelectItem value="Other">Other</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Employment Type</label>
+                    <Select value={formEmploymentType} onValueChange={setFormEmploymentType}>
+                      <SelectTrigger data-testid="select-profile-employment-type">
+                        <SelectValue placeholder="Select type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="Full-time / Regular">Full-time / Regular</SelectItem>
+                        <SelectItem value="Part-time">Part-time</SelectItem>
+                        <SelectItem value="Contract">Contract</SelectItem>
+                        <SelectItem value="Intern">Intern</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Employee Category</label>
+                    <Select value={formEmployeeCategory} onValueChange={setFormEmployeeCategory}>
+                      <SelectTrigger data-testid="select-profile-employee-category">
+                        <SelectValue placeholder="Select category..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="experienced">Experienced</SelectItem>
+                        <SelectItem value="fresher">Fresher</SelectItem>
+                        <SelectItem value="intern">Intern</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+              )}
+              {editProfileStep === 2 && (
+                <div className="space-y-4">
+                  <div className="border rounded-lg p-3 space-y-3">
+                    <label className="text-sm font-medium">Exemption Flags</label>
+                    <div className="flex items-center justify-between" data-testid="check-profile-attendance-exempt">
+                      <div>
+                        <p className="text-sm font-medium">Attendance Exempt</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Exempt from punch in/out requirements.</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={formAttendanceExempt}
+                        onClick={() => setFormAttendanceExempt(v => !v)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formAttendanceExempt ? "bg-primary" : "bg-input"}`}
+                      >
+                        <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formAttendanceExempt ? "translate-x-5" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between" data-testid="check-profile-training-exempt">
+                      <div>
+                        <p className="text-sm font-medium">Training Exempt</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Exempt from training compliance lock.</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={formTrainingExempt}
+                        onClick={() => setFormTrainingExempt(v => !v)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formTrainingExempt ? "bg-primary" : "bg-input"}`}
+                      >
+                        <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formTrainingExempt ? "translate-x-5" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+                    <div className="flex items-center justify-between" data-testid="check-profile-maternity-eligible">
+                      <div>
+                        <p className="text-sm font-medium">Maternity Leave Eligible</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Can apply for maternity leave.</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={formMaternityLeaveEligible}
+                        onClick={() => setFormMaternityLeaveEligible(v => !v)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formMaternityLeaveEligible ? "bg-primary" : "bg-input"}`}
+                      >
+                        <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formMaternityLeaveEligible ? "translate-x-5" : "translate-x-0"}`} />
+                      </button>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium">Reason for change *</label>
+                    <Textarea data-testid="input-profile-reason" value={formNote} onChange={e => setFormNote(e.target.value)} placeholder="Why are you making this change?" />
+                    {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
+                  </div>
+                </div>
+              )}
+            </DialogBody>
             <DialogFooter>
-              <Button data-testid="button-cancel-profile" variant="outline" onClick={() => setEditProfileOpen(false)}>Cancel</Button>
-              <Button
-                data-testid="button-save-profile"
-                disabled={!formNote.trim() || editProfileMutation.isPending}
-                onClick={() => {
-                  editProfileMutation.mutate({
-                    designation: formDesignation || undefined,
-                    departmentId: formDepartmentId || undefined,
-                    hierarchyLevel: formHierarchyLevel || undefined,
-                    gender: formGender || undefined,
-                    employmentType: formEmploymentType || undefined,
-                    employeeCategory: formEmployeeCategory || undefined,
-                    attendanceExempt: formAttendanceExempt,
-                    trainingExempt: formTrainingExempt,
-                    maternityLeaveEligible: formMaternityLeaveEligible,
-                    note: formNote,
-                  });
-                }}
-              >
-                {editProfileMutation.isPending ? "Saving..." : "Save"}
-              </Button>
+              <Button data-testid="button-cancel-profile" variant="outline" onClick={() => { setEditProfileOpen(false); setEditProfileStep(0); }}>Cancel</Button>
+              {editProfileStep > 0 && (
+                <Button variant="ghost" onClick={() => setEditProfileStep(s => s - 1)} data-testid="button-profile-back">← Back</Button>
+              )}
+              {editProfileStep < 2 ? (
+                <Button onClick={() => setEditProfileStep(s => s + 1)} data-testid="button-profile-next">Next →</Button>
+              ) : (
+                <Button
+                  data-testid="button-save-profile"
+                  disabled={!formNote.trim() || editProfileMutation.isPending}
+                  onClick={() => {
+                    editProfileMutation.mutate({
+                      designation: formDesignation || undefined,
+                      departmentId: formDepartmentId || undefined,
+                      hierarchyLevel: formHierarchyLevel || undefined,
+                      gender: formGender || undefined,
+                      employmentType: formEmploymentType || undefined,
+                      employeeCategory: formEmployeeCategory || undefined,
+                      attendanceExempt: formAttendanceExempt,
+                      trainingExempt: formTrainingExempt,
+                      maternityLeaveEligible: formMaternityLeaveEligible,
+                      note: formNote,
+                    });
+                  }}
+                >
+                  {editProfileMutation.isPending ? "Saving..." : "Save"}
+                </Button>
+              )}
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -4929,6 +4993,7 @@ export default function MyTeam() {
               <DialogTitle>Payroll Configuration</DialogTitle>
               <DialogDescription>Assign a salary structure and configure statutory flags for this employee.</DialogDescription>
             </DialogHeader>
+            <DialogBody>
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium">Salary Structure</label>
@@ -4986,6 +5051,7 @@ export default function MyTeam() {
                 {!formPayrollNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
               </div>
             </div>
+            </DialogBody>
             <DialogFooter>
               <Button data-testid="button-cancel-payroll" variant="outline" onClick={() => setPayrollConfigOpen(false)}>Cancel</Button>
               <Button
@@ -5012,6 +5078,7 @@ export default function MyTeam() {
             <DialogHeader>
               <DialogTitle>Add Regional Holiday</DialogTitle>
             </DialogHeader>
+            <DialogBody>
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium">Regional Holiday</label>
@@ -5034,6 +5101,7 @@ export default function MyTeam() {
                 {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
               </div>
             </div>
+            </DialogBody>
             <DialogFooter>
               <Button data-testid="button-cancel-holiday" variant="outline" onClick={() => setAddHolidayOpen(false)}>Cancel</Button>
               <Button
@@ -5052,6 +5120,7 @@ export default function MyTeam() {
             <DialogHeader>
               <DialogTitle>Add Emergency Contact</DialogTitle>
             </DialogHeader>
+            <DialogBody>
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium">Name *</label>
@@ -5079,6 +5148,7 @@ export default function MyTeam() {
                 {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
               </div>
             </div>
+            </DialogBody>
             <DialogFooter>
               <Button data-testid="button-cancel-add-contact" variant="outline" onClick={() => setAddContactOpen(false)}>Cancel</Button>
               <Button
@@ -5105,6 +5175,7 @@ export default function MyTeam() {
             <DialogHeader>
               <DialogTitle>Edit Emergency Contact</DialogTitle>
             </DialogHeader>
+            <DialogBody>
             <div className="space-y-4">
               <div>
                 <label className="text-sm font-medium">Name *</label>
@@ -5132,6 +5203,7 @@ export default function MyTeam() {
                 {!formNote.trim() && <p className="text-sm text-red-500 mt-1">Required</p>}
               </div>
             </div>
+            </DialogBody>
             <DialogFooter>
               <Button data-testid="button-cancel-edit-contact" variant="outline" onClick={() => setEditContactOpen(false)}>Cancel</Button>
               <Button
@@ -5158,6 +5230,7 @@ export default function MyTeam() {
             <DialogHeader>
               <DialogTitle>Review Ticket</DialogTitle>
             </DialogHeader>
+            <DialogBody>
             {reviewTicketRecord && (
               <div className="space-y-4">
                 <div className="bg-muted p-3 rounded text-sm">
@@ -5195,6 +5268,7 @@ export default function MyTeam() {
                 </div>
               </div>
             )}
+            </DialogBody>
             <DialogFooter>
               <Button data-testid="button-cancel-ticket" variant="outline" onClick={() => setReviewTicketOpen(false)}>Cancel</Button>
               <Button

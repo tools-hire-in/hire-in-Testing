@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogBody } from "@/components/ui/dialog";
 import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -1109,12 +1109,12 @@ export default function TrainingManagement() {
               Mark Training Exempt
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-1">
+          <DialogBody>
             <p className="text-sm">
               Marking <span className="font-semibold">{mgmtExemptAssignment?.userName}'s</span> assignment for{" "}
               <span className="font-semibold">"{mgmtExemptAssignment?.trackTitle}"</span> as exempt will immediately set the status to "Excepted" — no employee request needed.
             </p>
-            <div className="space-y-2">
+            <div className="space-y-2 mt-4">
               <Label className="text-sm">Reason <span className="text-red-500">*</span></Label>
               <Textarea
                 value={mgmtExemptReason}
@@ -1125,7 +1125,7 @@ export default function TrainingManagement() {
                 data-testid="input-mgmt-exempt-reason-dialog"
               />
             </div>
-          </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setMgmtExemptAssignment(null); setMgmtExemptReason(""); }} data-testid="button-mgmt-cancel-exempt">
               Cancel
@@ -1184,6 +1184,7 @@ export default function TrainingManagement() {
           <DialogHeader>
             <DialogTitle>Create Learning Track</DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>Track Title</Label>
@@ -1262,6 +1263,7 @@ export default function TrainingManagement() {
               </div>
             )}
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowTrackForm(false)}>Cancel</Button>
             <Button onClick={() => createTrack.mutate()} disabled={createTrack.isPending || !trackForm.title}>
@@ -1274,10 +1276,11 @@ export default function TrainingManagement() {
 
       {/* Section Form Modal */}
       <Dialog open={showSectionForm} onOpenChange={setShowSectionForm}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingSection ? "Edit Section" : "Add Section"}</DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-4">
               <div className="col-span-2 space-y-2">
@@ -1386,6 +1389,7 @@ export default function TrainingManagement() {
               </div>
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowSectionForm(false); setEditingSection(null); resetSectionForm(); }}>
               Cancel
@@ -1404,14 +1408,14 @@ export default function TrainingManagement() {
 
       {/* Preview Modal */}
       <Dialog open={showPreview} onOpenChange={setShowPreview}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <Eye className="h-5 w-5 text-blue-600" />
               Preview — {selectedTrack?.title}
             </DialogTitle>
           </DialogHeader>
-
+          <DialogBody>
           {loadingSections ? (
             <div className="py-8 text-center text-muted-foreground">Loading sections...</div>
           ) : sections.length === 0 ? (
@@ -1473,7 +1477,7 @@ export default function TrainingManagement() {
               ))}
             </div>
           )}
-
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setShowPreview(false)}>Close</Button>
             {selectedTrack?.status !== "published" && canAdmin && (
@@ -1504,6 +1508,7 @@ export default function TrainingManagement() {
               Bulk Assign by Role
             </DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4">
             <div className="space-y-2">
               <Label>SOP Training Module</Label>
@@ -1556,6 +1561,7 @@ export default function TrainingManagement() {
               />
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowBulkRoleModal(false); setBulkRoleTrackId(""); setBulkRoleSlug(""); setBulkRoleDepartment(""); setBulkRoleDueDate(""); }}>
               Cancel
@@ -1581,6 +1587,7 @@ export default function TrainingManagement() {
               Assign Track to Employees
             </DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4">
             {trackAssignments.length > 0 && (
               <div>
@@ -1632,6 +1639,7 @@ export default function TrainingManagement() {
               />
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setShowAssignModal(false); setAssignSelectedUsers([]); setAssignDueDate(""); }}>
               Cancel

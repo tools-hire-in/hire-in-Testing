@@ -21,8 +21,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogDescription,
 } from "@/components/ui/dialog";
+import { StepIndicator } from "@/components/ui/step-indicator";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -383,6 +384,7 @@ export function SalaryStructuresSection() {
   const { can } = usePermissions();
   const canWrite = can("payroll.structures.write");
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [structureStep, setStructureStep] = useState(0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [formName, setFormName] = useState("");
   const [formDesc, setFormDesc] = useState("");
@@ -586,123 +588,148 @@ export function SalaryStructuresSection() {
       )}
 
       {/* Create / Edit Dialog */}
-      <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o) { setDialogOpen(false); setEditingId(null); setRules([]); } }}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+      <Dialog open={dialogOpen} onOpenChange={(o) => { if (!o) { setDialogOpen(false); setEditingId(null); setRules([]); setStructureStep(0); } }}>
+        <DialogContent className="max-w-3xl">
           <DialogHeader>
             <DialogTitle>{editingId ? "Edit Structure" : "New Salary Structure"}</DialogTitle>
             <DialogDescription>Configure component rules. Exactly one residual is required.</DialogDescription>
+            <StepIndicator
+              steps={["Details", "Components"]}
+              current={structureStep}
+              className="mt-3"
+            />
           </DialogHeader>
 
-          <div className="space-y-4">
-            {/* Header fields */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label>Name *</Label>
-                <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="e.g. Standard India" data-testid="input-structure-name" />
-              </div>
-              <div className="space-y-1">
-                <Label>PF Mode</Label>
-                <Select value={formPfMode} onValueChange={v => setFormPfMode(v as any)}>
-                  <SelectTrigger data-testid="select-pf-mode"><SelectValue /></SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="restricted">Restricted (cap at ₹15,000 wages)</SelectItem>
-                    <SelectItem value="unrestricted">Unrestricted (PF on actual wages)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="sm:col-span-2 space-y-1">
-                <Label>Description</Label>
-                <Input value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder="Optional description" data-testid="input-structure-desc" />
-              </div>
-            </div>
-
-            {/* Validation error + basic warning */}
-            {validationError && (
-              <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                {validationError}
-              </div>
-            )}
-            {!validationError && warn && (
-              <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-sm text-amber-700 dark:text-amber-300">
-                <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
-                {warn}
-              </div>
-            )}
-
-            {/* Rule builder */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label>Component Rules</Label>
-                <Button type="button" variant="outline" size="sm" onClick={addRule} data-testid="button-add-rule">
-                  <Plus className="h-3.5 w-3.5 mr-1" /> Add Component
-                </Button>
-              </div>
-              {rules.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg">No components yet — add at least one residual.</p>
-              )}
-              <div className="space-y-2">
-                {rules.map((r, i) => (
-                  <RuleRow
-                    key={i}
-                    rule={r}
-                    index={i}
-                    total={rules.length}
-                    componentNames={componentNames}
-                    onChange={nr => updateRule(i, nr)}
-                    onRemove={() => removeRule(i)}
-                    onMoveUp={() => moveUp(i)}
-                    onMoveDown={() => moveDown(i)}
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Live preview */}
-            {rules.length > 0 && (
-              <div className="border rounded-lg p-4 bg-muted/30">
-                <div className="flex items-center justify-between mb-3">
-                  <p className="text-sm font-medium flex items-center gap-1.5">
-                    <TrendingUp className="h-4 w-4 text-primary" /> Live Preview
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-xs text-muted-foreground">Sample Gross (₹)</Label>
-                    <Input
-                      type="number"
-                      value={previewGross}
-                      onChange={e => setPreviewGross(e.target.value)}
-                      className="h-7 w-28 text-sm"
-                      data-testid="input-preview-gross"
-                    />
+          <DialogBody className="py-4">
+            {structureStep === 0 && (
+              <div className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <Label>Name *</Label>
+                    <Input value={formName} onChange={e => setFormName(e.target.value)} placeholder="e.g. Standard India" data-testid="input-structure-name" />
+                  </div>
+                  <div className="space-y-1">
+                    <Label>PF Mode</Label>
+                    <Select value={formPfMode} onValueChange={v => setFormPfMode(v as any)}>
+                      <SelectTrigger data-testid="select-pf-mode"><SelectValue /></SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="restricted">Restricted (cap at ₹15,000 wages)</SelectItem>
+                        <SelectItem value="unrestricted">Unrestricted (PF on actual wages)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="sm:col-span-2 space-y-1">
+                    <Label>Description</Label>
+                    <Input value={formDesc} onChange={e => setFormDesc(e.target.value)} placeholder="Optional description" data-testid="input-structure-desc" />
                   </div>
                 </div>
-                <div className="space-y-1">
-                  {preview.map((p, i) => (
-                    <div key={i} className="flex justify-between text-sm py-1 border-b last:border-0">
-                      <span>{p.name}</span>
-                      <span className="font-mono">₹ {fmtRupees(p.paise)}</span>
+              </div>
+            )}
+
+            {structureStep === 1 && (
+              <div className="space-y-4">
+                {/* Validation error + basic warning */}
+                {validationError && (
+                  <div className="flex items-start gap-2 rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    {validationError}
+                  </div>
+                )}
+                {!validationError && warn && (
+                  <div className="flex items-start gap-2 rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-sm text-amber-700 dark:text-amber-300">
+                    <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+                    {warn}
+                  </div>
+                )}
+
+                {/* Rule builder */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label>Component Rules</Label>
+                    <Button type="button" variant="outline" size="sm" onClick={addRule} data-testid="button-add-rule">
+                      <Plus className="h-3.5 w-3.5 mr-1" /> Add Component
+                    </Button>
+                  </div>
+                  {rules.length === 0 && (
+                    <p className="text-sm text-muted-foreground text-center py-4 border rounded-lg">No components yet — add at least one residual.</p>
+                  )}
+                  <div className="space-y-2">
+                    {rules.map((r, i) => (
+                      <RuleRow
+                        key={i}
+                        rule={r}
+                        index={i}
+                        total={rules.length}
+                        componentNames={componentNames}
+                        onChange={nr => updateRule(i, nr)}
+                        onRemove={() => removeRule(i)}
+                        onMoveUp={() => moveUp(i)}
+                        onMoveDown={() => moveDown(i)}
+                      />
+                    ))}
+                  </div>
+                </div>
+
+                {/* Live preview */}
+                {rules.length > 0 && (
+                  <div className="border rounded-lg p-4 bg-muted/30">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-sm font-medium flex items-center gap-1.5">
+                        <TrendingUp className="h-4 w-4 text-primary" /> Live Preview
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <Label className="text-xs text-muted-foreground">Sample Gross (₹)</Label>
+                        <Input
+                          type="number"
+                          value={previewGross}
+                          onChange={e => setPreviewGross(e.target.value)}
+                          className="h-7 w-28 text-sm"
+                          data-testid="input-preview-gross"
+                        />
+                      </div>
                     </div>
-                  ))}
-                  <div className="flex justify-between text-sm py-1 font-semibold">
-                    <span>Total</span>
-                    <span className="font-mono">₹ {fmtRupees(preview.reduce((s, p) => s + p.paise, 0))}</span>
+                    <div className="space-y-1">
+                      {preview.map((p, i) => (
+                        <div key={i} className="flex justify-between text-sm py-1 border-b last:border-0">
+                          <span>{p.name}</span>
+                          <span className="font-mono">₹ {fmtRupees(p.paise)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between text-sm py-1 font-semibold">
+                        <span>Total</span>
+                        <span className="font-mono">₹ {fmtRupees(preview.reduce((s, p) => s + p.paise, 0))}</span>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
               </div>
             )}
-          </div>
+          </DialogBody>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => { setDialogOpen(false); setEditingId(null); setRules([]); }}>
+            <Button variant="outline" onClick={() => { setDialogOpen(false); setEditingId(null); setRules([]); setStructureStep(0); }}>
               Cancel
             </Button>
-            <Button
-              onClick={handleSave}
-              disabled={!formName.trim() || !!validationError || isSaving}
-              data-testid="button-save-structure"
-            >
-              {isSaving ? "Saving…" : "Save Structure"}
-            </Button>
+            {structureStep > 0 && (
+              <Button variant="ghost" onClick={() => setStructureStep(0)} data-testid="button-structure-back">← Back</Button>
+            )}
+            {structureStep === 0 ? (
+              <Button
+                onClick={() => setStructureStep(1)}
+                disabled={!formName.trim()}
+                data-testid="button-structure-next"
+              >
+                Next →
+              </Button>
+            ) : (
+              <Button
+                onClick={handleSave}
+                disabled={!formName.trim() || !!validationError || isSaving}
+                data-testid="button-save-structure"
+              >
+                {isSaving ? "Saving…" : "Save Structure"}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -713,11 +740,13 @@ export function SalaryStructuresSection() {
           <DialogHeader>
             <DialogTitle>{confirmDeactivate?.isActive ? "Deactivate" : "Activate"} Structure</DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <p className="text-sm text-muted-foreground">
             {confirmDeactivate?.isActive
               ? `Deactivating "${confirmDeactivate?.name}" prevents it from being assigned to new employees. Existing assignments remain until re-assigned.`
               : `Activating "${confirmDeactivate?.name}" makes it available for assignment again.`}
           </p>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmDeactivate(null)}>Cancel</Button>
             <Button
@@ -875,6 +904,7 @@ export function StateRegistrationsSection() {
           <DialogHeader>
             <DialogTitle>Registration — {editState?.state} {editState?.levyType.toUpperCase()}</DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div>
@@ -915,6 +945,7 @@ export function StateRegistrationsSection() {
               />
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setEditState(null); setFormAuditReason(""); }}>Cancel</Button>
             <Button
@@ -1183,6 +1214,7 @@ export function CoverageSection() {
                 : "Update the establishment coverage status for this scheme."}
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4">
             {editScheme?.isLatched && editScheme.status === "mandatory" ? (
               <div className="rounded-md border border-green-300 bg-green-50 dark:bg-green-900/20 p-3 text-sm text-green-700 dark:text-green-300 flex items-start gap-2">
@@ -1236,6 +1268,7 @@ export function CoverageSection() {
               </>
             )}
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditScheme(null)}>Cancel</Button>
             {!(editScheme?.isLatched && editScheme?.status === "mandatory") && (
@@ -1269,6 +1302,7 @@ export function CoverageSection() {
               This will permanently latch {pendingMandatoryScheme?.scheme} as mandatory. You cannot undo this.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-3">
             <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-900/20 p-4 text-sm text-red-700 dark:text-red-300 space-y-2">
               <p className="font-semibold flex items-center gap-1.5"><AlertTriangle className="h-4 w-4 shrink-0" /> Irreversible Action</p>
@@ -1280,6 +1314,7 @@ export function CoverageSection() {
               </ul>
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setMandatoryConfirmOpen(false)}>Go Back</Button>
             <Button
@@ -1320,6 +1355,7 @@ export function CoverageSection() {
               Mandatory registration is legally required under Indian labour law.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4">
             <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-900/20 p-3 text-sm text-red-700 dark:text-red-300">
               <p className="font-semibold flex items-center gap-1.5 mb-1.5">
@@ -1367,6 +1403,7 @@ export function CoverageSection() {
               )}
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setCrossingDialog(null); setCrossApplicableFrom(""); }}>Cancel</Button>
             <Button

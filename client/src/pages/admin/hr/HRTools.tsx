@@ -19,7 +19,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogBody } from "@/components/ui/dialog";
+import { StepIndicator } from "@/components/ui/step-indicator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetDescription } from "@/components/ui/sheet";
 import { OfferLetterBody } from "@/components/OfferLetterBody";
 import { LetterGenerator } from "@/components/hr/LetterGenerator";
@@ -951,6 +952,7 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
 
   const [sending, setSending] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
+  const [offerStep, setOfferStep] = useState(0);
   const [annexures, setAnnexures] = useState<AnnexureItem[]>([]);
   const [policyAnnexures, setPolicyAnnexures] = useState<string[]>([]);
 
@@ -1271,8 +1273,14 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
           </CardContent>
         </Card>
       )}
-      {/* Mode toggle */}
-      <Card>
+      {/* Step indicator */}
+      <StepIndicator
+        steps={["Candidate Info", "Compensation", "Terms"]}
+        current={offerStep}
+      />
+
+      {/* Step 0 — Candidate Info */}
+      {offerStep === 0 && <Card>
         <CardHeader>
           <CardTitle className="text-base flex items-center gap-2">
             <User className="h-4 w-4" />
@@ -1333,13 +1341,13 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
             </div>
           )}
         </CardContent>
-      </Card>
+      </Card>}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Candidate Information</CardTitle>
-          </CardHeader>
+      {/* Candidate Information — step 0 */}
+      {offerStep === 0 && <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Candidate Information</CardTitle>
+        </CardHeader>
           <CardContent className="space-y-3">
             {!formData.existingEmployeeMode && (
               <>
@@ -1440,12 +1448,13 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
               </Select>
             </div>
           </CardContent>
-        </Card>
+      </Card>}
 
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-base">Employment Details</CardTitle>
-          </CardHeader>
+      {/* Employment Details — step 1 */}
+      {offerStep === 1 && <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Employment Details</CardTitle>
+        </CardHeader>
           <CardContent className="space-y-3">
             <div>
               <Label>Employment Type</Label>
@@ -1699,9 +1708,9 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
               </div>
             </div>
           </CardContent>
-        </Card>
-      </div>
+      </Card>}
 
+      {offerStep === 2 && <>
       <AnnexureEditor annexures={annexures} onChange={setAnnexures} />
 
       <Card>
@@ -1796,6 +1805,23 @@ export function OfferLetterGenerator({ editId }: { editId?: string | null } = {}
           </div>
         </CardContent>
       </Card>
+      </>}
+
+      {/* Step navigation */}
+      <div className="flex items-center justify-between gap-2 pt-2">
+        {offerStep > 0 ? (
+          <Button variant="ghost" onClick={() => setOfferStep(s => s - 1)} data-testid="button-offer-back">← Back</Button>
+        ) : <span />}
+        {offerStep < 2 && (
+          <Button
+            onClick={() => setOfferStep(s => s + 1)}
+            disabled={
+              offerStep === 0 && !formData.existingEmployeeMode && !formData.candidateName.trim()
+            }
+            data-testid="button-offer-next"
+          >Next →</Button>
+        )}
+      </div>
 
       <Sheet open={showPreview} onOpenChange={setShowPreview}>
         <SheetContent side="right" className="w-full sm:max-w-2xl flex flex-col p-0">
@@ -3031,6 +3057,7 @@ export function OfferLettersDashboard() {
               Reject the offer letter for <strong>{rejectDialog?.candidateName}</strong> ({rejectDialog?.designation}). The manager who submitted it will be notified.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-3 py-2">
             <div>
               <Label>Reason for Rejection (optional)</Label>
@@ -3043,6 +3070,7 @@ export function OfferLettersDashboard() {
               />
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setRejectDialog(null); setRejectReason(""); }}>
               Cancel
@@ -3061,7 +3089,8 @@ export function OfferLettersDashboard() {
       </Dialog>
 
       <Dialog open={!!viewAddendum} onOpenChange={(open) => { if (!open) setViewAddendum(null); }}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
+          <DialogBody>
           {viewAddendum && (() => {
             const a = viewAddendum;
             const med = (a.manualEmployeeData && typeof a.manualEmployeeData === "object") ? a.manualEmployeeData as Record<string, any> : {};
@@ -3255,6 +3284,7 @@ export function OfferLettersDashboard() {
               </>
             );
           })()}
+          </DialogBody>
         </DialogContent>
       </Dialog>
 
@@ -3267,6 +3297,7 @@ export function OfferLettersDashboard() {
               An onboarding welcome email will be sent to their @hire-in.com address with login credentials and a 10-step onboarding guide.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4 py-2">
             <div>
               <Label>Hire-in Email Address</Label>
@@ -3282,6 +3313,7 @@ export function OfferLettersDashboard() {
               )}
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setOnboardingModal(null)} data-testid="button-cancel-onboard">
               Cancel
@@ -3306,6 +3338,7 @@ export function OfferLettersDashboard() {
               Digitally sign the offer letter for <strong>{countersignModal?.candidateName}</strong>.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4 py-2">
             <div className="bg-muted/30 p-3 rounded-md space-y-2 text-xs">
               <div className="flex justify-between">
@@ -3395,6 +3428,7 @@ export function OfferLettersDashboard() {
               </div>
             )}
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setCountersignModal(null)} data-testid="button-cancel-countersign">
               Cancel
@@ -3413,12 +3447,13 @@ export function OfferLettersDashboard() {
 
       {/* Policy Annexure full-text viewer (countersign view) */}
       <Dialog open={annexureViewerKey !== null} onOpenChange={(open) => { if (!open) setAnnexureViewerKey(null); }}>
-        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-countersign-annexure-content">
+        <DialogContent className="max-w-2xl" data-testid="dialog-countersign-annexure-content">
           <DialogHeader>
             <DialogTitle data-testid="text-countersign-annexure-dialog-title">
               {annexureViewerContent?.title ?? "Policy Annexure"}
             </DialogTitle>
           </DialogHeader>
+          <DialogBody>
           {annexureViewerContent ? (
             <div className="text-sm text-foreground whitespace-pre-wrap leading-relaxed" data-testid="text-countersign-annexure-dialog-body">
               {annexureViewerContent.body}
@@ -3426,12 +3461,13 @@ export function OfferLettersDashboard() {
           ) : (
             <p className="text-sm text-muted-foreground">Loading…</p>
           )}
+          </DialogBody>
         </DialogContent>
       </Dialog>
 
       {/* Create Addendum Dialog */}
       <Dialog open={!!addendumDialog} onOpenChange={(open) => { if (!open) { setAddendumDialog(null); resetAddendumForm(); } }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FilePlus className="h-5 w-5 text-blue-600" />
@@ -3442,7 +3478,7 @@ export function OfferLettersDashboard() {
               The candidate will receive an email with a link to sign the addendum.
             </DialogDescription>
           </DialogHeader>
-
+          <DialogBody>
           <div className="space-y-4 py-2">
             {/* Type */}
             <div className="grid grid-cols-2 gap-4">
@@ -3783,7 +3819,7 @@ export function OfferLettersDashboard() {
               </div>
             )}
           </div>
-
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAddendumDialog(null); resetAddendumForm(); }} data-testid="button-cancel-addendum-dialog">
               Cancel
@@ -3802,7 +3838,7 @@ export function OfferLettersDashboard() {
       </Dialog>
 
       <Dialog open={standaloneDialog} onOpenChange={(open) => { if (!open) { setStandaloneDialog(false); resetStandaloneForm(); } }}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <FilePlus className="h-5 w-5 text-purple-600" />
@@ -3812,7 +3848,7 @@ export function OfferLettersDashboard() {
               Look up an existing employee to auto-fill their details (so goals can be attached), or enter details manually for a legacy employee with no offer letter in the system.
             </DialogDescription>
           </DialogHeader>
-
+          <DialogBody>
           <div className="space-y-4 py-2">
             <div className="border rounded-lg p-4 space-y-3 bg-purple-50/30 border-purple-100">
               <h4 className="text-sm font-semibold text-purple-900">Employee Details</h4>
@@ -4045,7 +4081,7 @@ export function OfferLettersDashboard() {
               goalPushDisabledReason="Look up and select a system employee above to push annexure rows as their performance goals."
             />
           </div>
-
+          </DialogBody>
           <DialogFooter className="flex-col gap-2 sm:flex-col">
             {(!standaloneForm.employeeName || !standaloneForm.employeeEmail || !standaloneForm.effectiveDate) && (
               <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded px-3 py-2 w-full text-center">
@@ -4327,12 +4363,14 @@ export function OfferLettersDashboard() {
             <DialogTitle>Revoke Letter</DialogTitle>
             <DialogDescription>This marks the letter as revoked. Provide a reason for the audit trail.</DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <Textarea
             placeholder="Reason for revoking…"
             value={hrRevokeReason}
             onChange={(e) => setHrRevokeReason(e.target.value)}
             data-testid="input-hr-revoke-reason"
           />
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setHrRevokeDialog(null); setHrRevokeReason(""); }} data-testid="button-cancel-hr-revoke">Cancel</Button>
             <Button
@@ -4353,12 +4391,14 @@ export function OfferLettersDashboard() {
             <DialogTitle>Re-issue Letter</DialogTitle>
             <DialogDescription>Issues a corrected letter using the employee's current data. Provide a reason for the audit trail.</DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <Textarea
             placeholder="Reason for re-issuing…"
             value={hrReissueReason}
             onChange={(e) => setHrReissueReason(e.target.value)}
             data-testid="input-hr-reissue-reason"
           />
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setHrReissueDialog(null); setHrReissueReason(""); }} data-testid="button-cancel-hr-reissue">Cancel</Button>
             <Button
@@ -4378,6 +4418,7 @@ export function OfferLettersDashboard() {
             <DialogTitle>Resend Letter</DialogTitle>
             <DialogDescription>Resend this letter to the employee. CC recipients can be updated (comma-separated).</DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">To (recipient)</label>
@@ -4397,6 +4438,7 @@ export function OfferLettersDashboard() {
               />
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setHrEmailDialog(null); setHrEmailCc(""); }} data-testid="button-cancel-hr-email">Cancel</Button>
             <Button
@@ -4416,6 +4458,7 @@ export function OfferLettersDashboard() {
             <DialogTitle>Resend Offer Letter</DialogTitle>
             <DialogDescription>Resend the offer letter without changing the acceptance link or expiry. CC addresses can be adjusted.</DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-3">
             <div>
               <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">To (candidate)</label>
@@ -4437,6 +4480,7 @@ export function OfferLettersDashboard() {
               />
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setResendOfferDialog(null); setResendOfferCc(""); }} data-testid="button-cancel-resend-offer">Cancel</Button>
             <Button

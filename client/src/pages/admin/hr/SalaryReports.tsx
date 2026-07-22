@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogBody, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing, Receipt, Layers, Trash2, Banknote, FileDown, Shield } from "lucide-react";
@@ -615,7 +615,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-regenerate-month">
+      <DialogContent className="max-w-3xl" data-testid="dialog-regenerate-month">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <RefreshCw className="h-5 w-5" />
@@ -625,6 +625,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
 
         {step === "warn" && (
           <>
+            <DialogBody>
             <div className="space-y-4 py-2">
               <div className="flex items-start gap-3 p-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800">
                 <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
@@ -636,6 +637,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
                 </div>
               </div>
             </div>
+            </DialogBody>
             <DialogFooter>
               <Button variant="outline" onClick={onClose}>Cancel</Button>
               <Button onClick={() => previewMutation.mutate()} disabled={previewMutation.isPending} data-testid="button-preview-regenerate">
@@ -647,6 +649,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
 
         {step === "diff" && (
           <>
+            <DialogBody>
             <div className="space-y-4 py-2">
               <div className="flex items-center gap-3 text-sm flex-wrap">
                 <span className="font-medium">{diff.length} employees</span>
@@ -694,6 +697,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
                 </div>
               )}
             </div>
+            </DialogBody>
             <DialogFooter className="flex-col sm:flex-row gap-2">
               <Button variant="outline" onClick={onClose}>Cancel</Button>
               <Button variant="secondary" onClick={() => setStep("warn")}>Back</Button>
@@ -706,6 +710,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
 
         {step === "done" && (
           <>
+            <DialogBody>
             <div className="space-y-4 py-4 text-center">
               <div className="flex justify-center"><div className="p-4 rounded-full bg-green-100 dark:bg-green-900/20"><RefreshCw className="h-8 w-8 text-green-600 dark:text-green-400" /></div></div>
               <div>
@@ -713,6 +718,7 @@ function RegenerateMonthModal({ month, year, onClose }: { month: string; year: s
                 <p className="text-sm text-muted-foreground mt-1">All slips for {monthLabel} {year} have been recalculated.</p>
               </div>
             </div>
+            </DialogBody>
             <DialogFooter><Button onClick={onClose}>Done</Button></DialogFooter>
           </>
         )}
@@ -1225,6 +1231,7 @@ function AdvanceManagerPanel({
             Advances &amp; Adjustments — {employeeName}
           </DialogTitle>
         </DialogHeader>
+        <DialogBody className="py-2">
         <div className="space-y-4">
           <p className="text-xs text-muted-foreground">
             Recoveries scheduled for <strong>{monthName(month)} {year}</strong>. Edits write to the advance
@@ -1323,6 +1330,7 @@ function AdvanceManagerPanel({
             />
           )}
         </div>
+        </DialogBody>
         <DialogFooter>
           <Button variant="outline" onClick={onClose} data-testid="btn-close-advance-manager">Close</Button>
         </DialogFooter>
@@ -1807,6 +1815,7 @@ function ApprovalTable({
               Confirm Approval
             </DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-3 py-2 text-sm text-muted-foreground">
             <p>You are about to approve and dispatch the <strong className="text-foreground">{monthName(run.month)} {run.year}</strong> salary report.</p>
             {adjustedCount > 0 && (
@@ -1869,6 +1878,7 @@ function ApprovalTable({
             </div>
             <p className="text-foreground font-medium">This action cannot be undone.</p>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setConfirmApprove(false)}>Cancel</Button>
             <Button
@@ -3032,6 +3042,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
           <DialogHeader>
             <DialogTitle>Discard Attendance Report — {mLabel} {selectedYear}</DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
               This voids the current attendance report run. It will be marked cancelled (not approved),
@@ -3049,6 +3060,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               />
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAttDiscardDialogOpen(false)}>Cancel</Button>
             <Button
@@ -3070,6 +3082,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
           <DialogHeader>
             <DialogTitle>Send for Approval — {mLabel} {selectedYear}</DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-3">
             <p className="text-sm text-muted-foreground">
               Please confirm you are sending the <strong>correct month</strong>. This will email the reporting
@@ -3081,6 +3094,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               <div className="flex justify-between"><span className="text-muted-foreground">Managers to notify</span><span className="font-medium" data-testid="text-send-manager-count">{(attStatus?.managerApprovals || []).filter((a: any) => a.status !== "approved" && a.status !== "overridden").length}</span></div>
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setAttSendDialogOpen(false)}>Cancel</Button>
             <Button
@@ -3148,6 +3162,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               This creates a new version (v{(attStatus?.version ?? 1) + 1}) from the latest attendance data and re-requests manager approvals. The current version is retained as history. A reason is required.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-2 py-2">
             <Label htmlFor="regen-comment">Reason for regeneration <span className="text-red-500">*</span></Label>
             <Textarea
@@ -3162,6 +3177,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               <p className="text-xs text-amber-600">This month's attendance is already approved. Regenerating will reset approvals to pending. It is blocked if the salary run is already approved.</p>
             )}
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setRegenDialogOpen(false); setRegenComment(""); }} data-testid="button-cancel-regen">Cancel</Button>
             <Button
@@ -3285,6 +3301,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               {attOverrideManagerId ? "Override Manager Approval" : "Override All & Approve Attendance"}
             </DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <p className="text-sm text-muted-foreground">
             {attOverrideManagerId
               ? "This will mark this manager's attendance as approved by HR and bypass their pending action."
@@ -3300,6 +3317,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               data-testid="textarea-override-note"
             />
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAttOverrideDialogOpen(false); setAttOverrideNote(""); }}>Cancel</Button>
             <Button
@@ -3322,6 +3340,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               Override Attendance Approval Gate
             </DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-3 text-sm">
             <div className="flex items-start gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800">
               <AlertTriangle className="h-4 w-4 text-red-500 shrink-0 mt-0.5" />
@@ -3340,6 +3359,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               />
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setAttApprovalOverrideOpen(false); setAttApprovalOverrideReason(""); }}>
               Cancel
@@ -3365,6 +3385,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               Override Pending Regularizations
             </DialogTitle>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-3 text-sm">
             <div className="flex items-start gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
               <AlertTriangle className="h-4 w-4 text-amber-500 shrink-0 mt-0.5" />
@@ -3383,6 +3404,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               />
             </div>
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setPendingRegOverrideOpen(false); setPendingRegOverrideReason(""); }}>
               Cancel
@@ -3619,7 +3641,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
 
       {/* Generate Salary Run — pre-confirm dialog with per-employee diff vs prior month */}
       <Dialog open={generateConfirmOpen} onOpenChange={setGenerateConfirmOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto" data-testid="dialog-generate-confirm">
+        <DialogContent className="max-w-3xl" data-testid="dialog-generate-confirm">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
               <ShieldCheck className="h-5 w-5 text-blue-600" />
@@ -3629,6 +3651,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               Review the expected figures before committing. After generation, you can correct individual rows before sending for approval.
             </DialogDescription>
           </DialogHeader>
+          <DialogBody>
           <div className="space-y-4">
             {!previewData ? (
               <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 p-4">
@@ -3714,6 +3737,7 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
               </>
             )}
           </div>
+          </DialogBody>
           <DialogFooter>
             <Button variant="outline" onClick={() => setGenerateConfirmOpen(false)}>Cancel</Button>
             {!previewData && (

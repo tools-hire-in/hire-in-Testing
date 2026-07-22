@@ -30,8 +30,10 @@ import {
   DialogDescription,
   DialogHeader,
   DialogTitle,
+  DialogBody,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { StepIndicator } from "@/components/ui/step-indicator";
 import {
   Select,
   SelectContent,
@@ -131,6 +133,7 @@ export default function AdminUsers() {
   const [search, setSearch] = useState("");
 
   const [inviteOpen, setInviteOpen] = useState(false);
+  const [inviteStep, setInviteStep] = useState(0);
   const [newEmail, setNewEmail] = useState("");
   const [newFirstName, setNewFirstName] = useState("");
   const [newLastName, setNewLastName] = useState("");
@@ -907,6 +910,7 @@ export default function AdminUsers() {
           setInviteOpen(open);
           setExecToggle(false);
           setNewRole("employee");
+          setInviteStep(0);
         }}>
           <DialogContent>
             <DialogHeader>
@@ -916,84 +920,135 @@ export default function AdminUsers() {
                   ? "Add an executive account with full payroll execution and compliance access. No invite email is sent — share login credentials privately."
                   : "Add a new team member. They'll receive an email with login credentials."}
               </DialogDescription>
+              {newRole !== "executive" && (
+                <StepIndicator
+                  steps={["Personal", "Role & Access", "Settings"]}
+                  current={inviteStep}
+                  className="mt-3"
+                />
+              )}
             </DialogHeader>
-            <div className="space-y-4">
-              {currentUserRank > roleRank.executive && (
-                <div className="flex items-center justify-between rounded-lg border p-3">
-                  <div className="space-y-0.5 pr-4">
-                    <Label htmlFor="exec-toggle" className="font-medium">Executive (payroll &amp; compliance access)</Label>
-                    <p className="text-xs text-muted-foreground">Full India payroll access. Credentials shown once — share privately.</p>
+            <DialogBody className="py-4">
+              {/* Step 0 — Personal info (always shown for both executive and non-executive) */}
+              {inviteStep === 0 && (
+                <div className="space-y-4">
+                  {currentUserRank > roleRank.executive && (
+                    <div className="flex items-center justify-between rounded-lg border p-3">
+                      <div className="space-y-0.5 pr-4">
+                        <Label htmlFor="exec-toggle" className="font-medium">Executive (payroll &amp; compliance access)</Label>
+                        <p className="text-xs text-muted-foreground">Full India payroll access. Credentials shown once — share privately.</p>
+                      </div>
+                      <Switch
+                        id="exec-toggle"
+                        checked={execToggle}
+                        onCheckedChange={(checked) => {
+                          setExecToggle(checked);
+                          setNewRole(checked ? "executive" : "employee");
+                        }}
+                        data-testid="switch-invite-executive"
+                      />
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="firstName">First Name</Label>
+                      <Input id="firstName" placeholder="John" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} data-testid="input-invite-first-name" />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="lastName">Last Name</Label>
+                      <Input id="lastName" placeholder="Doe" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} data-testid="input-invite-last-name" />
+                    </div>
                   </div>
-                  <Switch
-                    id="exec-toggle"
-                    checked={execToggle}
-                    onCheckedChange={(checked) => {
-                      setExecToggle(checked);
-                      setNewRole(checked ? "executive" : "employee");
-                    }}
-                    data-testid="switch-invite-executive"
-                  />
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email Address</Label>
+                    <Input id="email" type="email" placeholder={newRole === "executive" ? "user@anycompany.com" : "user@hire-in.com"} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} data-testid="input-invite-email" />
+                    <p className="text-xs text-muted-foreground">
+                      {newRole === "executive"
+                        ? "Any email address accepted for executive accounts."
+                        : "Must end with @hire-in.com."}
+                    </p>
+                  </div>
                 </div>
               )}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">First Name</Label>
-                  <Input id="firstName" placeholder="John" value={newFirstName} onChange={(e) => setNewFirstName(e.target.value)} data-testid="input-invite-first-name" />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name</Label>
-                  <Input id="lastName" placeholder="Doe" value={newLastName} onChange={(e) => setNewLastName(e.target.value)} data-testid="input-invite-last-name" />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="email">Email Address</Label>
-                <Input id="email" type="email" placeholder={newRole === "executive" ? "user@anycompany.com" : "user@hire-in.com"} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} data-testid="input-invite-email" />
-                <p className="text-xs text-muted-foreground">
-                  {newRole === "executive"
-                    ? "Any email address accepted for executive accounts."
-                    : "Must end with @hire-in.com."}
-                </p>
-              </div>
-              {newRole !== "executive" && (
-              <div className="grid grid-cols-2 gap-4">
-                {newRole !== "executive" && (
+
+              {/* Step 1 — Role & Access (non-executive only) */}
+              {inviteStep === 1 && newRole !== "executive" && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="role">Role</Label>
+                      <Select value={newRole} onValueChange={setNewRole}>
+                        <SelectTrigger data-testid="select-invite-role"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          {currentUserRank > roleRank.admin && <SelectItem value="admin">Admin</SelectItem>}
+                          {currentUserRank > roleRank.hr && <SelectItem value="hr">HR</SelectItem>}
+                          {currentUserRank > roleRank.finance && <SelectItem value="finance">Finance</SelectItem>}
+                          {currentUserRank > roleRank.operations && <SelectItem value="operations">Operations</SelectItem>}
+                          {currentUserRank > roleRank.manager && <SelectItem value="manager">Manager</SelectItem>}
+                          {currentUserRank > roleRank.recruiter && <SelectItem value="recruiter">Recruiter</SelectItem>}
+                          <SelectItem value="employee">Employee</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="hierarchyLevel">Level</Label>
+                      <Select value={newHierarchyLevel} onValueChange={setNewHierarchyLevel}>
+                        <SelectTrigger data-testid="select-invite-level"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="ceo">CEO</SelectItem>
+                          <SelectItem value="vp">Vice President</SelectItem>
+                          <SelectItem value="director">Director</SelectItem>
+                          <SelectItem value="manager">Manager</SelectItem>
+                          <SelectItem value="team_lead">Team Lead</SelectItem>
+                          <SelectItem value="delivery_manager">Delivery Manager</SelectItem>
+                          <SelectItem value="team_member">Team Member</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
                   <div className="space-y-2">
-                    <Label htmlFor="role">Role</Label>
-                    <Select value={newRole} onValueChange={setNewRole}>
-                      <SelectTrigger data-testid="select-invite-role"><SelectValue /></SelectTrigger>
+                    <Label htmlFor="department">Department <span className="text-destructive">*</span></Label>
+                    <Select value={newDepartmentId} onValueChange={setNewDepartmentId}>
+                      <SelectTrigger data-testid="select-invite-department"><SelectValue placeholder="Select department (required)" /></SelectTrigger>
                       <SelectContent>
-                        {currentUserRank > roleRank.admin && <SelectItem value="admin">Admin</SelectItem>}
-                        {currentUserRank > roleRank.hr && <SelectItem value="hr">HR</SelectItem>}
-                        {currentUserRank > roleRank.finance && <SelectItem value="finance">Finance</SelectItem>}
-                        {currentUserRank > roleRank.operations && <SelectItem value="operations">Operations</SelectItem>}
-                        {currentUserRank > roleRank.manager && <SelectItem value="manager">Manager</SelectItem>}
-                        {currentUserRank > roleRank.recruiter && <SelectItem value="recruiter">Recruiter</SelectItem>}
-                        <SelectItem value="employee">Employee</SelectItem>
+                        {deptList?.filter(d => d.isActive).map(d => (
+                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
+                    {!newDepartmentId && <p className="text-xs text-destructive">Department is required to auto-assign training tracks.</p>}
                   </div>
-                )}
-                {newRole !== "executive" && (
-                  <div className="space-y-2">
-                    <Label htmlFor="hierarchyLevel">Level</Label>
-                    <Select value={newHierarchyLevel} onValueChange={setNewHierarchyLevel}>
-                      <SelectTrigger data-testid="select-invite-level"><SelectValue /></SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="ceo">CEO</SelectItem>
-                        <SelectItem value="vp">Vice President</SelectItem>
-                        <SelectItem value="director">Director</SelectItem>
-                        <SelectItem value="manager">Manager</SelectItem>
-                        <SelectItem value="team_lead">Team Lead</SelectItem>
-                        <SelectItem value="delivery_manager">Delivery Manager</SelectItem>
-                        <SelectItem value="team_member">Team Member</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="gender">Gender</Label>
+                      <Select value={newGender} onValueChange={setNewGender}>
+                        <SelectTrigger data-testid="select-invite-gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="Male">Male</SelectItem>
+                          <SelectItem value="Female">Female</SelectItem>
+                          <SelectItem value="Other">Other</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="shift">Shift <span className="text-destructive">*</span></Label>
+                      <Select value={newShiftId} onValueChange={setNewShiftId}>
+                        <SelectTrigger data-testid="select-invite-shift"><SelectValue placeholder="Select shift (required)" /></SelectTrigger>
+                        <SelectContent>
+                          {(shiftDefs || []).map(s => (
+                            <SelectItem key={s.id} value={s.id}>{s.displayLabel || s.name}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      {!newShiftId && <p className="text-xs text-destructive">Shift is required for attendance tracking.</p>}
+                    </div>
                   </div>
-                )}
-              </div>
+                </div>
               )}
-              {newRole !== "executive" && (
-                <>
+
+              {/* Step 2 — Settings (non-executive only) */}
+              {inviteStep === 2 && newRole !== "executive" && (
+                <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-4">
                     <div className="space-y-2">
                       <Label htmlFor="joiningDate">Joining Date</Label>
@@ -1038,76 +1093,58 @@ export default function AdminUsers() {
                       </Select>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="department">Department <span className="text-destructive">*</span></Label>
-                    <Select value={newDepartmentId} onValueChange={setNewDepartmentId}>
-                      <SelectTrigger data-testid="select-invite-department"><SelectValue placeholder="Select department (required)" /></SelectTrigger>
-                      <SelectContent>
-                        {deptList?.filter(d => d.isActive).map(d => (
-                          <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                    {!newDepartmentId && <p className="text-xs text-destructive">Department is required to auto-assign training tracks.</p>}
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="gender">Gender</Label>
-                      <Select value={newGender} onValueChange={setNewGender}>
-                        <SelectTrigger data-testid="select-invite-gender"><SelectValue placeholder="Select gender" /></SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Male">Male</SelectItem>
-                          <SelectItem value="Female">Female</SelectItem>
-                          <SelectItem value="Other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="shift">Shift <span className="text-destructive">*</span></Label>
-                      <Select value={newShiftId} onValueChange={setNewShiftId}>
-                        <SelectTrigger data-testid="select-invite-shift"><SelectValue placeholder="Select shift (required)" /></SelectTrigger>
-                        <SelectContent>
-                          {(shiftDefs || []).map(s => (
-                            <SelectItem key={s.id} value={s.id}>{s.displayLabel || s.name}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {!newShiftId && <p className="text-xs text-destructive">Shift is required for attendance tracking.</p>}
-                    </div>
-                  </div>
-                </>
+                </div>
               )}
-              <Button
-                className="w-full"
-                onClick={() => inviteMutation.mutate(
-                  newRole === "executive"
-                    ? {
-                        email: newEmail, firstName: newFirstName, lastName: newLastName, role: newRole,
-                      }
-                    : {
-                        email: newEmail, firstName: newFirstName, lastName: newLastName, role: newRole,
-                        joiningDate: newJoiningDate || undefined, designation: newDesignation || undefined,
-                        departmentId: newDepartmentId && newDepartmentId !== "none" ? newDepartmentId : undefined,
-                        hierarchyLevel: newHierarchyLevel || undefined,
-                        salary: newSalary || undefined,
-                        managerId: newManagerId && newManagerId !== "none" ? newManagerId : undefined,
-                        gender: newGender || undefined,
-                        employeeCategory: newEmployeeCategory,
-                        shiftId: newShiftId || undefined,
-                      } as any
-                )}
-                disabled={
-                  (newRole === "executive"
-                    ? (!newEmail.trim() || !newEmail.includes("@") || newEmail.split("@")[1]?.length < 1)
-                    : !newEmail.endsWith("@hire-in.com")) ||
-                  !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending ||
-                  (newRole !== "executive" && (!newDepartmentId || newDepartmentId === "none" || !newShiftId))
-                }
-                data-testid="button-send-invite"
-              >
-                {inviteMutation.isPending ? (newRole === "executive" ? "Creating..." : "Sending...") : (newRole === "executive" ? "Create Executive" : "Send Invite")}
-              </Button>
-            </div>
+            </DialogBody>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setInviteOpen(false); setInviteStep(0); }}>Cancel</Button>
+              {inviteStep > 0 && (
+                <Button variant="ghost" onClick={() => setInviteStep(s => s - 1)} data-testid="button-invite-back">← Back</Button>
+              )}
+              {/* Executive: single step, show submit */}
+              {newRole === "executive" ? (
+                <Button
+                  onClick={() => inviteMutation.mutate({ email: newEmail, firstName: newFirstName, lastName: newLastName, role: newRole })}
+                  disabled={
+                    !newEmail.trim() || !newEmail.includes("@") || newEmail.split("@")[1]?.length < 1 ||
+                    !newFirstName.trim() || !newLastName.trim() || inviteMutation.isPending
+                  }
+                  data-testid="button-send-invite"
+                >
+                  {inviteMutation.isPending ? "Creating..." : "Create Executive"}
+                </Button>
+              ) : inviteStep < 2 ? (
+                <Button
+                  onClick={() => setInviteStep(s => s + 1)}
+                  disabled={
+                    inviteStep === 0
+                      ? (!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim())
+                      : inviteStep === 1 && (!newDepartmentId || newDepartmentId === "none" || !newShiftId)
+                  }
+                  data-testid="button-invite-next"
+                >
+                  Next →
+                </Button>
+              ) : (
+                <Button
+                  onClick={() => inviteMutation.mutate({
+                    email: newEmail, firstName: newFirstName, lastName: newLastName, role: newRole,
+                    joiningDate: newJoiningDate || undefined, designation: newDesignation || undefined,
+                    departmentId: newDepartmentId && newDepartmentId !== "none" ? newDepartmentId : undefined,
+                    hierarchyLevel: newHierarchyLevel || undefined,
+                    salary: newSalary || undefined,
+                    managerId: newManagerId && newManagerId !== "none" ? newManagerId : undefined,
+                    gender: newGender || undefined,
+                    employeeCategory: newEmployeeCategory,
+                    shiftId: newShiftId || undefined,
+                  } as any)}
+                  disabled={inviteMutation.isPending}
+                  data-testid="button-send-invite"
+                >
+                  {inviteMutation.isPending ? "Sending..." : "Send Invite"}
+                </Button>
+              )}
+            </DialogFooter>
           </DialogContent>
         </Dialog>
 
@@ -1120,6 +1157,7 @@ export default function AdminUsers() {
                 No email was sent. These credentials are shown only once — copy them now and share them privately. This is the working password; no change is required on first login.
               </DialogDescription>
             </DialogHeader>
+            <DialogBody>
             <div className="space-y-3">
               <div className="rounded-lg border bg-muted/50 p-4 space-y-2 font-mono text-sm">
                 <div className="flex items-center justify-between gap-2">
@@ -1152,6 +1190,7 @@ export default function AdminUsers() {
                 Done
               </Button>
             </div>
+            </DialogBody>
           </DialogContent>
         </Dialog>
 
@@ -1164,6 +1203,7 @@ export default function AdminUsers() {
                 Update details for {editUser?.firstName} {editUser?.lastName} ({editUser?.email})
               </DialogDescription>
             </DialogHeader>
+            <DialogBody>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -1283,6 +1323,7 @@ export default function AdminUsers() {
                 </div>
               )}
             </div>
+            </DialogBody>
             <DialogFooter>
               <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
               <Button
@@ -1323,6 +1364,7 @@ export default function AdminUsers() {
                 Update {selectedUser?.firstName} {selectedUser?.lastName}'s position in the organization.
               </DialogDescription>
             </DialogHeader>
+            <DialogBody>
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label>Department</Label>
@@ -1380,6 +1422,7 @@ export default function AdminUsers() {
                 </Select>
               </div>
             </div>
+            </DialogBody>
             <DialogFooter>
               <Button variant="outline" onClick={() => setHierarchyOpen(false)}>Cancel</Button>
               <Button
@@ -1415,6 +1458,7 @@ export default function AdminUsers() {
                 {shiftUser ? `Updating shift for ${shiftUser.firstName} ${shiftUser.lastName}` : ""}
               </DialogDescription>
             </DialogHeader>
+            <DialogBody>
             <div className="space-y-4">
               {shiftUser && shiftUser.shiftId && (
                 <div className="flex items-center gap-2 p-3 bg-muted rounded-lg text-sm flex-wrap">
@@ -1475,6 +1519,7 @@ export default function AdminUsers() {
                 </div>
               )}
             </div>
+            </DialogBody>
             <DialogFooter>
               <Button variant="outline" onClick={() => setShiftOpen(false)} data-testid="button-cancel-shift">Cancel</Button>
               <Button
@@ -1501,6 +1546,7 @@ export default function AdminUsers() {
                 Set a new password for {resetPasswordUser?.firstName} {resetPasswordUser?.lastName} ({resetPasswordUser?.email}). This will also disable their 2FA.
               </DialogDescription>
             </DialogHeader>
+            <DialogBody>
             <div className="space-y-4">
               <div className="space-y-2">
                 <Label htmlFor="newPassword">New Password</Label>
@@ -1510,6 +1556,7 @@ export default function AdminUsers() {
                 )}
               </div>
             </div>
+            </DialogBody>
             <DialogFooter>
               <Button variant="outline" onClick={() => setResetPasswordOpen(false)}>Cancel</Button>
               <Button
@@ -1623,6 +1670,7 @@ export default function AdminUsers() {
                 Upload a CSV or XLSX file to create multiple users at once. Each user will receive an invitation email.
               </DialogDescription>
             </DialogHeader>
+            <DialogBody>
 
             {!bulkResults ? (
               <div className="space-y-4">
@@ -1756,6 +1804,7 @@ export default function AdminUsers() {
                 </DialogFooter>
               </div>
             )}
+            </DialogBody>
           </DialogContent>
         </Dialog>
       </div>
