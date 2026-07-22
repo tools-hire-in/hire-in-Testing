@@ -2051,6 +2051,8 @@ export function OfferLettersDashboard() {
   const [hrReissueReason, setHrReissueReason] = useState("");
   const [hrEmailDialog, setHrEmailDialog] = useState<HrLetter | null>(null);
   const [hrEmailCc, setHrEmailCc] = useState("");
+  const [resendOfferDialog, setResendOfferDialog] = useState<any | null>(null);
+  const [resendOfferCc, setResendOfferCc] = useState("");
   const viewModalAnnexureInitials = useMemo<Record<string, string>>(() => {
     const raw = viewLetterModal?.annexureInitials;
     if (!Array.isArray(raw)) return {};
@@ -2529,13 +2531,28 @@ export function OfferLettersDashboard() {
 
   const hrEmailMutation = useMutation({
     mutationFn: async ({ id, ccEmails }: { id: string; ccEmails?: string }) => {
-      const res = await apiRequest("POST", `/api/hr/letters/${id}/email`, ccEmails ? { ccEmails } : undefined);
+      const res = await apiRequest("POST", `/api/hr/letters/${id}/resend`, { ccEmails });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || "Failed to resend"); }
       return res.json();
     },
     onSuccess: (data: { sentTo: string }) => {
-      toast({ title: "Email sent", description: `Letter emailed to ${data.sentTo}` });
+      toast({ title: "Email resent", description: `Letter resent to ${data.sentTo}` });
       setHrEmailDialog(null);
       setHrEmailCc("");
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const resendOfferMutation = useMutation({
+    mutationFn: async ({ id, ccEmails }: { id: string; ccEmails?: string }) => {
+      const res = await apiRequest("POST", `/api/hr/tools/offer-letters/${id}/resend`, { ccEmails });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.error || "Failed to resend"); }
+      return res.json();
+    },
+    onSuccess: (data: { sentTo: string }) => {
+      toast({ title: "Email resent", description: `Offer letter resent to ${data.sentTo}` });
+      setResendOfferDialog(null);
+      setResendOfferCc("");
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -2928,6 +2945,11 @@ export function OfferLettersDashboard() {
                                       <FilePlus className="h-4 w-4 mr-1" /> Addendum
                                     </Button>
                                   )}
+                                  {(letter.status === "sent" || letter.status === "accepted" || letter.status === "expired") && (
+                                    <Button size="sm" variant="ghost" className="text-blue-600 hover:text-blue-800 hover:bg-blue-50" onClick={() => { setResendOfferDialog(letter); setResendOfferCc(letter.ccEmails || ""); }} disabled={resendOfferMutation.isPending} data-testid={`button-resend-offer-${letter.id}`}>
+                                      <RefreshCw className="h-4 w-4 mr-1" /> Resend
+                                    </Button>
+                                  )}
                                 </>
                               );
                             })()}
@@ -2977,7 +2999,7 @@ export function OfferLettersDashboard() {
                                   <Button variant="ghost" size="sm" onClick={() => window.open(`/api/hr/letters/${letter.id}/download?inline=1`, "_blank")} data-testid={`button-print-hr-${letter.id}`}>
                                     <Printer className="h-4 w-4 text-slate-600" />
                                   </Button>
-                                  <Button variant="ghost" size="sm" onClick={() => { setHrEmailDialog(letter); setHrEmailCc(""); }} disabled={hrEmailMutation.isPending} data-testid={`button-email-hr-${letter.id}`}>
+                                  <Button variant="ghost" size="sm" onClick={() => { setHrEmailDialog(letter); setHrEmailCc(letter.ccEmails || ""); }} disabled={hrEmailMutation.isPending} data-testid={`button-email-hr-${letter.id}`}>
                                     <Mail className="h-4 w-4 text-blue-600" />
                                   </Button>
                                   <Button variant="ghost" size="sm" onClick={() => setHrReissueDialog(letter)} data-testid={`button-reissue-hr-${letter.id}`}>
@@ -4353,15 +4375,28 @@ export function OfferLettersDashboard() {
       <Dialog open={!!hrEmailDialog} onOpenChange={(open) => { if (!open) { setHrEmailDialog(null); setHrEmailCc(""); } }}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Email Letter</DialogTitle>
-            <DialogDescription>Send this letter to the employee. Optionally CC additional recipients (comma-separated).</DialogDescription>
+            <DialogTitle>Resend Letter</DialogTitle>
+            <DialogDescription>Resend this letter to the employee. CC recipients can be updated (comma-separated).</DialogDescription>
           </DialogHeader>
-          <Input
-            placeholder="cc@example.com, another@example.com"
-            value={hrEmailCc}
-            onChange={(e) => setHrEmailCc(e.target.value)}
-            data-testid="input-hr-email-cc"
-          />
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">To (recipient)</label>
+              <div className="mt-1 px-3 py-2 text-sm bg-muted rounded-md border border-dashed border-muted-foreground/30 text-foreground" data-testid="text-hr-email-recipient">
+                {hrEmailDialog?.employeeName ? `${hrEmailDialog.employeeName}` : "—"}
+                {hrEmailDialog?.employeeId ? <span className="text-muted-foreground ml-1 text-xs">(employee email on file)</span> : null}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">CC</label>
+              <Input
+                className="mt-1"
+                placeholder="cc@example.com, another@example.com"
+                value={hrEmailCc}
+                onChange={(e) => setHrEmailCc(e.target.value)}
+                data-testid="input-hr-email-cc"
+              />
+            </div>
+          </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => { setHrEmailDialog(null); setHrEmailCc(""); }} data-testid="button-cancel-hr-email">Cancel</Button>
             <Button
@@ -4369,7 +4404,47 @@ export function OfferLettersDashboard() {
               onClick={() => hrEmailDialog && hrEmailMutation.mutate({ id: hrEmailDialog.id, ccEmails: hrEmailCc.trim() || undefined })}
               data-testid="button-confirm-hr-email"
             >
-              {hrEmailMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Email"}
+              {hrEmailMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Resend"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!resendOfferDialog} onOpenChange={(open) => { if (!open) { setResendOfferDialog(null); setResendOfferCc(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Resend Offer Letter</DialogTitle>
+            <DialogDescription>Resend the offer letter without changing the acceptance link or expiry. CC addresses can be adjusted.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <div>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">To (candidate)</label>
+              <div className="mt-1 px-3 py-2 text-sm bg-muted rounded-md border border-dashed border-muted-foreground/30 text-foreground" data-testid="text-resend-offer-recipient">
+                {resendOfferDialog?.candidateName && <span className="font-medium">{resendOfferDialog.candidateName}</span>}
+                {resendOfferDialog?.candidatePersonalEmail && (
+                  <span className="text-muted-foreground ml-2">&lt;{resendOfferDialog.candidatePersonalEmail}&gt;</span>
+                )}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground uppercase tracking-wide">CC</label>
+              <Input
+                className="mt-1"
+                placeholder="cc@example.com, another@example.com"
+                value={resendOfferCc}
+                onChange={(e) => setResendOfferCc(e.target.value)}
+                data-testid="input-resend-offer-cc"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setResendOfferDialog(null); setResendOfferCc(""); }} data-testid="button-cancel-resend-offer">Cancel</Button>
+            <Button
+              disabled={resendOfferMutation.isPending}
+              onClick={() => resendOfferDialog && resendOfferMutation.mutate({ id: resendOfferDialog.id, ccEmails: resendOfferCc.trim() || undefined })}
+              data-testid="button-confirm-resend-offer"
+            >
+              {resendOfferMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Resend"}
             </Button>
           </DialogFooter>
         </DialogContent>

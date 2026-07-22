@@ -13936,6 +13936,71 @@ Canonical domain: ${BASE}
     }
   });
 
+  // Resend offer letter email without altering status/token/expiry
+  app.post("/api/hr/tools/offer-letters/:id/resend", requireAuth, requirePermission("hr.tools.offerLetters", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
+    try {
+      const letter = await storage.getOfferLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Offer letter not found" });
+      if (!["sent", "accepted", "expired"].includes(letter.status)) {
+        return res.status(400).json({ error: `Cannot resend — offer status is '${letter.status}'` });
+      }
+      if (!letter.candidatePersonalEmail) {
+        return res.status(400).json({ error: "No candidate email address on this offer letter" });
+      }
+
+      const rawCcEmails = req.body?.ccEmails;
+      const ccList = rawCcEmails !== undefined
+        ? (Array.isArray(rawCcEmails)
+            ? rawCcEmails.filter(Boolean)
+            : (typeof rawCcEmails === "string" && rawCcEmails.trim()
+                ? rawCcEmails.split(",").map((e: string) => e.trim()).filter(Boolean)
+                : []))
+        : (letter.ccEmails ? letter.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "localhost";
+      const acceptUrl = `${protocol}://${host}/onboard/${letter.token}`;
+
+      const { sendOfferLetterEmail: _sendOfferResend } = await import("./email");
+      const emailResult = await _sendOfferResend({
+        to: letter.candidatePersonalEmail,
+        candidateName: letter.candidateName,
+        designation: letter.designation,
+        acceptUrl,
+        expiresAt: letter.expiresAt ? new Date(letter.expiresAt) : new Date(),
+        cc: ccList.length > 0 ? ccList : undefined,
+      });
+
+      if (!emailResult.success) {
+        return res.status(500).json({ error: `Failed to resend email: ${emailResult.error}` });
+      }
+
+      await storage.createCommunicationLog({
+        type: "offer_letter_resend",
+        sourceJob: "offer_letter_resend",
+        recipients: [letter.candidatePersonalEmail],
+        cc: ccList,
+        subject: `Offer Letter — ${letter.designation} (Resent by ${req.session.userId})`,
+        bodyHtml: null,
+        bodyText: null,
+        status: "sent",
+        sentAt: new Date(),
+      } as any);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: letter.id,
+        action: "offer_letter_resent",
+        changes: { offerId: letter.id, candidateName: letter.candidateName, designation: letter.designation, sentTo: letter.candidatePersonalEmail, cc: ccList },
+      });
+
+      res.json({ success: true, sentTo: letter.candidatePersonalEmail });
+    } catch (error) {
+      console.error("Resend offer letter error:", error);
+      res.status(500).json({ error: "Failed to resend offer letter" });
+    }
+  });
+
   // Admin: Reactivate expired addendum (reset expiry + resend email)
   app.post("/api/hr/tools/addendums/:id/reactivate", requireAuth, requirePermission("hr.tools.addendums.cancel", "super_admin", "admin", "hr"), async (req: Request, res: Response) => {
     try {
@@ -27022,6 +27087,101 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     } catch (error) {
       console.error("Email HR letter error:", error);
       res.status(500).json({ error: "Failed to send letter email" });
+    }
+  });
+
+  // Resend HR letter email without altering issuedAt or referenceNumber
+  app.post("/api/hr/letters/:id/resend", requirePermission("hr.letters.email", "hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      if (letter.status !== "issued") {
+        return res.status(400).json({ error: "Letter must be issued to resend" });
+      }
+      if (!letter.referenceNumber || !letter.authCode) {
+        return res.status(400).json({ error: "Letter missing reference number or auth code" });
+      }
+
+      const employee = letter.employeeId ? await storage.getAdminUser(letter.employeeId) : null;
+      const recipientEmail = req.body.email || employee?.email;
+      if (!recipientEmail) {
+        return res.status(400).json({ error: "No email address found for the employee" });
+      }
+
+      const rawCcEmails = req.body.ccEmails;
+      const ccEmails = rawCcEmails !== undefined
+        ? (Array.isArray(rawCcEmails)
+            ? rawCcEmails.filter(Boolean)
+            : (typeof rawCcEmails === "string" && rawCcEmails.trim()
+                ? rawCcEmails.split(",").map((e: string) => e.trim()).filter(Boolean)
+                : []))
+        : (letter.ccEmails ? letter.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
+
+      let pdfBuffer: Buffer | undefined;
+      if (letter.pdfPath) {
+        const filePath = path.resolve("uploads", letter.pdfPath);
+        if (fs.existsSync(filePath)) {
+          pdfBuffer = fs.readFileSync(filePath);
+        }
+      }
+      if (!pdfBuffer) {
+        const dbSentences = await storage.getLetterTemplateSentences();
+        const customSentences = dbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
+          if (!acc[s.category]) acc[s.category] = {};
+          acc[s.category][s.key] = s.sentence;
+          return acc;
+        }, {});
+        pdfBuffer = await generateHrLetterPdf(letter, {
+          performance_band: customSentences["performance_band"],
+          conduct_band: customSentences["conduct_band"],
+          completion_band: customSentences["completion_band"],
+          closing_line: customSentences["closing_line"],
+        });
+      }
+
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const host = req.headers.host || "hire-in.com";
+      const verifyUrl = `${protocol}://${host}/verify`;
+
+      const result = await sendHrLetterEmail({
+        to: recipientEmail,
+        employeeName: letter.employeeName,
+        letterType: letter.templateType,
+        referenceNumber: letter.referenceNumber,
+        authCode: letter.authCode,
+        verifyUrl,
+        pdfBuffer,
+        pdfFilename: `${letter.referenceNumber.replace(/\//g, "-")}.pdf`,
+        cc: ccEmails.length > 0 ? ccEmails : undefined,
+      });
+
+      if (!result.success) {
+        return res.status(500).json({ error: `Failed to resend email: ${result.error}` });
+      }
+
+      await storage.createCommunicationLog({
+        type: "hr_letter_resend",
+        sourceJob: "hr_letter_resend",
+        recipients: [recipientEmail],
+        cc: ccEmails,
+        subject: `HR Letter Resend — ${letter.referenceNumber} (by ${req.session.userId})`,
+        bodyHtml: null,
+        bodyText: null,
+        status: "sent",
+        sentAt: new Date(),
+      } as any);
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: letter.id,
+        action: "resend_hr_letter",
+        changes: { sentTo: recipientEmail, referenceNumber: letter.referenceNumber, cc: ccEmails.length > 0 ? ccEmails : undefined },
+      });
+
+      res.json({ success: true, sentTo: recipientEmail });
+    } catch (error) {
+      console.error("Resend HR letter error:", error);
+      res.status(500).json({ error: "Failed to resend letter email" });
     }
   });
 
