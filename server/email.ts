@@ -157,75 +157,47 @@ export async function getUncachableSendGridClient(): Promise<{
   }
 
   // ── Non-production environment guard ──────────────────────────────────────
-  // Applies to EVERY send path (direct send functions, blast queue delivery,
-  // dispatchAutomatedEmail) because they all obtain the client from here.
-  // In env_mode dev/qa:
-  //   - If dev_email_override is set → real send, but redirected to the override
-  //     address with an [ENV] subject prefix.
-  //   - Otherwise → suppress entirely (logged as env_suppressed).
-  // This closes the gap where direct function calls (tests, manual triggers)
-  // bypassed the scheduler-level env_mode suspension and fired real emails.
+  // In DEV or QA mode, ZERO bytes leave the system toward SendGrid.
+  // Every attempted send is instead written to the dev_email_inbox DB table so
+  // it can be reviewed in the DevTools "Dev Inbox" tab.
+  // The old dev_email_override redirect (which still called sgMail.send()) has
+  // been removed — the override address field is cosmetic in non-production.
   try {
     const { getEnvMode } = await import("./envMode");
     const envMode = await getEnvMode();
     if (envMode !== "production") {
-      const { storage: _envStorage } = await import("./storage");
-      const overrideSetting = await _envStorage.getSystemSetting("dev_email_override").catch(() => undefined);
-      const overrideAddr = ((overrideSetting?.value) as string) ?? "";
-
-      if (overrideAddr) {
-        // Redirect wrapper: rewrite recipients to the override address.
-        const apiKeyR = process.env.SENDGRID_API_KEY_NEW;
-        if (!apiKeyR) throw new Error('SENDGRID_API_KEY_NEW is not set');
-        sgMail.setApiKey(apiKeyR);
-        const redirectClient = {
-          send: async (msg: any) => {
-            const toRaw = Array.isArray(msg.to) ? msg.to : [msg.to];
-            const origAddrs = toRaw
-              .map((r: any) => (typeof r === "string" ? r : r?.email))
-              .filter(Boolean) as string[];
-            console.log(`[env-guard] [${envMode.toUpperCase()}] Redirecting send → ${overrideAddr} (original: ${origAddrs.join(", ")})`);
-            await sgMail.send({
-              ...msg,
-              to: overrideAddr,
-              cc: undefined,
-              subject: `[${envMode.toUpperCase()}] ${msg.subject ?? ""}`,
-              text: msg.text ? `${msg.text}\n\n---\n[Env guard] Original recipient(s): ${origAddrs.join(", ")}` : msg.text,
-            });
-          },
-        };
-        return { client: redirectClient as any, fromEmail: FROM_EMAIL };
-      }
-
-      // No override → suppress everything in non-production.
-      const envSuppressedClient = {
+      // Build an inbox-writer client — never calls SendGrid.
+      const inboxClient = {
         send: async (msg: any) => {
           const toRaw = Array.isArray(msg.to) ? msg.to : [msg.to];
           const toAddrs = toRaw
             .map((r: any) => (typeof r === "string" ? r : r?.email))
             .filter(Boolean) as string[];
+          const ccRaw = Array.isArray(msg.cc) ? msg.cc : (msg.cc ? [msg.cc] : []);
+          const ccAddrs = ccRaw
+            .map((r: any) => (typeof r === "string" ? r : r?.email))
+            .filter(Boolean) as string[];
           console.log(
-            `[env-guard] [${envMode.toUpperCase()}] Suppressed send to [${toAddrs.join(", ")}] — subject: "${msg.subject ?? "(none)"}"`,
+            `[env-guard] [${envMode.toUpperCase()}] Captured to dev inbox: [${toAddrs.join(", ")}] — subject: "${msg.subject ?? "(none)"}"`,
           );
           try {
-            const { storage: _logStorage } = await import("./storage");
-            await _logStorage.createCommunicationLog({
+            const { storage: _inboxStorage } = await import("./storage");
+            await _inboxStorage.createDevInboxEntry({
+              envMode,
               type: "direct_send",
-              sourceJob: "env_guard",
-              recipients: toAddrs,
-              cc: [],
-              subject: msg.subject ?? "(suppressed)",
-              bodyHtml: typeof msg.html === "string" ? msg.html.slice(0, 2000) : null,
-              bodyText: typeof msg.text === "string" ? msg.text.slice(0, 500) : null,
-              status: "env_suppressed",
-              error: `Suppressed by non-production env guard (env_mode=${envMode}, no dev_email_override set)`,
-            } as any);
+              sourceJob: "direct_send_function",
+              toAddresses: toAddrs,
+              ccAddresses: ccAddrs,
+              subject: msg.subject ?? "(no subject)",
+              bodyHtml: typeof msg.html === "string" ? msg.html : null,
+              bodyText: typeof msg.text === "string" ? msg.text : null,
+            }).catch((e: any) => console.warn("[env-guard] Failed to write dev inbox entry:", e));
           } catch (_logErr) {
-            console.warn("[env-guard] Failed to write env_suppressed log:", _logErr);
+            console.warn("[env-guard] Failed to write dev inbox entry:", _logErr);
           }
         },
       };
-      return { client: envSuppressedClient as any, fromEmail: FROM_EMAIL, masterSuppressed: true, suppressionReason: "env" };
+      return { client: inboxClient as any, fromEmail: FROM_EMAIL, masterSuppressed: true, suppressionReason: "env" };
     }
   } catch (err: any) {
     // Fail CLOSED in non-production: if we can't determine the environment,
@@ -350,9 +322,9 @@ export async function dispatchAutomatedEmail(
   }
 
   // ── Dev/QA email intercept ─────────────────────────────────────────────────
-  // Applies only when APP_ENV ≠ production.  Checks system_settings:
-  //   dev_dry_run       → log the email, mark as sent, but never call SendGrid
-  //   dev_email_override → replace To: with the override address + prefix subject
+  // In non-production: all sends go to the dev_email_inbox table — no SendGrid.
+  // dev_dry_run=true skips the inbox write too (pure suppress: comm log only).
+  // dev_email_override is no longer used for routing; it has no effect here.
   let effectiveMsg = { ...msg };
   try {
     const { getEnvMode: _gEM } = await import("./envMode");
@@ -360,9 +332,7 @@ export async function dispatchAutomatedEmail(
     if (_em !== "production") {
       const { storage: _s2 } = await import("./storage");
       const _dryRunSetting = await _s2.getSystemSetting("dev_dry_run").catch(() => undefined);
-      const _overrideSetting = await _s2.getSystemSetting("dev_email_override").catch(() => undefined);
       const _dryRun = (_dryRunSetting?.value as boolean) ?? false;
-      const _overrideAddr = ((_overrideSetting?.value) as string) ?? "";
       if (_dryRun) {
         console.log(`[email-intercept] [DRY_RUN] ${type} → would send to ${recipients.join(", ")} (${sourceJob}) — suppressed`);
         await storage.createCommunicationLog({
@@ -373,26 +343,31 @@ export async function dispatchAutomatedEmail(
         } as any).catch(() => {});
         return { success: true };
       }
-      if (_overrideAddr) {
-        effectiveMsg = {
-          ...effectiveMsg,
-          to: _overrideAddr,
-          subject: `[${_em.toUpperCase()}] ${effectiveMsg.subject}`,
-          html: effectiveMsg.html
-            ? `${effectiveMsg.html}<hr style="margin-top:24px;border:none;border-top:1px solid #eee"><p style="font-size:11px;color:#999;font-family:monospace">[Dev intercept] Original recipient(s): ${recipients.join(", ")}</p>`
-            : effectiveMsg.html,
-          text: effectiveMsg.text
-            ? `${effectiveMsg.text}\n\n---\n[Dev intercept] Original recipient(s): ${recipients.join(", ")}`
-            : effectiveMsg.text,
-        };
-        console.log(`[email-intercept] [${_em.toUpperCase()}] ${type} redirected → ${_overrideAddr} (original: ${recipients.join(", ")})`);
-      }
+      // Write to dev inbox — no SendGrid call.
+      console.log(`[email-intercept] [${_em.toUpperCase()}] ${type} → captured to dev inbox (to: ${recipients.join(", ")}) (${sourceJob})`);
+      await _s2.createDevInboxEntry({
+        envMode: _em,
+        type,
+        sourceJob,
+        toAddresses: recipients,
+        ccAddresses: mergedCc,
+        subject: msg.subject ?? "(no subject)",
+        bodyHtml: msg.html ?? null,
+        bodyText: msg.text ?? null,
+      }).catch((e: any) => console.warn("[email-intercept] Failed to write dev inbox entry:", e));
+      await storage.createCommunicationLog({
+        ...baseLog,
+        status: "env_suppressed",
+        sentAt: new Date(),
+        error: `Captured to dev_email_inbox (env_mode=${_em})`,
+      } as any).catch(() => {});
+      return { success: true };
     }
   } catch (_interceptErr) {
-    // Intercept failure: default to dry_run in non-production to avoid accidental real sends.
+    // Intercept failure: fail closed in non-production.
     const { config: _icfg } = await import("./config");
     if (!_icfg.isProduction) {
-      console.warn(`[email-intercept] Intercept check failed — suppressing send as dry_run (non-production fail-safe):`, _interceptErr);
+      console.warn(`[email-intercept] Intercept check failed — suppressing send (non-production fail-safe):`, _interceptErr);
       await storage.createCommunicationLog({
         ...baseLog,
         status: "dry_run",

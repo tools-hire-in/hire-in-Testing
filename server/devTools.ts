@@ -371,5 +371,26 @@ export function createDevToolsRouter() {
     }
   });
 
+  // ── Dev Email Inbox endpoints ─────────────────────────────────────────────
+  // Returns the 200 most-recent captured emails, newest first.
+  router.get("/inbox", async (_req, res) => {
+    try {
+      const entries = await storage.listDevInboxEntries(200);
+      res.json(entries);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Purge all rows from the dev inbox (manual clear button).
+  router.delete("/inbox", async (_req, res) => {
+    try {
+      const count = await storage.clearDevInbox();
+      res.json({ ok: true, deleted: count });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   return router;
 }

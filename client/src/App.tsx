@@ -520,6 +520,7 @@ function PublicRouter() {
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
 
       {/* Dev Control Center — super_admin only, non-production environments */}
+      <Route path="/dev-tools/inbox">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
       <Route path="/dev-tools/notifications">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
       <Route path="/dev-tools/crons">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
       <Route path="/dev-tools/view-as">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
@@ -747,6 +748,7 @@ function EmployeeRouter() {
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
 
       {/* Dev Tools */}
+      <Route path="/dev-tools/inbox">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
       <Route path="/dev-tools/notifications">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
       <Route path="/dev-tools/crons">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>
       <Route path="/dev-tools/view-as">{() => <Suspense fallback={<AdminFallback />}><DevToolsPage /></Suspense>}</Route>

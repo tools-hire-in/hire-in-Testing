@@ -5357,3 +5357,22 @@ export const knowledgeHubReads = pgTable("knowledge_hub_reads", {
 ]);
 
 export type KnowledgeHubRead = typeof knowledgeHubReads.$inferSelect;
+
+// ─── Dev Email Inbox ──────────────────────────────────────────────────────────
+// Captures every outgoing email in non-production environments instead of
+// calling SendGrid.  Never written to in production.
+// Applied via direct SQL (db.execute) at startup — not via db:push.
+export const devEmailInbox = pgTable("dev_email_inbox", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  envMode: text("env_mode").notNull(),
+  type: text("type").notNull(),
+  sourceJob: text("source_job").notNull(),
+  toAddresses: text("to_addresses").array().notNull(),
+  ccAddresses: text("cc_addresses").array().notNull().default(sql`'{}'::text[]`),
+  subject: text("subject").notNull(),
+  bodyHtml: text("body_html"),
+  bodyText: text("body_text"),
+  capturedAt: timestamp("captured_at").notNull().defaultNow(),
+});
+
+export type DevEmailInboxEntry = typeof devEmailInbox.$inferSelect;

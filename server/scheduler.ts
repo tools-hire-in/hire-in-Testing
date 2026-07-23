@@ -2079,6 +2079,38 @@ export function startScheduler() {
     }
   }, { timezone: "Asia/Kolkata" });
 
+  // ── Dev inbox weekly purge — Sundays at 02:00 IST ────────────────────────
+  // Removes dev_email_inbox rows older than 7 days. Only runs in non-production.
+  JOB_REGISTRY.set("dev_inbox_purge", {
+    name: "dev_inbox_purge",
+    label: "Dev Inbox Weekly Purge",
+    schedule: "Sundays 02:00 IST (non-production only)",
+    handler: async () => {
+      const envMode = await getEnvMode();
+      if (envMode === "production") {
+        console.log("[scheduler] dev_inbox_purge skipped — production env");
+        return;
+      }
+      const count = await storage.purgeDevInboxOlderThan(7);
+      console.log(`[scheduler] Dev inbox purge complete: ${count} row(s) older than 7 days removed.`);
+      await storage.upsertSystemSetting("dev_inbox_last_purge", new Date().toISOString()).catch(() => {});
+    },
+  });
+
+  cron.schedule("0 2 * * 0", async () => {
+    const _entry = JOB_REGISTRY.get("dev_inbox_purge");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
+    const envMode = await getEnvMode().catch(() => "dev");
+    if (envMode === "production") return;
+    try {
+      const count = await storage.purgeDevInboxOlderThan(7);
+      console.log(`[scheduler] Dev inbox weekly purge: ${count} row(s) removed.`);
+      await storage.upsertSystemSetting("dev_inbox_last_purge", new Date().toISOString()).catch(() => {});
+    } catch (err) {
+      console.error("[scheduler] Dev inbox purge failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -2100,4 +2132,5 @@ export function startScheduler() {
   console.log("  - Ceipal escalation sweep: Mon-Fri at 7:30 PM IST → manager alert on 2+ consecutive misses, flag on 5+ in 30 days");
   console.log("  - SOP scheduled wave launches: daily 07:00 IST → fires approved wave_scheduled_launches where go_live_date <= today");
   console.log("  - Policy overdue manager digest: daily 09:00 IST → one email per manager listing direct reports with pending policy sign-off > 2 days overdue");
+  console.log("  - Dev inbox weekly purge: Sundays 02:00 IST (non-production only) → removes dev_email_inbox rows older than 7 days");
 }

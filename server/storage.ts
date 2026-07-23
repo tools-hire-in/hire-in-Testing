@@ -417,6 +417,16 @@ export interface IStorage {
   approvePendingChange(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }>;
   rejectPendingChange(id: string, reviewerId: string, note?: string): Promise<{ ok: boolean; reason?: string }>;
 
+  // Dev Email Inbox (non-production only)
+  createDevInboxEntry(entry: {
+    envMode: string; type: string; sourceJob: string;
+    toAddresses: string[]; ccAddresses: string[];
+    subject: string; bodyHtml?: string | null; bodyText?: string | null;
+  }): Promise<void>;
+  listDevInboxEntries(limit?: number): Promise<import("@shared/schema").DevEmailInboxEntry[]>;
+  purgeDevInboxOlderThan(days: number): Promise<number>;
+  clearDevInbox(): Promise<number>;
+
   // Communications Control Center
   getCommunicationPolicy(): Promise<Record<string, "auto" | "hold">>;
   getCommunicationPolicyFor(type: string): Promise<"auto" | "hold">;
@@ -6469,7 +6479,6 @@ export class DatabaseStorage implements IStorage {
     const existing = await this.getCommunicationConfig(typeKey);
     if (!existing) return { ok: false, reason: "Not found" };
     if (!existing.isCustom) return { ok: false, reason: "System types cannot be deleted" };
-    // Soft-delete: set deletedAt timestamp so historical config rows are preserved
     await db.update(communicationConfig)
       .set({ deletedAt: new Date(), updatedBy: actorId, updatedAt: new Date() })
       .where(eq(communicationConfig.typeKey, typeKey));
@@ -6479,6 +6488,43 @@ export class DatabaseStorage implements IStorage {
       changes: { typeKey, label: existing.label },
     }).catch(() => {});
     return { ok: true };
+  }
+
+  // ── Dev Email Inbox ──────────────────────────────────────────────────────
+  async createDevInboxEntry(entry: {
+    envMode: string; type: string; sourceJob: string;
+    toAddresses: string[]; ccAddresses: string[];
+    subject: string; bodyHtml?: string | null; bodyText?: string | null;
+  }): Promise<void> {
+    const { devEmailInbox } = await import("@shared/schema");
+    await db.insert(devEmailInbox).values({
+      envMode: entry.envMode,
+      type: entry.type,
+      sourceJob: entry.sourceJob,
+      toAddresses: entry.toAddresses,
+      ccAddresses: entry.ccAddresses ?? [],
+      subject: entry.subject,
+      bodyHtml: entry.bodyHtml ?? null,
+      bodyText: entry.bodyText ?? null,
+    } as any);
+  }
+
+  async listDevInboxEntries(limit = 200): Promise<import("@shared/schema").DevEmailInboxEntry[]> {
+    const { devEmailInbox } = await import("@shared/schema");
+    return db.select().from(devEmailInbox).orderBy(desc(devEmailInbox.capturedAt)).limit(limit);
+  }
+
+  async purgeDevInboxOlderThan(days: number): Promise<number> {
+    const cutoff = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+    const { devEmailInbox } = await import("@shared/schema");
+    const result = await db.delete(devEmailInbox).where(sql`${devEmailInbox.capturedAt} < ${cutoff}`);
+    return (result as any).rowCount ?? 0;
+  }
+
+  async clearDevInbox(): Promise<number> {
+    const { devEmailInbox } = await import("@shared/schema");
+    const result = await db.delete(devEmailInbox);
+    return (result as any).rowCount ?? 0;
   }
 
 }

@@ -4814,6 +4814,27 @@ async function runStartupTasks() {
     console.error("[startup] knowledge_hub_reads ensure error (non-fatal):", err);
   }
 
+  // Dev email inbox — idempotent, non-production only (table is safe in prod too but never written to)
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS dev_email_inbox (
+        id            SERIAL PRIMARY KEY,
+        env_mode      VARCHAR(20)  NOT NULL DEFAULT 'dev',
+        type          TEXT         NOT NULL DEFAULT '',
+        source_job    TEXT         NOT NULL DEFAULT '',
+        to_addresses  TEXT[]       NOT NULL DEFAULT '{}',
+        cc_addresses  TEXT[]       NOT NULL DEFAULT '{}',
+        subject       TEXT         NOT NULL DEFAULT '',
+        body_html     TEXT,
+        body_text     TEXT,
+        captured_at   TIMESTAMP    NOT NULL DEFAULT NOW()
+      )
+    `);
+    log("dev_email_inbox table ensured");
+  } catch (err) {
+    console.error("[startup] dev_email_inbox ensure error (non-fatal):", err);
+  }
+
   // Cron/scheduled jobs start only after schema is ensured so they query
   // tables that are guaranteed to exist.
   startScheduler();

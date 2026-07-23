@@ -28,6 +28,7 @@ export function DevToolsShell({ children }: { children: React.ReactNode }) {
 
   const navItems = [
     { href: "/dev-tools",               label: "Environment" },
+    { href: "/dev-tools/inbox",         label: "Dev Inbox" },
     { href: "/dev-tools/crons",         label: "Cron Jobs" },
     { href: "/dev-tools/notifications", label: "Notification Sandbox" },
     { href: "/dev-tools/view-as",       label: "View As" },
