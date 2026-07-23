@@ -1,0 +1,1953 @@
+Hire’in Solutions
+
+Authentication, Authorization, RBAC, and SOP Access Architecture
+
+Revised Replit Implementation Recommendation
+
+Document status: Final revised architecture recommendationPlatform: Hire’in Employee and Operations PortalDeployment context: Replit-hosted Node.js / Express / React / TypeScript / PostgreSQL applicationArchitecture stage: Single-company internal platform with future commercialization potentialVersion: 2.0Date: July 2026
+
+1. Executive Summary
+
+Hire’in Solutions does not currently need a complete authorization rewrite or an immediate multi-tenant redesign.
+
+The immediate problem is narrower and more urgent:
+
+The system already has a centralized authorization foundation in shared/accessControl.ts.
+
+Many parts of the application still bypass that system and use inline role arrays, free-text concepts, or feature-specific checks.
+
+SOP visibility is broken because rollout scope and role-assignment seed data do not match the real users.
+
+account_manager appears as though it is a system role even though the database role enum cannot store it.
+
+Existing product-specific access, such as studioAddOn, is useful but remains a one-off access pattern.
+
+Designation, department, public title, author profile, job function, and authorization role are still being interpreted inconsistently.
+
+The recommended solution is therefore:
+
+Fix the immediate SOP and ghost-role defects first, then make the existing centralized access-control registry the single source of truth for authorization.
+
+A normalized permissions and multi-role model should follow only after the centralized access layer is consistently adopted.
+
+Multi-tenancy should not be implemented now. It should be treated as a separate future architecture programme, triggered by a confirmed external-customer requirement and explicit business approval.
+
+2. Final Architecture Position
+
+The system should use the following separation of concerns.
+
+Concept
+
+Purpose
+
+Must drive security access?
+
+Authentication identity
+
+Establishes who signed in
+
+Yes
+
+Current system role
+
+Temporary compatibility grouping
+
+Temporarily
+
+Permission
+
+Defines what action is allowed
+
+Yes
+
+Resource scope
+
+Defines which records may be accessed
+
+Yes
+
+Designation
+
+Employment title and internal documentation
+
+No
+
+Department
+
+Organizational grouping
+
+No
+
+Public title
+
+Author or profile display
+
+No
+
+Business function
+
+Templates, KPIs, training, workflow routing
+
+No
+
+Product add-on
+
+Determines whether a product is enabled
+
+Yes, through centralized authorization
+
+SOP rollout
+
+Defines release audience and timing
+
+No, not by itself
+
+SOP assignment
+
+Defines a user obligation
+
+Yes, for personal assignment visibility
+
+SOP progress
+
+Tracks completion after assignment
+
+No, it must not determine whether an assignment exists
+
+The target is not a role-only system.
+
+The target is:
+
+Centralized permission checks plus record-level scope.
+
+Examples:
+
+A manager may read only direct-report records.
+
+A recruiter may access recruiting workflows.
+
+An Account Manager may also be a recruiter and a people manager.
+
+Operations is a department or operational function, not an administrator privilege.
+
+A guest reviewer may view and comment on one specific article.
+
+Content Studio access may be enabled independently of the employee’s base role.
+
+3. What Was Correct in the Original RBAC Diagnosis
+
+The original diagnosis correctly identified the following root issues.
+
+3.1 Three different concepts are being called “role”
+
+The system currently mixes:
+
+System permission role
+
+Employment designation
+
+Business function slug
+
+Examples include:
+
+admin_users.role
+
+admin_users.designation
+
+account_manager
+
+ta_account_manager
+
+delivery_specialist
+
+These concepts serve different purposes and must not be used interchangeably.
+
+3.2 account_manager is a ghost system role
+
+The current database role enum reportedly contains:
+
+super_admin
+admin
+hr
+finance
+operations
+manager
+recruiter
+employee
+executive
+director
+
+account_manager is not a valid enum value.
+
+However, it appears in live conditions such as:
+
+["recruiter", "operations", "account_manager"].includes(user?.role || "")
+
+This creates dead or misleading access logic.
+
+account_manager may remain valid as:
+
+A position
+
+A designation
+
+A business function
+
+A template key
+
+A job-function identifier
+
+It must not be checked as a stored system role unless the authorization model is deliberately changed later.
+
+3.3 SOP assignment is being confused with SOP progress
+
+The existing behavior reportedly includes logic equivalent to:
+
+if (progress.length === 0) return [];
+
+That is architecturally incorrect.
+
+An SOP assignment must exist before progress begins.
+
+Correct sequence:
+
+Audience rule
+    ↓
+Assignment created
+    ↓
+User sees assignment
+    ↓
+Progress starts
+    ↓
+Acknowledgment or completion recorded
+
+A user with no progress record must still see an assigned SOP.
+
+3.4 Rollout is being used as more than rollout
+
+The current rollout configuration reportedly resembles:
+
+{
+  "mode": "pilot",
+  "roles": [],
+  "userIds": []
+}
+
+This setting is currently involved in visibility decisions.
+
+A rollout setting should determine:
+
+Whether a feature or SOP wave is released
+
+Which audience receives it
+
+When it becomes active
+
+It should not permanently define authorization permissions.
+
+4. Corrections to the Earlier Architecture Recommendation
+
+The previous recommendation requires the following corrections.
+
+4.1 Do not implement multi-tenancy now
+
+The platform currently serves Hire’in Solutions as an internal system.
+
+Introducing:
+
+tenants
+
+tenant_memberships
+
+Tenant-scoped sessions
+
+Tenant-scoped access rules
+
+Tenant filters on every business query
+
+Tenant-specific migrations or configuration
+
+would be a major product-architecture programme.
+
+This work should be deferred until:
+
+There is at least one confirmed external-customer deployment model.
+
+The commercial model is approved.
+
+Data-isolation requirements are known.
+
+Customer-admin behavior is defined.
+
+Shared-database versus separate-database strategy is decided.
+
+White-label, billing, and support-access requirements are understood.
+
+For the current refactor, the system should remain single-company and single-tenant.
+
+The code should still avoid unnecessary assumptions that would make future tenancy impossible, but no tenant tables should be added now.
+
+4.2 Do not rebuild central authorization from scratch
+
+The codebase already contains:
+
+shared/accessControl.ts
+
+ACCESS_REGISTRY
+
+CENTRALIZED_ACCESS_CONTROL
+
+requirePermission()
+
+An admin override mechanism backed by system_settings
+
+Therefore, the immediate target is:
+
+Adopt, harden, and enforce the existing centralized access-control system everywhere.
+
+The architecture work should begin with a real audit of that existing implementation.
+
+4.3 Do not implement an admin SOP bypass
+
+The SOP problem has two different causes:
+
+Cause 1 — Rollout gate failure
+
+Users such as hr and manager may fail resolveSopAccessForUser() because their roles are not included in the current pilot configuration.
+
+Cause 2 — Assignment seed gap
+
+Even users who pass the rollout gate may have no assignments because sop_role_assignments contains entries only for limited roles such as:
+
+recruiter
+
+operations
+
+If no role assignment exists, the sync engine does not create the required user assignment or progress records.
+
+The correct fix is:
+
+Repair rollout scope.
+
+Add the missing assignment seed rules.
+
+Run idempotent assignment synchronization.
+
+Keep administrative SOP management separate from personal SOP assignments.
+
+4.4 Treat the full transformation as a programme
+
+The long-term authorization modernization is not a single refactor task.
+
+It should be planned across multiple stages with explicit scope and approval.
+
+5. Confirmed Business and Access Decisions
+
+5.1 One employee may perform multiple functions
+
+A user may simultaneously be:
+
+Recruiter
+
+Account Manager
+
+People Manager
+
+Content Reviewer
+
+BD contributor
+
+This confirms that one role column will eventually be insufficient.
+
+However, the system should not immediately replace the current enum.
+
+The safer sequence is:
+
+Centralize access checks.
+
+Define stable permission codes.
+
+Make modules depend on permissions rather than role names.
+
+Introduce multi-role assignments later behind the same permission interface.
+
+5.2 Managers may access direct reports only
+
+Manager access must be relationship-scoped.
+
+The authorization rule should be:
+
+User has the required manager permission
+AND
+Target employee’s manager_user_id equals current user ID
+
+Example:
+
+employee.read_direct_reports
+
+The manager role alone must not allow access to:
+
+Peers
+
+Other managers’ reports
+
+Indirect reports
+
+Former reports
+
+Entire departments
+
+Entire company records
+
+Any future reporting-tree access should use a separate permission.
+
+5.3 Admin users manage SOPs but do not inherit every SOP
+
+Administrators should be able to:
+
+Manage SOP catalog
+
+Publish SOP versions
+
+Create assignments
+
+Monitor completion
+
+Send reminders
+
+Escalate overdue obligations
+
+Export compliance results
+
+Enforce acknowledgment
+
+Administrators should not automatically receive every SOP as a personal assignment.
+
+Separate views are required:
+
+My SOPs
+Team SOP Compliance
+All SOP Compliance
+SOP Catalog
+Rollout Management
+
+5.4 Operations is not Admin
+
+Operations should remain:
+
+A department
+
+A business function
+
+A possible operational authorization bundle
+
+It should not automatically receive:
+
+User-management permissions
+
+Role-assignment permissions
+
+Security-setting access
+
+Global configuration access
+
+Unrestricted audit access
+
+Full SOP administration
+
+Example:
+
+Department: Operations
+Designation: Junior Operations Engineer
+Business function: operational_support
+Temporary authorization role: operations
+
+5.5 Account Manager is primarily a position or function
+
+Account Manager should not be introduced as a system role merely because the title contains “Manager.”
+
+Possible metadata:
+
+Designation: Account Manager
+Business function: account_management
+Department: Client Delivery
+
+A person receives management access only if they have direct reports and the required manager permission.
+
+A person receives recruiting access only if they are assigned recruiting permissions.
+
+5.6 Guest author and reviewer access is article-specific
+
+A guest may be invited to:
+
+View one article
+
+Comment on one article
+
+Provide feedback
+
+Appear on the author or contributor profile tag
+
+A guest should not automatically receive:
+
+Full Content Studio access
+
+Access to unrelated articles
+
+Publish rights
+
+Delete rights
+
+User-management rights
+
+Access to other product modules
+
+5.7 Tool access may be assigned independently
+
+The following may be independently enabled:
+
+Content Studio
+
+BD Tool
+
+CEIPAL functionality
+
+SOP Governance
+
+Future internal products
+
+However, this should not result in separate uncontrolled boolean checks across the application.
+
+The existing studioAddOn pattern should be centralized first, then generalized later.
+
+6. Existing Centralized Authorization System
+
+6.1 Current foundation
+
+The current architecture already includes a central access-control layer through:
+
+shared/accessControl.ts
+ACCESS_REGISTRY
+CENTRALIZED_ACCESS_CONTROL
+requirePermission()
+system_settings-based admin overrides
+
+This is the most important existing asset for the refactor.
+
+6.2 Immediate architectural goal
+
+The existing registry must become the authoritative source for access decisions.
+
+This requires:
+
+Complete registry coverage
+
+Backend enforcement
+
+Frontend adoption
+
+Default-deny behavior
+
+Controlled override behavior
+
+Resource-scope support
+
+Automated authorization testing
+
+Removal of legacy inline arrays
+
+6.3 Required current-state review
+
+Before changing the schema, review:
+
+All entries in ACCESS_REGISTRY
+
+All routes using requirePermission()
+
+All routes not using requirePermission()
+
+All frontend checks using direct role comparisons
+
+All feature-flag fallback behavior
+
+All admin overrides in system_settings
+
+Override creation and approval flow
+
+Override auditability
+
+Override expiration behavior
+
+Default behavior when a permission or registry key is missing
+
+6.4 Required default behavior
+
+The final centralized system should follow:
+
+Known permission + valid assignment + valid scope = allow
+Anything else = deny
+
+Missing registry entries must not silently allow access.
+
+7. Permission Model
+
+7.1 Permission naming standard
+
+Use stable:
+
+resource.action
+
+or:
+
+domain.resource.action
+
+Examples:
+
+employee.profile.read_own
+employee.profile.update_own
+employee.read_direct_reports
+
+sop.assignment.read_own
+sop.assignment.read_direct_reports
+sop.assignment.manage
+sop.assignment.enforce
+sop.catalog.manage
+sop.rollout.manage
+sop.compliance.read_all
+
+content_studio.access
+content.article.create
+content.article.edit_own
+content.article.comment
+content.article.review
+content.article.publish
+
+bd_tool.access
+bd.lead.create
+bd.lead.assign
+bd.pipeline.read_own
+bd.pipeline.read_team
+
+ceipal.access
+ceipal.job.read
+ceipal.candidate.read
+ceipal.submission.create
+
+users.manage
+roles.manage
+system.settings.manage
+audit.read
+
+Avoid permission names tied to:
+
+Page names
+
+Current UI labels
+
+Job titles
+
+Department names
+
+Temporary project names
+
+7.2 Permission checks must include scope
+
+A simple yes/no permission is insufficient for many records.
+
+Own-record scope
+
+Permission: employee.profile.read_own
+Condition: target.user_id = current user ID
+
+Direct-report scope
+
+Permission: employee.read_direct_reports
+Condition: target.manager_user_id = current user ID
+
+Specific-article scope
+
+Permission: content.article.comment
+Condition: active collaborator record exists for this article and user
+
+Assigned-record scope
+
+Permission: bd.lead.update_assigned
+Condition: lead.assigned_to = current user ID
+
+8. Immediate Priority: Phase 0 Production Fix
+
+Recommended effort: approximately 2–5 engineering days, followed by regression testing.
+
+8.1 Fix the rollout pilot scope
+
+Review the current process_governance_rollout setting.
+
+Ensure the intended pilot population can pass the feature gate.
+
+Potential pilot roles may include:
+
+admin
+hr
+manager
+recruiter
+operations
+employee
+
+The exact list must match the approved rollout audience.
+
+This setting should remain temporary until the production rollout model is redesigned.
+
+8.2 Fix SOP role-assignment seed data
+
+Create missing sop_role_assignments for appropriate current roles.
+
+Example recommendation:
+
+SOP category
+
+Audience
+
+Company governance
+
+All active employees
+
+Code of conduct
+
+All active employees
+
+Information security
+
+All active employees
+
+HR policies
+
+All employees
+
+HR administration SOPs
+
+HR
+
+Recruiting SOPs
+
+Recruiter and applicable recruiting managers
+
+Healthcare recruiting SOPs
+
+Healthcare recruiters and applicable managers
+
+Operations SOPs
+
+Operations
+
+Management SOPs
+
+Users who actually manage direct reports
+
+SOP administration
+
+Admin or specifically authorized HR governance users
+
+Do not use Admin as a universal personal-assignment recipient.
+
+8.3 Run idempotent assignment synchronization
+
+The synchronization must:
+
+Create missing assignments
+
+Avoid duplicates
+
+Preserve existing completion
+
+Record the source role or rule
+
+Log failures
+
+Support safe re-execution
+
+8.4 Remove the ghost role
+
+Remove account_manager from:
+
+Role dropdowns backed by the enum
+
+Direct user.role checks
+
+CEIPAL access arrays
+
+Any code expecting it to persist as a system role
+
+Retain it only where it clearly means:
+
+Position
+
+Designation
+
+Job function
+
+Template slug
+
+Workflow category
+
+8.5 Add clear empty and unavailable states
+
+Users should see distinct states:
+
+Feature not enabled for your rollout group
+No SOPs currently assigned
+Assignments are being synchronized
+Access denied
+
+Do not use one blank page for all cases.
+
+9. Phase 0 Acceptance Criteria
+
+The immediate fix is complete only when all of the following pass.
+
+Admin
+
+Can access SOP administration
+
+Can view all tenant/company SOP compliance
+
+Can assign and enforce SOPs
+
+Does not automatically receive all SOPs personally
+
+HR
+
+Passes rollout gate when included
+
+Receives appropriate personal SOPs
+
+Receives administrative SOP access only when authorized
+
+Manager
+
+Receives appropriate personal SOPs
+
+Can view direct-report compliance only
+
+Cannot view unrelated employees
+
+Employee
+
+Receives universal employee SOPs
+
+Sees assignments even before starting progress
+
+Recruiter
+
+Receives recruiting SOPs
+
+Receives universal employee SOPs
+
+Operations
+
+Receives operational SOPs
+
+Does not gain Admin privileges
+
+Assignment engine
+
+Creates missing assignments
+
+Does not create duplicates
+
+Does not overwrite completed progress
+
+Produces consistent results when rerun
+
+10. Next Priority: Enforce accessControl.ts Everywhere
+
+Recommended effort: approximately 3–6 weeks depending on code volume and test coverage.
+
+10.1 Create an access-check inventory
+
+Search the codebase for:
+
+user.role
+role ===
+role !==
+roles.includes
+designation
+department
+studioAddOn
+isAdmin
+isManager
+account_manager
+operations
+recruiter
+author
+content access
+bd access
+ceipal access
+
+Classify each finding as:
+
+Backend authorization
+
+Frontend visibility
+
+Display logic
+
+Workflow routing
+
+Template mapping
+
+Resource ownership
+
+Record scope
+
+Dead code
+
+Temporary migration logic
+
+10.2 Replace backend inline checks first
+
+Every sensitive backend endpoint should use centralized enforcement.
+
+Example:
+
+requirePermission("sop.catalog.manage")
+
+or:
+
+requirePermission("employee.read_direct_reports", {
+  scopeResolver: "directReport"
+})
+
+Sensitive areas to prioritize:
+
+User administration
+
+Role and access overrides
+
+SOP management
+
+HR records
+
+Performance and PIP records
+
+Content publishing
+
+BD lead assignment
+
+CEIPAL submission actions
+
+Credential or password-vault access
+
+Data exports and reports
+
+10.3 Migrate frontend visibility second
+
+Use one shared helper:
+
+can("content.article.publish")
+
+Frontend checks improve usability but do not provide security.
+
+The backend must still deny unauthorized calls.
+
+10.4 Retire permanent legacy fallback
+
+CENTRALIZED_ACCESS_CONTROL may remain during migration.
+
+Recommended transition:
+
+Stage 1: Legacy primary, central registry shadow comparison
+Stage 2: Central registry primary, legacy fallback with alerts
+Stage 3: Central registry only
+Stage 4: Remove legacy authorization checks
+
+Any mismatch should be logged and reviewed during migration.
+
+11. Existing Admin Override System
+
+The current live admin override system must be reviewed carefully.
+
+Required controls
+
+Every override should contain:
+
+permission or registry key
+user or role target
+reason
+assigned_by
+assigned_at
+effective_from
+expires_at
+status
+revoked_by
+revoked_at
+
+Security rules
+
+Overrides must be exceptional.
+
+Overrides should expire automatically.
+
+Privilege escalation should require a privileged administrator.
+
+Self-granting sensitive access must be blocked.
+
+Override changes must be audited.
+
+Active sessions should refresh or invalidate after major access changes.
+
+Missing or malformed override configuration must fail closed.
+
+Overrides should not replace a clear long-term role model.
+
+12. Content Studio and studioAddOn
+
+12.1 Current pattern
+
+The system already uses:
+
+adminUsers.studioAddOn
+
+to grant Content Studio access independently of the base role.
+
+This is a useful pattern because it confirms that:
+
+Product access is not the same as employment role.
+
+A user may require optional module access.
+
+12.2 Immediate recommendation
+
+Do not create a parallel generic product-membership table yet.
+
+Instead, centralize the existing behavior:
+
+hasProductAccess(user, "content_studio")
+
+or:
+
+requirePermission("content_studio.access")
+
+The resolver may internally read studioAddOn during the transition.
+
+12.3 Future generalization trigger
+
+Create a generalized product-access model only when:
+
+Several products need independent access
+
+Product lifecycle is consistent
+
+Activation, expiration, suspension, and audit requirements are shared
+
+One-off fields are becoming difficult to maintain
+
+Possible future model:
+
+user_product_access
+- user_id
+- product_code
+- status
+- effective_from
+- expires_at
+- assigned_by
+- reason
+
+That future model should replace studioAddOn, not exist alongside it indefinitely.
+
+13. Guest Author and Reviewer Architecture
+
+13.1 Guest identity
+
+Use an authenticated guest account associated with a verified email.
+
+Possible field:
+
+account_type = external_guest
+
+13.2 Article collaboration record
+
+Recommended structure:
+
+content_collaborators
+- id
+- content_id
+- user_id
+- collaborator_type
+- can_view
+- can_comment
+- can_suggest
+- can_edit
+- invited_by
+- invited_at
+- accepted_at
+- expires_at
+- status
+
+13.3 Default guest access
+
+Recommended default:
+
+can_view = true
+can_comment = true
+can_suggest = false
+can_edit = false
+
+13.4 Author profile
+
+The author profile may include:
+
+display_name
+public_title
+biography
+profile_image
+author_tag
+contributor_type
+
+These fields are presentation metadata.
+
+They must not grant Content Studio or article access.
+
+13.5 Required guest controls
+
+Single-use invitation
+
+Verified email
+
+Expiration
+
+Immediate revocation
+
+Article-specific access
+
+No cross-article browsing
+
+No guest invitation rights
+
+No publish or delete rights by default
+
+Audit of article view, comment, and edit actions
+
+Re-authentication for higher-risk actions
+
+14. Authentication Recommendations
+
+14.1 Employee accounts
+
+Unique user accounts
+
+No shared credentials
+
+Secure password storage
+
+MFA required for sensitive roles
+
+Prefer MFA for all employees
+
+Session revocation on termination or suspension
+
+Force password reset after administrative reset
+
+Audit login and recovery events
+
+14.2 Privileged administrators
+
+MFA mandatory
+
+Prefer phishing-resistant authentication such as passkeys/WebAuthn
+
+Require recent step-up authentication for:
+
+Role changes
+
+Access overrides
+
+MFA resets
+
+Security-setting changes
+
+Sensitive exports
+
+Impersonation
+
+Use shorter privileged-session windows
+
+Avoid daily work through super-admin access
+
+14.3 Session controls
+
+HTTP-only cookies
+
+Secure cookies in production
+
+Appropriate SameSite behavior
+
+Session identifier rotation after login
+
+Session rotation after privilege change
+
+Idle timeout
+
+Absolute timeout
+
+Logout revocation
+
+Revocation after password reset
+
+Revocation after MFA reset
+
+Revocation after account deactivation
+
+No session tokens in URLs
+
+15. Operations and Account Manager Mapping
+
+15.1 Operations
+
+Recommended model:
+
+Department: Operations
+Designation: Junior Operations Engineer
+Business function: operational_support
+Current compatibility role: operations
+
+Potential permissions:
+
+operations.dashboard.read
+operations.ticket.read
+operations.ticket.update
+operations.workflow.execute
+employee.profile.read_own
+sop.assignment.read_own
+
+Operations should not automatically receive:
+
+users.manage
+roles.manage
+system.settings.manage
+sop.catalog.manage
+audit.read_all
+
+15.2 Account Manager
+
+Recommended model:
+
+Position: Account Manager
+Business function: account_management
+
+Additional access depends on responsibility.
+
+Examples:
+
+Account Manager without direct reports
+
+account workflow access
+client requirement access
+reporting access
+no people-manager access
+
+Account Manager with direct reports
+
+account workflow access
+client requirement access
+employee.read_direct_reports
+sop.assignment.read_direct_reports
+
+Account Manager who also recruits
+
+account workflow access
+recruiting permissions
+optional manager permissions
+
+16. Formal Permissions and Multi-Role Model
+
+Recommended timing: next quarter, after centralized access adoption.
+
+Once application modules no longer depend directly on enum role strings, introduce formal database-backed permissions.
+
+Possible tables:
+
+permissions
+roles
+role_permissions
+user_role_assignments
+
+16.1 Suggested permissions
+
+id
+code
+description
+risk_level
+status
+created_at
+updated_at
+
+16.2 Suggested roles
+
+id
+code
+name
+description
+status
+created_at
+updated_at
+
+16.3 Suggested role_permissions
+
+role_id
+permission_id
+
+16.4 Suggested user_role_assignments
+
+id
+user_id
+role_id
+scope_type
+scope_id
+effective_from
+expires_at
+assigned_by
+assignment_reason
+status
+
+16.5 Migration rule
+
+The application should continue calling:
+
+requirePermission("permission.code")
+
+Only the internal permission resolver changes.
+
+This avoids another application-wide rewrite.
+
+17. Existing Role Enum Migration Contract
+
+Do not rename or remove the current roles during the immediate fix.
+
+Current values may include:
+
+super_admin
+admin
+hr
+finance
+operations
+manager
+recruiter
+employee
+executive
+director
+
+17.1 Required migration mapping
+
+Before any future role redesign, define:
+
+Current role
+
+Existing users
+
+Current access
+
+Future permission bundle
+
+Data-scope rules
+
+Migration risks
+
+super_admin
+
+TBD
+
+Full platform
+
+High-risk platform permissions
+
+Global internal scope
+
+Session and override risk
+
+admin
+
+TBD
+
+Administrative
+
+Admin bundle
+
+Company-wide
+
+Excess-access risk
+
+hr
+
+TBD
+
+HR workflows
+
+HR permissions
+
+Employee scope
+
+Sensitive-data scope
+
+operations
+
+TBD
+
+Operational workflows
+
+Operations bundle
+
+Assigned workflows
+
+Must not map to Admin
+
+manager
+
+TBD
+
+Manager features
+
+Manager permissions
+
+Direct reports
+
+Relationship accuracy
+
+recruiter
+
+TBD
+
+Recruiting
+
+Recruiting bundle
+
+Assigned jobs/candidates
+
+CEIPAL scope
+
+employee
+
+TBD
+
+Self-service
+
+Employee permissions
+
+Own records
+
+Minimal risk
+
+executive
+
+TBD
+
+Reporting
+
+Executive read permissions
+
+Approved reporting scope
+
+Broad visibility
+
+director
+
+TBD
+
+Leadership
+
+Director permissions
+
+Defined org scope
+
+Avoid company-wide default
+
+finance
+
+TBD
+
+Finance
+
+Finance permissions
+
+Financial scope
+
+Sensitive data
+
+17.2 Required migration behavior
+
+Backfill must be deterministic.
+
+Every active user must map to expected permissions.
+
+Existing sessions must refresh after cutover.
+
+Rollback must be possible.
+
+Unknown or invalid roles must fail closed.
+
+Migration logs must identify every changed user.
+
+Authorization parity must be tested before deleting legacy logic.
+
+18. SOP Governance Redesign
+
+Recommended timing: after centralized authorization is stable.
+
+The future SOP model should separate:
+
+sop_catalog
+sop_versions
+sop_rollouts
+sop_rollout_audiences
+sop_assignments
+sop_progress
+sop_acknowledgments
+sop_enforcement_events
+
+18.1 Assignment
+
+Defines:
+
+Who is obligated
+
+Which SOP version applies
+
+Why it was assigned
+
+When it is due
+
+18.2 Progress
+
+Defines:
+
+Whether the user started
+
+Completion percentage
+
+Completed date
+
+Last activity
+
+18.3 Acknowledgment
+
+Defines:
+
+Final acknowledgment
+
+User identity
+
+Version accepted
+
+Timestamp
+
+Evidence or signature
+
+18.4 Enforcement
+
+Defines:
+
+Reminder
+
+Escalation
+
+Due-date extension
+
+Manager notification
+
+Administrative override
+
+Non-compliance action
+
+18.5 Rollout
+
+Defines:
+
+Draft
+
+Scheduled
+
+Active
+
+Paused
+
+Completed
+
+Cancelled
+
+Possible audiences:
+
+all employees
+current role
+department
+designation
+business function
+direct-report team
+specific users
+
+Audience selection creates assignments.
+
+It must not directly decide permanent system authorization.
+
+19. Replit Implementation Guidance
+
+19.1 Keep the monolith
+
+Continue using the existing:
+
+Node.js
+
+Express
+
+React
+
+TypeScript
+
+PostgreSQL
+
+Drizzle ORM
+
+Replit deployment
+
+Do not introduce microservices for this refactor.
+
+19.2 Recommended module structure
+
+shared/
+  accessControl.ts
+  permissionCodes.ts
+
+server/
+  auth/
+    authenticationMiddleware.ts
+    sessionService.ts
+    mfaService.ts
+
+  authorization/
+    requirePermission.ts
+    permissionResolver.ts
+    scopeResolver.ts
+    overrideResolver.ts
+    authorizationAudit.ts
+
+  domains/
+    sop/
+    hr/
+    content/
+    bd/
+    ceipal/
+    operations/
+
+19.3 Permission enforcement pattern
+
+app.get(
+  "/api/employees/:id",
+  requireAuthentication,
+  requirePermission("employee.read_direct_reports", {
+    scopeResolver: "directReport",
+    resourceIdParam: "id"
+  }),
+  getEmployeeHandler
+);
+
+19.4 Replit security requirements
+
+Keep secrets in Replit Secrets.
+
+Never expose secrets to the client bundle.
+
+Use separate development and production databases.
+
+Use versioned Drizzle migrations.
+
+Do not rely on ad hoc schema pushes in production.
+
+Fail startup when required configuration is missing.
+
+Configure trusted proxy behavior correctly.
+
+Rate-limit login, MFA, reset, invite, and admin routes.
+
+Avoid logging passwords, tokens, session IDs, or sensitive personal data.
+
+Use database transactions for permission changes and SOP assignment sync.
+
+Refresh or invalidate authorization state after role or override changes.
+
+Back up access-control configuration.
+
+Test recovery from a bad permission deployment.
+
+20. Implementation Timeline and Investment
+
+The work should be treated as separate approved stages.
+
+Stage
+
+Estimated effort
+
+Recommended timing
+
+Phase 0 — SOP and ghost-role stabilization
+
+2–5 days
+
+Now
+
+Access-control inventory
+
+2–3 weeks
+
+Immediately after stabilization
+
+Enforce existing registry across backend/frontend
+
+3–6 weeks
+
+Next month
+
+Formal permissions and multi-role schema
+
+2–3 months
+
+Next quarter
+
+SOP governance redesign
+
+1–2 months
+
+Separate programme
+
+Generic product-access model
+
+3–6 weeks
+
+When multiple add-ons justify it
+
+Multi-tenancy
+
+Major programme
+
+Only after external-customer validation
+
+These estimates depend on:
+
+Number of protected routes
+
+Existing test coverage
+
+Code duplication
+
+Active production usage
+
+Engineering team size
+
+Availability of staging and UAT environments
+
+The full long-term modernization may require multiple quarters.
+
+21. Revised Priority Stack
+
+Now — one week
+
+Fix SOP rollout scope
+
+Fix SOP assignment seed rules
+
+Run idempotent assignment sync
+
+Remove ghost account_manager role usage
+
+Add regression tests
+
+Next — one month
+
+Audit all access checks
+
+Enforce shared/accessControl.ts
+
+Expand ACCESS_REGISTRY
+
+Remove backend inline role arrays
+
+Add direct-report and article scope resolvers
+
+Centralize studioAddOn access
+
+Quarter
+
+Add formal permissions table
+
+Add role-permission mappings
+
+Add multi-role user assignments
+
+Migrate current enum roles behind the permission resolver
+
+Reduce and then remove legacy fallback
+
+Half-year and beyond
+
+Redesign SOP governance
+
+Generalize product access
+
+Improve privileged access management
+
+Add broader authorization analytics and reviews
+
+External-customer trigger
+
+Run a separate multi-tenancy architecture decision
+
+Do not begin tenancy based only on anticipated future sales
+
+22. Security Acceptance Criteria
+
+The refactor is not complete until:
+
+No backend authorization uses designation.
+
+No backend authorization uses public title.
+
+No backend authorization uses author-profile status.
+
+No backend authorization treats Operations as Admin.
+
+account_manager is absent from enum-backed access checks.
+
+Every sensitive endpoint uses centralized authorization.
+
+Missing permissions deny access.
+
+Managers cannot access non-direct reports.
+
+Frontend hiding is not the only protection.
+
+SOP assignments remain visible before progress begins.
+
+Admins manage all SOPs without inheriting all SOPs personally.
+
+Guest access is article-specific and expiring.
+
+studioAddOn access is resolved centrally.
+
+Overrides are auditable and time-bound.
+
+Role changes refresh or revoke active authorization state.
+
+Re-running SOP synchronization creates no duplicates.
+
+Existing users retain only approved access after migration.
+
+23. Required Test Matrix
+
+Area
+
+Required tests
+
+Login and sessions
+
+Expired session, disabled account, revoked session, password reset, MFA reset
+
+Central registry
+
+Known permission, missing permission, disabled feature flag, override present, override expired
+
+Manager scope
+
+Direct report allowed, peer denied, indirect report denied, former report denied
+
+SOP rollout
+
+Included role, excluded role, specific user, mode change, empty rollout
+
+SOP assignment
+
+Missing seed, successful sync, rerun, completed progress preserved
+
+Ghost role
+
+Invalid dropdown value blocked, no dead access branch, template slug still works
+
+Content Studio
+
+studioAddOn enabled, disabled, revoked, direct API call denied
+
+Guest article
+
+Invited article allowed, unrelated article denied, expiration, revocation
+
+Operations
+
+Operational access allowed, admin configuration denied
+
+API bypass
+
+Hidden button called directly, modified record ID, manipulated payload
+
+Override security
+
+Self-grant blocked, privileged grant audited, expiration enforced
+
+Role migration
+
+Current users map correctly, invalid roles fail closed, session refresh
+
+24. Final Recommendation
+
+Hire’in Solutions should not start with a full RBAC rewrite or multi-tenant redesign.
+
+The correct architecture path is:
+
+Fix current SOP and ghost-role defects
+        ↓
+Make existing accessControl.ts authoritative
+        ↓
+Remove scattered inline authorization
+        ↓
+Add stable permissions and scope checks
+        ↓
+Introduce multi-role assignments behind the same interface
+        ↓
+Modernize SOP governance and product access
+        ↓
+Evaluate multi-tenancy only after real external demand
+
+The most important near-term rule is:
+
+One centralized access-control registry must decide authorization. Designation, department, public title, business-function slug, SOP rollout, and author profile must never independently grant system access.
+
+This approach fixes the current production problem, reduces security risk, preserves the existing Replit application, avoids a premature rewrite, and leaves a practical path toward a future commercial platform.
+
+25. Immediate Replit Task Recommendation
+
+Create one tightly scoped Phase 0 implementation task containing only:
+
+Update process_governance_rollout pilot scope.
+
+Add missing SOP role-assignment seed rules.
+
+Run and verify idempotent assignment synchronization.
+
+Remove account_manager from system-role dropdowns and authorization checks.
+
+Preserve account_manager only as a valid business-function or template key.
+
+Add role-specific SOP regression tests.
+
+Confirm admin management access remains separate from personal assignments.
+
+Document all changed access behavior and rollback steps.
+
+Do not combine Phase 0 with:
+
+Multi-role schema redesign
+
+Product-membership redesign
+
+Multi-tenancy
+
+Full SOP-governance rebuild
+
+Renaming the existing role enum
+
+Those should remain separate, approved stages.
