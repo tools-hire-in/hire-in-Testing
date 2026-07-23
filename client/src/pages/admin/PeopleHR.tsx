@@ -174,7 +174,7 @@ export default function PeopleHR() {
 
           {isAdmin && (
             <TabsContent value="audit" className="mt-4">
-              <AuditLogsContent />
+              <AuditLogsContent showHeader={false} />
             </TabsContent>
           )}
 
