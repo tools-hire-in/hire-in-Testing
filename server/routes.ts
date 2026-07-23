@@ -12468,7 +12468,7 @@ Canonical domain: ${BASE}
 
       await storage.createAuditLog({
         actorId: actor,
-        targetId: String(waveNumber),
+        targetId: null,
         action: "sop_wave_approved",
         changes: { waveNumber, notes: notes ?? null, riskAcknowledged: true },
       });
@@ -15531,7 +15531,7 @@ Canonical domain: ${BASE}
 
       await storage.createAuditLog({
         actorId: req.session.userId!,
-        targetId: String(waveNumber),
+        targetId: null,
         action: "sop_wave_activated",
         changes: { waveNumber, sopsPublished: published, sopsSkipped: skipped },
       });
@@ -15560,7 +15560,7 @@ Canonical domain: ${BASE}
       });
       await storage.createAuditLog({
         actorId: req.session.userId!,
-        targetId: String(waveNumber),
+        targetId: null,
         action: "sop_wave_updated",
         changes: { waveNumber, status, enforcement },
       });
@@ -15719,7 +15719,7 @@ Canonical domain: ${BASE}
 
       await storage.createAuditLog({
         actorId: req.session.userId!,
-        targetId: String(waveNumber),
+        targetId: null,
         action: "sop_wave_schedule_created",
         changes: { waveNumber, goLiveDate, graceDays, status: initialStatus, scheduledLaunchId: row.id },
       });
@@ -15765,7 +15765,7 @@ Canonical domain: ${BASE}
 
       await storage.createAuditLog({
         actorId: req.session.userId!,
-        targetId: String(waveNumber),
+        targetId: null,
         action: "sop_wave_schedule_approved",
         changes: { waveNumber, goLiveDate: existing.goLiveDate, scheduledLaunchId: id },
       });
@@ -15811,7 +15811,7 @@ Canonical domain: ${BASE}
 
       await storage.createAuditLog({
         actorId: userId,
-        targetId: String(waveNumber),
+        targetId: null,
         action: "sop_wave_schedule_cancelled",
         changes: { waveNumber, goLiveDate: existing.goLiveDate, scheduledLaunchId: id },
       });
@@ -15869,35 +15869,41 @@ Canonical domain: ${BASE}
         const pilotRoles = scope.roles;
         const pilotUserIds = scope.userIds;
 
-        // Build the WHERE clause safely — avoid passing empty arrays to ANY() which
-        // can produce ambiguous type errors in some Drizzle/pg versions.
+        // Build the WHERE clause safely using IN(...) with individual bound params.
+        // ANY(${arr}) does not work with Drizzle's sql template — the driver sends
+        // a JS array as an opaque scalar, causing pg error 42809 ("op ANY/ALL requires
+        // array on right side"). sql.join produces individual $1,$2,… params instead.
         let affectedRows: any[] = [];
         if (pilotRoles.length === 0 && pilotUserIds.length === 0) {
           affectedRows = [{ cnt: 0 }];
         } else if (pilotRoles.length > 0 && pilotUserIds.length === 0) {
+          const roleParams = sql.join(pilotRoles.map(r => sql`${r}`), sql`, `);
           const r = await db.execute(sql`
             SELECT COUNT(DISTINCT au.id)::int AS cnt
             FROM admin_users au
             WHERE au.is_active = true AND au.deleted_at IS NULL
-              AND au.role = ANY(${pilotRoles})
+              AND au.role IN (${roleParams})
           `);
           affectedRows = r.rows as any[];
         } else if (pilotRoles.length === 0 && pilotUserIds.length > 0) {
+          const idParams = sql.join(pilotUserIds.map(id => sql`${id}`), sql`, `);
           const r = await db.execute(sql`
             SELECT COUNT(DISTINCT au.id)::int AS cnt
             FROM admin_users au
             WHERE au.is_active = true AND au.deleted_at IS NULL
-              AND au.id = ANY(${pilotUserIds})
+              AND au.id IN (${idParams})
           `);
           affectedRows = r.rows as any[];
         } else {
+          const roleParams = sql.join(pilotRoles.map(r => sql`${r}`), sql`, `);
+          const idParams  = sql.join(pilotUserIds.map(id => sql`${id}`), sql`, `);
           const r = await db.execute(sql`
             SELECT COUNT(DISTINCT au.id)::int AS cnt
             FROM admin_users au
             WHERE au.is_active = true AND au.deleted_at IS NULL
               AND (
-                au.role = ANY(${pilotRoles})
-                OR au.id = ANY(${pilotUserIds})
+                au.role IN (${roleParams})
+                OR au.id IN (${idParams})
               )
           `);
           affectedRows = r.rows as any[];
@@ -15906,10 +15912,11 @@ Canonical domain: ${BASE}
 
         let pilotUserNames: string[] = [];
         if (pilotUserIds.length > 0) {
+          const idParams = sql.join(pilotUserIds.map(id => sql`${id}`), sql`, `);
           const userRows = await db.execute(sql`
             SELECT first_name || ' ' || last_name AS name
             FROM admin_users
-            WHERE id = ANY(${pilotUserIds})
+            WHERE id IN (${idParams})
               AND is_active = true AND deleted_at IS NULL
             ORDER BY first_name, last_name
           `);
@@ -16058,7 +16065,7 @@ Canonical domain: ${BASE}
 
       await storage.createAuditLog({
         actorId: req.session.userId!,
-        targetId: String(waveNumber),
+        targetId: null,
         action: "sop_wave_readiness_signalled",
         changes: { waveNumber, managerId: req.session.userId! },
       });
