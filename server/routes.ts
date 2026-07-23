@@ -15856,16 +15856,40 @@ Canonical domain: ${BASE}
         const pilotRoles = scope.roles;
         const pilotUserIds = scope.userIds;
 
-        const countRes = await db.execute(sql`
-          SELECT COUNT(DISTINCT au.id)::int AS cnt
-          FROM admin_users au
-          WHERE au.is_active = true AND au.deleted_at IS NULL
-            AND (
-              (${pilotRoles.length} > 0 AND au.role = ANY(${pilotRoles}::varchar[]))
-              OR (${pilotUserIds.length} > 0 AND au.id = ANY(${pilotUserIds}::varchar[]))
-            )
-        `);
-        affectedCount = Number((countRes.rows[0] as any).cnt ?? 0);
+        // Build the WHERE clause safely — avoid passing empty arrays to ANY() which
+        // can produce ambiguous type errors in some Drizzle/pg versions.
+        let affectedRows: any[] = [];
+        if (pilotRoles.length === 0 && pilotUserIds.length === 0) {
+          affectedRows = [{ cnt: 0 }];
+        } else if (pilotRoles.length > 0 && pilotUserIds.length === 0) {
+          const r = await db.execute(sql`
+            SELECT COUNT(DISTINCT au.id)::int AS cnt
+            FROM admin_users au
+            WHERE au.is_active = true AND au.deleted_at IS NULL
+              AND au.role = ANY(${pilotRoles}::varchar[])
+          `);
+          affectedRows = r.rows as any[];
+        } else if (pilotRoles.length === 0 && pilotUserIds.length > 0) {
+          const r = await db.execute(sql`
+            SELECT COUNT(DISTINCT au.id)::int AS cnt
+            FROM admin_users au
+            WHERE au.is_active = true AND au.deleted_at IS NULL
+              AND au.id = ANY(${pilotUserIds}::varchar[])
+          `);
+          affectedRows = r.rows as any[];
+        } else {
+          const r = await db.execute(sql`
+            SELECT COUNT(DISTINCT au.id)::int AS cnt
+            FROM admin_users au
+            WHERE au.is_active = true AND au.deleted_at IS NULL
+              AND (
+                au.role = ANY(${pilotRoles}::varchar[])
+                OR au.id = ANY(${pilotUserIds}::varchar[])
+              )
+          `);
+          affectedRows = r.rows as any[];
+        }
+        affectedCount = Number((affectedRows[0] as any).cnt ?? 0);
 
         let pilotUserNames: string[] = [];
         if (pilotUserIds.length > 0) {

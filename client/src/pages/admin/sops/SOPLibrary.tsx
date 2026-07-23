@@ -3422,7 +3422,7 @@ interface WavesResponse {
 function RolloutView({ onViewDetails }: { onViewDetails?: (id: string) => void }) {
   const { toast } = useToast();
   const { user } = useAuth();
-  const canSchedule = ["super_admin", "admin", "director"].includes(user?.role || "");
+  const canSchedule = ["super_admin", "admin"].includes(user?.role || "");
 
   const { data, isLoading } = useQuery<WavesResponse>({
     queryKey: ["/api/sops/waves"],
