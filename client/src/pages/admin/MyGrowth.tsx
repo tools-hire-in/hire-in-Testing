@@ -4,6 +4,11 @@ import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
+import {
+  Award, BookOpen, Target, CalendarCheck, MessageSquare,
+  ClipboardList, Map, Users, Flag, FileCheck, Briefcase,
+  GraduationCap, Settings2,
+} from "lucide-react";
 import MyTraining from "./hr/MyTraining";
 import { MyGoalsContent } from "./performance/MyGoals";
 import { TeamGoalsContent } from "./performance/TeamGoals";
@@ -35,6 +40,8 @@ type Tab =
   | "training-mgmt"
   | "employee-plans";
 
+type Segment = "my-growth" | "my-team" | "admin";
+
 // Map legacy / retired deep-link params onto the flattened tab set.
 function aliasTab(raw: string): string {
   switch (raw) {
@@ -46,7 +53,6 @@ function aliasTab(raw: string): string {
     case "goal-templates":
     case "templates":
       return "settings";
-    // Relocated from People & HR.
     case "training-management":
       return "training-mgmt";
     case "plans":
@@ -65,7 +71,6 @@ function getAllowedTabs(isManager: boolean, isHrAdmin: boolean, hasPlan: boolean
   return tabs;
 }
 
-// Fall back to the closest visible tab when a requested tab is not allowed.
 function resolveTab(raw: string, allowed: Tab[]): Tab {
   if (allowed.includes(raw as Tab)) return raw as Tab;
   switch (raw) {
@@ -84,8 +89,6 @@ function resolveTab(raw: string, allowed: Tab[]): Tab {
   }
 }
 
-// When a non-manager lands on ?tab=employee-plans, prefer their own plan view
-// if available, else the praise board.
 function hasPlanFallback(allowed: Tab[]): Tab {
   return allowed.includes("my-plan") ? "my-plan" : "praise";
 }
@@ -98,30 +101,52 @@ function getTabFromSearch(): string {
   return "praise";
 }
 
-interface NavItemProps {
-  value: Tab;
+// Which segment each tab belongs to
+const TAB_SEGMENT: Record<Tab, Segment> = {
+  praise: "my-growth",
+  training: "my-growth",
+  "my-goals": "my-growth",
+  "check-ins": "my-growth",
+  feedback: "my-growth",
+  "my-reviews": "my-growth",
+  "my-plan": "my-growth",
+  "team-check-ins": "my-team",
+  "team-goals": "my-team",
+  "team-reviews": "my-team",
+  "employee-plans": "my-team",
+  settings: "admin",
+  "training-mgmt": "admin",
+};
+
+interface SubItem {
+  tab: Tab;
   label: string;
-  active: boolean;
-  onClick: (tab: Tab) => void;
-  testId: string;
+  Icon: React.ComponentType<{ className?: string }>;
 }
 
-function NavItem({ value, label, active, onClick, testId }: NavItemProps) {
-  return (
-    <button
-      data-testid={testId}
-      onClick={() => onClick(value)}
-      className={cn(
-        "w-full text-left px-3 py-1.5 rounded-md text-sm transition-colors",
-        active
-          ? "bg-[#1F3A6E] text-white font-medium"
-          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-      )}
-    >
-      {label}
-    </button>
-  );
+function getMyGrowthItems(hasPlan: boolean): SubItem[] {
+  return [
+    { tab: "praise", label: "Praise", Icon: Award },
+    { tab: "training", label: "Training", Icon: BookOpen },
+    { tab: "my-goals", label: "Goals", Icon: Target },
+    { tab: "check-ins", label: "Check-Ins", Icon: CalendarCheck },
+    { tab: "feedback", label: "Feedback", Icon: MessageSquare },
+    { tab: "my-reviews", label: "Reviews", Icon: ClipboardList },
+    ...(hasPlan ? [{ tab: "my-plan" as Tab, label: "My Plan", Icon: Map }] : []),
+  ];
 }
+
+const MY_TEAM_ITEMS: SubItem[] = [
+  { tab: "team-check-ins", label: "Check-Ins", Icon: CalendarCheck },
+  { tab: "team-goals", label: "Goals", Icon: Flag },
+  { tab: "team-reviews", label: "Reviews", Icon: FileCheck },
+  { tab: "employee-plans", label: "Plans", Icon: Briefcase },
+];
+
+const ADMIN_ITEMS: SubItem[] = [
+  { tab: "training-mgmt", label: "Training Mgmt", Icon: GraduationCap },
+  { tab: "settings", label: "Settings", Icon: Settings2 },
+];
 
 export default function MyGrowth() {
   const [, setLocation] = useLocation();
@@ -143,14 +168,12 @@ export default function MyGrowth() {
   const isHrAdmin = HR_ADMIN_ROLES.includes(user?.role || "");
   const allowedTabs = getAllowedTabs(isManager, isHrAdmin, hasPlan);
 
-  // Hold the raw (alias-resolved) requested tab; validate against role/plan once known.
   const [activeTab, setActiveTab] = useState<Tab>(() => getTabFromSearch() as Tab);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
   }, [authLoading, isAuthenticated, setLocation]);
 
-  // Once role + plan status are known, fall back if the active tab isn't allowed.
   useEffect(() => {
     if (authLoading || planLoading) return;
     setActiveTab((prev) => (allowedTabs.includes(prev) ? prev : resolveTab(prev, allowedTabs)));
@@ -170,93 +193,121 @@ export default function MyGrowth() {
     window.history.replaceState({}, "", url.toString());
   };
 
-  const showTeamGrowth = isManager || isHrAdmin;
+  // Derive active segment from active tab
+  const activeSegment: Segment = TAB_SEGMENT[activeTab] ?? "my-growth";
+
+  const handleSegmentClick = (segment: Segment, items: SubItem[]) => {
+    if (activeSegment === segment) return;
+    const firstAllowed = items.find((it) => allowedTabs.includes(it.tab));
+    if (firstAllowed) handleTabChange(firstAllowed.tab);
+  };
+
+  // Build segment list (only include segments the user has access to)
+  const myGrowthItems = getMyGrowthItems(hasPlan);
+
+  interface SegmentEntry {
+    id: Segment;
+    label: string;
+    Icon: React.ComponentType<{ className?: string }>;
+    items: SubItem[];
+  }
+
+  const segments: SegmentEntry[] = [
+    { id: "my-growth", label: "My Growth", Icon: Award, items: myGrowthItems },
+    ...(MY_TEAM_ITEMS.some((it) => allowedTabs.includes(it.tab))
+      ? [{ id: "my-team" as Segment, label: "My Team", Icon: Users, items: MY_TEAM_ITEMS }]
+      : []),
+    ...(ADMIN_ITEMS.some((it) => allowedTabs.includes(it.tab))
+      ? [{ id: "admin" as Segment, label: "Admin", Icon: GraduationCap, items: ADMIN_ITEMS }]
+      : []),
+  ];
+
+  const activeSeg = segments.find((s) => s.id === activeSegment) ?? segments[0];
+  const subItems = activeSeg.items.filter((it) => allowedTabs.includes(it.tab));
 
   return (
     <AdminLayout>
       <div className="v2-surface space-y-4">
+        {/* Page header */}
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-mygrowth-title">My Growth</h1>
           <p className="text-sm text-muted-foreground">Recognition, training, goals, check-ins, feedback, and reviews</p>
         </div>
 
-        <div className="flex gap-6 items-start" data-testid="tabs-mygrowth">
-          {/* Left sidebar */}
-          <nav className="w-48 shrink-0 space-y-4" aria-label="My Growth navigation">
-            {/* Personal Growth group */}
-            <div>
-              <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
-                Personal Growth
-              </p>
-              <div className="space-y-0.5">
-                <NavItem value="praise" label="🏅 Praise" active={activeTab === "praise"} onClick={handleTabChange} testId="tab-praise" />
-                <NavItem value="training" label="Training" active={activeTab === "training"} onClick={handleTabChange} testId="tab-training" />
-                <NavItem value="my-goals" label="My Goals" active={activeTab === "my-goals"} onClick={handleTabChange} testId="tab-my-goals" />
-                <NavItem value="check-ins" label="Check-Ins" active={activeTab === "check-ins"} onClick={handleTabChange} testId="tab-check-ins" />
-                <NavItem value="feedback" label="Feedback" active={activeTab === "feedback"} onClick={handleTabChange} testId="tab-feedback" />
-                <NavItem value="my-reviews" label="My Reviews" active={activeTab === "my-reviews"} onClick={handleTabChange} testId="tab-my-reviews" />
-                {hasPlan && (
-                  <NavItem value="my-plan" label="My Plan" active={activeTab === "my-plan"} onClick={handleTabChange} testId="tab-my-plan" />
-                )}
-              </div>
-            </div>
+        {/* Top segment bar */}
+        <nav
+          className="flex gap-1 border-b overflow-x-auto"
+          aria-label="My Growth segments"
+          data-testid="tabs-mygrowth"
+        >
+          {segments.map((seg) => (
+            <button
+              key={seg.id}
+              data-testid={`segment-${seg.id}`}
+              onClick={() => handleSegmentClick(seg.id, seg.items)}
+              className={cn(
+                "flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-colors",
+                activeSegment === seg.id
+                  ? "border-[#1F3A6E] text-[#1F3A6E]"
+                  : "border-transparent text-muted-foreground hover:text-foreground hover:border-muted-foreground/40"
+              )}
+            >
+              <seg.Icon className="h-4 w-4 shrink-0" />
+              {seg.label}
+            </button>
+          ))}
+        </nav>
 
-            {/* Team Growth group — manager/HR only */}
-            {showTeamGrowth && (
-              <div>
-                <p className="px-3 mb-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground select-none">
-                  Team Growth
-                </p>
-                <div className="space-y-0.5">
-                  {isManager && (
-                    <NavItem value="team-check-ins" label="Team Check-Ins" active={activeTab === "team-check-ins"} onClick={handleTabChange} testId="tab-team-check-ins" />
-                  )}
-                  {isManager && (
-                    <NavItem value="team-goals" label="Team Goals" active={activeTab === "team-goals"} onClick={handleTabChange} testId="tab-team-goals" />
-                  )}
-                  {isManager && (
-                    <NavItem value="team-reviews" label="Team Reviews" active={activeTab === "team-reviews"} onClick={handleTabChange} testId="tab-team-reviews" />
-                  )}
-                  {isManager && (
-                    <NavItem value="employee-plans" label="Employee Plans" active={activeTab === "employee-plans"} onClick={handleTabChange} testId="tab-employee-plans" />
-                  )}
-                  {isHrAdmin && (
-                    <NavItem value="training-mgmt" label="Training Mgmt" active={activeTab === "training-mgmt"} onClick={handleTabChange} testId="tab-training-mgmt" />
-                  )}
-                  {isManager && (
-                    <NavItem value="settings" label="Settings" active={activeTab === "settings"} onClick={handleTabChange} testId="tab-settings" />
-                  )}
-                </div>
-              </div>
-            )}
-          </nav>
+        {/* Secondary sub-nav chip row */}
+        <div
+          className="flex flex-wrap gap-2"
+          aria-label="Section navigation"
+        >
+          {subItems.map((item) => (
+            <button
+              key={item.tab}
+              data-testid={`tab-${item.tab}`}
+              onClick={() => handleTabChange(item.tab)}
+              className={cn(
+                "flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors border",
+                activeTab === item.tab
+                  ? "bg-[#F47C20] border-[#F47C20] text-white shadow-sm"
+                  : "bg-background border-border text-muted-foreground hover:border-[#F47C20]/60 hover:text-foreground"
+              )}
+            >
+              <item.Icon className="h-3.5 w-3.5 shrink-0" />
+              {item.label}
+            </button>
+          ))}
+        </div>
 
-          {/* Right content area */}
-          <div className="flex-1 min-w-0">
-            {activeTab === "praise" && <PraiseBoard />}
-            {activeTab === "training" && <MyTraining />}
-            {activeTab === "my-goals" && <MyGoalsContent />}
-            {activeTab === "check-ins" && <PerformanceCheckIns mode="mine" />}
-            {activeTab === "feedback" && <PerformanceFeedback />}
-            {activeTab === "my-reviews" && <MyReviewsContent />}
-            {activeTab === "my-plan" && hasPlan && <MyPlanView />}
-            {activeTab === "team-check-ins" && isManager && <PerformanceCheckIns mode="team" />}
-            {activeTab === "team-goals" && isManager && <TeamGoalsContent />}
-            {activeTab === "team-reviews" && isManager && <TeamReviewsContent />}
-            {activeTab === "employee-plans" && isManager && <HRPlansOverview />}
-            {activeTab === "training-mgmt" && isHrAdmin && (
-              <div className="space-y-6">
-                <RayoAcademySettingsSection />
+        {/* Content card */}
+        <div className="bg-card rounded-xl border shadow-sm p-6 min-h-[400px]">
+          {activeTab === "praise" && <PraiseBoard />}
+          {activeTab === "training" && <MyTraining />}
+          {activeTab === "my-goals" && <MyGoalsContent />}
+          {activeTab === "check-ins" && <PerformanceCheckIns mode="mine" />}
+          {activeTab === "feedback" && <PerformanceFeedback />}
+          {activeTab === "my-reviews" && <MyReviewsContent />}
+          {activeTab === "my-plan" && hasPlan && <MyPlanView />}
+          {activeTab === "team-check-ins" && isManager && <PerformanceCheckIns mode="team" />}
+          {activeTab === "team-goals" && isManager && <TeamGoalsContent />}
+          {activeTab === "team-reviews" && isManager && <TeamReviewsContent />}
+          {activeTab === "employee-plans" && isManager && <HRPlansOverview />}
+          {activeTab === "training-mgmt" && isHrAdmin && (
+            <div className="space-y-6">
+              <RayoAcademySettingsSection />
+              <div className="overflow-x-auto">
                 <TrainingManagement />
               </div>
-            )}
-            {activeTab === "settings" && isManager && (
-              <div className="space-y-4 max-w-5xl">
-                <PerformanceSettingsSection />
-                <GoalTemplatesSection />
-              </div>
-            )}
-          </div>
+            </div>
+          )}
+          {activeTab === "settings" && isManager && (
+            <div className="space-y-4 max-w-5xl">
+              <PerformanceSettingsSection />
+              <GoalTemplatesSection />
+            </div>
+          )}
         </div>
       </div>
     </AdminLayout>

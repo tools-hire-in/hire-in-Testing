@@ -491,7 +491,7 @@ export default function TrainingManagement() {
             </h1>
             <p className="text-muted-foreground mt-1">Author tracks, manage content, and assign training to employees</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 justify-end">
             {isEndorser && (
               <Button
                 variant={showEndorsements ? "default" : "outline"}
