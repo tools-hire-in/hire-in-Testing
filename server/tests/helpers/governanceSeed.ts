@@ -333,6 +333,26 @@ export async function teardownGovernanceTestHierarchy(): Promise<void> {
        OR created_by IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
   `).catch(() => {});
 
+  // Third-pass nuke: some background startup tasks (universal-policy seed, SOP
+  // wave assignment, onboarding track seeds) can re-create track_assignment rows
+  // for these users in the window between the second-pass delete above and the
+  // final admin_users delete below.  Run one final unconditional sweep covering
+  // all three FK columns so the admin_users delete cannot hit a FK violation.
+  await db.execute(sql`
+    DELETE FROM track_assignments
+    WHERE user_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+       OR assigned_by IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+       OR exception_granted_by_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+  await db.execute(sql`
+    UPDATE track_assignments SET assigned_by = NULL
+    WHERE assigned_by IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+  await db.execute(sql`
+    UPDATE track_assignments SET exception_granted_by_id = NULL
+    WHERE exception_granted_by_id IN (${GC_CEO_ID}, ${GC_VP_ID}, ${GC_MGR_ID}, ${GC_REC_A_ID}, ${GC_REC_B_ID}, ${GC_HR_ID})
+  `).catch(() => {});
+
   await db.execute(sql`
     DELETE FROM admin_users
     WHERE id IN (

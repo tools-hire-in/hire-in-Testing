@@ -15866,7 +15866,7 @@ Canonical domain: ${BASE}
             SELECT COUNT(DISTINCT au.id)::int AS cnt
             FROM admin_users au
             WHERE au.is_active = true AND au.deleted_at IS NULL
-              AND au.role = ANY(${pilotRoles}::varchar[])
+              AND au.role = ANY(${pilotRoles})
           `);
           affectedRows = r.rows as any[];
         } else if (pilotRoles.length === 0 && pilotUserIds.length > 0) {
@@ -15874,7 +15874,7 @@ Canonical domain: ${BASE}
             SELECT COUNT(DISTINCT au.id)::int AS cnt
             FROM admin_users au
             WHERE au.is_active = true AND au.deleted_at IS NULL
-              AND au.id = ANY(${pilotUserIds}::varchar[])
+              AND au.id = ANY(${pilotUserIds})
           `);
           affectedRows = r.rows as any[];
         } else {
@@ -15883,8 +15883,8 @@ Canonical domain: ${BASE}
             FROM admin_users au
             WHERE au.is_active = true AND au.deleted_at IS NULL
               AND (
-                au.role = ANY(${pilotRoles}::varchar[])
-                OR au.id = ANY(${pilotUserIds}::varchar[])
+                au.role = ANY(${pilotRoles})
+                OR au.id = ANY(${pilotUserIds})
               )
           `);
           affectedRows = r.rows as any[];
@@ -15896,7 +15896,7 @@ Canonical domain: ${BASE}
           const userRows = await db.execute(sql`
             SELECT first_name || ' ' || last_name AS name
             FROM admin_users
-            WHERE id = ANY(${pilotUserIds}::varchar[])
+            WHERE id = ANY(${pilotUserIds})
               AND is_active = true AND deleted_at IS NULL
             ORDER BY first_name, last_name
           `);
