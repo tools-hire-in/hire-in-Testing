@@ -2927,7 +2927,7 @@ export const studioArticles = pgTable("studio_articles", {
   safetyFailuresJsonb: jsonb("safety_failures_jsonb"),  // [{code, sentence, reason, missingSource, recommendedCorrection, autoCorrectSafe}]
   generationV1Markdown: text("generation_v1_markdown"), // initial accepted version for editing-effort tracking
   // Campaign link — set when the article is created from a campaign day plan.
-  campaignId: varchar("campaign_id"),
+  campaignId: varchar("campaign_id").references(() => studioCampaigns.id),
   // Back-link to the content idea that was promoted to create this article.
   // NULL for articles created directly (not via promotion).
   linkedIdeaId: varchar("linked_idea_id"),
