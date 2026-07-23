@@ -1,0 +1,143 @@
+CREATE TYPE "public"."onboarding_track" AS ENUM('employee', 'manager', 'hr', 'executive', 'admin');
+CREATE TYPE "public"."wave_scheduled_launch_status" AS ENUM('pending_approval', 'approved', 'active', 'cancelled');
+ALTER TYPE "public"."user_role" ADD VALUE 'director';
+CREATE TABLE "wave_readiness_signals" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"wave_number" integer NOT NULL,
+	"manager_id" varchar NOT NULL,
+	"signalled_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "sop_wave_attestations" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" varchar NOT NULL,
+	"wave_number" integer NOT NULL,
+	"attested_at" timestamp DEFAULT now() NOT NULL,
+	"signature_hash" text NOT NULL,
+	"ref_number" text NOT NULL,
+	"cheat_sheet_content" text
+);
+CREATE TABLE "wave_scheduled_launches" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"wave_number" integer NOT NULL,
+	"scheduled_by_user_id" varchar NOT NULL,
+	"go_live_date" date NOT NULL,
+	"grace_days" integer DEFAULT 0 NOT NULL,
+	"status" "wave_scheduled_launch_status" DEFAULT 'pending_approval' NOT NULL,
+	"submitted_at" timestamp DEFAULT now() NOT NULL,
+	"approved_by" varchar,
+	"approved_at" timestamp,
+	"notes" text
+);
+CREATE TABLE "sop_employee_quiz_responses" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"sop_id" varchar NOT NULL,
+	"user_id" varchar NOT NULL,
+	"attempt_number" integer NOT NULL,
+	"answers" jsonb NOT NULL,
+	"score_pct" integer NOT NULL,
+	"passed" boolean NOT NULL,
+	"attempted_at" timestamp DEFAULT now() NOT NULL,
+	"cooldown_until" timestamp
+);
+CREATE TABLE "knowledge_hub_reads" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "knowledge_hub_reads_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"user_id" varchar NOT NULL,
+	"doc_path" text NOT NULL,
+	"read_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "sop_knowledge_check_options" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"question_id" varchar NOT NULL,
+	"option_text" text NOT NULL,
+	"position" integer DEFAULT 0 NOT NULL,
+	"created_at" timestamp DEFAULT now() NOT NULL
+);
+CREATE TABLE "user_onboarding_progress" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"user_id" varchar NOT NULL,
+	"role" varchar NOT NULL,
+	"completed_step_ids" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"knowledge_check_passed" jsonb DEFAULT '{}'::jsonb NOT NULL,
+	"started_at" timestamp DEFAULT now(),
+	"completed_at" timestamp,
+	"snoozed" boolean DEFAULT false NOT NULL
+);
+CREATE TABLE "sop_knowledge_checks" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"sop_master_id" varchar NOT NULL,
+	"question_text" text NOT NULL,
+	"correct_option_index" integer,
+	"explanation" text,
+	"position" integer DEFAULT 0 NOT NULL,
+	"archived_at" timestamp,
+	"created_by" varchar,
+	"created_at" timestamp DEFAULT now() NOT NULL,
+	"updated_at" timestamp DEFAULT now() NOT NULL,
+	"sop_id" varchar,
+	"options" jsonb,
+	"correct_index" integer
+);
+CREATE TABLE "onboarding_steps" (
+	"id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+	"track" "onboarding_track" NOT NULL,
+	"step_number" integer NOT NULL,
+	"title" varchar(300) NOT NULL,
+	"purpose" text,
+	"where_to_find" text,
+	"nav_route" text,
+	"how_to_use" text,
+	"important_rules" jsonb DEFAULT '[]'::jsonb NOT NULL,
+	"is_high_risk" boolean DEFAULT false NOT NULL,
+	"common_mistake" text,
+	"scenario" text,
+	"practical_exercise" text,
+	"knowledge_check" jsonb,
+	"where_to_get_help" text,
+	"is_active" boolean DEFAULT true NOT NULL,
+	"created_at" timestamp DEFAULT now(),
+	"updated_at" timestamp DEFAULT now()
+);
+CREATE TABLE "dev_email_inbox" (
+	"id" integer PRIMARY KEY GENERATED ALWAYS AS IDENTITY (sequence name "dev_email_inbox_id_seq" INCREMENT BY 1 MINVALUE 1 MAXVALUE 2147483647 START WITH 1 CACHE 1),
+	"env_mode" text NOT NULL,
+	"type" text NOT NULL,
+	"source_job" text NOT NULL,
+	"to_addresses" text[] NOT NULL,
+	"cc_addresses" text[] DEFAULT '{}' NOT NULL,
+	"subject" text NOT NULL,
+	"body_html" text,
+	"body_text" text,
+	"captured_at" timestamp DEFAULT now() NOT NULL
+);
+ALTER TABLE "studio_content_ideas" ADD COLUMN "format" varchar;
+ALTER TABLE "studio_content_ideas" ADD COLUMN "generated_content_jsonb" jsonb;
+ALTER TABLE "studio_content_ideas" ADD COLUMN "published_at" timestamp with time zone;
+ALTER TABLE "studio_articles" ADD COLUMN "campaign_id" varchar;
+ALTER TABLE "studio_campaigns" ADD COLUMN "duration_days" integer;
+ALTER TABLE "studio_campaigns" ADD COLUMN "daily_plan_jsonb" jsonb;
+ALTER TABLE "wave_readiness_signals" ADD CONSTRAINT "wave_readiness_signals_manager_id_admin_users_id_fk" FOREIGN KEY ("manager_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "sop_wave_attestations" ADD CONSTRAINT "sop_wave_attestations_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "wave_scheduled_launches" ADD CONSTRAINT "wave_scheduled_launches_approved_by_admin_users_id_fk" FOREIGN KEY ("approved_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "wave_scheduled_launches" ADD CONSTRAINT "wave_scheduled_launches_scheduled_by_user_id_admin_users_id_fk" FOREIGN KEY ("scheduled_by_user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "sop_employee_quiz_responses" ADD CONSTRAINT "sop_employee_quiz_responses_sop_id_sop_documents_id_fk" FOREIGN KEY ("sop_id") REFERENCES "public"."sop_documents"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "sop_employee_quiz_responses" ADD CONSTRAINT "sop_employee_quiz_responses_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "knowledge_hub_reads" ADD CONSTRAINT "knowledge_hub_reads_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "sop_knowledge_check_options" ADD CONSTRAINT "sop_knowledge_check_options_question_id_sop_knowledge_checks_id" FOREIGN KEY ("question_id") REFERENCES "public"."sop_knowledge_checks"("id") ON DELETE cascade ON UPDATE no action;
+ALTER TABLE "user_onboarding_progress" ADD CONSTRAINT "user_onboarding_progress_user_id_admin_users_id_fk" FOREIGN KEY ("user_id") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "sop_knowledge_checks" ADD CONSTRAINT "sop_knowledge_checks_created_by_admin_users_id_fk" FOREIGN KEY ("created_by") REFERENCES "public"."admin_users"("id") ON DELETE no action ON UPDATE no action;
+ALTER TABLE "sop_knowledge_checks" ADD CONSTRAINT "sop_knowledge_checks_sop_id_sop_documents_id_fk" FOREIGN KEY ("sop_id") REFERENCES "public"."sop_documents"("id") ON DELETE cascade ON UPDATE no action;
+CREATE INDEX "idx_wave_readiness_signals_wave" ON "wave_readiness_signals" USING btree ("wave_number");
+CREATE UNIQUE INDEX "idx_wave_readiness_unique_wave_manager" ON "wave_readiness_signals" USING btree ("wave_number","manager_id");
+CREATE INDEX "sop_wave_attestations_user_wave_idx" ON "sop_wave_attestations" USING btree ("user_id","wave_number");
+CREATE UNIQUE INDEX "sop_wave_attestations_user_wave_unique" ON "sop_wave_attestations" USING btree ("user_id","wave_number");
+CREATE INDEX "idx_wave_scheduled_launches_go_live" ON "wave_scheduled_launches" USING btree ("go_live_date");
+CREATE INDEX "idx_wave_scheduled_launches_status" ON "wave_scheduled_launches" USING btree ("status");
+CREATE INDEX "idx_wave_scheduled_launches_wave" ON "wave_scheduled_launches" USING btree ("wave_number");
+CREATE INDEX "sop_quiz_responses_sop_user_idx" ON "sop_employee_quiz_responses" USING btree ("sop_id","user_id");
+CREATE INDEX "sop_quiz_responses_user_idx" ON "sop_employee_quiz_responses" USING btree ("user_id");
+CREATE UNIQUE INDEX "uq_knowledge_hub_reads_user_doc" ON "knowledge_hub_reads" USING btree ("user_id","doc_path");
+CREATE INDEX "sop_knowledge_check_options_question_idx" ON "sop_knowledge_check_options" USING btree ("question_id");
+CREATE UNIQUE INDEX "user_onboarding_progress_user_role_unique" ON "user_onboarding_progress" USING btree ("user_id","role");
+CREATE INDEX "sop_knowledge_checks_master_idx" ON "sop_knowledge_checks" USING btree ("sop_master_id");
+CREATE INDEX "idx_onboarding_steps_track_active" ON "onboarding_steps" USING btree ("track","is_active");
+CREATE UNIQUE INDEX "onboarding_steps_track_step_unique" ON "onboarding_steps" USING btree ("track","step_number");
