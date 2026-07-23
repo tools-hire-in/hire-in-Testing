@@ -15823,6 +15823,109 @@ Canonical domain: ${BASE}
     }
   });
 
+  // ── Rollout impact preview endpoint (Task #1544) ─────────────────────────────
+  // GET /api/sops/waves/:waveNumber/rollout-preview — lightweight summary of
+  // who will be affected and what enforcement applies. Used by the Schedule
+  // Rollout drawer's Impact Preview panel before the admin commits a date.
+  app.get("/api/sops/waves/:waveNumber/rollout-preview", requireAuth, requirePermission("sops.schedule"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber) || waveNumber < 0 || waveNumber > 5) {
+        return res.status(400).json({ error: "Invalid wave number (0-5)" });
+      }
+
+      const waveDef = sopRollout.WAVE_DEFS.find((w) => w.waveNumber === waveNumber);
+      if (!waveDef) {
+        return res.status(404).json({ error: "Wave not found" });
+      }
+
+      const scope = await sopRollout.getSopRolloutScope();
+      const masterIds = await sopRollout.resolveWaveMembership(waveDef);
+
+      let affectedCount = 0;
+      let scopeDetail: { roles?: string[]; pilotUserNames?: string[]; pilotCount?: number } = {};
+
+      if (scope.mode === "all") {
+        const countRes = await db.execute(sql`
+          SELECT COUNT(*)::int AS cnt FROM admin_users
+          WHERE is_active = true AND deleted_at IS NULL
+        `);
+        affectedCount = Number((countRes.rows[0] as any).cnt ?? 0);
+        scopeDetail = { roles: [] };
+      } else {
+        const pilotRoles = scope.roles;
+        const pilotUserIds = scope.userIds;
+
+        const countRes = await db.execute(sql`
+          SELECT COUNT(DISTINCT au.id)::int AS cnt
+          FROM admin_users au
+          WHERE au.is_active = true AND au.deleted_at IS NULL
+            AND (
+              (${pilotRoles.length} > 0 AND au.role = ANY(${pilotRoles}::varchar[]))
+              OR (${pilotUserIds.length} > 0 AND au.id = ANY(${pilotUserIds}::varchar[]))
+            )
+        `);
+        affectedCount = Number((countRes.rows[0] as any).cnt ?? 0);
+
+        let pilotUserNames: string[] = [];
+        if (pilotUserIds.length > 0) {
+          const userRows = await db.execute(sql`
+            SELECT first_name || ' ' || last_name AS name
+            FROM admin_users
+            WHERE id = ANY(${pilotUserIds}::varchar[])
+              AND is_active = true AND deleted_at IS NULL
+            ORDER BY first_name, last_name
+          `);
+          pilotUserNames = (userRows.rows as any[]).map((r: any) => r.name as string);
+        }
+        scopeDetail = { roles: pilotRoles, pilotUserNames, pilotCount: affectedCount };
+      }
+
+      const sopDocs = masterIds.length > 0
+        ? (await db.execute(sql`
+            SELECT sd.id, sd.learning_track_id
+            FROM sop_documents sd
+            WHERE sd.sop_master_id = ANY(${masterIds}::varchar[])
+              AND sd.is_current = true
+          `)).rows as any[]
+        : [];
+
+      const sopIds = sopDocs.map((d: any) => d.id as string);
+
+      let hasKnowledgeChecks = false;
+      if (sopIds.length > 0) {
+        const kqRes = await db.execute(sql`
+          SELECT COUNT(*)::int AS cnt FROM sop_knowledge_checks
+          WHERE sop_id = ANY(${sopIds}::varchar[])
+        `).catch(() => ({ rows: [{ cnt: 0 }] }));
+        hasKnowledgeChecks = Number((kqRes.rows[0] as any).cnt ?? 0) > 0;
+      }
+
+      const hasLinkedTracks = sopDocs.some((d: any) => !!d.learning_track_id);
+
+      const graceDaysRow = await db.execute(sql`
+        SELECT value FROM system_settings WHERE key = 'governance_sop_grace_days' LIMIT 1
+      `);
+      const graceDays = graceDaysRow.rows.length > 0
+        ? (parseInt(String((graceDaysRow.rows[0] as any).value), 10) || 15)
+        : 15;
+
+      return res.json({
+        affectedCount,
+        mode: scope.mode,
+        scopeDetail,
+        enforcementTier: waveDef.enforcement,
+        graceDays,
+        hasKnowledgeChecks,
+        hasLinkedTracks,
+        requiresApproval: waveNumber >= 3,
+      });
+    } catch (error) {
+      console.error("SOP rollout preview error:", error);
+      res.status(500).json({ error: "Failed to load rollout preview" });
+    }
+  });
+
   // ── AI-assisted wave scheduling endpoints ────────────────────────────────────
   // GET /api/sops/waves/:waveNumber/ai/suggestions — 3 ranked go-live windows.
   app.get("/api/sops/waves/:waveNumber/ai/suggestions", requireAuth, requirePermission("sops.schedule"), async (req: Request, res: Response) => {

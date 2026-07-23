@@ -2785,6 +2785,235 @@ function ManageReviewersDrawer({
 
 // ── Wave Scheduling (Task #1408) ─────────────────────────────────────────────
 
+// ── Rollout Impact Preview (Task #1544) ──────────────────────────────────────
+
+interface RolloutPreviewData {
+  affectedCount: number;
+  mode: "all" | "pilot";
+  scopeDetail: { roles?: string[]; pilotUserNames?: string[]; pilotCount?: number };
+  enforcementTier: "soft" | "measured" | "full";
+  graceDays: number;
+  hasKnowledgeChecks: boolean;
+  hasLinkedTracks: boolean;
+  requiresApproval: boolean;
+}
+
+const ENFORCEMENT_DESCRIPTIONS: Record<"soft" | "measured" | "full", { label: string; description: string; badgeClass: string }> = {
+  soft: {
+    label: "Soft — Coaching banner",
+    description: "Employees see a friendly nudge to read and acknowledge. No restrictions apply.",
+    badgeClass: "bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300",
+  },
+  measured: {
+    label: "Measured — Audit tracking",
+    description: "Employees see a coaching banner and their compliance is logged for audit visibility. No access restrictions.",
+    badgeClass: "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30 dark:text-amber-300",
+  },
+  full: {
+    label: "Full — Compliance lock",
+    description: "Employees who don't acknowledge within the grace period will have portal access restricted until they comply.",
+    badgeClass: "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30 dark:text-red-300",
+  },
+};
+
+function RolloutImpactPreview({ waveNumber, graceDays }: { waveNumber: number; graceDays: number }) {
+  const [whoOpen, setWhoOpen] = useState(false);
+  const [whatOpen, setWhatOpen] = useState(false);
+  const [data, setData] = useState<RolloutPreviewData | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(false);
+    apiRequest("GET", `/api/sops/waves/${waveNumber}/rollout-preview`)
+      .then((r) => r.json())
+      .then((d: RolloutPreviewData) => {
+        if (!cancelled) { setData(d); setLoading(false); }
+      })
+      .catch(() => { if (!cancelled) { setError(true); setLoading(false); } });
+    return () => { cancelled = true; };
+  }, [waveNumber]);
+
+  const enf = data ? ENFORCEMENT_DESCRIPTIONS[data.enforcementTier] : null;
+
+  return (
+    <div className="space-y-2" data-testid="rollout-impact-preview">
+      {/* Who's affected */}
+      <div className="rounded-lg border bg-muted/30" data-testid="impact-who-panel">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium"
+          onClick={() => setWhoOpen((v) => !v)}
+          data-testid="button-toggle-who-affected"
+        >
+          <span className="flex items-center gap-1.5">
+            <Users className="h-3.5 w-3.5 text-muted-foreground" />
+            Who&apos;s affected
+          </span>
+          {whoOpen ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+        </button>
+
+        {whoOpen && (
+          <div className="border-t px-3 pb-3 pt-2 space-y-2">
+            {loading ? (
+              <div className="space-y-1.5">
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-4 w-48" />
+              </div>
+            ) : error ? (
+              <p className="text-xs text-muted-foreground">Unable to load preview right now.</p>
+            ) : data ? (
+              <>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Badge variant="outline" className="text-xs gap-1" data-testid="badge-rollout-mode">
+                    {data.mode === "all" ? "All employees" : "Pilot rollout"}
+                  </Badge>
+                  <span className="text-sm font-semibold" data-testid="text-affected-count">
+                    {data.affectedCount} {data.affectedCount === 1 ? "person" : "people"} will receive this SOP
+                  </span>
+                </div>
+                {data.mode === "pilot" && (
+                  <div className="space-y-1">
+                    {(data.scopeDetail.roles ?? []).length > 0 && (
+                      <div className="flex flex-wrap gap-1" data-testid="pilot-roles-list">
+                        {(data.scopeDetail.roles ?? []).map((r) => (
+                          <Badge key={r} variant="secondary" className="text-[11px]">{r}</Badge>
+                        ))}
+                      </div>
+                    )}
+                    {(data.scopeDetail.pilotUserNames ?? []).length > 0 && (
+                      <p className="text-xs text-muted-foreground" data-testid="pilot-user-names">
+                        Named individuals: {data.scopeDetail.pilotUserNames!.slice(0, 5).join(", ")}
+                        {data.scopeDetail.pilotUserNames!.length > 5 && ` + ${data.scopeDetail.pilotUserNames!.length - 5} more`}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : null}
+          </div>
+        )}
+      </div>
+
+      {/* What happens after launch */}
+      <div className="rounded-lg border bg-muted/30" data-testid="impact-what-panel">
+        <button
+          type="button"
+          className="flex w-full items-center justify-between px-3 py-2.5 text-sm font-medium"
+          onClick={() => setWhatOpen((v) => !v)}
+          data-testid="button-toggle-what-happens"
+        >
+          <span className="flex items-center gap-1.5">
+            <CalendarDays className="h-3.5 w-3.5 text-muted-foreground" />
+            What happens after launch
+          </span>
+          {whatOpen ? <ChevronUp className="h-3.5 w-3.5 text-muted-foreground" /> : <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />}
+        </button>
+
+        {whatOpen && (
+          <div className="border-t px-3 pb-3 pt-2">
+            {loading ? (
+              <div className="space-y-2">
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+                <Skeleton className="h-4 w-5/6" />
+              </div>
+            ) : error ? (
+              <p className="text-xs text-muted-foreground">Unable to load preview right now.</p>
+            ) : data ? (
+              <div className="space-y-3" data-testid="launch-timeline">
+                {/* Step 1 */}
+                <div className="flex gap-2.5" data-testid="timeline-day0">
+                  <div className="flex flex-col items-center">
+                    <div className="w-5 h-5 rounded-full bg-primary/15 flex items-center justify-center shrink-0">
+                      <CheckCircle2 className="h-3 w-3 text-primary" />
+                    </div>
+                    <div className="w-px flex-1 bg-border mt-1" />
+                  </div>
+                  <div className="pb-3 min-w-0">
+                    <p className="text-xs font-semibold">Day 0 — Go-live</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      SOP assigned to all affected employees. Grace period starts ({graceDays} days).
+                    </p>
+                  </div>
+                </div>
+
+                {/* Step 2 */}
+                <div className="flex gap-2.5" data-testid="timeline-grace-end">
+                  <div className="flex flex-col items-center">
+                    <div className="w-5 h-5 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center shrink-0">
+                      <Clock className="h-3 w-3 text-amber-600" />
+                    </div>
+                    <div className="w-px flex-1 bg-border mt-1" />
+                  </div>
+                  <div className="pb-3 min-w-0">
+                    <p className="text-xs font-semibold">Day {graceDays} — Grace period ends</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Compliance clock begins. Employees who haven&apos;t acknowledged will be nudged.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Enforcement */}
+                <div className="flex gap-2.5" data-testid="timeline-enforcement">
+                  <div className="flex flex-col items-center">
+                    <div className="w-5 h-5 rounded-full bg-muted flex items-center justify-center shrink-0">
+                      <ShieldCheck className="h-3 w-3 text-muted-foreground" />
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <p className="text-xs font-semibold">Enforcement</p>
+                      {enf && (
+                        <Badge className={`text-[10px] border ${enf.badgeClass}`} data-testid="badge-enforcement-tier">
+                          {enf.label}
+                        </Badge>
+                      )}
+                    </div>
+                    {enf && (
+                      <p className="text-[11px] text-muted-foreground mt-0.5">{enf.description}</p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Conditional rows */}
+                {data.hasKnowledgeChecks && (
+                  <div className="flex items-start gap-2 rounded border border-emerald-200 bg-emerald-50 dark:border-emerald-800 dark:bg-emerald-900/20 px-2.5 py-2" data-testid="notice-knowledge-checks">
+                    <Brain className="h-3.5 w-3.5 text-emerald-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-300">
+                      Employees must pass a quiz before they can acknowledge this SOP.
+                    </p>
+                  </div>
+                )}
+
+                {data.hasLinkedTracks && (
+                  <div className="flex items-start gap-2 rounded border border-violet-200 bg-violet-50 dark:border-violet-800 dark:bg-violet-900/20 px-2.5 py-2" data-testid="notice-linked-tracks">
+                    <BookOpen className="h-3.5 w-3.5 text-violet-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-violet-700 dark:text-violet-300">
+                      Linked training tracks will be reset for employees who completed a previous version.
+                    </p>
+                  </div>
+                )}
+
+                {data.requiresApproval && (
+                  <div className="flex items-start gap-2 rounded border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-900/20 px-2.5 py-2" data-testid="notice-approval-required-timeline">
+                    <Lock className="h-3.5 w-3.5 text-blue-600 shrink-0 mt-0.5" />
+                    <p className="text-[11px] text-blue-700 dark:text-blue-300">
+                      A second admin approval is required before this wave goes live.
+                    </p>
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 interface ScheduledLaunch {
   id: string;
   waveNumber: number;
@@ -3098,6 +3327,9 @@ function ScheduleRolloutDrawer({
               Employees get this many days after go-live before nudges begin.
             </p>
           </div>
+
+          {/* ── Impact Preview ────────────────────────────────────── */}
+          <RolloutImpactPreview waveNumber={waveNumber} graceDays={Number(gracePeriodDays)} />
 
           {/* ── AI Ack-Rate Prediction Badge ─────────────────────── */}
           {scheduledDate && (predictionLoading || prediction) && (
