@@ -13,7 +13,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
-  Shield, ChevronRight, ChevronLeft, CheckCircle2, PenLine, FileText, Download, Loader2
+  Shield, ChevronRight, ChevronLeft, CheckCircle2, PenLine, FileText, Download, Loader2, KeyRound
 } from "lucide-react";
 
 interface PolicyPage {
@@ -216,6 +216,32 @@ export default function PolicySigningPage() {
               <CardContent className="pt-4">
                 <p className="text-sm text-muted-foreground mb-3">Your signed acknowledgement PDF has been generated and stored.</p>
                 <SignedPdfDownloadButton signatureId={signatureId} signingRequestId={policy.requestId} />
+              </CardContent>
+            </Card>
+          )}
+
+          {policy.policyTitle === "Cybersecurity Credential Management Policy" && (
+            <Card className="text-left border-blue-200 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800">
+              <CardContent className="pt-4">
+                <div className="flex items-start gap-3">
+                  <div className="h-9 w-9 rounded-lg bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center shrink-0">
+                    <KeyRound className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <h3 className="font-semibold text-blue-900 dark:text-blue-100 mb-1">Next step: Go to the Company Vault</h3>
+                    <p className="text-sm text-blue-700 dark:text-blue-300 mb-3">
+                      As required by the policy you just signed, all company credentials must be stored and shared exclusively through the Vault. Visit the Vault to view your access or request credentials for systems you need.
+                    </p>
+                    <Button
+                      onClick={() => setLocation("/admin/vault")}
+                      className="bg-blue-600 hover:bg-blue-700 text-white"
+                      data-testid="button-go-to-vault"
+                    >
+                      <KeyRound className="h-4 w-4 mr-2" />
+                      Open Company Vault
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
           )}

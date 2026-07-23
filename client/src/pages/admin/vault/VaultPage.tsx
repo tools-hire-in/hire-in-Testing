@@ -21,8 +21,10 @@ import {
 import {
   KeyRound, Plus, Edit2, Archive, Eye, EyeOff, Copy, ChevronRight, AlertTriangle,
   Shield, ShieldAlert, ShieldCheck, Lock, RefreshCw, Users, ExternalLink,
-  MoreHorizontal, Trash2, Share2,
+  MoreHorizontal, Trash2, Share2, Info,
 } from "lucide-react";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Link } from "wouter";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
@@ -528,6 +530,16 @@ export default function VaultPage() {
             </div>
           </div>
         </div>
+
+        <Alert className="border-blue-200 bg-blue-50/60 dark:bg-blue-950/20 dark:border-blue-800" data-testid="alert-vault-credential-rule">
+          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+          <AlertDescription className="text-blue-800 dark:text-blue-200 text-sm">
+            <strong>Company credential rule:</strong> All passwords, API keys, and access tokens must be stored and shared exclusively through this Vault — never via email, chat, or local files.{" "}
+            <Link href="/admin/hr?tab=documents" className="underline underline-offset-2 font-medium hover:text-blue-600">
+              View your signed Cybersecurity Policy
+            </Link>
+          </AlertDescription>
+        </Alert>
 
         <Tabs value={activeTab} onValueChange={v => setActiveTab(v as any)}>
           <TabsList>

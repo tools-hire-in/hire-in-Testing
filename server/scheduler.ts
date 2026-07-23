@@ -3,7 +3,7 @@ import { generateMonthlySalaryReport } from "./salaryReport";
 import { sendSalaryReportApprovalReminder, sendOfferLetterReminderEmail, sendAddendumReminderEmail } from "./email";
 import { storage } from "./storage";
 import { db } from "./db";
-import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests, salaryReportRuns, offerLetters, offerLetterAddendums } from "@shared/schema";
+import { nightShiftConsents, adminUsers, holidays, attendance, leaveRequests, salaryReportRuns, offerLetters, offerLetterAddendums, policySigningRequests } from "@shared/schema";
 import { eq, and, lt, gt, isNull, lte, sql } from "drizzle-orm";
 import { generateAttendanceReportRun, ensureRunForMonthAndNotify } from "./attendanceReport";
 import { attendanceApprovalUrl, getPortalBaseUrl } from "./portalUrl";
@@ -1936,6 +1936,122 @@ export function startScheduler() {
     }
   });
 
+  // ─── Policy overdue manager digest — daily 09:00 IST ────────────────────────
+  // For each manager with direct reports who have a pending policy_signing_request
+  // with due_date more than 2 days in the past, sends one consolidated digest email.
+
+  async function handlePolicyOverdueManagerDigest() {
+    console.log("[scheduler] Running policy overdue manager digest...");
+    try {
+      const { dispatchAutomatedEmail } = await import("./email");
+      const portalUrl = getPortalBaseUrl();
+
+      // Fetch all overdue pending requests with employee + manager info
+      const overdueRows = await db.execute(sql`
+        SELECT
+          psr.id AS request_id,
+          psr.employee_id,
+          psr.due_date,
+          au.first_name AS emp_first,
+          au.last_name  AS emp_last,
+          au.email      AS emp_email,
+          au.employee_id AS emp_id,
+          au.manager_id,
+          mgr.first_name AS mgr_first,
+          mgr.last_name  AS mgr_last,
+          mgr.email      AS mgr_email,
+          pd.title       AS policy_title
+        FROM policy_signing_requests psr
+        JOIN admin_users au  ON au.id  = psr.employee_id
+        JOIN admin_users mgr ON mgr.id = au.manager_id
+        JOIN policy_documents pd ON pd.id = psr.policy_id
+        WHERE psr.status = 'pending'
+          AND psr.due_date < NOW() - INTERVAL '2 days'
+          AND au.manager_id IS NOT NULL
+          AND mgr.email IS NOT NULL
+          AND mgr.is_active = true
+          AND mgr.deleted_at IS NULL
+      `);
+
+      if (!overdueRows.rows.length) {
+        console.log("[scheduler] Policy overdue manager digest: no overdue requests found.");
+        return;
+      }
+
+      // Group by manager
+      const byManager = new Map<string, { mgr: any; employees: any[] }>();
+      for (const row of overdueRows.rows as any[]) {
+        if (!byManager.has(row.manager_id)) {
+          byManager.set(row.manager_id, { mgr: row, employees: [] });
+        }
+        byManager.get(row.manager_id)!.employees.push(row);
+      }
+
+      let sent = 0;
+      for (const { mgr, employees } of byManager.values()) {
+        const listItems = employees.map(e => {
+          const dueStr = new Date(e.due_date).toLocaleDateString("en-IN", { dateStyle: "long" });
+          return `<li style="margin-bottom:6px;"><strong>${e.emp_first} ${e.emp_last}</strong> (${e.emp_id || e.emp_email}) — <em>${e.policy_title}</em> — due ${dueStr}</li>`;
+        }).join("");
+
+        const bodyHtml = `
+          <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+            <div style="background:linear-gradient(135deg,#1F3A6E 0%,#2c5282 100%);padding:28px 32px;text-align:center;">
+              <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">Hire&rsquo;in Solutions</h1>
+              <p style="color:#bfdbfe;margin:6px 0 0;font-size:13px;">Policy Compliance — Manager Digest</p>
+            </div>
+            <div style="padding:32px;">
+              <p style="color:#1e293b;margin:0 0 16px;">Hi ${mgr.mgr_first},</p>
+              <p style="color:#475569;margin:0 0 16px;line-height:1.6;">
+                The following direct report(s) have not yet signed their assigned policy and their deadline has passed by more than 2 days. Please follow up with them to ensure compliance.
+              </p>
+              <ul style="color:#1e293b;padding-left:20px;margin:0 0 24px;">
+                ${listItems}
+              </ul>
+              <div style="text-align:center;margin:24px 0;">
+                <a href="${portalUrl}/admin/hr/people?tab=policy"
+                   style="display:inline-block;background:#F47C20;color:#fff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:14px;">
+                  View Policy Compliance
+                </a>
+              </div>
+              <p style="color:#94a3b8;font-size:12px;margin:0;">This is an automated daily digest. You will continue to receive this email each day until the outstanding policy requests are signed.</p>
+            </div>
+          </div>`;
+
+        const bodyText = `Hi ${mgr.mgr_first},\n\nThe following direct reports have overdue policy signing requests (more than 2 days past due):\n\n${employees.map(e => `- ${e.emp_first} ${e.emp_last} (${e.emp_id || e.emp_email}): ${e.policy_title} — due ${new Date(e.due_date).toLocaleDateString()}`).join("\n")}\n\nPlease follow up to ensure compliance.\n\nView Policy Compliance: ${portalUrl}/admin/hr/people?tab=policy`;
+
+        await dispatchAutomatedEmail(
+          "policy_overdue_manager_digest",
+          "policy_overdue_manager_digest",
+          {
+            to: mgr.mgr_email,
+            subject: `Action Required: ${employees.length} direct report${employees.length === 1 ? "" : "s"} with overdue policy sign-off`,
+            html: bodyHtml,
+            text: bodyText,
+          },
+        );
+        sent++;
+      }
+
+      console.log(`[scheduler] Policy overdue manager digest: sent ${sent} email(s) covering ${overdueRows.rows.length} overdue request(s).`);
+    } catch (err) {
+      console.error("[scheduler] Policy overdue manager digest failed:", err);
+    }
+  }
+
+  JOB_REGISTRY.set("policy_overdue_manager_digest", {
+    name: "policy_overdue_manager_digest",
+    label: "Policy Overdue Manager Digest",
+    schedule: "Daily 9 AM IST",
+    handler: handlePolicyOverdueManagerDigest,
+  });
+
+  cron.schedule("0 9 * * *", async () => {
+    const _entry = JOB_REGISTRY.get("policy_overdue_manager_digest");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
+    await handlePolicyOverdueManagerDigest();
+  }, { timezone: "Asia/Kolkata" });
+
   // ─── SOP wave scheduled launch activation — daily 07:00 IST ─────────────────
   // Picks up `approved` wave_scheduled_launches rows where go_live_date <= today,
   // calls activateWave for each, and marks the row `active`.
@@ -1983,4 +2099,5 @@ export function startScheduler() {
   console.log("  - Ceipal morning reminder: daily at 8:30 AM IST → notifies recruiters with unresolved yesterday Ceipal commitments");
   console.log("  - Ceipal escalation sweep: Mon-Fri at 7:30 PM IST → manager alert on 2+ consecutive misses, flag on 5+ in 30 days");
   console.log("  - SOP scheduled wave launches: daily 07:00 IST → fires approved wave_scheduled_launches where go_live_date <= today");
+  console.log("  - Policy overdue manager digest: daily 09:00 IST → one email per manager listing direct reports with pending policy sign-off > 2 days overdue");
 }

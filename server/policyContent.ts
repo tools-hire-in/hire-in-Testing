@@ -527,4 +527,149 @@ By signing this policy, I confirm that I have read, understood, and agree to com
       },
     ],
   },
+  {
+    title: "Cybersecurity Credential Management Policy",
+    pages: [
+      {
+        page: 1,
+        body: `CYBERSECURITY CREDENTIAL MANAGEMENT POLICY
+RAYOMIND SOLUTIONS LLP
+
+1. PURPOSE AND SCOPE
+
+This Cybersecurity Credential Management Policy ("Policy") establishes mandatory requirements for how all employees, contractors, interns, and associates of Rayomind Solutions LLP ("the Company") handle, store, share, and manage credentials — including passwords, API keys, access tokens, SSH keys, and any other authentication material for Company systems, client systems, and third-party services.
+
+Credential theft and mismanagement are among the leading causes of data breaches. A single compromised credential can result in unauthorised access to client data, financial systems, ATS records, and candidate information. This Policy exists to eliminate that risk by standardising credential hygiene across the organisation.
+
+This Policy applies to all credentials for systems accessed in the course of employment, whether those systems are owned by the Company, a client, or a third party. It applies regardless of whether the employee is working on-site, remotely, or from a personal device.
+
+2. THE COMPANY VAULT — AUTHORISED CREDENTIAL STORE
+
+The Company operates a centralised, encrypted Credential Vault ("the Vault") accessible through the HR and Operations portal. The Vault is the single authorised location for storing and sharing all Company credentials.
+
+2.1 All passwords, API keys, access tokens, SSH keys, two-factor backup codes, and equivalent authentication material for Company and client systems must be stored exclusively in the Vault.
+
+2.2 No credential may be stored in any other location, including but not limited to:
+a) Personal or shared email accounts (including drafts or sent mail).
+b) Messaging platforms including WhatsApp, Slack, Teams, Telegram, or similar.
+c) Personal or shared cloud storage (Google Drive, Dropbox, OneDrive, iCloud, etc.).
+d) Local files on personal or Company devices, including text files, spreadsheets, notes apps, or browser-saved passwords.
+e) Physical media including sticky notes, notebooks, whiteboards, or printed sheets.
+f) Shared documents or wiki pages that are not the Vault.
+
+2.3 Browser password managers and personal password managers (e.g., LastPass, 1Password personal accounts) are not authorised substitutes for the Vault. They do not provide the audit trail, access control, or rotation enforcement required by this Policy.`,
+      },
+      {
+        page: 2,
+        body: `3. VAULT-ONLY SHARING
+
+Credentials must only be shared through Vault grants. The Vault's access-grant mechanism is the sole authorised method for providing a colleague with access to a shared credential.
+
+3.1 Prohibited sharing methods include, without limitation:
+a) Sending a password, token, or key via any email, messaging, or chat platform.
+b) Sharing credentials verbally in a meeting or call without an accompanying Vault entry.
+c) Screensharing or photographing a credential — including a brief "just this once" reveal.
+d) Writing a credential on any physical medium and handing it to a colleague.
+e) Posting credentials in shared documents, wikis, or project management tools.
+
+3.2 When a new colleague requires access to a system, the process is:
+Step 1 — Locate the credential in the Vault (or create a new entry if it does not exist).
+Step 2 — Use the Vault's "Grant Access" feature to share the credential with the specific individual.
+Step 3 — Set an appropriate access expiry if the need is temporary.
+Step 4 — Revoke the grant in the Vault when the access is no longer required.
+
+3.3 If a system does not support individual accounts and a shared credential is unavoidable, the shared credential must be stored in the Vault and access granted exclusively through the Vault grant mechanism. Shared credentials must be rotated whenever a team member who had access leaves or changes roles.
+
+3.4 Credentials received from clients or third parties must be entered into the Vault immediately upon receipt. The original message, email, or document containing the credential must be deleted after the Vault entry is confirmed.
+
+4. CREDENTIAL HYGIENE STANDARDS
+
+4.1 Password Strength: All passwords created or managed under this Policy must be at minimum 16 characters, random, and unique to each system. Do not reuse passwords across systems.
+
+4.2 Rotation: Credentials must be rotated in accordance with the rotation schedule set in the Vault for each entry. Employees who receive a rotation-due notification from the Vault must complete the rotation within 5 working days.
+
+4.3 Immediate Rotation Required: If a credential is shared in an unauthorised manner (e.g., sent via email in error), or if an employee suspects a credential may have been exposed, they must:
+a) Rotate the credential immediately (or request an authorised person to do so).
+b) Notify the Operations team and HR within 24 hours.
+c) Update the Vault entry with the new credential.
+
+4.4 MFA: Where a system supports multi-factor authentication (MFA), it must be enabled. MFA backup codes must be stored in the Vault, not on personal devices or email.`,
+      },
+      {
+        page: 3,
+        body: `5. EXCEPTION PROCESS
+
+The Company recognises that in rare and exceptional circumstances, a deviation from this Policy may be operationally necessary. Exceptions are not granted routinely and must be formally approved.
+
+5.1 Requesting an Exception:
+a) Submit a written request to the Operations team describing the specific credential, the system involved, why Vault storage or Vault sharing is not feasible in this instance, and the proposed alternative control.
+b) The request must be submitted at least 48 hours before the deviation is required (except in genuine emergencies where retrospective approval must be sought within 24 hours of the deviation).
+c) The Operations team will assess the request and, where appropriate, approve a time-limited exception with compensating controls.
+d) All approved exceptions must be logged and reviewed quarterly by HR and Operations.
+
+5.2 No self-declared exceptions: An employee may not unilaterally decide that their situation warrants an exception. Using an unauthorised storage or sharing method without a formal exception is a Policy breach regardless of intent or urgency.
+
+5.3 Temporary system unavailability: If the Vault is temporarily unavailable and a credential must be accessed or shared urgently:
+a) The credential may be shared through an encrypted, ephemeral channel (e.g., a self-destructing message in an approved tool) for the minimum time required.
+b) Once the Vault is available, the credential must be entered or verified in the Vault immediately.
+c) The incident must be reported to Operations within 4 hours, including details of the alternative channel used.
+
+6. OFFBOARDING AND ROLE CHANGES
+
+6.1 When an employee leaves the Company or changes roles, all Vault grants assigned to them must be revoked by their manager or HR within 24 hours of departure or role change.
+
+6.2 The departing employee must not retain copies of any credentials accessed during employment. The Data Deletion Certificate (required under the Confidentiality Policy) covers credentials specifically.
+
+6.3 Any shared credentials to which the departing employee had access must be rotated within 5 working days of their departure and updated in the Vault.
+
+6.4 Employees must not transfer any Vault credentials to a personal password manager or external storage upon departure. Doing so constitutes a breach of both this Policy and the Confidentiality and NDA Policy.`,
+      },
+      {
+        page: 4,
+        body: `7. RESPONSIBILITIES
+
+7.1 All Employees:
+a) Store every credential in the Vault immediately upon creation or receipt.
+b) Share credentials exclusively through Vault grants.
+c) Rotate credentials as required and upon any suspected exposure.
+d) Report suspected credential exposure to Operations and HR within 24 hours.
+e) Comply with MFA requirements on all systems that support it.
+f) Complete this Policy acknowledgement and access the Vault to verify your onboarding.
+
+7.2 Managers:
+a) Ensure direct reports are onboarded to the Vault and understand this Policy.
+b) Revoke Vault access for departing or role-changing team members promptly.
+c) Approve exception requests before deviations occur.
+d) Escalate suspected credential breaches to Operations immediately.
+
+7.3 Operations & IT:
+a) Maintain the availability and integrity of the Vault.
+b) Conduct quarterly reviews of all Vault grants and remove stale access.
+c) Review and log all exception requests.
+d) Investigate and respond to reported credential exposure incidents.
+
+8. CONSEQUENCES OF BREACH
+
+Breaches of this Policy — including storing credentials outside the Vault, sharing credentials through unauthorised channels, or failing to report a suspected exposure — will be treated as serious misconduct. Consequences may include:
+
+a) A formal written warning.
+b) Suspension pending investigation.
+c) Termination of employment.
+d) Legal action, where the breach results in a data or security incident causing harm to the Company, clients, or candidates.
+
+The Company will consider the nature of the breach, whether it was deliberate or negligent, and any prior warnings when determining the appropriate response.
+
+9. ACKNOWLEDGEMENT
+
+By signing this document, I confirm that I have read, understood, and agree to comply with the Rayomind Solutions Cybersecurity Credential Management Policy. I understand that:
+
+a) The Company Vault is the sole authorised location for storing and sharing all credentials.
+b) Storing or sharing credentials through any other channel — email, chat, local files, personal password managers, or physical media — is a breach of this Policy.
+c) I am required to access the Vault and verify my onboarding as my next step after signing.
+d) Breaches may result in disciplinary action up to and including termination of employment.
+
+I agree to access the Company Vault immediately after signing this acknowledgement and to maintain full compliance with this Policy throughout my employment and, where applicable, after my departure.`,
+      },
+    ],
+  },
 ];
