@@ -2987,6 +2987,17 @@ export const studioContentIdeas = pgTable("studio_content_ideas", {
   // Post format — describes the creative delivery format (Carousel, Reel, Static, Video, etc.)
   // Distinct from contentType (article/social_post/story). Nullable; older rows unaffected.
   postFormat: varchar("post_format"),
+  // Canonical social post format slug for the Ideas Bank (carousel | static_post | reel | story | video_script).
+  // Introduced in Task #1493 alongside the Ideas Bank. Separate from postFormat (which stores
+  // display-label strings from the older Pipeline view). New social post creation writes this column.
+  format: varchar("format"),
+  // AI-generated platform-specific content for social posts (Ideas Bank, Task #1493).
+  // Shape: { platform, format, caption, hook, hashtags, notes, generatedAt }
+  // Stored on the idea itself so the detail page can display/edit it without a linked article.
+  generatedContentJsonb: jsonb("generated_content_jsonb"),
+  // Timestamp set when status transitions to 'published'. Distinct from scheduledDate (planned) and
+  // updatedAt (any edit). Null until the idea is explicitly marked published.
+  publishedAt: timestamp("published_at", { withTimezone: true }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [

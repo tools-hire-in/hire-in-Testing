@@ -116,6 +116,7 @@ const StudioAnalyticsGuide = lazy(() => import("@/pages/studio/AnalyticsGuide"))
 const StudioFeedbackInsights = lazy(() => import("@/pages/studio/FeedbackInsightsPage"));
 const StudioSettingsView = lazy(() => import("@/pages/studio/StudioSettingsView"));
 const StudioIdeaDetailPage = lazy(() => import("@/pages/studio/StudioIdeaDetailPage"));
+const StudioIdeasBank = lazy(() => import("@/pages/studio/IdeasBank"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
 const Communications = lazy(() => import("@/pages/admin/Communications"));
@@ -473,7 +474,7 @@ function PublicRouter() {
       <Route path="/studio/settings/templates">{() => <StudioV2><Redirect to="/studio/settings?tab=templates" /></StudioV2>}</Route>
       <Route path="/studio/settings">{() => <StudioV2><StudioSettingsView /></StudioV2>}</Route>
       <Route path="/studio/ideas/:id">{() => <StudioV2><StudioIdeaDetailPage /></StudioV2>}</Route>
-      <Route path="/studio/ideas">{() => <StudioV2><StudioPipelineView lens="board" navigateOnClick /></StudioV2>}</Route>
+      <Route path="/studio/ideas">{() => <StudioV2><StudioIdeasBank /></StudioV2>}</Route>
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
       <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
       <Route path="/studio/access">{() => <StudioV2><Redirect to="/studio/settings?tab=access" /></StudioV2>}</Route>
@@ -705,7 +706,7 @@ function EmployeeRouter() {
       <Route path="/studio/settings/templates">{() => <StudioV2><Redirect to="/studio/settings?tab=templates" /></StudioV2>}</Route>
       <Route path="/studio/settings">{() => <StudioV2><StudioSettingsView /></StudioV2>}</Route>
       <Route path="/studio/ideas/:id">{() => <StudioV2><StudioIdeaDetailPage /></StudioV2>}</Route>
-      <Route path="/studio/ideas">{() => <StudioV2><StudioPipelineView lens="board" navigateOnClick /></StudioV2>}</Route>
+      <Route path="/studio/ideas">{() => <StudioV2><StudioIdeasBank /></StudioV2>}</Route>
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
       <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
       <Route path="/studio/access">{() => <StudioV2><Redirect to="/studio/settings?tab=access" /></StudioV2>}</Route>

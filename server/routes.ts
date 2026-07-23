@@ -21629,7 +21629,9 @@ Canonical domain: ${BASE}
         } else if (!(await hasStudioPermission(req, "studio.edit_article"))) {
           return res.status(403).json({ error: "Insufficient permissions for this transition" });
         }
-        const updated = await storage.updateStudioContentIdea(req.params.id, { status: to });
+        const updPatch: Record<string, unknown> = { status: to };
+        if (to === "published") updPatch.publishedAt = new Date();
+        const updated = await storage.updateStudioContentIdea(req.params.id, updPatch as any);
         // Notify the relevant party (stub gateway; T3 adds preferences).
         const notifyTargets = new Set<string>();
         if (idea.createdByUserId) notifyTargets.add(idea.createdByUserId);
