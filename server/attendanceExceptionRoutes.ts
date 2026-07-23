@@ -2,6 +2,7 @@ import type { Express, Request, Response } from "express";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { storage } from "./storage";
+import { getAllReporteeIdsFromDb } from "./orgUtils";
 
 function requireAuth(req: Request, res: Response, next: any) {
   if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
@@ -229,8 +230,7 @@ export function registerAttendanceExceptionRoutes(app: Express) {
           SELECT COUNT(*)::int AS cnt FROM attendance WHERE exception_status = 'pending'
         `)).rows as any[];
       } else {
-        const teamMembers = await storage.getTeamMembers(userId);
-        const teamIds = teamMembers.map((m) => m.id);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (teamIds.length === 0) return res.json({ count: 0 });
         countResult = (await db.execute(sql`
           SELECT COUNT(*)::int AS cnt FROM attendance
@@ -255,8 +255,7 @@ export function registerAttendanceExceptionRoutes(app: Express) {
 
       let teamFilter = sql``;
       if (!["super_admin", "admin", "hr"].includes(role)) {
-        const teamMembers = await storage.getTeamMembers(userId);
-        const teamIds = teamMembers.map((m) => m.id);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (teamIds.length === 0) return res.json([]);
         teamFilter = sql`AND a.user_id = ANY(ARRAY[${sql.join(teamIds.map(id => sql`${id}`), sql`, `)}]::text[])`;
       }
@@ -383,9 +382,8 @@ export function registerAttendanceExceptionRoutes(app: Express) {
       }
 
       if (!["super_admin", "admin", "hr"].includes(role)) {
-        const teamMembers = await storage.getTeamMembers(actorId);
-        const teamIds = new Set(teamMembers.map((m) => m.id));
-        if (!teamIds.has(exc.employee_id)) {
+        const reporteeIds = await getAllReporteeIdsFromDb(actorId);
+        if (!reporteeIds.includes(exc.employee_id)) {
           return res.status(403).json({ error: "You can only resolve exceptions for your team members" });
         }
       }

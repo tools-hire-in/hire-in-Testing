@@ -15,7 +15,7 @@ import { db, pool } from "./db";
 import { workingDaysUntilLock, maybeSendManagerCountdownAlert } from "./complianceCountdown";
 import { eq, and, inArray, sql, desc, isNull, isNotNull, or, asc } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
-import { getAllReporteeIdsFromDb } from "./orgUtils";
+import { getAllReporteeIds, getAllReporteeIdsFromDb } from "./orgUtils";
 import { setupSession, requireAuth as requireAuthImported, require2FA } from "./auth";
 import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTROL_ROLES, ACCESS_REGISTRY, getStudioAddOnPermissions } from "@shared/accessControl";
 import { registerAuthRoutes } from "./authRoutes";
@@ -3850,9 +3850,8 @@ Canonical domain: ${BASE}
         const allUsers = await storage.getAdminUsers();
         scopedUserIds = allUsers.map(u => u.id);
       } else {
-        // manager/operations: direct reports only
-        const teamMembers = await storage.getTeamMembers(userId);
-        scopedUserIds = teamMembers.map(m => m.id);
+        // manager/operations: full reporting chain
+        scopedUserIds = await getAllReporteeIdsFromDb(userId);
       }
 
       if (scopedUserIds.length === 0) {
@@ -6686,7 +6685,9 @@ Canonical domain: ${BASE}
       if (isPrivilegedRole) {
         teamMembers = await storage.getAllActiveEmployees();
       } else {
-        teamMembers = await storage.getTeamMembers(userId);
+        const allUsers = await storage.getAdminUsers();
+        const reporteeIds = new Set(getAllReporteeIds(userId, allUsers));
+        teamMembers = allUsers.filter(u => reporteeIds.has(u.id));
       }
 
       const memberIds = teamMembers.map(m => m.id);
@@ -6811,7 +6812,9 @@ Canonical domain: ${BASE}
       if (["super_admin", "admin", "hr", "operations"].includes(userRole!)) {
         teamMembers = await storage.getAllActiveEmployees();
       } else {
-        teamMembers = await storage.getTeamMembers(userId);
+        const allUsers = await storage.getAdminUsers();
+        const reporteeIds = new Set(getAllReporteeIds(userId, allUsers));
+        teamMembers = allUsers.filter(u => reporteeIds.has(u.id));
       }
 
       if (teamMembers.length === 0) {
@@ -6903,7 +6906,9 @@ Canonical domain: ${BASE}
       if (["super_admin", "admin", "hr", "operations"].includes(userRole!)) {
         teamMembers = await storage.getAdminUsers();
       } else {
-        teamMembers = await storage.getTeamMembers(userId);
+        const allUsers = await storage.getAdminUsers();
+        const reporteeIds = new Set(getAllReporteeIds(userId, allUsers));
+        teamMembers = allUsers.filter(u => reporteeIds.has(u.id));
       }
 
       teamMembers.sort((a, b) => `${a.firstName} ${a.lastName}`.localeCompare(`${b.firstName} ${b.lastName}`));
@@ -7220,19 +7225,16 @@ Canonical domain: ${BASE}
       const userRole = req.session.role;
       const { status } = req.query;
 
-      let teamMembers: AdminUser[];
       if (["super_admin", "admin", "hr"].includes(userRole!)) {
         const requests = await storage.getLeaveRequests({ status: status as string });
         return res.json(requests);
-      } else {
-        teamMembers = await storage.getTeamMembers(userId);
       }
 
-      if (teamMembers.length === 0) {
+      const memberIds = await getAllReporteeIdsFromDb(userId);
+
+      if (memberIds.length === 0) {
         return res.json([]);
       }
-
-      const memberIds = teamMembers.map(m => m.id);
       const requests = await storage.getLeaveRequestsByTeam(memberIds);
 
       const filtered = status ? requests.filter(r => r.status === status) : requests;
@@ -14776,9 +14778,8 @@ Canonical domain: ${BASE}
       if (!targetUser) return res.status(404).json({ error: "Employee not found" });
 
       if (actorRole === "manager") {
-        const directReports = await storage.getTeamMembers(actorId);
-        const isReport = directReports.some(r => r.id === targetUserId);
-        if (!isReport) {
+        const reporteeIds = await getAllReporteeIdsFromDb(actorId);
+        if (!reporteeIds.includes(targetUserId)) {
           return res.status(403).json({ error: "You can only view leave details for your reportees" });
         }
       }
@@ -14834,9 +14835,8 @@ Canonical domain: ${BASE}
       if (!targetUser) return res.status(404).json({ error: "Employee not found" });
 
       if (actorRole === "manager") {
-        const directReports = await storage.getTeamMembers(actorId);
-        const isReport = directReports.some(r => r.id === targetUserId);
-        if (!isReport) {
+        const reporteeIds = await getAllReporteeIdsFromDb(actorId);
+        if (!reporteeIds.includes(targetUserId)) {
           return res.status(403).json({ error: "You can only apply leave for your reportees" });
         }
       }
@@ -16098,10 +16098,11 @@ Canonical domain: ${BASE}
       if (!enabled) return res.status(403).json({ error: "Process Governance is not enabled for your account" });
 
       let teamMembers: AdminUser[];
+      const allUsers = await storage.getAdminUsers();
       if (["manager", "operations"].includes(role)) {
-        teamMembers = await storage.getTeamMembers(userId);
+        const reporteeIds = new Set(getAllReporteeIds(userId, allUsers));
+        teamMembers = allUsers.filter((u) => reporteeIds.has(u.id) && u.isActive && !u.deletedAt);
       } else if (["super_admin", "admin", "hr"].includes(role)) {
-        const allUsers = await storage.getAdminUsers();
         teamMembers = allUsers.filter((u) => u.isActive && !u.deletedAt);
       } else {
         return res.status(403).json({ error: "Access denied" });
