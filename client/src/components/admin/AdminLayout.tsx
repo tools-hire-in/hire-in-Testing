@@ -586,7 +586,7 @@ function TeamSection({
                   })}
 
                   {/* Permanent Command Card link — manager-track roles only */}
-                  {MANAGER_COMMAND_CARD_ROLES.includes(role) && (
+                  {hasTeamAccess && (
                     <Link
                       href="/admin/command-card"
                       className={`flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs transition-colors ${

@@ -42,6 +42,10 @@ args = "feature-flags-tests"
 task = "workflow.run"
 args = "governance-tests"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "e2e-tests"
+
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -97,6 +101,17 @@ args = "bash scripts/governance-tests.sh"
 
 [workflows.workflow.metadata]
 outputType = "console"
+
+[[workflows.workflow]]
+name = "e2e-tests"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "E2E_NO_SERVER='' npx playwright test 2>&1"
 
 [agent]
 integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:2.0.0", "javascript_object_storage:2.0.0", "sendgrid:1.0.0", "javascript_openai_ai_integrations:2.0.0"]
