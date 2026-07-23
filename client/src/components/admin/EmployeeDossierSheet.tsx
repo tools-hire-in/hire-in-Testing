@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
+import { Button } from "@/components/ui/button";
 import {
   User,
   Mail,
@@ -30,6 +31,11 @@ import {
   ClipboardList,
   Hash,
   ExternalLink,
+  UserCog,
+  KeyRound,
+  ShieldOff,
+  UserX,
+  UserCheck,
 } from "lucide-react";
 
 interface DossierData {
@@ -213,9 +219,18 @@ function InfoRow({ label, value }: { label: string; value: React.ReactNode }) {
 interface Props {
   userId: string | null;
   onClose: () => void;
+  canEdit?: boolean;
+  canResetPassword?: boolean;
+  canReset2FA?: boolean;
+  canToggleActive?: boolean;
+  onEditProfile?: () => void;
+  onResetPassword?: () => void;
+  onReset2FA?: () => void;
+  onToggleActive?: () => void;
+  reset2FAIsPending?: boolean;
 }
 
-export function EmployeeDossierSheet({ userId, onClose }: Props) {
+export function EmployeeDossierSheet({ userId, onClose, canEdit, canResetPassword, canReset2FA, canToggleActive, onEditProfile, onResetPassword, onReset2FA, onToggleActive, reset2FAIsPending }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { user: currentUser } = useAuth();
@@ -312,7 +327,63 @@ export function EmployeeDossierSheet({ userId, onClose }: Props) {
                   <Badge variant="secondary">Disabled</Badge>
                 )}
               </div>
+
             </SheetHeader>
+
+            {/* Quick Actions bar — sticky below the header */}
+            {(canEdit || canResetPassword || canReset2FA || canToggleActive) && (
+              <div className="sticky top-0 z-10 bg-background border-b px-6 py-2.5 flex flex-wrap gap-2">
+                {canEdit && onEditProfile && (
+                  <Button
+                    size="sm"
+                    className="gap-1.5"
+                    onClick={onEditProfile}
+                    data-testid="dossier-btn-edit-profile"
+                  >
+                    <UserCog className="h-3.5 w-3.5" />
+                    Edit Profile
+                  </Button>
+                )}
+                {canResetPassword && onResetPassword && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={onResetPassword}
+                    data-testid="dossier-btn-reset-password"
+                  >
+                    <KeyRound className="h-3.5 w-3.5" />
+                    Reset Password
+                  </Button>
+                )}
+                {canReset2FA && onReset2FA && data.profile.totpEnabled && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="gap-1.5"
+                    onClick={onReset2FA}
+                    disabled={reset2FAIsPending}
+                    data-testid="dossier-btn-reset-2fa"
+                  >
+                    <ShieldOff className="h-3.5 w-3.5" />
+                    Reset 2FA
+                  </Button>
+                )}
+                {canToggleActive && onToggleActive && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className={`gap-1.5 ${data.profile.isActive ? "text-amber-700 border-amber-400 hover:bg-amber-50" : "text-green-700 border-green-400 hover:bg-green-50"}`}
+                    onClick={onToggleActive}
+                    data-testid="dossier-btn-toggle-active"
+                  >
+                    {data.profile.isActive
+                      ? <><UserX className="h-3.5 w-3.5" /> Disable Account</>
+                      : <><UserCheck className="h-3.5 w-3.5" /> Enable Account</>}
+                  </Button>
+                )}
+              </div>
+            )}
 
             <Tabs defaultValue="overview" className="w-full">
               <TabsList className="flex w-full rounded-none border-b h-auto p-0 bg-transparent">

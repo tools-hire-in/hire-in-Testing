@@ -434,9 +434,13 @@ export function registerAuthRoutes(app: Express) {
     }
   });
 
-  app.post("/api/auth/totp/admin-reset/:userId", requirePermission("auth.totp.adminReset", "super_admin", "admin"), async (req, res) => {
+  app.post("/api/auth/totp/admin-reset/:userId", requirePermission("auth.totp.adminReset", "super_admin", "admin", "hr", "operations"), async (req, res) => {
     try {
       const { userId } = req.params;
+
+      const ROLE_RANK: Record<string, number> = {
+        super_admin: 6, admin: 5, hr: 4, finance: 2.5, operations: 3, manager: 2, recruiter: 1.5, executive: 1.8, employee: 1,
+      };
 
       const [targetUser] = await db
         .select({ id: adminUsers.id, email: adminUsers.email, totpEnabled: adminUsers.totpEnabled, role: adminUsers.role })
@@ -448,7 +452,11 @@ export function registerAuthRoutes(app: Express) {
         return res.status(404).json({ message: "User not found" });
       }
 
-      if (req.session.role === "admin" && (targetUser.role === "super_admin" || targetUser.role === "admin")) {
+      const actorRole = req.session.role ?? "";
+      const actorRank = ROLE_RANK[actorRole] ?? 0;
+      const targetRank = ROLE_RANK[targetUser.role] ?? 0;
+
+      if (actorRole !== "super_admin" && actorRank <= targetRank) {
         return res.status(403).json({ message: "Forbidden - cannot reset 2FA for users at the same or higher role level" });
       }
 

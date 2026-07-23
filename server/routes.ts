@@ -2279,7 +2279,33 @@ Canonical domain: ${BASE}
     }
   });
 
-  app.patch("/api/admin/users/:id", requirePermission("admin.users.patch", "admin", "manager", "hr"), async (req, res) => {
+  app.post("/api/admin/users/:id/force-logout", requirePermission("admin.users.forceLogout", "super_admin", "admin", "hr"), async (req, res) => {
+    try {
+      const targetId = req.params.id as string;
+      const targetUser = await storage.getAdminUser(targetId);
+      if (!targetUser) return res.status(404).json({ error: "User not found" });
+
+      const ROLE_RANK_FL: Record<string, number> = {
+        super_admin: 6, admin: 5, hr: 4, operations: 3, finance: 2.5, manager: 2, recruiter: 1.5, executive: 1.8, employee: 1,
+      };
+      const actorRank = ROLE_RANK_FL[req.session.role ?? ""] ?? 0;
+      const targetRank = ROLE_RANK_FL[targetUser.role] ?? 0;
+      if (req.session.role !== "super_admin" && actorRank <= targetRank) {
+        return res.status(403).json({ error: "Cannot force-logout a user with equal or higher role" });
+      }
+      if (targetId === req.session.userId) {
+        return res.status(400).json({ error: "Cannot force-logout yourself" });
+      }
+
+      await db.execute(sql`DELETE FROM sessions WHERE (sess::jsonb)->>'userId' = ${targetId}`);
+      res.json({ message: `Sessions cleared for ${targetUser.email}` });
+    } catch (err) {
+      console.error("Force logout error:", err);
+      res.status(500).json({ error: "Failed to clear sessions" });
+    }
+  });
+
+  app.patch("/api/admin/users/:id", requirePermission("admin.users.patch", "super_admin", "admin", "manager", "hr"), async (req, res) => {
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;

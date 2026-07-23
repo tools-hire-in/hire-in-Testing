@@ -23,6 +23,9 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
@@ -326,6 +329,9 @@ export default function AdminUsers() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       toast({ title: "Role updated" });
     },
+    onError: (error: any) => {
+      toast({ title: "Failed to update role", description: error?.message || "Something went wrong", variant: "destructive" });
+    },
   });
 
   const hierarchyMutation = useMutation({
@@ -394,6 +400,18 @@ export default function AdminUsers() {
     },
     onError: (error: any) => {
       toast({ title: "Failed to restore user", description: error?.message || "Something went wrong", variant: "destructive" });
+    },
+  });
+
+  const forceLogoutMutation = useMutation({
+    mutationFn: async (id: string) => {
+      return apiRequest("POST", `/api/admin/users/${id}/force-logout`);
+    },
+    onSuccess: () => {
+      toast({ title: "Sessions cleared", description: "The user has been logged out of all devices." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to force logout", description: error?.message || "Something went wrong", variant: "destructive" });
     },
   });
 
@@ -476,7 +494,7 @@ export default function AdminUsers() {
 
   const isSuperAdmin = user?.role === "super_admin";
   const isAdmin = user?.role === "admin";
-  const canManageUsers = (isSuperAdmin || isAdmin || user?.role === "manager" || user?.role === "hr") && can("hr.users");
+  const canManageUsers = (isSuperAdmin || isAdmin || user?.role === "manager" || user?.role === "hr" || user?.role === "operations") && can("hr.users");
   const canEditHierarchy = isSuperAdmin || isAdmin || user?.role === "hr" || user?.role === "manager";
   const currentUserRank = roleRank[user?.role || ""] ?? 0;
 
@@ -633,275 +651,210 @@ export default function AdminUsers() {
 
         <Card>
           <CardContent className="p-0">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Name</TableHead>
-                    <TableHead>Employee ID</TableHead>
-                    <TableHead>Email</TableHead>
-                    <TableHead>Role</TableHead>
-                    <TableHead>Department</TableHead>
-                    <TableHead>Designation</TableHead>
-                    <TableHead>Level</TableHead>
-                    <TableHead>Manager</TableHead>
-                    <TableHead>Joining Date</TableHead>
-                    <TableHead>Status</TableHead>
-                    {(isSuperAdmin || isAdmin) && <TableHead>2FA</TableHead>}
-                    <TableHead className="text-right">Actions</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {isLoading ? (
-                    Array.from({ length: 3 }).map((_, i) => (
-                      <TableRow key={i}>
-                        {Array.from({ length: (isSuperAdmin || isAdmin) ? 12 : 11 }).map((_, j) => (
-                          <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
-                        ))}
-                      </TableRow>
-                    ))
-                  ) : filteredUsers && filteredUsers.length > 0 ? (
-                    filteredUsers.map((adminUser) => (
-                      <TableRow
-                        key={adminUser.id}
-                        data-testid={`user-row-${adminUser.id}`}
-                        className={`${statusFilter === "deleted" ? "opacity-60" : ""} ${(isSuperAdmin || isAdmin) ? "cursor-pointer hover:bg-muted/50" : ""}`}
-                        onClick={(isSuperAdmin || isAdmin) ? (e) => {
-                          if ((e.target as HTMLElement).closest("[data-dropdown-ignore]")) return;
-                          setDossierUserId(adminUser.id);
-                        } : undefined}
-                      >
-                        <TableCell className="font-medium">
-                          <div className="flex items-center gap-2">
-                            {adminUser.firstName} {adminUser.lastName}
-                            {adminUser.role === "super_admin" && (
-                              <Shield className="h-4 w-4 text-purple-600" />
-                            )}
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Emp ID</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Department</TableHead>
+                  <TableHead>Joining Date</TableHead>
+                  <TableHead>Status</TableHead>
+                  {canManageUsers && <TableHead>2FA</TableHead>}
+                  <TableHead className="text-right">Actions</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  Array.from({ length: 3 }).map((_, i) => (
+                    <TableRow key={i}>
+                      {Array.from({ length: canManageUsers ? 8 : 7 }).map((_, j) => (
+                        <TableCell key={j}><Skeleton className="h-4 w-20" /></TableCell>
+                      ))}
+                    </TableRow>
+                  ))
+                ) : filteredUsers && filteredUsers.length > 0 ? (
+                  filteredUsers.map((adminUser) => (
+                    <TableRow
+                      key={adminUser.id}
+                      data-testid={`user-row-${adminUser.id}`}
+                      className={`${statusFilter === "deleted" ? "opacity-60" : ""} ${canManageUsers ? "cursor-pointer hover:bg-muted/50" : ""}`}
+                      onClick={canManageUsers ? (e) => {
+                        if ((e.target as HTMLElement).closest("[data-dropdown-ignore]")) return;
+                        setDossierUserId(adminUser.id);
+                      } : undefined}
+                    >
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <div className="h-9 w-9 rounded-full bg-muted flex items-center justify-center text-sm font-medium text-muted-foreground shrink-0">
+                            {(adminUser.firstName?.[0] ?? "")}{(adminUser.lastName?.[0] ?? "")}
                           </div>
-                        </TableCell>
-                        <TableCell className="text-muted-foreground text-xs font-mono">{adminUser.employeeId || "-"}</TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{adminUser.email}</TableCell>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-1.5 font-medium leading-tight">
+                              {adminUser.firstName} {adminUser.lastName}
+                              {adminUser.role === "super_admin" && (
+                                <Shield className="h-3.5 w-3.5 text-purple-600 shrink-0" />
+                              )}
+                            </div>
+                            <div className="mt-0.5">
+                              <span className="text-xs text-muted-foreground truncate">{adminUser.email}</span>
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-xs font-mono text-muted-foreground" data-testid={`text-employee-id-${adminUser.id}`}>
+                        {adminUser.employeeId || "—"}
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={roleColors[adminUser.role] || roleColors.employee}>
+                          {roleLabels[adminUser.role] || adminUser.role}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm">{getDeptName(adminUser.departmentId)}</TableCell>
+                      <TableCell className="text-sm" data-testid={`text-joining-date-${adminUser.id}`}>
+                        {adminUser.joiningDate ? format(new Date(adminUser.joiningDate + "T00:00:00"), "dd MMM yyyy") : "-"}
+                      </TableCell>
+                      <TableCell>
+                        {adminUser.deletedAt ? (
+                          <Badge variant="destructive" data-testid={`badge-status-${adminUser.id}`}>Deleted</Badge>
+                        ) : adminUser.employmentStatus === "relieved" ? (
+                          <Badge className="bg-orange-100 text-orange-800" data-testid={`badge-status-${adminUser.id}`}>Relieved</Badge>
+                        ) : adminUser.employmentStatus === "left_company" ? (
+                          <Badge className="bg-rose-100 text-rose-800" data-testid={`badge-status-${adminUser.id}`}>Left Company</Badge>
+                        ) : (
+                          <Badge variant={adminUser.isActive ? "default" : "secondary"} data-testid={`badge-status-${adminUser.id}`}>
+                            {adminUser.isActive ? "Active" : "Disabled"}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      {canManageUsers && (
                         <TableCell>
-                          <Badge className={roleColors[adminUser.role] || roleColors.employee}>
-                            {roleLabels[adminUser.role] || adminUser.role}
+                          <Badge
+                            variant={(adminUser as any).totpEnabled ? "default" : "outline"}
+                            className={(adminUser as any).totpEnabled ? "bg-green-600" : "text-amber-600 border-amber-600"}
+                            data-testid={`badge-2fa-${adminUser.id}`}
+                          >
+                            {(adminUser as any).totpEnabled ? "On" : "Off"}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm">{getDeptName(adminUser.departmentId)}</TableCell>
-                        <TableCell className="text-sm">{adminUser.designation || "-"}</TableCell>
-                        <TableCell className="text-sm">
-                          {adminUser.hierarchyLevel ? (levelLabels[adminUser.hierarchyLevel] || adminUser.hierarchyLevel) : "-"}
-                        </TableCell>
-                        <TableCell className="text-sm">{getManagerName(adminUser.managerId)}</TableCell>
-                        <TableCell className="text-sm" data-testid={`text-joining-date-${adminUser.id}`}>
-                          {adminUser.joiningDate ? format(new Date(adminUser.joiningDate + "T00:00:00"), "dd MMM yyyy") : "-"}
-                        </TableCell>
-                        <TableCell>
-                          {adminUser.deletedAt ? (
-                            <Badge variant="destructive" data-testid={`badge-status-${adminUser.id}`}>Deleted</Badge>
-                          ) : adminUser.employmentStatus === "relieved" ? (
-                            <Badge className="bg-orange-100 text-orange-800" data-testid={`badge-status-${adminUser.id}`}>Relieved</Badge>
-                          ) : adminUser.employmentStatus === "left_company" ? (
-                            <Badge className="bg-rose-100 text-rose-800" data-testid={`badge-status-${adminUser.id}`}>Left Company</Badge>
-                          ) : (
-                            <Badge variant={adminUser.isActive ? "default" : "secondary"} data-testid={`badge-status-${adminUser.id}`}>
-                              {adminUser.isActive ? "Active" : "Disabled"}
-                            </Badge>
-                          )}
-                        </TableCell>
-                        {(isSuperAdmin || isAdmin) && (
-                          <TableCell>
-                            <Badge
-                              variant={(adminUser as any).totpEnabled ? "default" : "outline"}
-                              className={(adminUser as any).totpEnabled ? "bg-green-600" : "text-amber-600 border-amber-600"}
-                              data-testid={`badge-2fa-${adminUser.id}`}
+                      )}
+                      <TableCell className="text-right" data-dropdown-ignore="true">
+                        {statusFilter === "deleted" ? (
+                          canEditUser(adminUser) && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={(e) => { e.stopPropagation(); restoreMutation.mutate(adminUser.id); }}
+                              disabled={restoreMutation.isPending}
+                              data-testid={`button-restore-${adminUser.id}`}
                             >
-                              {(adminUser as any).totpEnabled ? "Enabled" : "Off"}
-                            </Badge>
-                          </TableCell>
-                        )}
-                        <TableCell className="text-right" data-dropdown-ignore="true">
-                          {statusFilter === "deleted" ? (
-                            canEditUser(adminUser) && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                onClick={(e) => { e.stopPropagation(); restoreMutation.mutate(adminUser.id); }}
-                                disabled={restoreMutation.isPending}
-                                data-testid={`button-restore-${adminUser.id}`}
-                              >
-                                <RotateCcw className="h-4 w-4 mr-1" />
-                                Restore
+                              <RotateCcw className="h-4 w-4 mr-1" />
+                              Restore
+                            </Button>
+                          )
+                        ) : (canEditUser(adminUser) || (isSuperAdmin || isAdmin || user?.role === "hr" || user?.role === "operations")) && (
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" data-testid={`button-actions-${adminUser.id}`}>
+                                <MoreHorizontal className="h-4 w-4" />
                               </Button>
-                            )
-                          ) : (canEditUser(adminUser) || canEditHierarchy || canResetPassword(adminUser)) && (
-                            <DropdownMenu>
-                              <DropdownMenuTrigger asChild>
-                                <Button variant="ghost" size="icon" data-testid={`button-actions-${adminUser.id}`}>
-                                  <MoreHorizontal className="h-4 w-4" />
-                                </Button>
-                              </DropdownMenuTrigger>
-                              <DropdownMenuContent align="end">
-                                {canEditUser(adminUser) && (
-                                  <DropdownMenuItem onClick={() => openEditDialog(adminUser)} data-testid={`menu-edit-profile-${adminUser.id}`}>
-                                    <Pencil className="h-4 w-4 mr-2" />
-                                    Edit Profile
-                                  </DropdownMenuItem>
-                                )}
-                                {canEditHierarchy && (
-                                  <DropdownMenuItem onClick={() => openHierarchyDialog(adminUser)} data-testid={`menu-edit-hierarchy-${adminUser.id}`}>
-                                    <Network className="h-4 w-4 mr-2" />
-                                    Edit Hierarchy
-                                  </DropdownMenuItem>
-                                )}
-                                {(isSuperAdmin || isAdmin || user?.role === "hr") && (
-                                  <DropdownMenuItem
-                                    onClick={() => {
-                                      setShiftUser(adminUser);
-                                      setSelectedShiftId(adminUser.shiftId || "");
-                                      setShiftReason("");
-                                      setShiftOpen(true);
-                                    }}
-                                    data-testid={`menu-assign-shift-${adminUser.id}`}
-                                  >
-                                    <Clock className="h-4 w-4 mr-2" />
-                                    Assign Shift
-                                  </DropdownMenuItem>
-                                )}
-                                {canResetPassword(adminUser) && (
-                                  <DropdownMenuItem
-                                    onClick={() => { setResetPasswordUser(adminUser); setNewPassword(""); setResetPasswordOpen(true); }}
-                                    data-testid={`menu-reset-password-${adminUser.id}`}
-                                  >
-                                    <KeyRound className="h-4 w-4 mr-2" />
-                                    Reset Password
-                                  </DropdownMenuItem>
-                                )}
-                                {canEditUser(adminUser) && adminUser.id !== user?.id && (
-                                  <DropdownMenuItem
-                                    onClick={() => resendInviteMutation.mutate(adminUser.id)}
-                                    data-testid={`menu-resend-invite-${adminUser.id}`}
-                                  >
-                                    <Mail className="h-4 w-4 mr-2" />
-                                    Resend Invitation
-                                  </DropdownMenuItem>
-                                )}
-                                {(isSuperAdmin || isAdmin) && adminUser.id !== user?.id && (adminUser as any).totpEnabled && (isSuperAdmin || (adminUser.role !== "super_admin" && adminUser.role !== "admin")) && (
-                                  <DropdownMenuItem
-                                    onClick={() => reset2FAMutation.mutate(adminUser.id)}
-                                    data-testid={`menu-reset-2fa-${adminUser.id}`}
-                                  >
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end">
+                              {(isSuperAdmin || isAdmin || user?.role === "hr" || user?.role === "operations") && (
+                                <DropdownMenuItem
+                                  onClick={() => {
+                                    setShiftUser(adminUser);
+                                    setSelectedShiftId(adminUser.shiftId || "");
+                                    setShiftReason("");
+                                    setShiftOpen(true);
+                                  }}
+                                  data-testid={`menu-assign-shift-${adminUser.id}`}
+                                >
+                                  <Clock className="h-4 w-4 mr-2" />
+                                  Assign Shift
+                                </DropdownMenuItem>
+                              )}
+                              {canEditUser(adminUser) && adminUser.id !== user?.id && (
+                                <DropdownMenuSub>
+                                  <DropdownMenuSubTrigger data-testid={`menu-change-role-${adminUser.id}`}>
                                     <Shield className="h-4 w-4 mr-2" />
-                                    Reset 2FA
-                                  </DropdownMenuItem>
-                                )}
-
-                                {canEditUser(adminUser) && adminUser.id !== user?.id && (
-                                  <>
-                                    <DropdownMenuSeparator />
+                                    Change Role
+                                  </DropdownMenuSubTrigger>
+                                  <DropdownMenuSubContent>
                                     {currentUserRank > roleRank.admin && (
-                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "admin" })}>
-                                        Set as Admin
-                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "admin" })}>Admin</DropdownMenuItem>
                                     )}
                                     {currentUserRank > roleRank.hr && (
-                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "hr" })}>
-                                        Set as HR
-                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "hr" })}>HR</DropdownMenuItem>
                                     )}
                                     {currentUserRank > roleRank.finance && (
-                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "finance" })}>
-                                        Set as Finance
-                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "finance" })}>Finance</DropdownMenuItem>
                                     )}
                                     {currentUserRank > roleRank.operations && (
-                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "operations" })}>
-                                        Set as Operations
-                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "operations" })}>Operations</DropdownMenuItem>
                                     )}
                                     {currentUserRank > roleRank.manager && (
-                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "manager" })}>
-                                        Set as Manager
-                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "manager" })}>Manager</DropdownMenuItem>
                                     )}
                                     {currentUserRank > roleRank.recruiter && (
-                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "recruiter" })}>
-                                        Set as Recruiter
-                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "recruiter" })}>Recruiter</DropdownMenuItem>
                                     )}
                                     {currentUserRank > roleRank.executive && (
-                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "executive" })}>
-                                        Set as Executive
-                                      </DropdownMenuItem>
+                                      <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "executive" })}>Executive</DropdownMenuItem>
                                     )}
-                                    <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "employee" })}>
-                                      Set as Employee
-                                    </DropdownMenuItem>
-                                  </>
-                                )}
-
-                                {canEditUser(adminUser) && adminUser.id !== user?.id && (
-                                  <>
-                                    <DropdownMenuSeparator />
-                                    {(!adminUser.employmentStatus || adminUser.employmentStatus === "active") && (
-                                      <DropdownMenuItem
-                                        onClick={() => { setConfirmAction({ type: adminUser.isActive ? "disable" : "enable", user: adminUser }); setConfirmOpen(true); }}
-                                        data-testid={`menu-toggle-active-${adminUser.id}`}
-                                      >
-                                        {adminUser.isActive ? (
-                                          <><UserX className="h-4 w-4 mr-2 text-amber-600" /><span className="text-amber-600">Disable</span></>
-                                        ) : (
-                                          <><UserCheck className="h-4 w-4 mr-2 text-green-600" /><span className="text-green-600">Enable</span></>
-                                        )}
-                                      </DropdownMenuItem>
-                                    )}
-                                    {adminUser.employmentStatus !== "relieved" && adminUser.employmentStatus !== "left_company" && (
-                                      <DropdownMenuItem
-                                        onClick={() => { setConfirmAction({ type: "relieve", user: adminUser }); setConfirmOpen(true); }}
-                                        data-testid={`menu-relieve-${adminUser.id}`}
-                                      >
-                                        <Briefcase className="h-4 w-4 mr-2 text-orange-600" />
-                                        <span className="text-orange-600">Mark as Relieved</span>
-                                      </DropdownMenuItem>
-                                    )}
-                                    {adminUser.employmentStatus !== "left_company" && adminUser.employmentStatus !== "relieved" && (
-                                      <DropdownMenuItem
-                                        onClick={() => { setConfirmAction({ type: "left_company_exit", user: adminUser }); setConfirmOpen(true); }}
-                                        data-testid={`menu-left-company-${adminUser.id}`}
-                                      >
-                                        <LogOut className="h-4 w-4 mr-2 text-rose-600" />
-                                        <span className="text-rose-600">Mark as Left Company</span>
-                                      </DropdownMenuItem>
-                                    )}
-                                    {canDeleteUser(adminUser) && (
-                                      <>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem
-                                          onClick={() => { setConfirmAction({ type: "delete", user: adminUser }); setConfirmOpen(true); }}
-                                          data-testid={`menu-delete-${adminUser.id}`}
-                                        >
-                                          <Trash2 className="h-4 w-4 mr-2 text-destructive" />
-                                          <span className="text-destructive">Delete</span>
-                                        </DropdownMenuItem>
-                                      </>
-                                    )}
-                                  </>
-                                )}
-                              </DropdownMenuContent>
-                            </DropdownMenu>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  ) : (
-                    <TableRow>
-                      <TableCell colSpan={10} className="text-center py-8 text-muted-foreground">
-                        No users found.
+                                    <DropdownMenuItem onClick={() => updateRoleMutation.mutate({ id: adminUser.id, role: "employee" })}>Employee</DropdownMenuItem>
+                                  </DropdownMenuSubContent>
+                                </DropdownMenuSub>
+                              )}
+                              {canEditUser(adminUser) && adminUser.id !== user?.id && (
+                                <DropdownMenuItem
+                                  onClick={() => resendInviteMutation.mutate(adminUser.id)}
+                                  data-testid={`menu-resend-invite-${adminUser.id}`}
+                                >
+                                  <Mail className="h-4 w-4 mr-2" />
+                                  Resend Invitation
+                                </DropdownMenuItem>
+                              )}
+                              {(isSuperAdmin || isAdmin || user?.role === "hr") && adminUser.id !== user?.id && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => forceLogoutMutation.mutate(adminUser.id)}
+                                    disabled={forceLogoutMutation.isPending}
+                                    data-testid={`menu-force-logout-${adminUser.id}`}
+                                  >
+                                    <LogOut className="h-4 w-4 mr-2" />
+                                    Force Logout
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                              {canDeleteUser(adminUser) && (
+                                <>
+                                  <DropdownMenuSeparator />
+                                  <DropdownMenuItem
+                                    onClick={() => { setConfirmAction({ type: "delete", user: adminUser }); setConfirmOpen(true); }}
+                                    data-testid={`menu-delete-${adminUser.id}`}
+                                  >
+                                    <Trash2 className="h-4 w-4 mr-2 text-destructive" />
+                                    <span className="text-destructive">Delete</span>
+                                  </DropdownMenuItem>
+                                </>
+                              )}
+                            </DropdownMenuContent>
+                          </DropdownMenu>
+                        )}
                       </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={canManageUsers ? 8 : 7} className="text-center py-8 text-muted-foreground">
+                      No users found.
+                    </TableCell>
                     </TableRow>
                   )}
                 </TableBody>
               </Table>
-            </div>
           </CardContent>
         </Card>
 
@@ -1809,13 +1762,33 @@ export default function AdminUsers() {
         </Dialog>
       </div>
 
-      {/* Employee Dossier Sheet - super_admin and admin only */}
-      {(isSuperAdmin || isAdmin) && (
-        <EmployeeDossierSheet
-          userId={dossierUserId}
-          onClose={() => setDossierUserId(null)}
-        />
-      )}
+      {/* Employee Dossier Sheet */}
+      {canManageUsers && (() => {
+        const dossierUser = filteredUsers?.find(u => u.id === dossierUserId) ?? null;
+        const dossierUserRole = dossierUser?.role ?? "employee";
+        const dossierUserRank = roleRank[dossierUserRole] ?? 0;
+        const isSelf = dossierUser?.id === user?.id;
+        const canEditThisUser = !!dossierUser && !isSelf && canEditUser(dossierUser);
+        const canReset2FAThisUser = !isSelf && (isSuperAdmin || isAdmin || user?.role === "hr" || user?.role === "operations") && currentUserRank > dossierUserRank;
+        const canResetPasswordThisUser = !!dossierUser && canResetPassword(dossierUser);
+        const canToggleThisUser = canEditThisUser && (!dossierUser?.employmentStatus || dossierUser?.employmentStatus === "active");
+
+        return (
+          <EmployeeDossierSheet
+            userId={dossierUserId}
+            onClose={() => setDossierUserId(null)}
+            canEdit={canEditThisUser}
+            canResetPassword={canResetPasswordThisUser}
+            canReset2FA={canReset2FAThisUser}
+            canToggleActive={canToggleThisUser}
+            reset2FAIsPending={reset2FAMutation.isPending}
+            onEditProfile={dossierUser ? () => { openEditDialog(dossierUser); setDossierUserId(null); } : undefined}
+            onResetPassword={dossierUser ? () => { setResetPasswordUser(dossierUser); setNewPassword(""); setResetPasswordOpen(true); setDossierUserId(null); } : undefined}
+            onReset2FA={dossierUser ? () => reset2FAMutation.mutate(dossierUser.id) : undefined}
+            onToggleActive={dossierUser ? () => { setConfirmAction({ type: dossierUser.isActive ? "disable" : "enable", user: dossierUser }); setConfirmOpen(true); setDossierUserId(null); } : undefined}
+          />
+        );
+      })()}
     </AdminLayout>
   );
 }
