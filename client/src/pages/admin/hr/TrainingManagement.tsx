@@ -1,10 +1,11 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
-  BookOpen, Plus, ChevronRight, Trash2, Pencil, Users, Send,
+  ArrowLeft, BookOpen, Plus, ChevronRight, Trash2, Pencil, Users, Send,
   CheckCircle, Eye, EyeOff, GraduationCap, Clock, Loader2, X, Save, UserPlus, Sprout,
   AlertCircle, CalendarPlus, ShieldAlert, Check, XCircle, ExternalLink, WifiOff, Shield, ShieldOff,
 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -101,6 +102,19 @@ export default function TrainingManagement() {
 
   const { data: selectedTrackAssignments = [], isLoading: loadingSelectedAssignments } = useQuery<any[]>({
     queryKey: ["/api/onboarding/tracks", selectedTrackId, "assignments"],
+    enabled: !!selectedTrackId,
+  });
+
+  const { data: trackSopCodes = [] } = useQuery<string[]>({
+    queryKey: ["/api/training/track", selectedTrackId, "sop-codes"],
+    queryFn: async () => {
+      if (!selectedTrackId) return [];
+      try {
+        const res = await fetch(`/api/training/track/${selectedTrackId}/sop-codes`, { credentials: "include" });
+        if (!res.ok) return [];
+        return res.json();
+      } catch { return []; }
+    },
     enabled: !!selectedTrackId,
   });
 
@@ -365,9 +379,11 @@ export default function TrainingManagement() {
       queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks", assignTrackId, "assignments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rayo-academy/my-assignments"] });
       queryClient.invalidateQueries({ queryKey: ["/api/rayo-academy/team-progress"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/training/catalog"] });
       toast({ title: `Assigned to ${assigned} employee(s)${skipped > 0 ? `, ${skipped} already assigned` : ""}` });
       setAssignSelectedUsers([]);
       setAssignDueDate("");
+      setShowAssignModal(false);
     },
     onError: () => toast({ title: "Failed to assign track", variant: "destructive" }),
   });
@@ -780,11 +796,11 @@ export default function TrainingManagement() {
 
         {isRayoEnabled && <Separator />}
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Track List */}
+        {/* Track list — shown when no track is selected */}
+        {!selectedTrackId && (
           <div className="space-y-3">
             <h2 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
-              {isRayoEnabled ? "Local Learning Tracks (Legacy)" : "Learning Tracks"}
+              {isRayoEnabled ? "Local Learning Tracks (Legacy)" : "Learning Tracks"} ({tracks.length})
             </h2>
             {isLoading && <div className="text-muted-foreground text-sm">Loading...</div>}
             {!isLoading && tracks.length === 0 && (
@@ -799,7 +815,7 @@ export default function TrainingManagement() {
             {tracks.map((track: any) => (
               <Card
                 key={track.id}
-                className={`cursor-pointer transition-all ${selectedTrackId === track.id ? "ring-2 ring-blue-500" : "hover:shadow-md"}`}
+                className="cursor-pointer transition-all hover:shadow-md"
                 onClick={() => setSelectedTrackId(track.id)}
                 data-testid={`card-track-${track.id}`}
               >
@@ -830,274 +846,297 @@ export default function TrainingManagement() {
               </Card>
             ))}
           </div>
+        )}
 
-          {/* Track Detail + Section Editor */}
-          <div className="lg:col-span-2 space-y-4">
-            {!selectedTrackId && (
-              <Card className="border-dashed">
-                <CardContent className="pt-12 pb-12 text-center text-muted-foreground">
-                  <BookOpen className="h-10 w-10 mx-auto mb-3 opacity-30" />
-                  <p>{isRayoEnabled ? "Select a local track to view, or use Rayo Academy tracks above" : "Select a track to view and edit its content"}</p>
-                </CardContent>
-              </Card>
-            )}
+        {/* Track detail — full-page view when a track is selected */}
+        {selectedTrackId && selectedTrack && (
+          <div className="space-y-6">
 
-            {selectedTrack && (
-              <>
-                <Card>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-start justify-between">
-                      <div>
-                        <CardTitle className="text-lg">{selectedTrack.title}</CardTitle>
-                        <p className="text-sm text-muted-foreground mt-1">{selectedTrack.description}</p>
-                        <div className="flex gap-2 mt-2 flex-wrap">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[selectedTrack.status]}`}>
-                            {selectedTrack.status}
+            {/* Back navigation */}
+            <div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedTrackId(null)}
+                className="gap-1.5 text-muted-foreground hover:text-foreground -ml-2"
+                data-testid="button-back-to-tracks"
+              >
+                <ArrowLeft className="h-4 w-4" />
+                Back to Tracks
+              </Button>
+            </div>
+
+            {/* Header card */}
+            <Card>
+              <CardHeader className="pb-4">
+                <div className="space-y-3">
+                  {/* Title row + action buttons */}
+                  <div className="flex items-start gap-4">
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-xl leading-snug">{selectedTrack.title}</CardTitle>
+                      {/* Linked SOP code chips */}
+                      {trackSopCodes.length > 0 && (
+                        <div className="flex gap-1.5 flex-wrap mt-1.5">
+                          {trackSopCodes.map((code: string) => (
+                            <span key={code} className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-mono">
+                              {code}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex gap-2 mt-2 flex-wrap">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[selectedTrack.status]}`}>
+                          {selectedTrack.status}
+                        </span>
+                        {selectedTrack.targetRole && (
+                          <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{selectedTrack.targetRole}</span>
+                        )}
+                        {selectedTrack.isPolicyTrack && (
+                          <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                            <Shield className="h-3 w-3" />Policy v{selectedTrack.versionNumber ?? 1}
                           </span>
-                          {selectedTrack.targetRole && (
-                            <span className="text-xs bg-blue-50 text-blue-700 px-2 py-0.5 rounded-full">{selectedTrack.targetRole}</span>
-                          )}
-                          {selectedTrack.isPolicyTrack && (
-                            <span className="text-xs bg-primary/10 text-primary px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                              <Shield className="h-3 w-3" />Policy v{selectedTrack.versionNumber ?? 1}
-                            </span>
-                          )}
-                          {selectedTrack.isUniversal && (
-                            <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
-                              <Users className="h-3 w-3" />Universal
-                            </span>
-                          )}
+                        )}
+                        {selectedTrack.isUniversal && (
+                          <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium flex items-center gap-1">
+                            <Users className="h-3 w-3" />Universal
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    {canAdmin && (
+                      <div className="flex gap-2 shrink-0 flex-wrap justify-end">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setShowPreview(true)}
+                          data-testid="button-preview-track"
+                        >
+                          <Eye className="h-4 w-4 mr-1" />
+                          Preview
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => {
+                            setAssignTrackId(selectedTrackId);
+                            setShowAssignModal(true);
+                          }}
+                          data-testid="button-assign-track"
+                        >
+                          <UserPlus className="h-4 w-4 mr-1" />
+                          Assign
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant={selectedTrack.isPolicyTrack ? "secondary" : "outline"}
+                          onClick={() => updateTrack.mutate({
+                            id: selectedTrack.id,
+                            data: { isPolicyTrack: !selectedTrack.isPolicyTrack, isUniversal: !selectedTrack.isPolicyTrack ? selectedTrack.isUniversal : false },
+                          })}
+                          data-testid="button-toggle-policy-track"
+                          title={selectedTrack.isPolicyTrack ? "Remove mandatory policy flag" : "Mark as mandatory policy track"}
+                        >
+                          <Shield className={`h-4 w-4 mr-1 ${selectedTrack.isPolicyTrack ? "text-primary" : ""}`} />
+                          {selectedTrack.isPolicyTrack ? "Policy" : "Set Policy"}
+                        </Button>
+                        {selectedTrack.isPolicyTrack && (
+                          <Button
+                            size="sm"
+                            variant={selectedTrack.isUniversal ? "secondary" : "outline"}
+                            onClick={() => updateTrack.mutate({
+                              id: selectedTrack.id,
+                              data: { isUniversal: !selectedTrack.isUniversal },
+                            })}
+                            data-testid="button-toggle-universal"
+                            title={selectedTrack.isUniversal ? "Remove universal flag (admins exempt)" : "Mark as universal — all roles must sign"}
+                            className={selectedTrack.isUniversal ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-400" : ""}
+                          >
+                            <Users className={`h-4 w-4 mr-1 ${selectedTrack.isUniversal ? "text-amber-600" : ""}`} />
+                            {selectedTrack.isUniversal ? "Universal" : "Set Universal"}
+                          </Button>
+                        )}
+                        <Button
+                          size="sm"
+                          variant={selectedTrack.status === "published" ? "outline" : "default"}
+                          onClick={() => updateTrack.mutate({
+                            id: selectedTrack.id,
+                            data: { ...selectedTrack, status: selectedTrack.status === "published" ? "draft" : "published" },
+                          })}
+                          data-testid="button-toggle-publish"
+                        >
+                          {selectedTrack.status === "published"
+                            ? <><EyeOff className="h-4 w-4 mr-1" />Unpublish</>
+                            : <><Eye className="h-4 w-4 mr-1" />Publish</>}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-600 hover:text-red-700"
+                          onClick={() => { if (confirm("Archive this track?")) deleteTrack.mutate(selectedTrack.id); }}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Description — rendered as markdown */}
+                  {selectedTrack.description && (
+                    <div className="prose prose-sm max-w-none border-t pt-3 text-muted-foreground [&_strong]:text-foreground [&_p]:my-1 [&_ul]:my-1 [&_li]:my-0.5">
+                      <ReactMarkdown>{selectedTrack.description}</ReactMarkdown>
+                    </div>
+                  )}
+                </div>
+              </CardHeader>
+            </Card>
+
+            {/* Sections */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
+                  Sections ({sections.length})
+                </h3>
+                {canAdmin && (
+                  <Button size="sm" onClick={() => { resetSectionForm(); setEditingSection(null); setShowSectionForm(true); }} data-testid="button-add-section">
+                    <Plus className="h-4 w-4 mr-1" />
+                    Add Section
+                  </Button>
+                )}
+              </div>
+
+              {loadingSections && <div className="text-muted-foreground text-sm">Loading sections...</div>}
+
+              {sections.map((section: any, idx: number) => (
+                <Card key={section.id} data-testid={`card-section-${section.id}`}>
+                  <CardContent className="pt-4 pb-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{idx + 1}</span>
+                          <p className="font-medium">{section.title}</p>
+                        </div>
+                        <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {section.estimatedMinutes} min read
+                          </span>
+                          <span>Min dwell: {section.minDwellSeconds}s</span>
+                          {section.quiz
+                            ? <span className="text-green-600 flex items-center gap-1"><CheckCircle className="h-3 w-3" />Quiz set</span>
+                            : <span className="text-amber-600">No quiz</span>
+                          }
                         </div>
                       </div>
                       {canAdmin && (
-                        <div className="flex gap-2 shrink-0 flex-wrap justify-end">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setShowPreview(true)}
-                            data-testid="button-preview-track"
-                          >
-                            <Eye className="h-4 w-4 mr-1" />
-                            Preview
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setAssignTrackId(selectedTrackId);
-                              setShowAssignModal(true);
-                            }}
-                            data-testid="button-assign-track"
-                          >
-                            <UserPlus className="h-4 w-4 mr-1" />
-                            Assign
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={selectedTrack.isPolicyTrack ? "secondary" : "outline"}
-                            onClick={() => updateTrack.mutate({
-                              id: selectedTrack.id,
-                              data: { isPolicyTrack: !selectedTrack.isPolicyTrack, isUniversal: !selectedTrack.isPolicyTrack ? selectedTrack.isUniversal : false },
-                            })}
-                            data-testid="button-toggle-policy-track"
-                            title={selectedTrack.isPolicyTrack ? "Remove mandatory policy flag" : "Mark as mandatory policy track"}
-                          >
-                            <Shield className={`h-4 w-4 mr-1 ${selectedTrack.isPolicyTrack ? "text-primary" : ""}`} />
-                            {selectedTrack.isPolicyTrack ? "Policy" : "Set Policy"}
-                          </Button>
-                          {selectedTrack.isPolicyTrack && (
-                            <Button
-                              size="sm"
-                              variant={selectedTrack.isUniversal ? "secondary" : "outline"}
-                              onClick={() => updateTrack.mutate({
-                                id: selectedTrack.id,
-                                data: { isUniversal: !selectedTrack.isUniversal },
-                              })}
-                              data-testid="button-toggle-universal"
-                              title={selectedTrack.isUniversal ? "Remove universal flag (admins exempt)" : "Mark as universal — all roles must sign"}
-                              className={selectedTrack.isUniversal ? "border-amber-400 bg-amber-50 text-amber-700 hover:bg-amber-100 dark:bg-amber-950/20 dark:text-amber-400" : ""}
-                            >
-                              <Users className={`h-4 w-4 mr-1 ${selectedTrack.isUniversal ? "text-amber-600" : ""}`} />
-                              {selectedTrack.isUniversal ? "Universal" : "Set Universal"}
-                            </Button>
-                          )}
-                          <Button
-                            size="sm"
-                            variant={selectedTrack.status === "published" ? "outline" : "default"}
-                            onClick={() => updateTrack.mutate({
-                              id: selectedTrack.id,
-                              data: { ...selectedTrack, status: selectedTrack.status === "published" ? "draft" : "published" },
-                            })}
-                            data-testid="button-toggle-publish"
-                          >
-                            {selectedTrack.status === "published"
-                              ? <><EyeOff className="h-4 w-4 mr-1" />Unpublish</>
-                              : <><Eye className="h-4 w-4 mr-1" />Publish</>}
+                        <div className="flex gap-1 shrink-0">
+                          <Button size="sm" variant="ghost" onClick={() => openEditSection(section)}>
+                            <Pencil className="h-4 w-4" />
                           </Button>
                           <Button
                             size="sm"
                             variant="ghost"
                             className="text-red-600 hover:text-red-700"
-                            onClick={() => { if (confirm("Archive this track?")) deleteTrack.mutate(selectedTrack.id); }}
+                            onClick={() => { if (confirm("Delete this section?")) deleteSection.mutate(section.id); }}
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
                       )}
                     </div>
-                  </CardHeader>
+                  </CardContent>
                 </Card>
+              ))}
+            </div>
 
-                {/* Sections */}
-                <div className="space-y-3">
-                  <div className="flex items-center justify-between">
-                    <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
-                      Sections ({sections.length})
-                    </h3>
-                    {canAdmin && (
-                      <Button size="sm" onClick={() => { resetSectionForm(); setEditingSection(null); setShowSectionForm(true); }} data-testid="button-add-section">
-                        <Plus className="h-4 w-4 mr-1" />
-                        Add Section
-                      </Button>
-                    )}
-                  </div>
-
-                  {loadingSections && <div className="text-muted-foreground text-sm">Loading sections...</div>}
-
-                  {sections.map((section: any, idx: number) => (
-                    <Card key={section.id} data-testid={`card-section-${section.id}`}>
-                      <CardContent className="pt-4 pb-4">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2">
-                              <span className="text-xs font-mono bg-muted px-1.5 py-0.5 rounded">{idx + 1}</span>
-                              <p className="font-medium">{section.title}</p>
-                            </div>
-                            <div className="flex gap-3 mt-1 text-xs text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Clock className="h-3 w-3" />
-                                {section.estimatedMinutes} min read
-                              </span>
-                              <span>Min dwell: {section.minDwellSeconds}s</span>
-                              {section.quiz
-                                ? <span className="text-green-600 flex items-center gap-1"><CheckCircle className="h-3 w-3" />Quiz set</span>
-                                : <span className="text-amber-600">No quiz</span>
-                              }
-                            </div>
-                          </div>
-                          {canAdmin && (
-                            <div className="flex gap-1 shrink-0">
-                              <Button size="sm" variant="ghost" onClick={() => openEditSection(section)}>
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="ghost"
-                                className="text-red-600 hover:text-red-700"
-                                onClick={() => { if (confirm("Delete this section?")) deleteSection.mutate(section.id); }}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-                  ))}
+            {/* Assignments panel — HR/Admin unassign & exempt */}
+            {canHRAdmin && (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
+                    Current Assignments ({selectedTrackAssignments.length})
+                  </h3>
                 </div>
-
-                {/* Assignments Panel — HR/Admin can Unassign or Mark Exempt */}
-                {canHRAdmin && (
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <h3 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
-                        Current Assignments ({selectedTrackAssignments.length})
-                      </h3>
-                    </div>
-                    {loadingSelectedAssignments && (
-                      <div className="text-muted-foreground text-sm flex items-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" /> Loading assignments...
-                      </div>
-                    )}
-                    {!loadingSelectedAssignments && selectedTrackAssignments.length === 0 && (
-                      <p className="text-sm text-muted-foreground">No employees assigned to this track yet.</p>
-                    )}
-                    {!loadingSelectedAssignments && selectedTrackAssignments.length > 0 && (
-                      <div className="space-y-2">
-                        {selectedTrackAssignments.map((a: any) => {
-                          const isExcepted = a.assignment.status === "excepted";
-                          const isCompleted = a.assignment.status === "completed";
-                          return (
-                            <div key={a.assignment.id} className="border rounded-lg" data-testid={`mgmt-assignment-${a.assignment.id}`}>
-                              <div className="flex items-center gap-3 px-3 py-2.5">
-                                <div className="flex-1 min-w-0">
-                                  <p className="text-sm font-medium">{a.user.firstName} {a.user.lastName}</p>
-                                  <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-                                    <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
-                                      isCompleted ? "bg-green-100 text-green-700"
-                                      : isExcepted ? "bg-purple-100 text-purple-700"
-                                      : a.assignment.status === "overdue" || (a.assignment.dueDate && new Date(a.assignment.dueDate) < new Date() && !isCompleted) ? "bg-red-100 text-red-700"
-                                      : a.assignment.status === "in_progress" ? "bg-amber-100 text-amber-700"
-                                      : "bg-slate-100 text-slate-600"
-                                    }`}>
-                                      {isExcepted ? "Exempt" : isCompleted ? "Completed" : a.assignment.status === "in_progress" ? "In Progress" : "Not Started"}
-                                    </span>
-                                    {a.assignment.dueDate && (
-                                      <span className="text-xs text-muted-foreground">Due: {new Date(a.assignment.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
-                                    )}
-                                    {isExcepted && a.assignment.exceptionReason && (
-                                      <span className="text-xs text-purple-600 truncate max-w-xs">Reason: {a.assignment.exceptionReason}</span>
-                                    )}
-                                  </div>
-                                </div>
-                                <div className="flex gap-1.5 shrink-0">
-                                  {!isExcepted && (
-                                    <Button
-                                      size="sm"
-                                      variant="outline"
-                                      className="h-7 text-xs text-orange-700 border-orange-300 hover:bg-orange-50"
-                                      onClick={() => {
-                                        setMgmtExemptAssignment({
-                                          id: a.assignment.id,
-                                          trackTitle: selectedTrack?.title || "",
-                                          userName: `${a.user.firstName} ${a.user.lastName}`,
-                                        });
-                                        setMgmtExemptReason("");
-                                      }}
-                                      data-testid={`button-mgmt-exempt-${a.assignment.id}`}
-                                    >
-                                      <ShieldOff className="h-3 w-3 mr-1" />
-                                      Mark Exempt
-                                    </Button>
-                                  )}
-                                  <Button
-                                    size="sm"
-                                    variant="outline"
-                                    className="h-7 text-xs text-red-700 border-red-300 hover:bg-red-50"
-                                    onClick={() => setMgmtUnassignAssignment({
+                {loadingSelectedAssignments && (
+                  <div className="text-muted-foreground text-sm flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Loading assignments...
+                  </div>
+                )}
+                {!loadingSelectedAssignments && selectedTrackAssignments.length === 0 && (
+                  <p className="text-sm text-muted-foreground">No employees assigned to this track yet.</p>
+                )}
+                {!loadingSelectedAssignments && selectedTrackAssignments.length > 0 && (
+                  <div className="space-y-2">
+                    {selectedTrackAssignments.map((a: any) => {
+                      const isExcepted = a.assignment.status === "excepted";
+                      const isCompleted = a.assignment.status === "completed";
+                      return (
+                        <div key={a.assignment.id} className="border rounded-lg" data-testid={`mgmt-assignment-${a.assignment.id}`}>
+                          <div className="flex items-center gap-3 px-3 py-2.5">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium">{a.user.firstName} {a.user.lastName}</p>
+                              <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+                                <span className={`text-xs px-1.5 py-0.5 rounded-full font-medium ${
+                                  isCompleted ? "bg-green-100 text-green-700"
+                                  : isExcepted ? "bg-purple-100 text-purple-700"
+                                  : a.assignment.dueDate && new Date(a.assignment.dueDate) < new Date() && !isCompleted ? "bg-red-100 text-red-700"
+                                  : a.assignment.status === "in_progress" ? "bg-amber-100 text-amber-700"
+                                  : "bg-slate-100 text-slate-600"
+                                }`}>
+                                  {isExcepted ? "Exempt" : isCompleted ? "Completed" : a.assignment.status === "in_progress" ? "In Progress" : "Not Started"}
+                                </span>
+                                {a.assignment.dueDate && (
+                                  <span className="text-xs text-muted-foreground">Due: {new Date(a.assignment.dueDate).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" })}</span>
+                                )}
+                                {isExcepted && a.assignment.exceptionReason && (
+                                  <span className="text-xs text-purple-600 truncate max-w-xs">Reason: {a.assignment.exceptionReason}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex gap-1.5 shrink-0">
+                              {!isExcepted && (
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-7 text-xs text-orange-700 border-orange-300 hover:bg-orange-50"
+                                  onClick={() => {
+                                    setMgmtExemptAssignment({
                                       id: a.assignment.id,
                                       trackTitle: selectedTrack?.title || "",
                                       userName: `${a.user.firstName} ${a.user.lastName}`,
-                                    })}
-                                    data-testid={`button-mgmt-unassign-${a.assignment.id}`}
-                                  >
-                                    <Trash2 className="h-3 w-3 mr-1" />
-                                    Unassign
-                                  </Button>
-                                </div>
-                              </div>
+                                    });
+                                    setMgmtExemptReason("");
+                                  }}
+                                  data-testid={`button-mgmt-exempt-${a.assignment.id}`}
+                                >
+                                  <ShieldOff className="h-3 w-3 mr-1" />
+                                  Mark Exempt
+                                </Button>
+                              )}
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="h-7 text-xs text-red-700 border-red-300 hover:bg-red-50"
+                                onClick={() => setMgmtUnassignAssignment({
+                                  id: a.assignment.id,
+                                  trackTitle: selectedTrack?.title || "",
+                                  userName: `${a.user.firstName} ${a.user.lastName}`,
+                                })}
+                                data-testid={`button-mgmt-unassign-${a.assignment.id}`}
+                              >
+                                <Trash2 className="h-3 w-3 mr-1" />
+                                Unassign
+                              </Button>
                             </div>
-                          );
-                        })}
-                      </div>
-                    )}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
-
-              </>
+              </div>
             )}
           </div>
-        </div>
+        )}
       </div>
 
       {/* Mark Exempt Dialog (Management View) */}
@@ -1445,8 +1484,8 @@ export default function TrainingManagement() {
                   </div>
 
                   {/* Content */}
-                  <div className="px-5 py-4">
-                    <pre className="whitespace-pre-wrap text-sm leading-relaxed font-sans">{section.body}</pre>
+                  <div className="px-5 py-4 prose prose-sm max-w-none [&_strong]:font-semibold [&_p]:my-1.5 [&_ul]:my-1.5 [&_li]:my-0.5">
+                    <ReactMarkdown>{section.body}</ReactMarkdown>
                   </div>
 
                   {/* Quiz preview */}

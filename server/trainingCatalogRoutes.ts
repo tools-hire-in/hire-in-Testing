@@ -310,6 +310,25 @@ export function registerTrainingCatalogRoutes(app: Express) {
     }
   );
 
+  app.get("/api/training/track/:trackId/sop-codes",
+    (req, res, next) => {
+      if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+      next();
+    },
+    async (req: Request, res: Response) => {
+      try {
+        const { trackId } = req.params as { trackId: string };
+        const rows = await db.select({ sopCode: trainingSopLinks.sopCode })
+          .from(trainingSopLinks)
+          .where(eq(trainingSopLinks.trackId, trackId));
+        res.json(rows.map((r) => r.sopCode));
+      } catch (error) {
+        console.error("track sop-codes error:", error);
+        res.status(500).json({ error: "Failed to fetch SOP codes for track" });
+      }
+    }
+  );
+
   app.post("/api/training/bulk-assign-by-role",
     (req, res, next) => {
       if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
