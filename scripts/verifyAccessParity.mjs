@@ -97,12 +97,39 @@ read('server/attendanceReportRoutes.ts').forEach((line, i) => {
   sites.push({ file: 'server/attendanceReportRoutes.ts', line: i + 1, key: m[1], eff: dedupe(parseArgs(m[2])) });
 });
 
+// governanceRoutes.ts : checkPermission(req, res, "key") — key-existence check only
+// (no inline role array; the function resolves directly against the registry)
+const govKeyRefs = [];
+read('server/governanceRoutes.ts').forEach((line, i) => {
+  if (/function checkPermission/.test(line)) return;
+  const m = line.match(/checkPermission\(req,\s*res,\s*"([^"]+)"\)/);
+  if (!m) return;
+  govKeyRefs.push({ file: 'server/governanceRoutes.ts', line: i + 1, key: m[1] });
+});
+
 // Parse ACCESS_REGISTRY from shared/accessControl.ts
 const acl = fs.readFileSync('shared/accessControl.ts', 'utf8');
 const body = acl.match(/ACCESS_REGISTRY: AccessRegistry = \{([\s\S]*?)\n\};/)[1];
 const registry = {};
 for (const m of body.matchAll(/"([^"]+)":\s*\[([^\]]*)\]/g)) {
   registry[m[1]] = m[2].split(',').map(s => s.trim().replace(/^"|"$/g, '')).filter(Boolean);
+}
+
+// Frontend can("key") key-existence check
+// Scans AdminLayout.tsx and key page files for can("key") calls and verifies
+// each key exists in the registry.
+const frontendCanRefs = [];
+const frontendFiles = [
+  'client/src/components/admin/AdminLayout.tsx',
+  'client/src/hooks/use-permissions.ts',
+];
+for (const f of frontendFiles) {
+  if (!fs.existsSync(f)) continue;
+  read(f).forEach((line, i) => {
+    for (const m of line.matchAll(/\bcan\("([^"]+)"\)/g)) {
+      frontendCanRefs.push({ file: f, line: i + 1, key: m[1] });
+    }
+  });
 }
 
 // Compare — invariant: seed ⊆ registry.
@@ -124,9 +151,26 @@ for (const s of sites) {
     failures++;
   }
 }
+
+// Key-existence check for governanceRoutes.ts checkPermission calls
+for (const ref of govKeyRefs) {
+  if (!registry[ref.key]) {
+    console.error(`MISSING KEY  ${ref.key}  (${ref.file}:${ref.line})`);
+    failures++;
+  }
+}
+
+// Key-existence check for frontend can() calls
+for (const ref of frontendCanRefs) {
+  if (!registry[ref.key]) {
+    console.error(`MISSING FRONTEND KEY  ${ref.key}  can("${ref.key}")  (${ref.file}:${ref.line})`);
+    failures++;
+  }
+}
+
 if (!registry['hr.attendanceReport.access']) { console.error('MISSING attendance key'); failures++; }
 
-console.log(`\nScanned ${sites.length} centralized guard sites against ${Object.keys(registry).length} registry keys.`);
+console.log(`\nScanned ${sites.length} centralized guard sites + ${govKeyRefs.length} governance key refs + ${frontendCanRefs.length} frontend can() refs against ${Object.keys(registry).length} registry keys.`);
 if (failures) {
   console.error(`PARITY CHECK FAILED: ${failures} mismatch(es).`);
   process.exit(1);

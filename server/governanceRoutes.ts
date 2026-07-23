@@ -286,14 +286,8 @@ export function registerGovernanceRoutes(app: Express): void {
   // Access: super_admin, admin, hr only. 403 for all other roles.
   // Cached 5 minutes in-memory; bypass with ?refresh=true.
   app.get("/api/governance/pulse", async (req: Request, res: Response) => {
-    if (!req.session?.userId) {
-      return res.status(401).json({ error: "Unauthorized" });
-    }
-    const role = req.session.role as string;
-    const ALLOWED_ROLES = ["super_admin", "admin", "hr"];
-    if (!ALLOWED_ROLES.includes(role)) {
-      return res.status(403).json({ error: "Insufficient permissions" });
-    }
+    const session = checkPermission(req, res, "governance.hr");
+    if (!session) return;
 
     const forceRefresh = req.query.refresh === "true";
     const now = Date.now();
@@ -327,9 +321,8 @@ export function registerGovernanceRoutes(app: Express): void {
   // manager_coaching_obligation, joined to the manager's name.
   // Access: super_admin, admin, hr.
   app.get("/api/governance/manager-obligations", async (req: Request, res: Response) => {
-    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    const role = req.session.role as string;
-    if (!["super_admin", "admin", "hr"].includes(role)) return res.status(403).json({ error: "Insufficient permissions" });
+    const session = checkPermission(req, res, "governance.hr");
+    if (!session) return;
     try {
       const rows = await db.execute(sql`
         SELECT
@@ -363,10 +356,8 @@ export function registerGovernanceRoutes(app: Express): void {
   // of all managers) and from /manager/:id/breakdown (team compliance data).
   // Access: manager, hr, admin, super_admin.
   app.get("/api/governance/my-manager-obligations", async (req: Request, res: Response) => {
-    const session = getSession(req, res);
+    const session = checkPermission(req, res, "governance.manager");
     if (!session) return;
-    const allowed = ["manager", "hr", "admin", "super_admin", "operations"];
-    if (!allowed.includes(session.role)) return res.status(403).json({ error: "Access denied" });
     try {
       const rows = await db.execute(sql`
         SELECT
@@ -401,9 +392,8 @@ export function registerGovernanceRoutes(app: Express): void {
   // at least one coaching entry in last 30 days / total active plans).
   // Access: super_admin, admin, hr.
   app.get("/api/governance/manager-kpis", async (req: Request, res: Response) => {
-    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    const role = req.session.role as string;
-    if (!["super_admin", "admin", "hr"].includes(role)) return res.status(403).json({ error: "Insufficient permissions" });
+    const session = checkPermission(req, res, "governance.hr");
+    if (!session) return;
     try {
       const rows = await db.execute(sql`
         WITH mgr_checkins AS (
@@ -477,9 +467,9 @@ export function registerGovernanceRoutes(app: Express): void {
   // Manager marks a scheduled check-in as completed from their side.
   // Creates a brief coaching log entry noting the facilitation.
   app.patch("/api/hr/plans/checkins/:id/cosign", async (req: Request, res: Response) => {
-    if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
-    const role = req.session.role as string;
-    if (!["manager", "hr", "admin", "super_admin"].includes(role)) return res.status(403).json({ error: "Insufficient permissions" });
+    const session = checkPermission(req, res, "hr.checkIns");
+    if (!session) return;
+    const role = session.role;
     const checkInId = req.params.id;
     try {
       // Load check-in and verify manager owns it

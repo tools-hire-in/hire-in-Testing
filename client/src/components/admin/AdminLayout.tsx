@@ -1532,7 +1532,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       } catch { return 0; }
     },
     refetchInterval: 60000,
-    enabled: !!user && ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || ""),
+    enabled: !!user && can("admin.myTeam"),
   });
 
   const roleInfo = user?.role ? roleLabels[user.role] : roleLabels.employee;
@@ -1588,7 +1588,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
 
   // Pending regularization (attendance correction) requests for the team (badge in My Team sidebar)
   const pendingRegCount = usePendingRegularizationCount(
-    !!user && ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "")
+    !!user && can("admin.myTeam")
   );
 
   // Current user's own pending correction requests — badge on Attendance sub-item in My Desk
@@ -1638,7 +1638,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       } catch { return { count: 0 }; }
     },
     refetchInterval: 60000,
-    enabled: !!user && ["super_admin", "admin", "hr", "operations"].includes(user?.role || ""),
+    enabled: !!user && can("hr.users"),
   });
   const hirdOpenCount = hirdOpenData?.count ?? 0;
 
@@ -1653,7 +1653,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       } catch { return { count: 0 }; }
     },
     refetchInterval: 60000,
-    enabled: !!user && ["admin", "super_admin"].includes(user?.role || ""),
+    enabled: !!user && can("companyProfile"),
   });
   const salaryPendingCount = salaryRunPending?.count ?? 0;
 
@@ -1661,7 +1661,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   const { data: commsHeld } = useQuery<{ count: number }>({
     queryKey: ["/api/admin/communications/count"],
     refetchInterval: 60000,
-    enabled: !!user && user?.role === "super_admin",
+    enabled: !!user && can("system.allowedDomains"),
   });
   const commsHeldCount = commsHeld?.count ?? 0;
 
@@ -1676,7 +1676,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       } catch { return { pending_count: 0 }; }
     },
     refetchInterval: 60000,
-    enabled: !!user && ["super_admin", "admin"].includes(user?.role || ""),
+    enabled: !!user && can("companyProfile"),
   });
   const blastPendingCount = blastPendingData?.pending_count ?? 0;
 
@@ -1691,7 +1691,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       } catch { return { pendingManager: 0, pendingFinal: 0, active: 0, pendingCeo: 0 }; }
     },
     refetchInterval: 60000,
-    enabled: !!user && ["manager", "admin", "super_admin", "hr"].includes(user?.role || ""),
+    enabled: !!user && can("salaryAdvance.managerApprove"),
   });
   const salaryAdvanceBadge = (salaryAdvanceStats?.pendingManager ?? 0) + (salaryAdvanceStats?.pendingFinal ?? 0) + (salaryAdvanceStats?.pendingCeo ?? 0);
 
@@ -1723,7 +1723,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     },
     refetchInterval: 120000,
     staleTime: 60000,
-    enabled: !!user && ["super_admin", "admin"].includes(user?.role || ""),
+    enabled: !!user && can("companyProfile"),
   });
   const pendingWaveLaunchCount = pendingWaveLaunchData?.count ?? 0;
 
@@ -1738,7 +1738,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       } catch { return { count: 0 }; }
     },
     refetchInterval: 60000,
-    enabled: !!user && user?.role === "super_admin",
+    enabled: !!user && can("system.allowedDomains"),
   });
   const salaryChangePendingCount = salaryChangePending?.count ?? 0;
 
@@ -2111,7 +2111,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
               />
 
               {/* ORGANISATION section — super_admin, admin, hr, operations, manager */}
-              {orgNavItems.length > 0 && ["super_admin", "admin", "hr", "operations", "manager"].includes(user?.role ?? "") && (
+              {orgNavItems.length > 0 && can("admin.myTeam") && (
                 <SidebarGroup>
                   <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
                     Organisation
