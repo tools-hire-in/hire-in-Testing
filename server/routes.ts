@@ -25650,7 +25650,7 @@ Canonical domain: ${BASE}
   app.post(
     "/api/studio/jobs/:jobId/generate-social",
     requireAuth,
-    requirePermission("studio.generate_ai_draft", "admin", "hr", "operations", "recruiter", "manager"),
+    requirePermission("studio.generate_ai_draft", "admin"),
     async (req: Request, res: Response) => {
       try {
         const { jobId } = req.params;
@@ -25814,7 +25814,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   app.get(
     "/api/studio/jobs/:jobId/social-captions",
     requireAuth,
-    requirePermission("studio.view", "admin", "hr", "operations", "recruiter", "manager"),
+    requirePermission("studio.view", "admin"),
     async (req: Request, res: Response) => {
       try {
         const { jobId } = req.params;
@@ -25833,7 +25833,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   app.get(
     "/api/studio/job-idea-suggestions",
     requireAuth,
-    requirePermission("studio.view", "admin", "hr", "operations", "recruiter", "manager"),
+    requirePermission("studio.view", "admin"),
     async (req: Request, res: Response) => {
       const CACHE_TTL_MS = 4 * 60 * 60 * 1000; // 4 hours
       const CACHE_KEY = "job-idea-suggestions";

@@ -30,20 +30,23 @@ const ALL_E2E_IDS = [
 export async function seedE2EUsers(): Promise<void> {
   const hash = await bcrypt.hash(E2E_PASSWORD, 10);
 
-  // Non-employee base users
+  // Non-employee base users — ceipal_update_prompt_enabled=false so admin/manager/hr
+  // never trigger the Ceipal modal (flag defaults to NULL→true in app logic otherwise)
   await db.execute(sql`
     INSERT INTO admin_users
-      (id, email, password, first_name, last_name, role, is_active, totp_enabled, created_at)
+      (id, email, password, first_name, last_name, role, is_active, totp_enabled,
+       ceipal_update_prompt_enabled, created_at)
     VALUES
-      (${E2E_ADMIN_ID},     ${E2E_ADMIN_EMAIL},     ${hash}, 'E2E', 'Admin',    'super_admin', true, false, NOW()),
-      (${E2E_MANAGER_ID},   ${E2E_MANAGER_EMAIL},   ${hash}, 'E2E', 'Manager',  'manager',     true, false, NOW()),
-      (${E2E_HR_ID},        ${E2E_HR_EMAIL},         ${hash}, 'E2E', 'HR',       'hr',          true, false, NOW())
+      (${E2E_ADMIN_ID},     ${E2E_ADMIN_EMAIL},     ${hash}, 'E2E', 'Admin',    'super_admin', true, false, false, NOW()),
+      (${E2E_MANAGER_ID},   ${E2E_MANAGER_EMAIL},   ${hash}, 'E2E', 'Manager',  'manager',     true, false, false, NOW()),
+      (${E2E_HR_ID},        ${E2E_HR_EMAIL},         ${hash}, 'E2E', 'HR',       'hr',          true, false, false, NOW())
     ON CONFLICT (id) DO UPDATE
       SET password = EXCLUDED.password,
           is_active = true,
           deleted_at = NULL,
           totp_enabled = false,
-          totp_secret = NULL
+          totp_secret = NULL,
+          ceipal_update_prompt_enabled = false
   `);
 
   // Employee (has manager_id)

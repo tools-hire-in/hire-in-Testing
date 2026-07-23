@@ -35,6 +35,22 @@ async function reactFill(page: import("@playwright/test").Page, selector: string
   await expect(loc).toHaveValue(value, { timeout: 3_000 });
 }
 
+/**
+ * Advances the offer letter wizard from step 0 to step 2.
+ * Requires candidateName already filled (Next is disabled without it at step 0).
+ */
+async function advanceOfferLetterToStep2(page: import("@playwright/test").Page) {
+  const nextBtn = page.locator('[data-testid="button-offer-next"]');
+  // Step 0 → 1
+  await expect(nextBtn).toBeEnabled({ timeout: 5_000 });
+  await nextBtn.click();
+  // Step 1 → 2
+  await expect(nextBtn).toBeEnabled({ timeout: 5_000 });
+  await nextBtn.click();
+  // Generate button should now be visible (step 2)
+  await expect(page.locator('[data-testid="button-generate-offer"]')).toBeVisible({ timeout: 5_000 });
+}
+
 test.describe("Offer letter generation — New Hire section", () => {
   test.beforeEach(async ({ context }) => {
     await loginViaAPI(context, BASE_URL, E2E_ADMIN_EMAIL, E2E_PASSWORD);
@@ -57,8 +73,15 @@ test.describe("Offer letter generation — New Hire section", () => {
     await page.waitForLoadState("networkidle");
     await dismissModalsIfPresent(page);
 
+    // Step 0: name and designation fields must be present
     await expect(page.locator('[data-testid="input-offer-name"]')).toBeVisible({ timeout: 10_000 });
     await expect(page.locator('[data-testid="input-offer-designation"]')).toBeVisible();
+
+    // Fill name so Next is enabled, then advance the wizard to step 2 where
+    // the Download DOCX button lives (the form is a 3-step wizard: 0→1→2)
+    await reactFill(page, '[data-testid="input-offer-name"]', "E2E Test Candidate");
+    await advanceOfferLetterToStep2(page);
+
     await expect(page.locator('[data-testid="button-generate-offer"]')).toBeVisible();
   });
 
@@ -71,8 +94,12 @@ test.describe("Offer letter generation — New Hire section", () => {
     // Give the form a moment to finish any async initialisation.
     await page.waitForTimeout(500);
 
+    // Fill required fields at step 0
     await reactFill(page, '[data-testid="input-offer-name"]', "E2E Test Candidate");
     await reactFill(page, '[data-testid="input-offer-designation"]', "QA Engineer");
+
+    // Navigate the wizard to step 2 where the generate button appears
+    await advanceOfferLetterToStep2(page);
 
     const generateBtn = page.locator('[data-testid="button-generate-offer"]');
     await expect(generateBtn).toBeEnabled({ timeout: 8_000 });
