@@ -1,0 +1,122 @@
+
+Canvas is read-only in background tasks.
+Product Manager
+BA architect Review the Following issue we have in content studio, we are havign distorted experience still lingering on across studio :
+
+Ideas created in Calender are never sent to any list or place where they can be worked on they just open in left pannel and you can update and interact with it just in there, but main thing is to get an idea created in the content plan but then it need to have its home where all of the ideas approved,rejected in review production are shown I know we hav calender Kanban view for them but we need space liek Artivcles for them and I feel we have jumbled the Insights Article experince and createing social media post experience in stidio we need to have clean user journey so first lets decide the USer journey and then we will fix all the places one by one in studio here this is noe studio refactoring brainstorming
+Basic lets start with users and user jorney in content studio for Articles and Social media post seprately I think this is the first distinction w eneed that will actually make content studio seleable
+
+5 hours ago
+
+1 message & 6 actions
+
+Worked for 1 minute
+Look at this user feedback and tell me how we can allign what you have given here with and lets design all the journey adn will review and fix it from core:?
+User feedback below:
+
+Improve AI Content Generation
+The AI should generate content based on the selected platform rather than using a generic approach.
+Suggested improvements:
+Adapt content according to the platform's style and best practices (e.g., Instagram, LinkedIn, Facebook, X).
+Allow users to specify the content format before generation, such as:
+Carousel
+Static Post
+Reel
+Video Script
+Story
+Include an option to select the target platform (Instagram, LinkedIn, Facebook, X, etc.) before generating content.
+Make the AI outputs platform-specific. For example:
+Instagram: Engaging hooks, concise captions, carousel copy, Reel scripts, hashtags.
+LinkedIn: Professional thought leadership, educational posts, longer-form content.
+X (Twitter): Short, conversational, and timely updates.
+
+Improve the "New Idea" Workflow
+Currently, when a new idea is created from the Calendar, it does not go to the Articles section.
+Can we Keep the entire workflow within the Calendar.
+Clicking New Idea should allow users to:
+Enter the content idea.
+Select the target platform.
+Choose the content type (Carousel, Static Post, Reel, Story, Video Script, etc.).
+Generate AI content directly from the Calendar without switching to the Articles module.
+
+Campaign AI
+The AI functionality within the Campaign module is currently not working.
+
+CM Review / Author Sign-off
+The CM Review workflow is not functioning.
+Previously, the CM Review screen allowed articles to be sent for author sign-off.
+
+Additionally
+We can Make the Studio more social media-focused for calendar part.
+
+50 minutes ago
+
+1 message & 1 action
+Before I Write Tasks — Three Confirmations
+I want to make sure we're aligned on these before I scope the work:
+
+Calendar stays social-only. Is it correct that the Calendar should be purely a social media scheduling surface — and articles are never created from there?
+--> No lets surface articles also and articles/social posts scheduled for future or what ever date should shown and if in past should be shown if release in green if not then red, also secondly plan to have a capablity to be able to schdule the releae to Insights atleas our articles automated on dates once all approvals are gotten and ready to relase, BA architect what you think hoenstly?
+
+Ideas Bank is a new page. Should this be /studio/ideas as a nav item, or a tab within the Studio dashboard home?
+--> Let it be the new page and this is where allt he social post history will also be home for social poosts what you think, or do we already have that planned seprately?
+
+Task sequence. The logical fix order is: Ideas + Calendar flow first → Social Posts separation → Articles/CM Review → Campaign AI. Does that sequence work for you, or is there a different priority?
+
+--> You will ahve to explain/elaborate this flow I didnt understand what you tsaid here
+
+12 minutes ago
+
+Planning calendar display logic (16 seconds)
+Great inputs — let me give you my honest BA take on each, then revise the final design and lay out the task sequence in plain English.
+
+✅ Q1 — Should Calendar show both Articles and Social Posts?
+My honest take: Yes, and it's actually the right call.
+
+The Calendar should be a true Editorial Calendar — the "air traffic control" view of all content going out, regardless of type. This is exactly how professional tools like CoSchedule and Hootsuite Planner work.
+
+Here's what that looks like:
+
+CALENDAR VIEW
+├── 📱 Social Post chip  →  blue
+├── 📄 Article chip      →  purple
+│
+├── Past date + published   →  🟢 green chip
+├── Past date + NOT published → 🔴 red chip (missed!)
+└── Future date + scheduled  →  ⏰ grey chip
+
+On auto-publishing articles to Insights: This is a powerful and correct feature. One critical safeguard I'd recommend: auto-publish should only trigger when the article status is fully approved AND a publish date is set. A pre-publish checklist gate (title, featured image, SEO slug confirmed) prevents accidental live posts. Think of it like a "rocket launch commit" — the date is set, approvals are done, the system fires automatically.
+
+✅ Q2 — Ideas Bank as home for Social Posts too?
+My honest take: Merge them, but with smart filters — not two separate pages.
+
+You're right to question why we'd have both. Here's the cleaner model:
+
+IDEAS BANK  (/studio/ideas)
+= One unified content library with filters
+Filter by TYPE:   💡 Idea  |  📱 Social Post  |  📄 Article
+Filter by STATUS: Draft → In Review → Approved → Scheduled → Published
+💡 Idea cards      →  not yet activated, show [Start Creating] action
+📱 Social Post cards → full lifecycle here, show platform + format badges
+📄 Article cards   →  just a summary link (articles have their own editor)
+
+Why this works: Social posts don't need a deep editor like articles do. Their lifecycle is short — generate, review, schedule. They live well in a card/list view. Ideas and social posts are "lightweight content." Articles are heavyweight and need their own editorial environment. So the split becomes:
+
+Ideas Bank = home for ideas + social posts (lightweight, card-based)
+Articles = home for long-form editorial work (heavy, editor-based)
+✅ Q3 — Task Sequence Explained in Plain English
+Here's what needs to be fixed and why in that order:
+
+Step 1 — Fix how the Calendar works
+Right now when you click "New Idea" on the Calendar, it either orphans the idea or bounces you to Articles. We fix this first so the Calendar becomes a proper planning surface — ideas flow correctly, posts show in green/red by publish status, articles show alongside social posts. This is the foundation everything else sits on.
+
+Step 2 — Build the Ideas Bank page
+Once Calendar is creating ideas correctly, those ideas need somewhere to live and be managed. We build /studio/ideas as the unified home — ideas, social posts, their full lifecycle in one filterable list.
+
+Step 3 — Platform-specific AI for Social Posts
+Right now AI generates generic content. We add platform selection (Instagram / LinkedIn / Facebook / X) + format selection (Carousel / Reel / Static / Story) so the AI output is actually usable. This lives inside the Ideas Bank / Social Post creation flow.
+
+Step 4 — Fix Articles: CM Review + Author Sign-off
+These two steps are currently broken. We repair the editorial pipeline so articles can actually complete their approval workflow and get to "Approved / Ready to Publish" status — which is also what enables the auto-publish on date feature.
+
+Step 5 — Campaign AI brief generation
