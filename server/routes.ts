@@ -15909,7 +15909,7 @@ Canonical domain: ${BASE}
         ? (await db.execute(sql`
             SELECT sd.id, sd.learning_track_id
             FROM sop_documents sd
-            WHERE sd.sop_master_id = ANY(${masterIds}::varchar[])
+            WHERE sd.sop_master_id = ANY(${masterIds})
               AND sd.is_current = true
           `)).rows as any[]
         : [];
@@ -15920,7 +15920,7 @@ Canonical domain: ${BASE}
       if (sopIds.length > 0) {
         const kqRes = await db.execute(sql`
           SELECT COUNT(*)::int AS cnt FROM sop_knowledge_checks
-          WHERE sop_id = ANY(${sopIds}::varchar[])
+          WHERE sop_id = ANY(${sopIds})
         `).catch(() => ({ rows: [{ cnt: 0 }] }));
         hasKnowledgeChecks = Number((kqRes.rows[0] as any).cnt ?? 0) > 0;
       }
