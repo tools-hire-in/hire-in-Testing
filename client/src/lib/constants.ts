@@ -101,14 +101,6 @@ export const NAV_LINKS = [
       { href: "/services/contract-staffing", label: "Contract Staffing" },
     ],
   },
-  {
-    label: "Capability Decks",
-    children: [
-      { href: "/capability-deck", label: "Capability Deck" },
-      { href: "/it-staffing", label: "IT Staffing Solutions" },
-      { href: "/ehealthcare-staffing", label: "Healthcare Staffing" },
-    ],
-  },
   { href: "/contracts", label: "Contracts" },
   { href: "/jobs", label: "Jobs" },
   { href: "/insights", label: "Insights" },

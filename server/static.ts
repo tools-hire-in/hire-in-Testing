@@ -19,7 +19,6 @@ const KNOWN_PUBLIC_EXACT_ROUTES = new Set([
   "/contact",
   "/terms",
   "/privacy",
-  "/capability-deck",
   "/it-staffing",
   "/ehealthcare-staffing",
   "/why-hire-in-solutions",
@@ -116,12 +115,6 @@ const STATIC_ROUTE_META: Record<string, RouteMeta> = {
     description:
       "Read the Hire'in Solutions Privacy Policy to understand how we collect, use, and protect your personal information.",
     canonical: `${BASE_URL}/privacy`,
-  },
-  "/capability-deck": {
-    title: "Capability Deck | Hire'in Solutions - AI-Powered Recruitment",
-    description:
-      "Hire'in Solutions general capability deck — AI-powered staffing across Healthcare, IT, Engineering & Professional Services. Backed by Rayomind (est. 2014). View our interactive deck and download PDF/PPT.",
-    canonical: `${BASE_URL}/capability-deck`,
   },
   "/it-staffing": {
     title: "IT Staffing Solutions | Hire'in Solutions",

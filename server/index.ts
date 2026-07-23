@@ -4452,20 +4452,38 @@ async function runStartupTasks() {
     console.error("[startup] Author photo ACL backfill error (non-fatal):", err);
   }
 
-  // ── BD Domain Masters — read-only validation log ─────────────────────────
-  // Seed and restore code has been permanently removed. Master decks are now
-  // governance-locked; the ONLY write path is POST /api/bd/decks/:id/master-edit
-  // (TOTP-gated, super_admin only). This block is read-only — never modifies rows.
-
+  // ── BD Domain Masters — lock IT & Healthcare, archive General ───────────
+  // IT and Healthcare master decks are immutable reference decks; lock them on
+  // every boot so they cannot be edited via the normal BD dashboard. The General
+  // capability deck has been retired — soft-delete it so it no longer surfaces
+  // in BD dashboards, but its rows are preserved for historical audit.
+  // ONLY write path for locked decks is POST /api/bd/decks/:id/master-edit
+  // (TOTP-gated, super_admin only).
   try {
+    // Lock IT and Healthcare master decks
+    await db.execute(sql`
+      UPDATE bd_decks
+         SET is_locked = true
+       WHERE deck_type = 'master'
+         AND domain IN ('it', 'healthcare')
+         AND is_locked = false
+    `);
+    // Archive (soft-delete) the General master deck — retired in Task #1520
+    await db.execute(sql`
+      UPDATE bd_decks
+         SET status = 'archived'
+       WHERE deck_type = 'master'
+         AND domain = 'general'
+         AND status != 'archived'
+    `);
     const bdMasterCheck = await db.execute(sql`
-      SELECT domain, is_locked FROM bd_decks WHERE deck_type = 'master' ORDER BY domain
+      SELECT domain, is_locked, status FROM bd_decks WHERE deck_type = 'master' ORDER BY domain
     `);
     const rows = bdMasterCheck.rows as any[];
-    const lockedCount = rows.filter((r) => r.is_locked).length;
+    const lockedCount = rows.filter((r: any) => r.is_locked).length;
     log(`[bd-masters] ${rows.length} master deck(s) present — ${lockedCount} locked`);
   } catch (err) {
-    console.error("[startup] BD master deck validation log error (non-fatal):", err);
+    console.error("[startup] BD master deck lock/archive error (non-fatal):", err);
   }
 
   // Governance Controls table — obligation tracking + CEO exception reports

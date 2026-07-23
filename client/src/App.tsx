@@ -22,7 +22,6 @@ import ITSoftware from "@/pages/services/ITSoftware";
 import EngineeringTechnical from "@/pages/services/EngineeringTechnical";
 import ProfessionalServices from "@/pages/services/ProfessionalServices";
 import ContractStaffing from "@/pages/services/ContractStaffing";
-import CapabilityDeck from "@/pages/CapabilityDeck";
 import ITStaffing from "@/pages/ITStaffing";
 import EHealthcareStaffing from "@/pages/EHealthcareStaffing";
 import WhyHireIn from "@/pages/WhyHireIn";
@@ -304,7 +303,7 @@ function PublicRouter() {
       <Route path="/services/engineering-technical" component={EngineeringTechnical} />
       <Route path="/services/non-it-professional" component={ProfessionalServices} />
       <Route path="/services/contract-staffing" component={ContractStaffing} />
-      <Route path="/capability-deck" component={CapabilityDeck} />
+      <Route path="/capability-deck"><Redirect to="/it-staffing" /></Route>
       <Route path="/it-staffing" component={ITStaffing} />
       <Route path="/ehealthcare-staffing" component={EHealthcareStaffing} />
       <Route path="/why-hire-in-solutions" component={WhyHireIn} />

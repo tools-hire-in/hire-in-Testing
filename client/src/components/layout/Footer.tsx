@@ -15,7 +15,7 @@ export function Footer() {
     <footer className="bg-card border-t">
       {/* Main Footer Content */}
       <div className="container mx-auto px-4 lg:px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-8 lg:gap-12">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">
           {/* Company Info */}
           <div className="space-y-4">
             <div className="flex items-center gap-3">
@@ -211,39 +211,6 @@ export function Footer() {
             </ul>
           </div>
 
-          {/* Capability Decks */}
-          <div className="space-y-4">
-            <h3 className="text-sm font-semibold uppercase tracking-wider">Capability Decks</h3>
-            <ul className="space-y-2">
-              <li>
-                <Link
-                  href="/capability-deck"
-                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
-                  data-testid="link-capability-deck"
-                >
-                  Capability Deck
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/it-staffing"
-                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
-                  data-testid="link-it-staffing"
-                >
-                  IT Staffing Solutions
-                </Link>
-              </li>
-              <li>
-                <Link
-                  href="/ehealthcare-staffing"
-                  className="text-sm text-muted-foreground hover:text-primary transition-colors"
-                  data-testid="link-ehealthcare-staffing"
-                >
-                  Healthcare Staffing
-                </Link>
-              </li>
-            </ul>
-          </div>
         </div>
       </div>
 
