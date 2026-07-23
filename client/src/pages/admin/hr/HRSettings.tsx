@@ -700,7 +700,7 @@ interface SopRolloutScope {
   userIds: string[];
 }
 
-const SOP_ROLLOUT_ROLES = ["hr", "operations", "manager", "recruiter", "finance", "employee"];
+const SOP_ROLLOUT_ROLES = ["hr", "operations", "manager", "employee"];
 
 function ProcessGovernanceRolloutEditor() {
   const { toast } = useToast();

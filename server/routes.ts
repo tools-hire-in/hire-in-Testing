@@ -1904,19 +1904,14 @@ Canonical domain: ${BASE}
         return res.status(400).json({ error: "Only @hire-in.com emails are allowed" });
       }
 
-      // Executives have payroll & compliance access — no attendance tracking or
-      // onboarding, so Department/Shift are not required for them.
-      const isExecutive = assignedRole === "executive";
-
-      if (!departmentId && !isExecutive) {
+      if (!departmentId) {
         return res.status(400).json({ error: "Department is required when creating a new employee" });
       }
 
       // Shift is mandatory: without it the attendance engine cannot determine the
       // employee's working window (late-marking, absent sweep, day-completion all
       // depend on it). Validate the shift exists and is active.
-      // Executives are exempt — the attendance sweep safely skips shiftless users.
-      if (!shiftId && !isExecutive) {
+      if (!shiftId) {
         return res.status(400).json({ error: "Shift is required when creating a new employee" });
       }
       if (shiftId) {
@@ -2192,7 +2187,7 @@ Canonical domain: ${BASE}
           continue;
         }
 
-        const validRoles = ["super_admin", "admin", "hr", "operations", "manager", "recruiter", "employee"] as const;
+        const validRoles = ["super_admin", "admin", "hr", "operations", "manager", "employee"] as const;
         const assignedRole = (validRoles as readonly string[]).includes(role) ? role as typeof validRoles[number] : "employee" as const;
         const assignedRank = ROLE_RANK[assignedRole] ?? 0;
         if (actorRank <= assignedRank && actorRole !== "super_admin") {
@@ -3372,7 +3367,7 @@ Canonical domain: ${BASE}
 
   async function checkTrainingCompliance(userId: string, userRole: string): Promise<{ locked: boolean; trackTitles: string[] }> {
     const EXEMPT_ROLES = ["super_admin", "admin"];
-    const LOCKABLE_ROLES = ["hr", "finance", "manager", "operations", "employee"];
+    const LOCKABLE_ROLES = ["hr", "manager", "operations", "employee"];
     if (EXEMPT_ROLES.includes(userRole) || !LOCKABLE_ROLES.includes(userRole)) return { locked: false, trackTitles: [] };
 
     const now = new Date();
@@ -14367,7 +14362,7 @@ Canonical domain: ${BASE}
         after.maternityLeaveEligible = maternityLeaveEligible;
         updateData.maternityLeaveEligible = maternityLeaveEligible;
       }
-      if (ceipalUpdatePromptEnabled !== undefined && (targetUser.role === "recruiter")) {
+      if (ceipalUpdatePromptEnabled !== undefined) {
         before.ceipalUpdatePromptEnabled = (targetUser as any).ceipalUpdatePromptEnabled ?? true;
         after.ceipalUpdatePromptEnabled = ceipalUpdatePromptEnabled;
         updateData.ceipalUpdatePromptEnabled = ceipalUpdatePromptEnabled;
@@ -30224,10 +30219,9 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   app.post("/api/ceipal/update-log", requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = req.session.userId!;
-      const userRole = req.session.role!;
-      const ceipalEligibleRoles = ["recruiter", "operations", "account_manager"];
-      if (!ceipalEligibleRoles.includes(userRole)) {
-        return res.status(403).json({ error: "Only Ceipal-eligible roles use the Ceipal update checkpoint" });
+      const ceipalUser = await storage.getAdminUser(userId);
+      if (!(ceipalUser as any)?.ceipalUpdatePromptEnabled) {
+        return res.status(403).json({ error: "Ceipal update checkpoint is not enabled for you" });
       }
 
       const { status, deferredReason, commitmentTime } = req.body;
@@ -30258,13 +30252,10 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   app.get("/api/ceipal/verify-today-update", requireAuth, async (req: Request, res: Response) => {
     try {
       const userId = req.session.userId!;
-      const userRole = req.session.role!;
-      const ceipalEligibleRoles = ["recruiter", "operations", "account_manager"];
-      if (!ceipalEligibleRoles.includes(userRole)) {
-        return res.status(403).json({ error: "Only Ceipal-eligible roles can verify Ceipal updates" });
-      }
-
       const currentUser = await storage.getAdminUser(userId);
+      if (!(currentUser as any)?.ceipalUpdatePromptEnabled) {
+        return res.status(403).json({ error: "Ceipal update checkpoint is not enabled for you" });
+      }
       if (!currentUser?.email) {
         return res.status(400).json({ error: "User email not found" });
       }

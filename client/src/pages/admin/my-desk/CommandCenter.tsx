@@ -121,9 +121,9 @@ export default function CommandCenter() {
   const [countdownDismissed, setCountdownDismissed] = useState(false);
   const [ceipalModalOpen, setCeipalModalOpen] = useState(false);
 
-  const isCeipalEligible = ["recruiter", "operations", "account_manager"].includes(user?.role || "");
-
-  // Check if Ceipal-eligible user has already answered today's checkpoint
+  // Check if Ceipal-eligible user has already answered today's checkpoint.
+  // Always fetch — the backend returns promptEnabled:false for users without the flag.
+  // isCeipalEligible is derived from the per-user flag, not from the system role.
   const { data: ceipalTodayStatus, isError: ceipalStatusError } = useQuery<{
     hasAnsweredToday: boolean;
     status: string | null;
@@ -131,9 +131,11 @@ export default function CommandCenter() {
     consecutiveSkips: number;
   }>({
     queryKey: ["/api/ceipal/today-status"],
-    enabled: isAuthenticated && isCeipalEligible,
+    enabled: isAuthenticated,
     staleTime: 30000,
   });
+
+  const isCeipalEligible = ceipalTodayStatus?.promptEnabled === true;
 
   useEffect(() => {
     if (ceipalStatusError) {

@@ -179,7 +179,6 @@ export default function CommandCenterV2() {
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [ceipalModalOpen, setCeipalModalOpen] = useState(false);
 
-  const isCeipalEligible = ["recruiter", "operations", "account_manager"].includes(user?.role || "");
   const isManagerRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "");
   const isResolverRole = ["super_admin", "admin", "hr", "operations"].includes(user?.role || "");
 
@@ -333,9 +332,11 @@ export default function CommandCenterV2() {
     consecutiveSkips: number;
   }>({
     queryKey: ["/api/ceipal/today-status"],
-    enabled: isAuthenticated && isCeipalEligible,
+    enabled: isAuthenticated,
     staleTime: 30000,
   });
+
+  const isCeipalEligible = ceipalTodayStatus?.promptEnabled === true;
 
   useEffect(() => {
     if (ceipalStatusError) {

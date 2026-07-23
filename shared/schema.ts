@@ -7,7 +7,12 @@ import { z } from "zod";
 export * from "./models/auth";
 
 // User roles enum
-// NOTE: 'director' was added to the DB enum via scripts/apply-wave-scheduling-schema.ts
+// DB enum (verified 2026-07-23): {super_admin, admin, hr, finance, operations, manager, recruiter, employee, executive, director}
+// Active roles with real users (6): super_admin, admin, hr, operations, manager, employee
+// Ghost roles (in enum, zero users): recruiter, finance, executive, director
+// These ghost roles are kept in the enum for backward-compat (removing a PG enum value is DDL-destructive)
+// but NO new code should reference them for access control — use the 6 active roles only.
+// NOTE: 'director' was added via scripts/apply-wave-scheduling-schema.ts
 // (ALTER TYPE user_role ADD VALUE IF NOT EXISTS 'director') — not via db:push, because
 // additive enum values stall drizzle-kit's interactive prompt. Keep this list in sync
 // with any future ALTER TYPE additions.
