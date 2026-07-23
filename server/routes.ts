@@ -15839,8 +15839,21 @@ Canonical domain: ${BASE}
         return res.status(404).json({ error: "Wave not found" });
       }
 
-      const scope = await sopRollout.getSopRolloutScope();
-      const masterIds = await sopRollout.resolveWaveMembership(waveDef);
+      let scope: Awaited<ReturnType<typeof sopRollout.getSopRolloutScope>>;
+      try {
+        scope = await sopRollout.getSopRolloutScope();
+      } catch (scopeErr) {
+        console.error("SOP rollout preview — getSopRolloutScope failed:", scopeErr);
+        return res.status(500).json({ error: "Failed to load rollout preview", detail: "getSopRolloutScope failed" });
+      }
+
+      let masterIds: string[];
+      try {
+        masterIds = await sopRollout.resolveWaveMembership(waveDef);
+      } catch (memberErr) {
+        console.error("SOP rollout preview — resolveWaveMembership failed:", memberErr);
+        return res.status(500).json({ error: "Failed to load rollout preview", detail: "resolveWaveMembership failed" });
+      }
 
       let affectedCount = 0;
       let scopeDetail: { roles?: string[]; pilotUserNames?: string[]; pilotCount?: number } = {};
@@ -15945,8 +15958,8 @@ Canonical domain: ${BASE}
         requiresApproval: waveNumber >= 3,
       });
     } catch (error) {
-      console.error("SOP rollout preview error:", error);
-      res.status(500).json({ error: "Failed to load rollout preview" });
+      console.error("SOP rollout preview error:", error instanceof Error ? error.stack : error);
+      res.status(500).json({ error: "Failed to load rollout preview", detail: "Unexpected server error" });
     }
   });
 

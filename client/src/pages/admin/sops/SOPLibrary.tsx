@@ -2821,18 +2821,32 @@ function RolloutImpactPreview({ waveNumber, graceDays }: { waveNumber: number; g
   const [whatOpen, setWhatOpen] = useState(false);
   const [data, setData] = useState<RolloutPreviewData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
-    setError(false);
-    apiRequest("GET", `/api/sops/waves/${waveNumber}/rollout-preview`)
-      .then((r) => r.json())
-      .then((d: RolloutPreviewData) => {
+    setError(null);
+    fetch(`/api/sops/waves/${waveNumber}/rollout-preview`, { credentials: "include" })
+      .then(async (r) => {
+        if (!r.ok) {
+          let msg: string;
+          if (r.status === 403) {
+            msg = "You don't have permission to preview this wave's impact.";
+          } else if (r.status === 404) {
+            msg = "Wave not found. It may have been removed.";
+          } else {
+            let detail = "";
+            try { const body = await r.json(); detail = body?.detail || body?.error || ""; } catch { /* ignore */ }
+            msg = detail ? `Unable to load preview: ${detail}` : "Unable to load preview right now. Please try again.";
+          }
+          if (!cancelled) { setError(msg); setLoading(false); }
+          return;
+        }
+        const d: RolloutPreviewData = await r.json();
         if (!cancelled) { setData(d); setLoading(false); }
       })
-      .catch(() => { if (!cancelled) { setError(true); setLoading(false); } });
+      .catch(() => { if (!cancelled) { setError("Unable to load preview right now. Please try again."); setLoading(false); } });
     return () => { cancelled = true; };
   }, [waveNumber]);
 
@@ -2863,7 +2877,7 @@ function RolloutImpactPreview({ waveNumber, graceDays }: { waveNumber: number; g
                 <Skeleton className="h-4 w-48" />
               </div>
             ) : error ? (
-              <p className="text-xs text-muted-foreground">Unable to load preview right now.</p>
+              <p className="text-xs text-muted-foreground">{error}</p>
             ) : data ? (
               <>
                 <div className="flex items-center gap-2 flex-wrap">
@@ -2921,7 +2935,7 @@ function RolloutImpactPreview({ waveNumber, graceDays }: { waveNumber: number; g
                 <Skeleton className="h-4 w-5/6" />
               </div>
             ) : error ? (
-              <p className="text-xs text-muted-foreground">Unable to load preview right now.</p>
+              <p className="text-xs text-muted-foreground">{error}</p>
             ) : data ? (
               <div className="space-y-3" data-testid="launch-timeline">
                 {/* Step 1 */}
@@ -3159,8 +3173,8 @@ function ScheduleRolloutDrawer({
   const scheduleMut = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", `/api/sops/waves/${waveNumber}/schedule`, {
-        scheduledDate,
-        gracePeriodDays: Number(gracePeriodDays),
+        goLiveDate: scheduledDate,
+        graceDays: Number(gracePeriodDays),
       });
       return res.json();
     },
