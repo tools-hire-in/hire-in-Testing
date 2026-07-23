@@ -256,6 +256,7 @@ function ArticleEditorInner({ id }: { id: string }) {
   const { can, role: currentRole, userId: currentUserId } = usePermissions();
   const canEdit = can("studio.edit_article");
   const canGenerate = can("studio.generate_ai_draft");
+  const canCmReview = can("studio.cm_review");
 
   const [form, setForm] = useState<EditorState | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -264,6 +265,8 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [rejectionBannerDismissed, setRejectionBannerDismissed] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<"details" | "ai_brief" | "publish">("details");
   const [scheduleDate, setScheduleDate] = useState("");
+  const [cmSendBackOpen, setCmSendBackOpen] = useState(false);
+  const [cmSendBackReason, setCmSendBackReason] = useState("");
 
   // AI generation modal state.
   const [genOpen, setGenOpen] = useState(false);
@@ -703,6 +706,32 @@ function ArticleEditorInner({ id }: { id: string }) {
     onError: (err: Error) => {
       toast({ title: "Action failed", description: err.message, variant: "destructive" });
     },
+  });
+
+  const cmDecisionMutation = useMutation({
+    mutationFn: async ({ decision, reason }: { decision: "approve" | "reject"; reason?: string }) => {
+      const res = await apiRequest("POST", `/api/admin/studio/articles/${id}/cm-decision`, { decision, reason });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "CM decision failed");
+      }
+      return res.json();
+    },
+    onSuccess: (_d, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/stats"] });
+      setCmSendBackOpen(false);
+      setCmSendBackReason("");
+      toast({
+        title: vars.decision === "approve" ? "Article approved" : "Article sent back for revision",
+        description: vars.decision === "approve"
+          ? "The article is now pending author sign-off."
+          : "The author has been notified.",
+      });
+    },
+    onError: (err: Error) =>
+      toast({ title: "Action failed", description: err.message, variant: "destructive" }),
   });
 
   const scheduleApprovedMutation = useMutation({
@@ -1778,6 +1807,79 @@ function ArticleEditorInner({ id }: { id: string }) {
           onTransition={(to) => transitionMutation.mutate(to)}
           transitionPending={transitionMutation.isPending}
         />
+      )}
+
+      {article?.status === "pending_cm_review" && canCmReview && (
+        <div className="rounded-lg border border-sky-200 bg-sky-50 dark:border-sky-800 dark:bg-sky-950/20 p-4 space-y-3" data-testid="div-cm-review-panel">
+          <div className="flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-sky-600 shrink-0" />
+            <span className="text-sm font-medium text-sky-800 dark:text-sky-300">CM Review</span>
+          </div>
+          {!cmSendBackOpen ? (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                size="sm"
+                className="bg-emerald-600 hover:bg-emerald-700 text-white"
+                onClick={() => cmDecisionMutation.mutate({ decision: "approve" })}
+                disabled={cmDecisionMutation.isPending}
+                data-testid="button-cm-approve"
+              >
+                {cmDecisionMutation.isPending ? (
+                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="mr-1.5 h-3.5 w-3.5" />
+                )}
+                Approve
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400 dark:hover:bg-red-950/20"
+                onClick={() => setCmSendBackOpen(true)}
+                disabled={cmDecisionMutation.isPending}
+                data-testid="button-cm-send-back-open"
+              >
+                <XCircle className="mr-1.5 h-3.5 w-3.5" />
+                Send Back
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <Textarea
+                rows={3}
+                value={cmSendBackReason}
+                onChange={(e) => setCmSendBackReason(e.target.value)}
+                placeholder="Explain what needs to be revised…"
+                className="text-sm"
+                data-testid="input-cm-send-back-reason"
+              />
+              <div className="flex gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="border-red-300 text-red-700 hover:bg-red-50 dark:border-red-700 dark:text-red-400"
+                  onClick={() => cmDecisionMutation.mutate({ decision: "reject", reason: cmSendBackReason })}
+                  disabled={!cmSendBackReason.trim() || cmDecisionMutation.isPending}
+                  data-testid="button-cm-send-back-confirm"
+                >
+                  {cmDecisionMutation.isPending ? (
+                    <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                  ) : null}
+                  Confirm Send Back
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => { setCmSendBackOpen(false); setCmSendBackReason(""); }}
+                  disabled={cmDecisionMutation.isPending}
+                  data-testid="button-cm-send-back-cancel"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </div>
+          )}
+        </div>
       )}
 
       <div className="grid gap-4 lg:grid-cols-[1fr_minmax(288px,320px)]">

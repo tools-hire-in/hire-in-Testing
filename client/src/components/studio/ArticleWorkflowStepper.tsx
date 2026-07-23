@@ -111,12 +111,8 @@ export function ArticleWorkflowStepper({
         isTransition: true,
       };
     }
-    if (status === "pending_cm_review" && (isSuperAdmin || isAdmin || isHr || isCm)) {
-      return {
-        label: "Go to CM Review →",
-        action: () => navigate(studioPath("/cm-review")),
-        isTransition: false,
-      };
+    if (status === "pending_cm_review") {
+      return null;
     }
     if (status === "pending_author" && isLinkedAuthor) {
       return {

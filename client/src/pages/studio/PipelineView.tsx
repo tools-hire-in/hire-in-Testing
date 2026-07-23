@@ -2087,6 +2087,13 @@ export default function PipelineView({ lens, navigateOnClick }: { lens: Lens; na
 
   const { data: ideas, isLoading } = useQuery<StudioContentIdea[]>({
     queryKey: ["/api/studio/content-ideas", filters],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      Object.entries(filters).forEach(([k, v]) => { if (v) params.set(k, v); });
+      const res = await fetch(`/api/studio/content-ideas?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch content ideas");
+      return res.json();
+    },
     enabled: !!selectedProjectId,
   });
 

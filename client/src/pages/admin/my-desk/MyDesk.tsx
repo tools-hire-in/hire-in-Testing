@@ -1,9 +1,8 @@
 import { useEffect, useMemo, lazy, Suspense, useState } from "react";
 import { useLocation, useSearch } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Lock, Info, ChevronDown, CalendarCheck, Plus } from "lucide-react";
+import { Lock, Info, ChevronDown, Plus } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { V2PageHeader } from "@/components/admin/V2PageHeader";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { useNewLook } from "@/hooks/use-new-look";
@@ -267,22 +266,6 @@ export default function MyDesk() {
   return (
     <AdminLayout>
       <div className="space-y-4 v2-surface">
-        {newLook ? (
-          <V2PageHeader
-            icon={CalendarCheck}
-            eyebrow="My Work"
-            title={activeTab ? TAB_LABELS[activeTab] : "My Desk"}
-            subtitle={activeTab ? undefined : "Your personal workspace — time, leave, and corrections"}
-            testId="text-mydesk-title"
-          />
-        ) : (
-          activeTab === null && (
-            <div>
-              <h1 className="text-2xl font-bold" data-testid="text-mydesk-title">My Desk</h1>
-              <p className="text-sm text-muted-foreground">Your personal workspace — time, leave, and corrections</p>
-            </div>
-          )
-        )}
 
         {activeTab === null && <SopCoachingBanner />}
 
