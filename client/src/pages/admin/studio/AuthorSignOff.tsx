@@ -50,11 +50,12 @@ export default function AuthorSignOff() {
     },
     onSuccess: (_d, decision) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/inbox"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/stats"] });
       toast({
         title: decision === "approve" ? "Article approved" : "Changes requested",
         description:
           decision === "approve"
-            ? "The article has been approved and will move to the marketing queue."
+            ? "The article is now approved and ready for scheduling or publication."
             : "The article has been sent back to draft for revisions.",
       });
       navigate("/admin/studio/inbox");

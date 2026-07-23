@@ -790,7 +790,6 @@ function ContentStudioSection({
     ...(isSuperAdmin ? [{ href: "/admin/studio/final-approval", label: "Final Sign-Off", icon: ShieldCheck, roles: [] }] : []),
     { href: "/admin/studio/calendar", label: "Publishing Calendar", icon: CalendarDays, roles: [] },
     ...(hasStudioAnalyticsAccess ? [{ href: "/admin/studio/analytics", label: "Content Analytics", icon: BarChart3, roles: [] }] : []),
-    { href: "/admin/studio/authors", label: "Authors", icon: Users, roles: [] },
     ...(hasManageAuthorsAccess ? [{ href: "/admin/studio/access", label: "Studio Access", icon: ShieldCheck, roles: [] }] : []),
     { href: "/admin/studio/brand-kit", label: "Brand Kit", icon: Palette, roles: [] },
     { href: "/admin/studio/social-posts", label: "Social Posts", icon: Share2, roles: [] },

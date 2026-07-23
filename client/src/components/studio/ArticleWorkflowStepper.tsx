@@ -12,13 +12,12 @@ interface WorkflowStep {
 }
 
 const WORKFLOW_STEPS: WorkflowStep[] = [
-  { key: "idea", label: "Idea", actor: "Content Editor", statuses: ["idea"] },
-  { key: "draft", label: "Draft", actor: "Content Editor", statuses: ["draft", "needs_revision"] },
+  { key: "draft", label: "Draft", actor: "Content Editor", statuses: ["draft", "needs_revision", "idea"] },
   { key: "in_review", label: "In Review", actor: "Reviewer", statuses: ["in_review"] },
   { key: "cm_review", label: "CM Review", actor: "Content Manager", statuses: ["pending_cm_review"] },
   { key: "author_signoff", label: "Author Sign-Off", actor: "Author", statuses: ["pending_author", "author_approved"] },
-  { key: "marketing", label: "Marketing", actor: "Marketing Manager", statuses: ["pending_marketing"] },
-  { key: "final_approval", label: "Final Approval", actor: "Super Admin", statuses: ["pending_final_approval", "approved", "scheduled"] },
+  { key: "approved", label: "Approved", actor: "Content Manager", statuses: ["approved"] },
+  { key: "scheduled", label: "Scheduled", actor: "", statuses: ["scheduled"] },
   { key: "published", label: "Published", actor: "", statuses: ["published"] },
 ];
 
@@ -29,19 +28,38 @@ function getStepIndex(status: string): number {
   return 0;
 }
 
+function formatRelative(iso: string): string {
+  try {
+    const d = new Date(iso);
+    const diff = Date.now() - d.getTime();
+    const mins = Math.floor(diff / 60_000);
+    if (mins < 1) return "just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hrs = Math.floor(mins / 60);
+    if (hrs < 24) return `${hrs}h ago`;
+    const days = Math.floor(hrs / 24);
+    if (days < 7) return `${days}d ago`;
+    return d.toLocaleDateString("en-IN", { day: "numeric", month: "short" });
+  } catch { return ""; }
+}
+
 const NEXT_STEP_LABELS: Record<string, string> = {
   draft: "Waiting for editor to submit for review",
   needs_revision: "Waiting for editor to revise and resubmit",
+  idea: "Waiting for editor to develop into a draft",
   in_review: "Waiting for reviewer",
   pending_cm_review: "Waiting for Content Manager review",
   pending_author: "Waiting for Author Sign-Off",
-  author_approved: "Author approved — waiting for marketing",
-  pending_marketing: "Waiting for Marketing review",
-  pending_final_approval: "Waiting for Final Sign-Off",
-  approved: "Approved — ready to publish",
+  author_approved: "Author approved — awaiting CM to advance",
+  approved: "Approved — ready to schedule or publish",
   scheduled: "Scheduled for publication",
   published: "Published",
 };
+
+export interface StageHistoryEntry {
+  actorName: string | null;
+  timestamp: string;
+}
 
 interface Props {
   article: StudioArticle;
@@ -50,6 +68,7 @@ interface Props {
   canEdit: boolean;
   canReview: boolean;
   linkedAuthorUserId?: string | null;
+  statusHistory?: Record<string, StageHistoryEntry>;
   onTransition?: (to: string) => void;
   transitionPending?: boolean;
 }
@@ -61,6 +80,7 @@ export function ArticleWorkflowStepper({
   canEdit,
   canReview,
   linkedAuthorUserId,
+  statusHistory = {},
   onTransition,
   transitionPending,
 }: Props) {
@@ -70,6 +90,9 @@ export function ArticleWorkflowStepper({
 
   const isSuperAdmin = currentUserRole === "super_admin";
   const isAdmin = currentUserRole === "admin";
+  const isHr = currentUserRole === "hr";
+  const isCm = currentUserRole === "content_manager";
+  const canSchedule = isSuperAdmin || isAdmin || isHr || isCm;
   const isLinkedAuthor =
     !!(linkedAuthorUserId && currentUserId && linkedAuthorUserId === currentUserId);
 
@@ -88,7 +111,7 @@ export function ArticleWorkflowStepper({
         isTransition: true,
       };
     }
-    if (status === "pending_cm_review" && (isSuperAdmin || isAdmin)) {
+    if (status === "pending_cm_review" && (isSuperAdmin || isAdmin || isHr || isCm)) {
       return {
         label: "Go to CM Review →",
         action: () => navigate(studioPath("/cm-review")),
@@ -102,18 +125,12 @@ export function ArticleWorkflowStepper({
         isTransition: false,
       };
     }
-    if (status === "pending_marketing" && (isSuperAdmin || isAdmin)) {
+    if (status === "approved" && canSchedule) {
       return {
-        label: "Go to Marketing Review →",
-        action: () => navigate(studioPath("/approvals")),
+        label: "Schedule / Publish →",
+        action: () => {},
         isTransition: false,
-      };
-    }
-    if (status === "pending_final_approval" && isSuperAdmin) {
-      return {
-        label: "Go to Final Sign-Off →",
-        action: () => navigate(studioPath("/final-approval")),
-        isTransition: false,
+        hint: "Use the Publish tab →",
       };
     }
     return null;
@@ -133,6 +150,7 @@ export function ArticleWorkflowStepper({
           const isComplete = idx < currentStepIdx;
           const isCurrent = idx === currentStepIdx;
           const isFuture = idx > currentStepIdx;
+          const hist = statusHistory[step.key];
           return (
             <span key={step.key} className="flex items-center gap-1">
               <span
@@ -153,11 +171,18 @@ export function ArticleWorkflowStepper({
                   )}
                   {step.label}
                 </span>
-                {step.actor && (
+                {/* Completed: show who actioned it and when */}
+                {isComplete && hist ? (
+                  <span className="text-[9px] font-normal leading-none opacity-70 text-center">
+                    {hist.actorName ?? step.actor}
+                    {" · "}
+                    {formatRelative(hist.timestamp)}
+                  </span>
+                ) : step.actor ? (
                   <span className="text-[9px] font-normal leading-none opacity-70">
                     {step.actor}
                   </span>
-                )}
+                ) : null}
               </span>
               {idx < WORKFLOW_STEPS.length - 1 && (
                 <ArrowRight
@@ -183,7 +208,9 @@ export function ArticleWorkflowStepper({
             </span>
           )}
         </span>
-        {cta && (
+        {cta && (cta as any).hint ? (
+          <span className="text-xs opacity-75">{(cta as any).hint}</span>
+        ) : cta ? (
           <Button
             size="sm"
             variant="outline"
@@ -197,7 +224,7 @@ export function ArticleWorkflowStepper({
             ) : null}
             {cta.label}
           </Button>
-        )}
+        ) : null}
       </div>
     </div>
   );

@@ -260,6 +260,7 @@ function ArticleEditorInner({ id }: { id: string }) {
   const [ideaBannerOpen, setIdeaBannerOpen] = useState(true);
   const [rejectionBannerDismissed, setRejectionBannerDismissed] = useState(false);
   const [sidebarTab, setSidebarTab] = useState<"details" | "ai_brief" | "publish">("details");
+  const [scheduleDate, setScheduleDate] = useState("");
 
   // AI generation modal state.
   const [genOpen, setGenOpen] = useState(false);
@@ -699,6 +700,39 @@ function ArticleEditorInner({ id }: { id: string }) {
     onError: (err: Error) => {
       toast({ title: "Action failed", description: err.message, variant: "destructive" });
     },
+  });
+
+  const scheduleApprovedMutation = useMutation({
+    mutationFn: async (decision: "publish" | "schedule") => {
+      const body: Record<string, any> = { decision };
+      if (decision === "schedule") {
+        if (!scheduleDate) throw new Error("Please pick a date and time to schedule.");
+        const when = new Date(scheduleDate);
+        if (isNaN(when.getTime())) throw new Error("Invalid date.");
+        if (when.getTime() <= Date.now()) throw new Error("Scheduled time must be in the future.");
+        body.scheduledAt = when.toISOString();
+      }
+      const res = await apiRequest("POST", `/api/admin/studio/articles/${id}/schedule-approved`, body);
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Failed to schedule/publish");
+      }
+      return res.json();
+    },
+    onSuccess: (_d, decision) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/articles", id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/stats"] });
+      toast({
+        title: decision === "publish" ? "Article published!" : "Article scheduled",
+        description:
+          decision === "publish"
+            ? "The article is now live."
+            : "The article will be published at the scheduled time.",
+      });
+      setScheduleDate("");
+    },
+    onError: (err: Error) =>
+      toast({ title: "Action failed", description: err.message, variant: "destructive" }),
   });
 
   const repurposeMutation = useMutation({
@@ -1212,6 +1246,20 @@ function ArticleEditorInner({ id }: { id: string }) {
               Repurpose
             </Button>
           )}
+          {(article.status === "published" || article.status === "approved") && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const title = encodeURIComponent(article.title ?? "");
+                setLocation(`/admin/studio/ideas?create=true&sourceArticleId=${id}&title=${title}`);
+              }}
+              data-testid="button-generate-social-post"
+            >
+              <MessageSquarePlus className="mr-2 h-4 w-4" />
+              Generate Social Post
+            </Button>
+          )}
           {canEdit && (
             <Button
               variant="outline"
@@ -1723,6 +1771,7 @@ function ArticleEditorInner({ id }: { id: string }) {
           canEdit={canEdit}
           canReview={can("studio.review_article")}
           linkedAuthorUserId={(authors?.find((a) => a.id === article.authorProfileId) as any)?.linkedUserId ?? null}
+          statusHistory={(article as any).statusHistory ?? {}}
           onTransition={(to) => transitionMutation.mutate(to)}
           transitionPending={transitionMutation.isPending}
         />
@@ -2352,6 +2401,68 @@ function ArticleEditorInner({ id }: { id: string }) {
             </TabsContent>
 
             <TabsContent value="publish" className="mt-2 space-y-4 overflow-y-auto max-h-[calc(100vh-220px)]">
+              {/* Schedule / Publish card — shown for approved articles */}
+              {article.status === "approved" && (
+                <Card className="border-teal-200 bg-teal-50/50 dark:border-teal-800 dark:bg-teal-950/20">
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-sm text-teal-800 dark:text-teal-300">
+                      <CheckCircle2 className="h-4 w-4" />
+                      Approved — Ready to Publish
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-3">
+                    <p className="text-xs text-muted-foreground">
+                      This article has completed the editorial pipeline. You can publish it immediately or schedule it for a future date.
+                    </p>
+                    <div className="space-y-2">
+                      <Label htmlFor="schedule-date" className="text-xs">Schedule for (optional)</Label>
+                      <Input
+                        id="schedule-date"
+                        type="datetime-local"
+                        value={scheduleDate}
+                        onChange={(e) => setScheduleDate(e.target.value)}
+                        min={new Date(Date.now() + 60_000).toISOString().slice(0, 16)}
+                        className="text-sm"
+                        data-testid="input-schedule-date"
+                      />
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {scheduleDate ? (
+                        <Button
+                          size="sm"
+                          onClick={() => scheduleApprovedMutation.mutate("schedule")}
+                          disabled={scheduleApprovedMutation.isPending}
+                          className="bg-teal-600 hover:bg-teal-700 text-white"
+                          data-testid="button-schedule-article"
+                        >
+                          {scheduleApprovedMutation.isPending ? (
+                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Clock3 className="mr-2 h-3.5 w-3.5" />
+                          )}
+                          Schedule
+                        </Button>
+                      ) : (
+                        <Button
+                          size="sm"
+                          onClick={() => scheduleApprovedMutation.mutate("publish")}
+                          disabled={scheduleApprovedMutation.isPending}
+                          className="bg-teal-600 hover:bg-teal-700 text-white"
+                          data-testid="button-publish-now"
+                        >
+                          {scheduleApprovedMutation.isPending ? (
+                            <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Zap className="mr-2 h-3.5 w-3.5" />
+                          )}
+                          Publish Now
+                        </Button>
+                      )}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               <Card>
                 <CardHeader className="pb-3">
                   <CardTitle className="text-sm">Featured image</CardTitle>

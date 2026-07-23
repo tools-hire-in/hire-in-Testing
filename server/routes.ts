@@ -19584,7 +19584,49 @@ Canonical domain: ${BASE}
             };
           }
         }
-        res.json({ ...article, lastRejection });
+        // Build per-stage history: map stage key → { actorName, timestamp }
+        // so the WorkflowStepper can show "who actioned it and when" for each completed step.
+        const STATUS_TO_STAGE: Record<string, string> = {
+          in_review: "draft",         // entering in_review means the Draft stage was completed
+          pending_cm_review: "in_review",
+          pending_author: "cm_review",
+          approved: "author_signoff",
+          scheduled: "approved",
+          published: article.status === "scheduled" ? "scheduled" : "approved",
+        };
+        let statusHistory: Record<string, { actorName: string | null; timestamp: string }> = {};
+        try {
+          const allEvents = await storage.getStudioAuditEvents(article.id);
+          const actorCache: Record<string, string | null> = {};
+          const resolveActor = async (uid: string | null | undefined): Promise<string | null> => {
+            if (!uid) return null;
+            if (uid in actorCache) return actorCache[uid];
+            try {
+              const u = await storage.getAdminUser(uid);
+              const name = u ? userDisplayName(u) : null;
+              actorCache[uid] = name;
+              return name;
+            } catch { actorCache[uid] = null; return null; }
+          };
+          const transitions = allEvents.filter(
+            (e) => e.eventType === "status_changed" && (e.metadata as any)?.to,
+          );
+          for (const ev of transitions) {
+            const toStatus = (ev.metadata as any)?.to as string;
+            const stageKey = STATUS_TO_STAGE[toStatus];
+            if (stageKey && !statusHistory[stageKey]) {
+              const name = await resolveActor(ev.actorUserId);
+              statusHistory[stageKey] = {
+                actorName: name,
+                timestamp: ev.createdAt?.toISOString?.() ?? new Date(0).toISOString(),
+              };
+            }
+          }
+        } catch (histErr) {
+          console.error("statusHistory build error:", histErr);
+        }
+
+        res.json({ ...article, lastRejection, statusHistory });
       } catch (error) {
         console.error("Get studio article error:", error);
         res.status(500).json({ error: "Failed to fetch article" });
@@ -24947,7 +24989,7 @@ Canonical domain: ${BASE}
           }
         }
 
-        const toStatus = decision === "approve" ? "author_approved" : "draft";
+        const toStatus = decision === "approve" ? "approved" : "pending_cm_review";
         const updated = await storage.updateStudioArticle(req.params.id, { status: toStatus } as any);
         await storage.createStudioAuditEvent({
           articleId: req.params.id, actorUserId: userId,
@@ -24955,34 +24997,98 @@ Canonical domain: ${BASE}
           metadata: { from: article.status, to: toStatus, reason: reason?.trim() || null, via: "author_decision" },
         } as any);
 
-        // If approved, notify content managers that the article is ready for marketing.
-        if (decision === "approve") {
-          try {
-            const admins = await storage.getAdminUsers();
-            const marketers = admins.filter(
-              (u) => u.isActive !== false && (u.role === "marketing_manager" || u.role === "content_manager"),
-            );
+        // Notify relevant stakeholders based on the author's decision.
+        try {
+          const admins = await storage.getAdminUsers();
+          const cms = admins.filter(
+            (u) => u.isActive !== false && (u.role === "marketing_manager" || u.role === "content_manager"),
+          );
+          if (decision === "approve") {
+            // Author approved — notify CMs that article is ready for publication.
             await Promise.all(
-              marketers.map((m) =>
+              cms.map((m) =>
                 storage.createNotification({
                   userId: m.id,
                   type: "studio_author_approved",
                   title: "Author approved article",
-                  message: `"${article.title}" has been approved by the author and is ready for marketing.`,
+                  message: `"${article.title}" has been approved by the author and is ready for publication.`,
                   isRead: false,
-                  metadata: { articleId: article.id, status: "author_approved" },
+                  metadata: { articleId: article.id, status: "approved" },
                 }),
               ),
             );
-          } catch (notifyErr) {
-            console.error("Author-approved notification error:", notifyErr);
+          } else {
+            // Author requested changes — notify CMs that article is back in CM Review.
+            const noteSnippet = reason?.trim() ? ` Note: "${reason.trim().slice(0, 100)}"` : "";
+            await Promise.all(
+              cms.map((m) =>
+                storage.createNotification({
+                  userId: m.id,
+                  type: "studio_author_changes_requested",
+                  title: "Author requested changes",
+                  message: `"${article.title}" was returned to CM Review by the author.${noteSnippet}`,
+                  isRead: false,
+                  metadata: { articleId: article.id, status: "pending_cm_review", reason: reason?.trim() || null },
+                }),
+              ),
+            );
           }
+        } catch (notifyErr) {
+          console.error("Author decision notification error:", notifyErr);
         }
 
         res.json(updated);
       } catch (error: any) {
         console.error("Author decision error:", error);
         res.status(400).json({ error: error?.message || "Failed to record author decision" });
+      }
+    },
+  );
+
+
+  // Schedule or publish an approved article. Available to CMs and admins.
+  // Transitions: approved → scheduled (future date) or approved → published (now).
+  app.post(
+    "/api/admin/studio/articles/:id/schedule-approved",
+    requireAuth,
+    requirePermission("studio.cm_review", "super_admin", "admin", "hr", "content_manager"),
+    async (req: Request, res: Response) => {
+      try {
+        const { decision, scheduledAt } = req.body ?? {};
+        if (!["publish", "schedule"].includes(decision)) {
+          return res.status(400).json({ error: "Invalid decision. Use 'publish' or 'schedule'." });
+        }
+        const article = await storage.getStudioArticle(req.params.id);
+        if (!article) return res.status(404).json({ error: "Article not found" });
+        if (article.status !== "approved") {
+          return res.status(409).json({ error: "Article must be in approved status" });
+        }
+        const userId = req.session.userId!;
+        const when = decision === "schedule" ? (scheduledAt ? new Date(scheduledAt) : null) : null;
+        if (decision === "schedule" && (!when || isNaN(when.getTime()))) {
+          return res.status(400).json({ error: "A valid scheduledAt is required to schedule" });
+        }
+        if (decision === "schedule" && when && when.getTime() <= Date.now()) {
+          return res.status(400).json({ error: "Scheduled time must be in the future" });
+        }
+        const { updated, scheduled } = await performPublish(article, userId, { scheduledAt: when });
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: scheduled ? "article_scheduled" : "article_published",
+          metadata: { scheduledAt: when?.toISOString() ?? null, via: "schedule_approved" },
+        } as any);
+        await storage.createStudioAuditEvent({
+          articleId: req.params.id,
+          actorUserId: userId,
+          eventType: "status_changed",
+          metadata: { from: article.status, to: scheduled ? "scheduled" : "published", via: "schedule_approved" },
+        } as any);
+        await notifyPublished(req, article, scheduled, when, scheduled ? null : new Date());
+        res.json(updated);
+      } catch (error: any) {
+        console.error("Schedule approved error:", error);
+        res.status(400).json({ error: error?.message || "Failed to schedule/publish article" });
       }
     },
   );
