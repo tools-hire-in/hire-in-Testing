@@ -1811,3 +1811,55 @@ export async function runBdAgentChat(
     throw new AiGenerationError("upstream", "BD agent AI error — check server logs.");
   }
 }
+
+// ── Inline Calendar: quick social post draft ──────────────────────────────────
+const INLINE_SOCIAL_PLATFORM_GUIDES: Record<string, string> = {
+  linkedin: "Write a professional LinkedIn post: a compelling insight or observation, 2–4 short paragraphs, end with a clear call-to-action. Use line breaks for readability. No hashtags at the start.",
+  instagram: "Write an Instagram post: a strong opening hook (first line), a caption body with personality and energy, then 5–10 relevant hashtags on a new line. When format is Carousel, add numbered slide copy hints.",
+  facebook: "Write a Facebook post with a warm, community-focused, conversational tone. Ask an engaging question at the end to drive comments.",
+  x: "Write a single tweet STRICTLY under 280 characters — sharp, opinionated, direct. No hashtags unless essential. Start with the strongest idea. If the content cannot fit in 280 characters, summarise ruthlessly.",
+};
+
+export async function generateInlineSocialDraft(params: {
+  topic: string;
+  platform: string;
+  format?: string;
+}): Promise<{ caption: string }> {
+  const openaiClient = new OpenAI({
+    apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+    baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+  });
+
+  const guide = INLINE_SOCIAL_PLATFORM_GUIDES[params.platform]
+    ?? `Write a compelling ${params.platform} social media post.`;
+  const formatNote = params.format ? ` Format: ${params.format}.` : "";
+
+  const completion = await openaiClient.chat.completions.create({
+    model: "gpt-4.1",
+    max_completion_tokens: 600,
+    messages: [
+      {
+        role: "system",
+        content: `You are an expert social media content writer for a professional staffing and talent acquisition firm (Hire'in Solutions). ${guide}${formatNote} Return only the post caption text — no preamble, no quotes, no "Here is your post:" style intro.`,
+      },
+      {
+        role: "user",
+        content: `Topic: ${params.topic}`,
+      },
+    ],
+  });
+
+  let caption = completion.choices[0]?.message?.content?.trim() ?? "";
+
+  // Hard-enforce X's 280-char limit by truncating at the last sentence boundary ≤ 280 chars.
+  if (params.platform === "x" && caption.length > 280) {
+    const truncated = caption.slice(0, 280);
+    const lastPeriod = truncated.lastIndexOf(".");
+    const lastBang = truncated.lastIndexOf("!");
+    const lastQuestion = truncated.lastIndexOf("?");
+    const cut = Math.max(lastPeriod, lastBang, lastQuestion);
+    caption = cut > 200 ? caption.slice(0, cut + 1) : truncated.trimEnd();
+  }
+
+  return { caption };
+}

@@ -24,6 +24,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
 } from "@/components/ui/dialog";
 import {
   Select,
@@ -38,7 +39,7 @@ import { Switch } from "@/components/ui/switch";
 import {
   Loader2, ChevronLeft, ChevronRight, Download, Sparkles, Plus,
   Calendar as CalIcon, Star, ImageIcon, MessageSquare, Eye, Check, X, RefreshCw,
-  ExternalLink, Rocket,
+  ExternalLink, Rocket, Filter,
 } from "lucide-react";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { useStudioProject } from "./useStudioProject";
@@ -150,14 +151,15 @@ function OccasionChipPopover({
   projectId,
   dateKey,
   canCreate,
+  onCreateSocialPost,
 }: {
   occasions: StudioOccasion[];
   projectId: string | null;
   dateKey: string;
   canCreate: boolean;
+  onCreateSocialPost?: (dateKey: string, occasionName: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const [planningFor, setPlanningFor] = useState<string | null>(null);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -178,7 +180,6 @@ function OccasionChipPopover({
       >
         <div className="divide-y max-h-80 overflow-y-auto">
           {occasions.map((occ) => {
-            const isPlanningThis = planningFor === occ.id;
             return (
               <div key={occ.id} className="p-3" data-testid={`occ-popover-${occ.id}`}>
                 <div className="flex items-start gap-2">
@@ -206,23 +207,18 @@ function OccasionChipPopover({
 
                 {canCreate && projectId && (
                   <div className="mt-2">
-                    {isPlanningThis ? (
-                      <PlanContentForm
-                        occasion={occ}
-                        projectId={projectId}
-                        onDone={() => { setPlanningFor(null); setOpen(false); queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] }); }}
-                      />
-                    ) : (
-                      <Button
-                        size="sm"
-                        className="w-full h-7 text-xs gap-1"
-                        onClick={() => setPlanningFor(occ.id)}
-                        data-testid={`button-occ-create-idea-${occ.id}`}
-                      >
-                        <Plus className="h-3 w-3" />
-                        Create Idea
-                      </Button>
-                    )}
+                    <Button
+                      size="sm"
+                      className="w-full h-7 text-xs gap-1"
+                      onClick={() => {
+                        setOpen(false);
+                        onCreateSocialPost?.(dateKey, occ.name);
+                      }}
+                      data-testid={`button-occ-create-idea-${occ.id}`}
+                    >
+                      <Plus className="h-3 w-3" />
+                      Create Social Post
+                    </Button>
                   </div>
                 )}
               </div>
@@ -1132,6 +1128,252 @@ export function IdeaDetailPane({
   );
 }
 
+// ─── Chip colour helpers ──────────────────────────────────────────────────────
+
+/** Returns Tailwind class string for an idea chip based on content type + publish status */
+function getIdeaChipClass(idea: StudioContentIdea, dateKey: string, todayKey: string): string {
+  const isPast = dateKey < todayKey;
+  const isPublished = idea.status === "published";
+  if (isPast && isPublished) {
+    return "border border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300";
+  }
+  if (isPast && !isPublished) {
+    return "border border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300";
+  }
+  // Future — colour by content family: article=purple, social=blue
+  if (idea.contentType === "article") {
+    return "border border-dashed border-violet-300 bg-violet-50 text-violet-800 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300";
+  }
+  return "border border-dashed border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300";
+}
+
+/** Returns Tailwind class string for an article chip based on publish status */
+function getArticleChipClass(article: CalendarItem, dateKey: string, todayKey: string, displayKey: string): string {
+  const isPast = dateKey < todayKey;
+  const isPublished = article.status === "published" || !!(article.publishedAt);
+  if (isPast && isPublished) {
+    return "border border-emerald-300 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300";
+  }
+  if (isPast && !isPublished) {
+    return "border border-red-300 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300";
+  }
+  // Future — use existing status-based coloring
+  const isDraftPlanned = article.status === "draft" && displayKey !== "needs_revision";
+  const readyToExport = !isDraftPlanned && displayKey !== "needs_revision" && !article.publishesToInsights && article.status !== "draft";
+  if (isDraftPlanned) return "border border-dashed bg-gray-50 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400";
+  if (readyToExport) return "border border-dashed bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300";
+  return STATUS_BADGE_CLASS[displayKey] ?? "";
+}
+
+// ─── Inline Social Post Creation Modal ───────────────────────────────────────
+const SOCIAL_PLATFORMS = [
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "instagram", label: "Instagram" },
+  { value: "facebook", label: "Facebook" },
+  { value: "x", label: "X (Twitter)" },
+] as const;
+
+const SOCIAL_FORMATS = [
+  { value: "Carousel", label: "Carousel" },
+  { value: "Static Post", label: "Static Post" },
+  { value: "Reel", label: "Reel" },
+  { value: "Story", label: "Story" },
+  { value: "Video Script", label: "Video Script" },
+] as const;
+
+function InlineSocialPostModal({
+  open, date, projectId, prefillTitle, onClose,
+}: {
+  open: boolean;
+  date: string | null;
+  projectId: string | null;
+  prefillTitle?: string;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const [title, setTitle] = useState(prefillTitle ?? "");
+  const [platform, setPlatform] = useState<string>("linkedin");
+  const [format, setFormat] = useState<string>("Carousel");
+  const [draft, setDraft] = useState("");
+  const [isGenerating, setIsGenerating] = useState(false);
+
+  // Reset fields when modal opens for a new date
+  useEffect(() => {
+    if (open) {
+      setTitle(prefillTitle ?? "");
+      setDraft("");
+    }
+  }, [open, prefillTitle]);
+
+  const generateMutation = useMutation({
+    mutationFn: async () => {
+      if (!projectId) throw new Error("Select a project first");
+      const res = await apiRequest("POST", "/api/admin/studio/calendar/generate-social-draft", {
+        topic: title.trim() || "Untitled",
+        platform,
+        format,
+        projectId,
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "AI generation failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setDraft(data.caption ?? "");
+    },
+    onError: (err: Error) => toast({ title: "Generation failed", description: err.message, variant: "destructive" }),
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!projectId) throw new Error("Select a project first");
+      if (!title.trim()) throw new Error("Please enter a post topic");
+      // Hard-enforce X's 280-char limit at save time
+      if (platform === "x" && draft.trim().length > 280) {
+        throw new Error(`X posts must be ≤ 280 characters (yours is ${draft.trim().length}). Trim your caption before saving.`);
+      }
+      const res = await apiRequest("POST", "/api/admin/studio/content-ideas", {
+        projectId,
+        topic: title.trim() || "Untitled",
+        contentType: "social_post",
+        channels: [platform],
+        scheduledDate: date,
+        postFormat: format,
+        captionCopy: draft.trim() || undefined,
+        origin: "manual",
+      });
+      if (!res.ok) {
+        const b = await res.json().catch(() => ({}));
+        throw new Error(b.error || "Failed to save");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      toast({ title: "Social post created", description: date ? `Scheduled for ${date}` : "Added to backlog" });
+      onClose();
+    },
+    onError: (err: Error) => toast({ title: "Could not save", description: err.message, variant: "destructive" }),
+  });
+
+  const displayDate = date
+    ? new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+    : "Unscheduled";
+
+  const platformHint: Record<string, string> = {
+    linkedin: "Professional narrative + insight + CTA",
+    instagram: "Hook + caption + hashtags + carousel copy",
+    facebook: "Community tone + engagement question",
+    x: "Conversational thread or single tweet (280 chars)",
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-inline-social-post">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Plus className="h-4 w-4" />
+            New Social Post
+          </DialogTitle>
+          <DialogDescription>{displayDate}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="isp-title">Post idea / topic</Label>
+            <Input
+              id="isp-title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="What's this post about?"
+              data-testid="input-isp-title"
+            />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="isp-platform">Platform</Label>
+              <Select value={platform} onValueChange={setPlatform}>
+                <SelectTrigger id="isp-platform" data-testid="select-isp-platform">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SOCIAL_PLATFORMS.map((p) => (
+                    <SelectItem key={p.value} value={p.value}>{p.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {platform && (
+                <p className="text-[11px] text-muted-foreground">{platformHint[platform]}</p>
+              )}
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="isp-format">Format</Label>
+              <Select value={format} onValueChange={setFormat}>
+                <SelectTrigger id="isp-format" data-testid="select-isp-format">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SOCIAL_FORMATS.map((f) => (
+                    <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            className="w-full gap-2"
+            onClick={() => generateMutation.mutate()}
+            disabled={generateMutation.isPending || !projectId}
+            data-testid="button-isp-generate"
+          >
+            {generateMutation.isPending
+              ? <Loader2 className="h-4 w-4 animate-spin" />
+              : <Sparkles className="h-4 w-4" />}
+            Generate AI Draft
+          </Button>
+          {(draft || generateMutation.isPending) && (
+            <div className="space-y-1.5">
+              <Label htmlFor="isp-draft">AI Draft — edit before saving</Label>
+              <Textarea
+                id="isp-draft"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                rows={6}
+                className="text-sm font-mono"
+                placeholder={generateMutation.isPending ? "Generating…" : ""}
+                disabled={generateMutation.isPending}
+                data-testid="textarea-isp-draft"
+              />
+              {platform === "x" && draft.length > 280 && (
+                <p className="text-xs text-red-600 font-medium">
+                  ⚠ {draft.length} chars — trim to under 280 for a single tweet
+                </p>
+              )}
+            </div>
+          )}
+          <div className="flex gap-2 pt-1">
+            <Button
+              className="flex-1"
+              onClick={() => saveMutation.mutate()}
+              disabled={saveMutation.isPending || !title.trim()}
+              data-testid="button-isp-save"
+            >
+              {saveMutation.isPending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CalIcon className="mr-2 h-4 w-4" />}
+              Save & Schedule
+            </Button>
+            <Button variant="ghost" onClick={onClose} data-testid="button-isp-cancel">
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ─── Quick Create Idea Row ────────────────────────────────────────────────────
 function QuickCreateIdeaRow({
   date, projectId, onCreated,
@@ -1498,6 +1740,15 @@ export default function Calendar() {
   const [viewMode, setViewMode] = useState<"month" | "week">("month");
   const [insightsOnly, setInsightsOnly] = useState(false);
   const [exportItem, setExportItem] = useState<CalendarItem | null>(null);
+  const [platformFilter, setPlatformFilter] = useState<string>("all");
+  const [contentTypeFilter, setContentTypeFilter] = useState<string>("all");
+  const [newPostDate, setNewPostDate] = useState<string | null>(null);
+  const [newPostPrefillTitle, setNewPostPrefillTitle] = useState<string | undefined>(undefined);
+
+  const openSocialPostModal = (dateKey: string, prefillTitle?: string) => {
+    setNewPostDate(dateKey);
+    setNewPostPrefillTitle(prefillTitle);
+  };
   const [cursor, setCursor] = useState(() => {
     const n = new Date(); return new Date(n.getFullYear(), n.getMonth(), 1);
   });
@@ -1538,7 +1789,24 @@ export default function Calendar() {
     },
   });
 
-  const visible = (items ?? []).filter((a) => scope === "hireins" ? a.publishesToInsights : true);
+  // Set of project IDs that publish to Hire'in Insights (for scope filter)
+  const hireinsProjectIds = useMemo(
+    () => new Set((projects ?? []).filter((p) => p.publishesToInsights).map((p) => p.id)),
+    [projects],
+  );
+
+  const visible = useMemo(() => {
+    return (items ?? []).filter((a) => {
+      if (scope === "hireins" && !a.publishesToInsights) return false;
+      if (insightsOnly && !isInsightsContentType((a as any).contentType)) return false;
+      // Articles only show under contentTypeFilter "all" or "article"
+      if (contentTypeFilter !== "all" && contentTypeFilter !== "article") return false;
+      // Articles publish to website + linkedin; hide for social-only platforms
+      if (platformFilter !== "all" && platformFilter !== "website" && platformFilter !== "linkedin") return false;
+      return true;
+    });
+  }, [items, scope, insightsOnly, contentTypeFilter, platformFilter]);
+
   const byDay: Record<string, CalendarItem[]> = {};
   for (const a of visible) {
     const when = a.status === "scheduled" ? a.scheduledAt : a.publishedAt;
@@ -1565,7 +1833,7 @@ export default function Calendar() {
     (occByDay[String(occ.date)] ??= []).push(occ);
   }
 
-  // Content ideas (social posts)
+  // Content ideas (social posts + article ideas)
   const { data: contentIdeas } = useQuery<StudioContentIdea[]>({
     queryKey: ["/api/admin/studio/content-ideas", selectedProjectId],
     queryFn: async () => {
@@ -1576,14 +1844,45 @@ export default function Calendar() {
       return res.json();
     },
   });
+
+  // Apply all client-side filters to ideas
+  const filteredIdeas = useMemo(() => {
+    return (contentIdeas ?? []).filter((idea) => {
+      // scope: hireins = only ideas from publishesToInsights projects
+      if (scope === "hireins" && !hireinsProjectIds.has(idea.projectId)) return false;
+      // insightsOnly hides non-insights-type ideas (same predicate as articles)
+      if (insightsOnly && !isInsightsContentType(idea.contentType ?? "")) return false;
+      // platform filter
+      if (platformFilter !== "all") {
+        const channels = (idea.channels as string[] | null) ?? [];
+        if (!channels.includes(platformFilter)) return false;
+      }
+      // content type filter
+      if (contentTypeFilter !== "all") {
+        if (contentTypeFilter === "article" && idea.contentType !== "article") return false;
+        if (contentTypeFilter === "social_post" && idea.contentType !== "social_post") return false;
+        if (contentTypeFilter === "story" && idea.contentType !== "story") return false;
+        if (contentTypeFilter === "carousel") {
+          const fmt = ((idea as any).postFormat ?? "").toLowerCase();
+          if (fmt !== "carousel") return false;
+        }
+        if (contentTypeFilter === "reel") {
+          const fmt = ((idea as any).postFormat ?? "").toLowerCase();
+          if (fmt !== "reel") return false;
+        }
+      }
+      return true;
+    });
+  }, [contentIdeas, scope, hireinsProjectIds, insightsOnly, platformFilter, contentTypeFilter]);
+
   const ideasByDay: Record<string, StudioContentIdea[]> = {};
-  for (const idea of contentIdeas ?? []) {
+  for (const idea of filteredIdeas) {
     const key = normalizeScheduledDate(idea.scheduledDate as string | Date | null | undefined);
     if (!key) continue;
     (ideasByDay[key] ??= []).push(idea);
   }
 
-  const hasIdeasThisMonth = (contentIdeas ?? []).some((idea) => {
+  const hasIdeasThisMonth = filteredIdeas.some((idea) => {
     const ds = normalizeScheduledDate(idea.scheduledDate as string | Date | null | undefined);
     if (!ds) return false;
     const d = new Date(`${ds}T00:00:00`);
@@ -1674,7 +1973,7 @@ export default function Calendar() {
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold tracking-tight" data-testid="text-calendar-title">Publishing Calendar</h1>
-            <p className="text-sm text-muted-foreground">Click a day to open the workspace. Up to 2 idea chips per cell.</p>
+            <p className="text-sm text-muted-foreground">Articles + social posts. Click a chip to open its detail page.</p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
             {canCreateArticle && <AIPlanDialog projectId={selectedProjectId} monthStart={monthStart} monthEnd={monthEnd} />}
@@ -1695,6 +1994,53 @@ export default function Calendar() {
               ◈ Insights
             </button>
             <ProjectSwitcher projects={projects} projectsLoading={projectsLoading} selectedProjectId={selectedProjectId} onChange={setSelectedProjectId} />
+          </div>
+        </div>
+
+        {/* Filter pills */}
+        <div className="flex flex-wrap items-center gap-4" data-testid="filter-bar">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-1">
+              <Filter className="h-3 w-3" />Platform
+            </span>
+            {["all", "linkedin", "instagram", "facebook", "x", "website"].map((p) => (
+              <button
+                key={p}
+                onClick={() => setPlatformFilter(p)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors capitalize ${
+                  platformFilter === p
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
+                }`}
+                data-testid={`filter-platform-${p}`}
+              >
+                {p === "all" ? "All" : p === "x" ? "X" : p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            ))}
+          </div>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">Type</span>
+            {[
+              { value: "all", label: "All" },
+              { value: "article", label: "Article" },
+              { value: "social_post", label: "Social Post" },
+              { value: "story", label: "Story" },
+              { value: "carousel", label: "Carousel" },
+              { value: "reel", label: "Reel" },
+            ].map((t) => (
+              <button
+                key={t.value}
+                onClick={() => setContentTypeFilter(t.value)}
+                className={`rounded-full border px-2.5 py-0.5 text-xs font-medium transition-colors ${
+                  contentTypeFilter === t.value
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground hover:border-foreground hover:text-foreground"
+                }`}
+                data-testid={`filter-type-${t.value}`}
+              >
+                {t.label}
+              </button>
+            ))}
           </div>
         </div>
 
@@ -1749,8 +2095,14 @@ export default function Calendar() {
                   return (
                     <div
                       key={i}
-                      className={`group min-h-[96px] rounded-md border p-1.5 transition-colors cursor-pointer hover:bg-muted/30 ${key === todayKey ? "border-primary" : ""}`}
-                      onClick={() => goToDay(key)}
+                      className={`group min-h-[96px] rounded-md border p-1.5 transition-colors ${key === todayKey ? "border-primary" : ""} ${dayItems.length === 0 && dayIdeas.length === 0 ? "cursor-pointer hover:bg-muted/30" : "cursor-pointer hover:bg-muted/10"}`}
+                      onClick={() => {
+                        if (dayItems.length === 0 && dayIdeas.length === 0) {
+                          openSocialPostModal(key);
+                        } else {
+                          goToDay(key);
+                        }
+                      }}
                       data-testid={`calendar-day-${key}`}
                     >
                       <div className="mb-1 flex items-center justify-between">
@@ -1762,15 +2114,16 @@ export default function Calendar() {
                               projectId={selectedProjectId}
                               dateKey={key}
                               canCreate={canCreateArticle}
+                              onCreateSocialPost={openSocialPostModal}
                             />
                           )}
                         </span>
                         {canCreateArticle && selectedProjectId && (
                           <button
                             className="hidden rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground group-hover:flex"
-                            title="Open workspace for this date"
-                            onClick={(e) => { e.stopPropagation(); goToDay(key); }}
-                            data-testid={`button-add-article-${key}`}
+                            title="Create social post for this date"
+                            onClick={(e) => { e.stopPropagation(); openSocialPostModal(key); }}
+                            data-testid={`button-add-post-${key}`}
                           >
                             <Plus className="h-3 w-3" />
                           </button>
@@ -1783,19 +2136,15 @@ export default function Calendar() {
                           const isNeedsRevision = displayKey === "needs_revision";
                           const isDraftPlanned = a.status === "draft" && !isNeedsRevision;
                           const readyToExport = !isDraftPlanned && !isNeedsRevision && !a.publishesToInsights && a.status !== "draft";
+                          const chipClass = getArticleChipClass(a, key, todayKey, displayKey);
                           return (
                             <button
                               key={a.id}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                if (readyToExport) setExportItem(a);
-                                else navigate(`/admin/studio/articles/${a.id}/edit`);
+                                navigate(`/admin/studio/articles/${a.id}/edit`);
                               }}
-                              className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] hover-elevate ${
-                                isDraftPlanned ? "border border-dashed bg-gray-50 text-gray-500 dark:bg-gray-800/40 dark:text-gray-400"
-                                : readyToExport ? "border border-dashed bg-amber-50 text-amber-800 dark:bg-amber-950/30 dark:text-amber-300"
-                                : STATUS_BADGE_CLASS[displayKey] ?? ""
-                              }`}
+                              className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[11px] hover-elevate ${chipClass}`}
                               title={isDraftPlanned ? `${a.title} — Planned Draft` : isNeedsRevision ? `${a.title} — Needs revision: ${a.lastRejectionReason}` : readyToExport ? `${a.title} — Ready to Export` : `${a.title} — ${a.status}`}
                               data-testid={`calendar-item-${a.id}`}
                             >
@@ -1819,11 +2168,12 @@ export default function Calendar() {
                           const campaignName = (idea as any).campaignId ? campaignMap[(idea as any).campaignId] : undefined;
                           const isBD = idea.origin === "bd_agent";
                           const linkedArtStatus = idea.linkedArticleId ? articleStatusMap[idea.linkedArticleId] : null;
+                          const ideaChipClass = getIdeaChipClass(idea, key, todayKey);
                           return (
                             <button
                               key={idea.id}
-                              onClick={(e) => { e.stopPropagation(); goToDay(key, idea.id); }}
-                              className="flex w-full items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[11px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/studio/ideas/${idea.id}`); }}
+                              className={`flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left text-[11px] hover-elevate ${ideaChipClass}`}
                               title={`${idea.topic}${campaignName ? ` · ${campaignName}` : ""}${isBD ? " · BD Intel" : ""}${linkedArtStatus ? ` · Article: ${linkedArtStatus}` : ""}`}
                               data-testid={`calendar-idea-${idea.id}`}
                             >
@@ -1838,7 +2188,7 @@ export default function Calendar() {
                         {overflowCount > 0 && (
                           <button
                             onClick={(e) => { e.stopPropagation(); goToDay(key); }}
-                            className="block w-full text-left px-1.5 text-[10px] text-violet-600 hover:text-violet-800 dark:text-violet-400 font-medium"
+                            className="block w-full text-left px-1.5 text-[10px] text-muted-foreground hover:text-foreground font-medium"
                             data-testid={`overflow-link-${key}`}
                           >
                             +{overflowCount} more
@@ -1899,32 +2249,37 @@ export default function Calendar() {
                               projectId={selectedProjectId}
                               dateKey={key}
                               canCreate={canCreateArticle}
+                              onCreateSocialPost={openSocialPostModal}
                             />
                           </div>
                         )}
                       </button>
                       {/* Cards */}
                       <div className="p-1.5 space-y-1 min-h-[120px]">
-                        {dayItems.slice(0, 2).map((a) => (
-                          <button
-                            key={a.id}
-                            onClick={(e) => { e.stopPropagation(); navigate(`/admin/studio/articles/${a.id}/edit`); }}
-                            className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] ${STATUS_BADGE_CLASS[artDisplayKey(a)] ?? ""}`}
-                            title={artDisplayKey(a) === "needs_revision" ? `${a.title} — Needs revision` : a.title}
-                            data-testid={`week-item-${a.id}`}
-                          >
-                            {a.title}
-                          </button>
-                        ))}
+                        {dayItems.slice(0, 2).map((a) => {
+                          const dk = artDisplayKey(a);
+                          return (
+                            <button
+                              key={a.id}
+                              onClick={(e) => { e.stopPropagation(); navigate(`/admin/studio/articles/${a.id}/edit`); }}
+                              className={`block w-full truncate rounded px-1.5 py-0.5 text-left text-[10px] ${getArticleChipClass(a, key, todayKey, dk)}`}
+                              title={dk === "needs_revision" ? `${a.title} — Needs revision` : a.title}
+                              data-testid={`week-item-${a.id}`}
+                            >
+                              {a.title}
+                            </button>
+                          );
+                        })}
                         {dayIdeas.slice(0, 3).map((idea) => {
                           const campaignName = (idea as any).campaignId ? campaignMap[(idea as any).campaignId] : undefined;
                           const isBD = idea.origin === "bd_agent";
                           const linkedArtStatus = idea.linkedArticleId ? articleStatusMap[idea.linkedArticleId] : null;
+                          const ideaChipClass = getIdeaChipClass(idea, key, todayKey);
                           return (
                             <button
                               key={idea.id}
-                              onClick={(e) => { e.stopPropagation(); goToDay(key, idea.id); }}
-                              className="flex w-full items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-left text-[10px] text-violet-800 hover-elevate dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300"
+                              onClick={(e) => { e.stopPropagation(); navigate(`/studio/ideas/${idea.id}`); }}
+                              className={`flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left text-[10px] hover-elevate ${ideaChipClass}`}
                               title={`${idea.topic}${campaignName ? ` · ${campaignName}` : ""}${isBD ? " · BD Intel" : ""}${linkedArtStatus ? ` · Article: ${linkedArtStatus}` : ""}`}
                               data-testid={`week-idea-${idea.id}`}
                             >
@@ -1938,10 +2293,19 @@ export default function Calendar() {
                         {dayIdeas.length > 3 && (
                           <button
                             onClick={() => goToDay(key)}
-                            className="block w-full text-left px-1.5 text-[10px] text-violet-600 hover:text-violet-800 dark:text-violet-400 font-medium"
+                            className="block w-full text-left px-1.5 text-[10px] text-muted-foreground hover:text-foreground font-medium"
                             data-testid={`week-overflow-${key}`}
                           >
                             +{dayIdeas.length - 3} more
+                          </button>
+                        )}
+                        {canCreateArticle && selectedProjectId && dayItems.length === 0 && dayIdeas.length === 0 && (
+                          <button
+                            onClick={(e) => { e.stopPropagation(); openSocialPostModal(key); }}
+                            className="block w-full text-left px-1.5 py-1 text-[10px] text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                            data-testid={`week-add-post-${key}`}
+                          >
+                            + add post
                           </button>
                         )}
                       </div>
@@ -1955,11 +2319,23 @@ export default function Calendar() {
 
         {/* Legend */}
         <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          <span className="inline-flex items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-violet-800 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300">✦ Planned idea</span>
+          <span className="inline-flex items-center gap-1 rounded border border-dashed border-violet-300 bg-violet-50 px-1.5 py-0.5 text-violet-800 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300">✦ Article idea (future)</span>
+          <span className="inline-flex items-center gap-1 rounded border border-dashed border-blue-300 bg-blue-50 px-1.5 py-0.5 text-blue-800 dark:border-blue-800 dark:bg-blue-950/30 dark:text-blue-300">✦ Social post (future)</span>
+          <span className="inline-flex items-center gap-1 rounded border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300">✓ Published</span>
+          <span className="inline-flex items-center gap-1 rounded border border-red-300 bg-red-50 px-1.5 py-0.5 text-red-800 dark:border-red-800 dark:bg-red-950/30 dark:text-red-300">⚠ Missed</span>
           <span className="inline-flex items-center gap-1"><Star className="h-3 w-3 fill-current text-amber-500" /> Occasion</span>
-          <span className="text-muted-foreground/60 ml-auto">Click a day to view its ideas</span>
+          <span className="text-muted-foreground/60 ml-auto">Chip → detail page · Empty cell / + → create social post</span>
         </div>
       </div>
+
+      {/* Inline social post creation modal */}
+      <InlineSocialPostModal
+        open={!!newPostDate}
+        date={newPostDate}
+        projectId={selectedProjectId || null}
+        prefillTitle={newPostPrefillTitle}
+        onClose={() => { setNewPostDate(null); setNewPostPrefillTitle(undefined); }}
+      />
 
       {/* Social kit export sheet */}
       <Sheet open={!!exportItem} onOpenChange={(open) => !open && setExportItem(null)}>

@@ -98,6 +98,7 @@ import {
   generateInsightsBrief,
   generateInsightsBriefWithRetry,
   generateTopicSuggestions,
+  generateInlineSocialDraft,
   TIER_MODELS,
 } from "./services/aiDraftService";
 import { isInsightsContentType } from "@shared/studioAi";
@@ -20833,6 +20834,31 @@ Canonical domain: ${BASE}
         });
       } catch (error: any) {
         handleAiError(error, res);
+      }
+    },
+  );
+
+  // ── Inline Calendar: generate a quick social post draft (topic + platform + format → caption) ──
+  app.post(
+    "/api/admin/studio/calendar/generate-social-draft",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI provider is not configured", code: "upstream" });
+        }
+        const { topic, platform, format } = req.body ?? {};
+        if (!topic || !platform) {
+          return res.status(400).json({ error: "topic and platform are required" });
+        }
+        if (!(await checkAiRateLimit(req.session.userId!, res))) return;
+
+        const result = await generateInlineSocialDraft({ topic, platform, format });
+        res.json(result);
+      } catch (error: any) {
+        console.error("[generate-social-draft] error:", error?.message ?? error);
+        res.status(500).json({ error: error?.message || "AI generation failed" });
       }
     },
   );
