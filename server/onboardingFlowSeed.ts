@@ -19,11 +19,12 @@ import { db } from "./db";
 import { sql } from "drizzle-orm";
 import { isRouteReachableByTrack } from "@shared/onboardingRbac";
 import { readFileSync } from "fs";
-import { join, dirname } from "path";
-import { fileURLToPath } from "url";
+import { join } from "path";
 
 // ── Path helper ───────────────────────────────────────────────────────────────
-const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+// process.cwd() = project root in both dev (tsx) and prod (node dist/index.cjs).
+// fileURLToPath(import.meta.url) is undefined in CJS bundles produced by esbuild.
+const ROOT = process.cwd();
 
 function docPath(file: string): string {
   return join(ROOT, "docs", "training", file);
