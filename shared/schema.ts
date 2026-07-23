@@ -2921,6 +2921,8 @@ export const studioArticles = pgTable("studio_articles", {
   safetyReviewResult: varchar("safety_review_result"), // PASS | REVISE | BLOCK
   safetyFailuresJsonb: jsonb("safety_failures_jsonb"),  // [{code, sentence, reason, missingSource, recommendedCorrection, autoCorrectSafe}]
   generationV1Markdown: text("generation_v1_markdown"), // initial accepted version for editing-effort tracking
+  // Campaign link — set when the article is created from a campaign day plan.
+  campaignId: varchar("campaign_id"),
   // Back-link to the content idea that was promoted to create this article.
   // NULL for articles created directly (not via promotion).
   linkedIdeaId: varchar("linked_idea_id"),
@@ -3020,6 +3022,11 @@ export const studioCampaigns = pgTable("studio_campaigns", {
   channels: jsonb("channels"), // subset of STUDIO_CHANNELS
   startDate: date("start_date"),
   endDate: date("end_date"),
+  // Day Planner extension (Task #1495): duration_days replaces the endDate calc for
+  // AI day-planner flow. dailyPlanJsonb stores the confirmed day-by-day content plan.
+  // Shape: [{ dayNumber, date, items: [{ type, platform, format, topic, keyMessage }] }]
+  durationDays: integer("duration_days"), // 7 | 14 | 30 | custom
+  dailyPlanJsonb: jsonb("daily_plan_jsonb"),
   status: varchar("status").default("draft").notNull(), // draft | active | paused | completed
   // Contributor admin-user ids notified on campaign events.
   contributorUserIds: jsonb("contributor_user_ids"),

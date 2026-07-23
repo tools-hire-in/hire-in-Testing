@@ -645,6 +645,11 @@ async function ensureContentStudioTables() {
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS hook_pattern_source varchar`);
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS structure_source varchar`);
     await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS engagement_goal_source varchar`);
+    // Campaign day-plan link (Task #1495): articles created from a confirmed day plan.
+    await db.execute(sql`ALTER TABLE studio_articles ADD COLUMN IF NOT EXISTS campaign_id varchar`);
+    // Day-planner fields on campaigns (Task #1495)
+    await db.execute(sql`ALTER TABLE studio_campaigns ADD COLUMN IF NOT EXISTS duration_days integer`);
+    await db.execute(sql`ALTER TABLE studio_campaigns ADD COLUMN IF NOT EXISTS daily_plan_jsonb jsonb`);
     // Newsletter deliverability suppression columns (analytics subscriber counts).
     await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS suppressed_at timestamp`);
     await db.execute(sql`ALTER TABLE studio_newsletter_subscribers ADD COLUMN IF NOT EXISTS bounce_count integer DEFAULT 0 NOT NULL`);

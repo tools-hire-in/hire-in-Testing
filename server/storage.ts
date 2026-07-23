@@ -569,6 +569,7 @@ export interface IStorage {
   // Articles
   getStudioArticles(filters: {
     projectId?: string;
+    campaignId?: string;
     status?: string;
     contentType?: string;
     search?: string;
@@ -3980,6 +3981,7 @@ export class DatabaseStorage implements IStorage {
   // ---- Articles ----
   async getStudioArticles(filters: {
     projectId?: string;
+    campaignId?: string;
     status?: string;
     contentType?: string;
     search?: string;
@@ -3988,6 +3990,7 @@ export class DatabaseStorage implements IStorage {
   }): Promise<{ items: (StudioArticle & { authorName: string | null })[]; total: number }> {
     const conditions = [];
     if (filters.projectId) conditions.push(eq(studioArticles.projectId, filters.projectId));
+    if (filters.campaignId) conditions.push(eq((studioArticles as any).campaignId, filters.campaignId));
     if (filters.status) conditions.push(eq(studioArticles.status, filters.status as any));
     if (filters.contentType) conditions.push(eq(studioArticles.contentType, filters.contentType));
     if (filters.search) {

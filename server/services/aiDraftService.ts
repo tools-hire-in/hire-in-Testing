@@ -814,6 +814,141 @@ RELEASE NOTE FORMAT:
 // Studio T2 (Task #907) — campaign planner, repurpose-to-ideas, and copy-only
 // outreach sequence generators. All propose; none publish or send.
 // ---------------------------------------------------------------------------
+
+// Day-by-day campaign plan schema (Task #1495 — AI Day Planner)
+const CAMPAIGN_DAY_PLAN_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    summary: { type: "string" },
+    days: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          day_number: { type: "integer" },
+          items: {
+            type: "array",
+            items: {
+              type: "object",
+              properties: {
+                type: { type: "string", enum: ["social_post", "article"] },
+                platform: { type: "string" },
+                format: { type: "string" },
+                topic: { type: "string" },
+                key_message: { type: "string" },
+              },
+              required: ["type", "platform", "format", "topic", "key_message"],
+              additionalProperties: false,
+            },
+          },
+        },
+        required: ["day_number", "items"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["summary", "days"],
+  additionalProperties: false,
+};
+
+export interface CampaignDayPlanItem {
+  type: "social_post" | "article";
+  platform: string;
+  format: string;
+  topic: string;
+  keyMessage: string;
+}
+
+export interface CampaignDayPlanDay {
+  day_number: number;
+  items: CampaignDayPlanItem[];
+}
+
+export interface CampaignDayPlanResult {
+  summary: string;
+  days: CampaignDayPlanDay[];
+  model: string;
+  tokenEstimate: number;
+}
+
+// Hardcoded fallback template so the day-plan never requires a DB template row.
+const CAMPAIGN_DAY_PLAN_TEMPLATE = {
+  id: "_builtin_day_planner",
+  contentType: "campaign_day_planner",
+  version: 1,
+  systemPrompt:
+    "You are a senior content strategist for a staffing agency. Given a campaign goal and duration, produce a practical day-by-day content plan. " +
+    "Distribute content sensibly: awareness-focused posts early in the campaign, consideration content mid-way, conversion/CTA posts in the final days. " +
+    "Use a mix of platforms and formats. Keep topics varied and non-repetitive. Every item must directly serve the campaign goal and ICP. " +
+    "Propose 1-2 content items per day — do not create more than 2 per day. These are PROPOSALS only; a human reviews before anything is published.",
+  userPromptTemplate:
+    "Campaign name: {{campaign_name}}\nGoal: {{campaign_goal}}\nBrief: {{campaign_brief}}\nIdeal customer profile: {{icp}}\nFunnel stage: {{funnel_stage}}\nPrimary CTA: {{primary_cta}}\nDuration: {{duration_days}} days\nStart date: {{start_date}}\n\nProduce a day-by-day content plan. " +
+    "For each day, suggest 1-2 content items (type: social_post or article, platform, format, topic, key_message). " +
+    "Distribute content across the {{duration_days}} days — do not cluster everything at the start. " +
+    "Use social_post for quick social content; use article for long-form thought leadership. " +
+    "Now generate the day-by-day plan.",
+  modelName: "gpt-5.4",
+  modelTier: "standard",
+  maxTokens: 6000,
+  outputSchemaRef: "campaign_day_plan",
+  isActive: true,
+  projectId: null,
+  organizationId: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+export async function generateCampaignDayPlan(params: {
+  campaignName: string;
+  campaignGoal: string;
+  campaignBrief: string;
+  icp: string;
+  funnelStage: string;
+  primaryCta: string;
+  durationDays: number;
+  startDate: string;
+  brandVoice?: Record<string, any>;
+}): Promise<CampaignDayPlanResult> {
+  const template = CAMPAIGN_DAY_PLAN_TEMPLATE as any;
+  const aiParams: AiGenerationParams = {
+    campaign_name: params.campaignName,
+    campaign_goal: params.campaignGoal,
+    campaign_brief: params.campaignBrief,
+    icp: params.icp,
+    funnel_stage: params.funnelStage,
+    primary_cta: params.primaryCta,
+    duration_days: params.durationDays,
+    start_date: params.startDate,
+    brand_name: params.brandVoice?.brand_name ?? DEFAULT_BRAND.brand_name,
+    brand_tagline: params.brandVoice?.brand_tagline ?? DEFAULT_BRAND.brand_tagline,
+    brand_voice: params.brandVoice?.brand_voice ?? DEFAULT_BRAND.brand_voice,
+    compliance_mode: "normal",
+  } as any;
+
+  const { raw, model, tokenEstimate } = await callStructured(
+    template,
+    aiParams,
+    CAMPAIGN_DAY_PLAN_JSON_SCHEMA,
+    "campaign_day_plan",
+  );
+  if (!raw || !Array.isArray(raw.days) || !raw.days.length) {
+    throw new AiGenerationError("validation", "Campaign day plan output had no days.", false);
+  }
+  // Normalize snake_case key_message → camelCase keyMessage so the stored
+  // dailyPlanJsonb shape matches the documented contract in schema.ts.
+  const days: CampaignDayPlanDay[] = (raw.days as any[]).map((d: any) => ({
+    day_number: d.day_number,
+    items: (d.items || []).map((it: any) => ({
+      type: it.type === "article" ? "article" : "social_post",
+      platform: String(it.platform || ""),
+      format: String(it.format || "post"),
+      topic: String(it.topic || ""),
+      keyMessage: String(it.key_message || it.keyMessage || ""),
+    })),
+  }));
+  return { summary: String(raw.summary || ""), days, model, tokenEstimate };
+}
+
 const CAMPAIGN_PLAN_JSON_SCHEMA = {
   type: "object",
   properties: {

@@ -29,9 +29,15 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Megaphone, Plus, Sparkles, Loader2, CalendarDays, Trash2, UserPlus, Users, Trophy, MousePointerClick, Heart, Recycle } from "lucide-react";
+import {
+  ArrowLeft, Megaphone, Plus, Sparkles, Loader2, CalendarDays, Trash2,
+  UserPlus, Users, Trophy, MousePointerClick, Heart, Recycle, FileText,
+  Share2, CheckCircle2, CalendarRange, AlertCircle,
+} from "lucide-react";
 import { FieldHelp } from "@/components/studio/FieldHelp";
 import { StudioShell } from "@/components/studio/StudioShell";
+
+// ─── Status & colour helpers ────────────────────────────────────────────────
 
 const STATUS_BADGE: Record<string, string> = {
   draft: "bg-muted text-muted-foreground",
@@ -39,6 +45,22 @@ const STATUS_BADGE: Record<string, string> = {
   paused: "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300",
   completed: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300",
 };
+
+const IDEA_STATUS_COLORS: Record<string, string> = {
+  idea: "bg-slate-400",
+  suggested: "bg-slate-300",
+  in_review: "bg-amber-400",
+  changes_requested: "bg-orange-400",
+  approved: "bg-blue-400",
+  in_production: "bg-violet-400",
+  scheduled: "bg-cyan-400",
+  done: "bg-emerald-500",
+  discarded: "bg-rose-300",
+};
+
+const DURATION_PRESETS = [7, 14, 30] as const;
+
+// ─── Types ──────────────────────────────────────────────────────────────────
 
 interface CampaignRow {
   id: string;
@@ -52,11 +74,42 @@ interface CampaignRow {
   channels: string[] | null;
   startDate: string | null;
   endDate: string | null;
+  durationDays: number | null;
+  dailyPlanJsonb: DayPlanDay[] | null;
   status: string;
   contributorUserIds: string[] | null;
   ideaCounts?: { total: number; done: number };
   ideas?: any[];
+  articles?: any[];
 }
+
+interface DayPlanItem {
+  type: "social_post" | "article";
+  platform: string;
+  format: string;
+  topic: string;
+  keyMessage: string;
+  // Set after confirm — the created idea/article id for linking
+  ideaId?: string;
+  articleId?: string;
+}
+
+interface DayPlanDay {
+  dayNumber: number;
+  date: string;
+  items: DayPlanItem[];
+}
+
+interface PlanSuggestion {
+  topic: string;
+  contentType: string;
+  channels: string[];
+  pillar: string | null;
+  suggestedDate: string | null;
+  brief: string;
+}
+
+// ─── Campaign form dialog ────────────────────────────────────────────────────
 
 function CampaignFormDialog({
   open, onOpenChange, projectId, existing,
@@ -78,7 +131,17 @@ function CampaignFormDialog({
     endDate: existing?.endDate ?? "",
     status: existing?.status ?? "draft",
     channels: (existing?.channels as string[]) ?? [],
+    durationDays: existing?.durationDays ?? 14,
+    customDuration: String(existing?.durationDays ?? 14),
+    durationMode: (DURATION_PRESETS as readonly number[]).includes(existing?.durationDays ?? 14)
+      ? String(existing?.durationDays ?? 14)
+      : "custom",
   });
+
+  const effectiveDuration =
+    form.durationMode === "custom"
+      ? Math.max(1, Math.min(90, Number(form.customDuration) || 14))
+      : Number(form.durationMode);
 
   const save = useMutation({
     mutationFn: async () => {
@@ -87,7 +150,10 @@ function CampaignFormDialog({
         projectId,
         startDate: form.startDate || null,
         endDate: form.endDate || null,
+        durationDays: effectiveDuration,
       };
+      delete body.durationMode;
+      delete body.customDuration;
       if (existing) {
         return apiRequest("PATCH", `/api/studio/campaigns/${existing.id}`, body);
       }
@@ -98,7 +164,8 @@ function CampaignFormDialog({
       onOpenChange(false);
       toast({ title: existing ? "Campaign updated" : "Campaign created" });
     },
-    onError: (e: any) => toast({ title: "Failed to save campaign", description: e?.message, variant: "destructive" }),
+    onError: (e: any) =>
+      toast({ title: "Failed to save campaign", description: e?.message, variant: "destructive" }),
   });
 
   const toggleChannel = (c: string) =>
@@ -109,36 +176,63 @@ function CampaignFormDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-lg">
+      <DialogContent className="max-h-[90vh] max-w-lg overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{existing ? "Edit campaign" : "New campaign"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div>
             <Label>Name</Label>
-            <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} data-testid="input-campaign-name" />
+            <Input
+              value={form.name}
+              onChange={(e) => setForm({ ...form, name: e.target.value })}
+              data-testid="input-campaign-name"
+            />
           </div>
           <div>
             <Label>Brief (what is this campaign about?)</Label>
-            <Textarea rows={3} value={form.brief} onChange={(e) => setForm({ ...form, brief: e.target.value })} data-testid="input-campaign-brief" />
+            <Textarea
+              rows={3}
+              value={form.brief}
+              onChange={(e) => setForm({ ...form, brief: e.target.value })}
+              data-testid="input-campaign-brief"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Goal</Label>
-              <Input value={form.goal} onChange={(e) => setForm({ ...form, goal: e.target.value })} data-testid="input-campaign-goal" />
+              <Input
+                value={form.goal}
+                onChange={(e) => setForm({ ...form, goal: e.target.value })}
+                data-testid="input-campaign-goal"
+              />
             </div>
             <div>
-              <Label className="flex items-center gap-1.5">Primary CTA <FieldHelp id="campaign-primary-cta" /></Label>
-              <Input value={form.primaryCta} onChange={(e) => setForm({ ...form, primaryCta: e.target.value })} data-testid="input-campaign-cta" />
+              <Label className="flex items-center gap-1.5">
+                Primary CTA <FieldHelp id="campaign-primary-cta" />
+              </Label>
+              <Input
+                value={form.primaryCta}
+                onChange={(e) => setForm({ ...form, primaryCta: e.target.value })}
+                data-testid="input-campaign-cta"
+              />
             </div>
           </div>
           <div>
-            <Label className="flex items-center gap-1.5">Ideal customer profile (one line) <FieldHelp id="campaign-icp" /></Label>
-            <Input value={form.icp} onChange={(e) => setForm({ ...form, icp: e.target.value })} data-testid="input-campaign-icp" />
+            <Label className="flex items-center gap-1.5">
+              Ideal customer profile (one line) <FieldHelp id="campaign-icp" />
+            </Label>
+            <Input
+              value={form.icp}
+              onChange={(e) => setForm({ ...form, icp: e.target.value })}
+              data-testid="input-campaign-icp"
+            />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <Label className="flex items-center gap-1.5">Funnel stage <FieldHelp id="campaign-funnel-stage" /></Label>
+              <Label className="flex items-center gap-1.5">
+                Funnel stage <FieldHelp id="campaign-funnel-stage" />
+              </Label>
               <Select value={form.funnelStage} onValueChange={(v) => setForm({ ...form, funnelStage: v })}>
                 <SelectTrigger data-testid="select-campaign-funnel"><SelectValue /></SelectTrigger>
                 <SelectContent>
@@ -160,16 +254,66 @@ function CampaignFormDialog({
               </Select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <Label>Start date</Label>
-              <Input type="date" value={form.startDate} onChange={(e) => setForm({ ...form, startDate: e.target.value })} data-testid="input-campaign-start" />
-            </div>
-            <div>
-              <Label>End date</Label>
-              <Input type="date" value={form.endDate} onChange={(e) => setForm({ ...form, endDate: e.target.value })} data-testid="input-campaign-end" />
+
+          {/* ── Duration picker (new — Task #1495) ── */}
+          <div>
+            <Label className="flex items-center gap-1.5">
+              <CalendarRange className="h-3.5 w-3.5" />
+              Campaign duration (days)
+            </Label>
+            <div className="mt-1.5 flex flex-wrap items-center gap-2">
+              {DURATION_PRESETS.map((d) => (
+                <Button
+                  key={d}
+                  type="button"
+                  size="sm"
+                  variant={form.durationMode === String(d) ? "default" : "outline"}
+                  onClick={() => setForm({ ...form, durationMode: String(d), durationDays: d })}
+                  data-testid={`button-duration-${d}`}
+                >
+                  {d} days
+                </Button>
+              ))}
+              <Button
+                type="button"
+                size="sm"
+                variant={form.durationMode === "custom" ? "default" : "outline"}
+                onClick={() => setForm({ ...form, durationMode: "custom" })}
+                data-testid="button-duration-custom"
+              >
+                Custom
+              </Button>
+              {form.durationMode === "custom" && (
+                <Input
+                  type="number"
+                  min={1}
+                  max={90}
+                  className="h-8 w-20"
+                  value={form.customDuration}
+                  onChange={(e) => setForm({ ...form, customDuration: e.target.value })}
+                  placeholder="days"
+                  data-testid="input-duration-custom"
+                />
+              )}
+              <span className="text-xs text-muted-foreground">
+                = {effectiveDuration} day{effectiveDuration !== 1 ? "s" : ""}
+              </span>
             </div>
           </div>
+
+          <div>
+            <Label>Start date</Label>
+            <Input
+              type="date"
+              value={form.startDate}
+              onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+              data-testid="input-campaign-start"
+            />
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Required for the AI Day Planner to assign content to specific dates.
+            </p>
+          </div>
+
           <div>
             <Label>Channels</Label>
             <div className="mt-1 flex flex-wrap gap-1.5">
@@ -203,16 +347,271 @@ function CampaignFormDialog({
   );
 }
 
-interface PlanSuggestion {
-  topic: string;
-  contentType: string;
-  channels: string[];
-  pillar: string | null;
-  suggestedDate: string | null;
-  brief: string;
+// ─── Day-by-day plan review dialog (new — Task #1495) ───────────────────────
+
+function DayPlanReviewDialog({
+  open, onOpenChange, campaignId, summary, initialPlan,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  campaignId: string;
+  summary: string;
+  initialPlan: DayPlanDay[];
+}) {
+  const { toast } = useToast();
+  const [plan, setPlan] = useState<DayPlanDay[]>(initialPlan);
+
+  const removeItem = (dayIdx: number, itemIdx: number) =>
+    setPlan((prev) =>
+      prev
+        .map((d, di) =>
+          di === dayIdx
+            ? { ...d, items: d.items.filter((_, ii) => ii !== itemIdx) }
+            : d
+        )
+        .filter((d) => d.items.length > 0)
+    );
+
+  const updateItem = (dayIdx: number, itemIdx: number, patch: Partial<DayPlanItem>) =>
+    setPlan((prev) =>
+      prev.map((d, di) =>
+        di === dayIdx
+          ? { ...d, items: d.items.map((it, ii) => (ii === itemIdx ? { ...it, ...patch } : it)) }
+          : d
+      )
+    );
+
+  const addItem = (dayIdx: number) =>
+    setPlan((prev) =>
+      prev.map((d, di) =>
+        di === dayIdx
+          ? {
+              ...d,
+              items: [
+                ...d.items,
+                { type: "social_post", platform: "", format: "post", topic: "", keyMessage: "" },
+              ],
+            }
+          : d
+      )
+    );
+
+  const addDay = () => {
+    const lastDay = plan[plan.length - 1];
+    const lastDate = lastDay ? lastDay.date : new Date().toISOString().slice(0, 10);
+    const nextDate = new Date(new Date(lastDate + "T00:00:00").getTime() + 86400000)
+      .toISOString()
+      .slice(0, 10);
+    const nextDayNumber = lastDay ? lastDay.dayNumber + 1 : 1;
+    setPlan((prev) => [
+      ...prev,
+      {
+        dayNumber: nextDayNumber,
+        date: nextDate,
+        items: [{ type: "social_post", platform: "", format: "post", topic: "", keyMessage: "" }],
+      },
+    ]);
+  };
+
+  const totalItems = plan.reduce((acc, d) => acc + d.items.length, 0);
+
+  // Flatten plan into suggestions format expected by confirm-plan endpoint
+  const toSuggestions = (): PlanSuggestion[] =>
+    plan.flatMap((d) =>
+      d.items.map((it) => ({
+        topic: it.topic,
+        contentType: it.type,
+        channels: it.type === "social_post" ? [it.platform] : [],
+        pillar: null,
+        suggestedDate: d.date,
+        brief: it.keyMessage,
+      }))
+    );
+
+  const confirm = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", `/api/studio/campaigns/${campaignId}/confirm-plan`, {
+        suggestions: toSuggestions(),
+        dayPlan: plan,
+      }),
+    onSuccess: async (res: any) => {
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/campaigns"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/campaigns", campaignId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
+      onOpenChange(false);
+      toast({
+        title: `${data.created} content item(s) scheduled`,
+        description: `${data.ideas?.length ?? 0} idea(s) and ${data.articles?.length ?? 0} article(s) created in the pipeline.`,
+      });
+    },
+    onError: (e: any) =>
+      toast({ title: "Failed to confirm plan", description: e?.message, variant: "destructive" }),
+  });
+
+  const fmtDate = (iso: string) => {
+    try {
+      return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+        weekday: "short", month: "short", day: "numeric",
+      });
+    } catch { return iso; }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] max-w-3xl overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Sparkles className="h-5 w-5 text-primary" />
+            Review your AI Day Plan
+          </DialogTitle>
+        </DialogHeader>
+        {summary && (
+          <p className="rounded-md bg-muted p-3 text-sm text-muted-foreground">{summary}</p>
+        )}
+        <p className="text-xs text-muted-foreground">
+          Edit topics, remove items, or keep as-is. Nothing is created until you confirm.
+        </p>
+
+        <div className="space-y-4">
+          {plan.map((day, dayIdx) => (
+            <div key={day.dayNumber} className="rounded-lg border" data-testid={`section-day-${day.dayNumber}`}>
+              <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
+                <CalendarDays className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-semibold">Day {day.dayNumber}</span>
+                <span className="text-xs text-muted-foreground">— {fmtDate(day.date)}</span>
+                <Badge variant="outline" className="ml-auto text-xs">{day.items.length} item{day.items.length !== 1 ? "s" : ""}</Badge>
+              </div>
+              <div className="divide-y">
+                {day.items.map((item, itemIdx) => (
+                  <div key={itemIdx} className="space-y-2 p-3" data-testid={`row-day-item-${day.dayNumber}-${itemIdx}`}>
+                    <div className="flex items-center gap-2">
+                      {item.type === "article" ? (
+                        <FileText className="h-4 w-4 shrink-0 text-blue-500" />
+                      ) : (
+                        <Share2 className="h-4 w-4 shrink-0 text-violet-500" />
+                      )}
+                      <span className="flex-1 text-xs font-medium text-muted-foreground">Item {itemIdx + 1}</span>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0"
+                        onClick={() => removeItem(dayIdx, itemIdx)}
+                        data-testid={`button-remove-item-${day.dayNumber}-${itemIdx}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div>
+                        <Label className="text-[11px]">Type</Label>
+                        <Select
+                          value={item.type}
+                          onValueChange={(v) => updateItem(dayIdx, itemIdx, { type: v as "social_post" | "article" })}
+                        >
+                          <SelectTrigger className="mt-0.5 h-7 text-xs" data-testid={`select-item-type-${day.dayNumber}-${itemIdx}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="social_post">Social post</SelectItem>
+                            <SelectItem value="article">Article</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">Platform</Label>
+                        <Input
+                          className="mt-0.5 h-7 text-xs"
+                          value={item.platform}
+                          onChange={(e) => updateItem(dayIdx, itemIdx, { platform: e.target.value })}
+                          placeholder="linkedin, instagram..."
+                          data-testid={`input-item-platform-${day.dayNumber}-${itemIdx}`}
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-[11px]">Format</Label>
+                        <Input
+                          className="mt-0.5 h-7 text-xs"
+                          value={item.format}
+                          onChange={(e) => updateItem(dayIdx, itemIdx, { format: e.target.value })}
+                          placeholder="carousel, story..."
+                          data-testid={`input-item-format-${day.dayNumber}-${itemIdx}`}
+                        />
+                      </div>
+                    </div>
+                    <Input
+                      className="h-8 text-sm"
+                      value={item.topic}
+                      onChange={(e) => updateItem(dayIdx, itemIdx, { topic: e.target.value })}
+                      placeholder="Topic / headline"
+                      data-testid={`input-item-topic-${day.dayNumber}-${itemIdx}`}
+                    />
+                    <Input
+                      className="h-8 text-xs text-muted-foreground"
+                      value={item.keyMessage}
+                      onChange={(e) => updateItem(dayIdx, itemIdx, { keyMessage: e.target.value })}
+                      placeholder="Key message"
+                      data-testid={`input-item-msg-${day.dayNumber}-${itemIdx}`}
+                    />
+                  </div>
+                ))}
+              </div>
+              <div className="px-3 py-2 border-t bg-muted/30">
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs gap-1.5 text-muted-foreground hover:text-foreground"
+                  onClick={() => addItem(dayIdx)}
+                  data-testid={`button-add-item-day-${day.dayNumber}`}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  Add item
+                </Button>
+              </div>
+            </div>
+          ))}
+
+          <Button
+            size="sm"
+            variant="outline"
+            className="w-full gap-2 border-dashed"
+            onClick={addDay}
+            data-testid="button-add-day"
+          >
+            <Plus className="h-4 w-4" />
+            Add day
+          </Button>
+        </div>
+
+        {totalItems === 0 && (
+          <p className="text-center text-sm text-muted-foreground py-4">
+            All items removed. Cancel and regenerate, or close.
+          </p>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)}>Discard</Button>
+          <Button
+            onClick={() => confirm.mutate()}
+            disabled={!totalItems || confirm.isPending}
+            data-testid="button-confirm-day-plan"
+          >
+            {confirm.isPending ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="mr-2 h-4 w-4" />
+            )}
+            Confirm {totalItems} item{totalItems !== 1 ? "s" : ""}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
-/** Editable preview of the AI-proposed plan. Nothing is written until Confirm. */
+// ─── Legacy plan preview dialog (kept for backward compat) ────────────────────
+
 function PlanPreviewDialog({
   open, onOpenChange, campaignId, summary, initialSuggestions,
 }: {
@@ -250,13 +649,12 @@ function PlanPreviewDialog({
       onOpenChange(false);
       toast({
         title: `${data.created} idea(s) added to the plan`,
-        description: "They appear below and in the pipeline as dashed 'suggested' cards. Accept or discard each one.",
+        description: "They appear below and in the pipeline as suggested cards. Accept or discard each one.",
       });
     },
-    onError: (e: any) => toast({ title: "Failed to confirm plan", description: e?.message, variant: "destructive" }),
+    onError: (e: any) =>
+      toast({ title: "Failed to confirm plan", description: e?.message, variant: "destructive" }),
   });
-
-  const invalidRows = rows.some((r) => !r.topic.trim());
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -291,10 +689,7 @@ function PlanPreviewDialog({
                           value={row.contentType}
                           onValueChange={(v) => {
                             const nextAllowed = channelsForType(v);
-                            update(i, {
-                              contentType: v,
-                              channels: row.channels.filter((c) => nextAllowed.includes(c)),
-                            });
+                            update(i, { contentType: v, channels: row.channels.filter((c) => nextAllowed.includes(c)) });
                           }}
                         >
                           <SelectTrigger className="mt-1" data-testid={`select-plan-type-${i}`}><SelectValue /></SelectTrigger>
@@ -379,7 +774,7 @@ function PlanPreviewDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>Discard</Button>
           <Button
             onClick={() => confirm.mutate()}
-            disabled={!rows.length || invalidRows || confirm.isPending}
+            disabled={!rows.length || rows.some((r) => !r.topic.trim()) || confirm.isPending}
             data-testid="button-confirm-plan"
           >
             {confirm.isPending && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -390,6 +785,8 @@ function PlanPreviewDialog({
     </Dialog>
   );
 }
+
+// ─── Campaign analytics ──────────────────────────────────────────────────────
 
 interface CampaignAnalyticsData {
   campaignId: string;
@@ -435,18 +832,6 @@ const QUADRANT_META: Record<string, { label: string; hint: string; tone: string 
   },
 };
 
-const IDEA_STATUS_COLORS: Record<string, string> = {
-  idea: "bg-slate-400",
-  suggested: "bg-slate-300",
-  in_review: "bg-amber-400",
-  changes_requested: "bg-orange-400",
-  approved: "bg-blue-400",
-  in_production: "bg-violet-400",
-  scheduled: "bg-cyan-400",
-  done: "bg-emerald-500",
-  discarded: "bg-rose-300",
-};
-
 function CampaignAnalyticsTab({ campaignId }: { campaignId: string }) {
   const { data, isLoading } = useQuery<CampaignAnalyticsData>({
     queryKey: ["/api/studio/campaigns", campaignId, "analytics"],
@@ -465,10 +850,11 @@ function CampaignAnalyticsTab({ campaignId }: { campaignId: string }) {
 
   return (
     <div className="space-y-4">
-      {/* Idea status distribution */}
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Plan progress ({data.totalIdeas} idea{data.totalIdeas === 1 ? "" : "s"})</CardTitle>
+          <CardTitle className="text-sm">
+            Plan progress ({data.totalIdeas} idea{data.totalIdeas === 1 ? "" : "s"})
+          </CardTitle>
         </CardHeader>
         <CardContent>
           {!statusEntries.length ? (
@@ -498,7 +884,6 @@ function CampaignAnalyticsTab({ campaignId }: { campaignId: string }) {
         </CardContent>
       </Card>
 
-      {/* Top performer */}
       {top && topScore > 0 && (
         <Card className="border-amber-300 dark:border-amber-800">
           <CardHeader className="pb-2">
@@ -523,7 +908,6 @@ function CampaignAnalyticsTab({ campaignId }: { campaignId: string }) {
         </Card>
       )}
 
-      {/* Published article engagement */}
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm">Published content engagement</CardTitle>
@@ -559,7 +943,6 @@ function CampaignAnalyticsTab({ campaignId }: { campaignId: string }) {
         </CardContent>
       </Card>
 
-      {/* 2×2 engagement matrix */}
       {data.publishedArticles.length > 0 && (
         <Card>
           <CardHeader className="pb-2">
@@ -600,18 +983,107 @@ function CampaignAnalyticsTab({ campaignId }: { campaignId: string }) {
   );
 }
 
+// ─── Day plan grid (confirmed plan display) ──────────────────────────────────
+
+function DayPlanGrid({ plan, campaignId }: { plan: DayPlanDay[]; campaignId: string }) {
+  const fmtDate = (iso: string) => {
+    try {
+      return new Date(iso + "T00:00:00").toLocaleDateString(undefined, {
+        weekday: "short", month: "short", day: "numeric",
+      });
+    } catch { return iso; }
+  };
+
+  const todayIso = new Date().toISOString().slice(0, 10);
+
+  return (
+    <div className="space-y-3" data-testid="day-plan-grid">
+      {plan.map((day) => {
+        const isPast = day.date < todayIso;
+        const isToday = day.date === todayIso;
+        return (
+          <div
+            key={day.dayNumber}
+            className={`rounded-lg border ${isToday ? "border-primary/60 ring-1 ring-primary/20" : ""}`}
+            data-testid={`day-plan-day-${day.dayNumber}`}
+          >
+            <div className="flex items-center gap-2 border-b bg-muted/40 px-3 py-2">
+              <CalendarDays className={`h-4 w-4 ${isToday ? "text-primary" : "text-muted-foreground"}`} />
+              <span className={`text-sm font-semibold ${isToday ? "text-primary" : ""}`}>
+                Day {day.dayNumber}
+              </span>
+              <span className="text-xs text-muted-foreground">— {fmtDate(day.date)}</span>
+              {isPast && !isToday && (
+                <Badge variant="outline" className="ml-auto text-xs text-muted-foreground">past</Badge>
+              )}
+              {isToday && (
+                <Badge className="ml-auto text-xs">today</Badge>
+              )}
+            </div>
+            <div className="divide-y">
+              {day.items.map((item, idx) => (
+                <div key={idx} className="flex items-center gap-3 px-3 py-2.5" data-testid={`day-plan-item-${day.dayNumber}-${idx}`}>
+                  {item.type === "article" ? (
+                    <FileText className="h-4 w-4 shrink-0 text-blue-500" />
+                  ) : (
+                    <Share2 className="h-4 w-4 shrink-0 text-violet-500" />
+                  )}
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-medium">{item.topic}</p>
+                    <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                      <Badge variant="outline" className="text-xs capitalize">
+                        {item.type === "article" ? "Article" : "Social post"}
+                      </Badge>
+                      {item.platform && (
+                        <span className="text-xs text-muted-foreground capitalize">{item.platform}</span>
+                      )}
+                      {item.format && (
+                        <span className="text-xs text-muted-foreground">· {item.format}</span>
+                      )}
+                    </div>
+                    {item.keyMessage && (
+                      <p className="mt-0.5 text-xs text-muted-foreground line-clamp-1">{item.keyMessage}</p>
+                    )}
+                  </div>
+                  <div className="shrink-0 flex gap-1.5">
+                    {item.articleId ? (
+                      <Link href={studioPath(`/articles/${item.articleId}/edit`)}>
+                        <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`button-open-article-${item.articleId}`}>
+                          Edit →
+                        </Button>
+                      </Link>
+                    ) : item.ideaId ? (
+                      <Link href={`${studioPath("/board")}?campaignId=${campaignId}&idea=${item.ideaId}`}>
+                        <Button size="sm" variant="outline" className="h-7 text-xs" data-testid={`button-open-idea-${item.ideaId}`}>
+                          View →
+                        </Button>
+                      </Link>
+                    ) : null}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Campaign detail ─────────────────────────────────────────────────────────
+
 function CampaignDetail({ id }: { id: string }) {
   const { toast } = useToast();
   const { can } = usePermissions();
   const canCreate = can("studio.create_article");
   const [editOpen, setEditOpen] = useState(false);
+  const [legacyPreview, setLegacyPreview] = useState<{ summary: string; suggestions: PlanSuggestion[] } | null>(null);
+  const [dayPlanPreview, setDayPlanPreview] = useState<{ summary: string; plan: DayPlanDay[] } | null>(null);
+  const [contributorPick, setContributorPick] = useState("");
 
   const { data: campaign, isLoading } = useQuery<CampaignRow>({
     queryKey: ["/api/studio/campaigns", id],
   });
-
-  const [preview, setPreview] = useState<{ summary: string; suggestions: PlanSuggestion[] } | null>(null);
-  const [contributorPick, setContributorPick] = useState("");
 
   const { data: assignees } = useQuery<{ id: string; name: string }[]>({
     queryKey: ["/api/studio/assignees"],
@@ -626,18 +1098,43 @@ function CampaignDetail({ id }: { id: string }) {
       setContributorPick("");
       toast({ title: "Contributor added", description: "They've been notified." });
     },
-    onError: (e: any) => toast({ title: "Couldn't add contributor", description: e?.message, variant: "destructive" }),
+    onError: (e: any) =>
+      toast({ title: "Couldn't add contributor", description: e?.message, variant: "destructive" }),
   });
 
-  const plan = useMutation({
-    mutationFn: async () => apiRequest("POST", `/api/studio/campaigns/${id}/generate-plan-preview`, { itemCount: 8 }),
+  // New day-planner flow (Task #1495)
+  const dayPlan = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", `/api/studio/campaigns/${id}/generate-day-plan`, {
+        durationDays: campaign?.durationDays ?? 14,
+      }),
+    onSuccess: async (res: any) => {
+      const data = await res.json();
+      if (!data.plan?.length) {
+        toast({
+          title: "No plan generated",
+          description: "The AI returned no days — try again or check the campaign brief.",
+          variant: "destructive",
+        });
+        return;
+      }
+      setDayPlanPreview({ summary: data.summary ?? "", plan: data.plan });
+    },
+    onError: (e: any) =>
+      toast({ title: "Day planning failed", description: e?.message, variant: "destructive" }),
+  });
+
+  // Legacy week-based plan flow (fallback)
+  const legacyPlan = useMutation({
+    mutationFn: async () =>
+      apiRequest("POST", `/api/studio/campaigns/${id}/generate-plan-preview`, { itemCount: 8 }),
     onSuccess: async (res: any) => {
       const data = await res.json();
       if (!data.suggestions?.length) {
         toast({ title: "No usable suggestions", description: "The AI returned no valid ideas — try again.", variant: "destructive" });
         return;
       }
-      setPreview({ summary: data.summary ?? "", suggestions: data.suggestions });
+      setLegacyPreview({ summary: data.summary ?? "", suggestions: data.suggestions });
     },
     onError: (e: any) => toast({ title: "Planning failed", description: e?.message, variant: "destructive" }),
   });
@@ -648,17 +1145,26 @@ function CampaignDetail({ id }: { id: string }) {
   const counts = campaign.ideaCounts ?? { total: 0, done: 0 };
   const pct = counts.total ? Math.round((counts.done / counts.total) * 100) : 0;
   const todayIso = new Date().toISOString().slice(0, 10);
-  const overdueCount = (campaign.ideas ?? []).filter(
-    (i: any) => i.dueDate && i.dueDate < todayIso && i.status !== "done",
-  ).length;
+  const overdueCount =
+    (campaign.ideas ?? []).filter((i: any) => i.dueDate && i.dueDate < todayIso && i.status !== "done").length +
+    (campaign.articles ?? []).filter(
+      (a: any) =>
+        a.scheduledAt &&
+        new Date(a.scheduledAt).toISOString().slice(0, 10) < todayIso &&
+        a.status !== "published" &&
+        a.status !== "approved",
+    ).length;
+
+  const confirmedPlan = campaign.dailyPlanJsonb as DayPlanDay[] | null;
+  const hasDayPlan = Array.isArray(confirmedPlan) && confirmedPlan.length > 0;
 
   return (
     <div className="space-y-4">
-      {(campaign.ideas?.length ?? 0) === 0 && (
+      {(campaign.ideas?.length ?? 0) === 0 && (campaign.articles?.length ?? 0) === 0 && !hasDayPlan && (
         <StudioTip
           id="campaign-no-ideas"
           title="This campaign has no content yet"
-          body='Hit "AI-propose plan" — the AI drafts a full content plan from your brief, and nothing is added until you approve it.'
+          body='Hit "Generate AI Day Plan" — the AI builds a day-by-day content schedule from your brief. Nothing is added until you approve it.'
         />
       )}
       {overdueCount >= 3 && (
@@ -669,6 +1175,18 @@ function CampaignDetail({ id }: { id: string }) {
           body="Overdue items pile up fast. Reschedule what slipped, or drop what no longer matters — a realistic calendar beats an ambitious one."
         />
       )}
+      {!campaign.startDate && (
+        <div className="flex items-center gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
+          <AlertCircle className="h-4 w-4 shrink-0" />
+          <span>Set a <strong>start date</strong> and <strong>duration</strong> on this campaign to enable the AI Day Planner.</span>
+          {canCreate && (
+            <Button size="sm" variant="outline" className="ml-auto" onClick={() => setEditOpen(true)}>
+              Edit campaign
+            </Button>
+          )}
+        </div>
+      )}
+
       <div className="flex items-center gap-2">
         <Link href={studioPath("/campaigns")}>
           <Button variant="ghost" size="sm" data-testid="button-back-campaigns">
@@ -676,6 +1194,7 @@ function CampaignDetail({ id }: { id: string }) {
           </Button>
         </Link>
       </div>
+
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold" data-testid="text-campaign-name">{campaign.name}</h1>
@@ -685,149 +1204,252 @@ function CampaignDetail({ id }: { id: string }) {
             {campaign.startDate && (
               <span className="flex items-center gap-1">
                 <CalendarDays className="h-3.5 w-3.5" />
-                {campaign.startDate}{campaign.endDate ? ` → ${campaign.endDate}` : ""}
+                {campaign.startDate}
+                {campaign.durationDays
+                  ? ` · ${campaign.durationDays} days`
+                  : campaign.endDate
+                  ? ` → ${campaign.endDate}`
+                  : ""}
               </span>
             )}
             <span data-testid="text-campaign-progress">{counts.done}/{counts.total} done ({pct}%)</span>
           </div>
         </div>
         {canCreate && (
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button variant="outline" size="sm" onClick={() => setEditOpen(true)} data-testid="button-edit-campaign">
               Edit
             </Button>
-            <Button size="sm" onClick={() => plan.mutate()} disabled={plan.isPending} data-testid="button-plan-campaign">
-              {plan.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
-              AI-propose plan
+            {/* New day-planner button (primary) */}
+            <Button
+              size="sm"
+              onClick={() => dayPlan.mutate()}
+              disabled={dayPlan.isPending || legacyPlan.isPending || !campaign.startDate}
+              title={!campaign.startDate ? "Set a start date first" : ""}
+              data-testid="button-day-plan-campaign"
+            >
+              {dayPlan.isPending ? (
+                <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-1 h-4 w-4" />
+              )}
+              {hasDayPlan ? "Regenerate Day Plan" : "Generate AI Day Plan"}
             </Button>
+            {/* Legacy fallback for campaigns without startDate or when user prefers */}
+            {!campaign.startDate && (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => legacyPlan.mutate()}
+                disabled={legacyPlan.isPending || dayPlan.isPending}
+                data-testid="button-plan-campaign-legacy"
+              >
+                {legacyPlan.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <Sparkles className="mr-1 h-4 w-4" />}
+                AI-propose plan
+              </Button>
+            )}
           </div>
         )}
       </div>
 
-      <Tabs defaultValue="overview">
+      <Tabs defaultValue={hasDayPlan ? "dayplan" : "overview"}>
         <TabsList>
+          {hasDayPlan && (
+            <TabsTrigger value="dayplan" data-testid="tab-campaign-dayplan">
+              Day Plan
+              <Badge variant="secondary" className="ml-1.5 h-4 px-1 text-[10px]">
+                {confirmedPlan!.reduce((a, d) => a + d.items.length, 0)}
+              </Badge>
+            </TabsTrigger>
+          )}
           <TabsTrigger value="overview" data-testid="tab-campaign-overview">Overview</TabsTrigger>
           <TabsTrigger value="analytics" data-testid="tab-campaign-analytics">Analytics</TabsTrigger>
         </TabsList>
-        <TabsContent value="overview" className="mt-4 space-y-4">
 
-      {campaign.brief && (
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Brief</CardTitle></CardHeader>
-          <CardContent className="text-sm whitespace-pre-wrap">{campaign.brief}</CardContent>
-        </Card>
-      )}
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <Users className="h-4 w-4" /> Contributors ({(campaign.contributorUserIds ?? []).length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          <div className="flex flex-wrap gap-1.5">
-            {!(campaign.contributorUserIds ?? []).length && (
-              <p className="text-sm text-muted-foreground">No contributors yet.</p>
-            )}
-            {(campaign.contributorUserIds ?? []).map((uid) => (
-              <Badge key={uid} variant="secondary" data-testid={`badge-contributor-${uid}`}>
-                {assignees?.find((a) => a.id === uid)?.name ?? "Unknown user"}
-              </Badge>
-            ))}
-          </div>
-          {canCreate && (
-            <div className="flex items-center gap-2">
-              <Select value={contributorPick} onValueChange={setContributorPick}>
-                <SelectTrigger className="h-8 w-56" data-testid="select-add-contributor">
-                  <SelectValue placeholder="Add a contributor..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {(assignees ?? [])
-                    .filter((a) => !(campaign.contributorUserIds ?? []).includes(a.id))
-                    .map((a) => (
-                      <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
-              <Button
-                size="sm"
-                variant="outline"
-                disabled={!contributorPick || addContributor.isPending}
-                onClick={() => addContributor.mutate(contributorPick)}
-                data-testid="button-add-contributor"
-              >
-                {addContributor.isPending ? <Loader2 className="mr-1 h-4 w-4 animate-spin" /> : <UserPlus className="mr-1 h-4 w-4" />}
-                Add
-              </Button>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm">Campaign content ({campaign.ideas?.length ?? 0})</CardTitle>
-        </CardHeader>
-        <CardContent>
-          {!campaign.ideas?.length ? (
+        {/* ── Day Plan tab ── */}
+        {hasDayPlan && (
+          <TabsContent value="dayplan" className="mt-4 space-y-3">
             <p className="text-sm text-muted-foreground">
-              No content yet. Use "AI-propose plan" to generate suggested ideas, or attach ideas from the pipeline.
+              Your confirmed {campaign.durationDays}-day content schedule. Click any item to open it in the editor.
             </p>
-          ) : (
-            <div className="flex gap-3 overflow-x-auto pb-2" data-testid="kanban-campaign-ideas">
-              {STUDIO_IDEA_STATUSES
-                .filter((status) => (campaign.ideas ?? []).some((i: any) => i.status === status))
-                .map((status) => {
-                  const column = (campaign.ideas ?? []).filter((i: any) => i.status === status);
-                  return (
-                    <div key={status} className="w-56 shrink-0" data-testid={`kanban-column-${status}`}>
-                      <div className="mb-2 flex items-center justify-between">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          {status.replace(/_/g, " ")}
-                        </p>
-                        <Badge variant="outline" className="h-5 px-1.5 text-xs">{column.length}</Badge>
-                      </div>
-                      <div className="space-y-2">
-                        {column.map((idea: any) => (
-                          <Link
-                            key={idea.id}
-                            href={`${studioPath("/board")}?campaignId=${campaign.id}&idea=${idea.id}`}
-                          >
-                            <div
-                              className={`cursor-pointer rounded-md border bg-card p-2 hover-elevate ${idea.status === "suggested" ? "border-dashed border-primary/60" : ""}`}
-                              data-testid={`row-campaign-idea-${idea.id}`}
-                            >
-                              <p className="line-clamp-2 text-sm font-medium">{idea.topic}</p>
-                              <p className="mt-1 text-xs text-muted-foreground">
-                                {idea.contentType} · {(idea.channels ?? []).join(", ") || "no channels"}
-                              </p>
-                              <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
-                                <span>{idea.dueDate ? `due ${idea.dueDate}` : idea.scheduledDate ? idea.scheduledDate : ""}</span>
-                                {idea.assignedToUserId && (
-                                  <span className="truncate pl-2">
-                                    {assignees?.find((a) => a.id === idea.assignedToUserId)?.name ?? ""}
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
-            </div>
+            <DayPlanGrid plan={confirmedPlan!} campaignId={campaign.id} />
+          </TabsContent>
+        )}
+
+        {/* ── Overview tab ── */}
+        <TabsContent value="overview" className="mt-4 space-y-4">
+          {campaign.brief && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Brief</CardTitle></CardHeader>
+              <CardContent className="text-sm whitespace-pre-wrap">{campaign.brief}</CardContent>
+            </Card>
           )}
-          <div className="mt-3">
-            <Link href={`${studioPath("/board")}?campaignId=${campaign.id}`}>
-              <Button variant="outline" size="sm" data-testid="button-open-pipeline">
-                Open in pipeline board
-              </Button>
-            </Link>
-          </div>
-        </CardContent>
-      </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-sm">
+                <Users className="h-4 w-4" /> Contributors ({(campaign.contributorUserIds ?? []).length})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <div className="flex flex-wrap gap-1.5">
+                {!(campaign.contributorUserIds ?? []).length && (
+                  <p className="text-sm text-muted-foreground">No contributors yet.</p>
+                )}
+                {(campaign.contributorUserIds ?? []).map((uid) => (
+                  <Badge key={uid} variant="secondary" data-testid={`badge-contributor-${uid}`}>
+                    {assignees?.find((a) => a.id === uid)?.name ?? "Unknown user"}
+                  </Badge>
+                ))}
+              </div>
+              {canCreate && (
+                <div className="flex items-center gap-2">
+                  <Select value={contributorPick} onValueChange={setContributorPick}>
+                    <SelectTrigger className="h-8 w-56" data-testid="select-add-contributor">
+                      <SelectValue placeholder="Add a contributor..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(assignees ?? [])
+                        .filter((a) => !(campaign.contributorUserIds ?? []).includes(a.id))
+                        .map((a) => (
+                          <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={!contributorPick || addContributor.isPending}
+                    onClick={() => addContributor.mutate(contributorPick)}
+                    data-testid="button-add-contributor"
+                  >
+                    {addContributor.isPending ? (
+                      <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                    ) : (
+                      <UserPlus className="mr-1 h-4 w-4" />
+                    )}
+                    Add
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">
+                Campaign content ({(campaign.ideas?.length ?? 0) + (campaign.articles?.length ?? 0)})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* ── Social post ideas kanban ── */}
+              {campaign.ideas && campaign.ideas.length > 0 ? (
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Social posts &amp; ideas ({campaign.ideas.length})
+                  </p>
+                  <div className="flex gap-3 overflow-x-auto pb-2" data-testid="kanban-campaign-ideas">
+                    {STUDIO_IDEA_STATUSES
+                      .filter((status) => (campaign.ideas ?? []).some((i: any) => i.status === status))
+                      .map((status) => {
+                        const column = (campaign.ideas ?? []).filter((i: any) => i.status === status);
+                        return (
+                          <div key={status} className="w-56 shrink-0" data-testid={`kanban-column-${status}`}>
+                            <div className="mb-2 flex items-center justify-between">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                                {status.replace(/_/g, " ")}
+                              </p>
+                              <Badge variant="outline" className="h-5 px-1.5 text-xs">{column.length}</Badge>
+                            </div>
+                            <div className="space-y-2">
+                              {column.map((idea: any) => (
+                                <Link
+                                  key={idea.id}
+                                  href={`${studioPath("/board")}?campaignId=${campaign.id}&idea=${idea.id}`}
+                                >
+                                  <div
+                                    className={`cursor-pointer rounded-md border bg-card p-2 hover-elevate ${idea.status === "suggested" ? "border-dashed border-primary/60" : ""}`}
+                                    data-testid={`row-campaign-idea-${idea.id}`}
+                                  >
+                                    <p className="line-clamp-2 text-sm font-medium">{idea.topic}</p>
+                                    <p className="mt-1 text-xs text-muted-foreground">
+                                      {idea.contentType} · {(idea.channels ?? []).join(", ") || "no channels"}
+                                    </p>
+                                    <div className="mt-1 flex items-center justify-between text-xs text-muted-foreground">
+                                      <span>
+                                        {idea.scheduledDate
+                                          ? `📅 ${idea.scheduledDate}`
+                                          : idea.dueDate
+                                          ? `due ${idea.dueDate}`
+                                          : ""}
+                                      </span>
+                                      {idea.assignedToUserId && (
+                                        <span className="truncate pl-2">
+                                          {assignees?.find((a) => a.id === idea.assignedToUserId)?.name ?? ""}
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                </Link>
+                              ))}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              ) : null}
+
+              {/* ── Articles linked to this campaign ── */}
+              {campaign.articles && campaign.articles.length > 0 && (
+                <div>
+                  <p className="mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                    Articles ({campaign.articles.length})
+                  </p>
+                  <div className="space-y-1.5" data-testid="list-campaign-articles">
+                    {campaign.articles.map((article: any) => (
+                      <Link key={article.id} href={studioPath(`/articles/${article.id}/edit`)}>
+                        <div
+                          className="flex items-center gap-3 rounded-md border bg-card px-3 py-2 hover-elevate cursor-pointer"
+                          data-testid={`row-campaign-article-${article.id}`}
+                        >
+                          <FileText className="h-4 w-4 shrink-0 text-blue-500" />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-sm font-medium">{article.title || "Untitled"}</p>
+                            {article.scheduledAt && (
+                              <p className="text-xs text-muted-foreground">
+                                📅 {new Date(article.scheduledAt).toLocaleDateString()}
+                              </p>
+                            )}
+                          </div>
+                          <Badge variant="outline" className="shrink-0 text-xs capitalize">
+                            {article.status}
+                          </Badge>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!campaign.ideas?.length && !campaign.articles?.length && (
+                <p className="text-sm text-muted-foreground">
+                  No content yet. Use "Generate AI Day Plan" to schedule ideas, or attach ideas from the pipeline.
+                </p>
+              )}
+
+              <div>
+                <Link href={`${studioPath("/board")}?campaignId=${campaign.id}`}>
+                  <Button variant="outline" size="sm" data-testid="button-open-pipeline">
+                    Open in pipeline board
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
+
+        {/* ── Analytics tab ── */}
         <TabsContent value="analytics" className="mt-4">
           <CampaignAnalyticsTab campaignId={campaign.id} />
         </TabsContent>
@@ -842,18 +1464,30 @@ function CampaignDetail({ id }: { id: string }) {
         />
       )}
 
-      {preview && (
-        <PlanPreviewDialog
-          open={!!preview}
-          onOpenChange={(v) => { if (!v) setPreview(null); }}
+      {dayPlanPreview && (
+        <DayPlanReviewDialog
+          open={!!dayPlanPreview}
+          onOpenChange={(v) => { if (!v) setDayPlanPreview(null); }}
           campaignId={campaign.id}
-          summary={preview.summary}
-          initialSuggestions={preview.suggestions}
+          summary={dayPlanPreview.summary}
+          initialPlan={dayPlanPreview.plan}
+        />
+      )}
+
+      {legacyPreview && (
+        <PlanPreviewDialog
+          open={!!legacyPreview}
+          onOpenChange={(v) => { if (!v) setLegacyPreview(null); }}
+          campaignId={campaign.id}
+          summary={legacyPreview.summary}
+          initialSuggestions={legacyPreview.suggestions}
         />
       )}
     </div>
   );
 }
+
+// ─── Main view (campaign list) ───────────────────────────────────────────────
 
 export default function CampaignsView() {
   const [, params] = useRoute(studioPath("/campaigns/:id"));
@@ -871,7 +1505,9 @@ export default function CampaignsView() {
   const { data: campaigns, isLoading } = useQuery<CampaignRow[]>({
     queryKey: ["/api/studio/campaigns", { projectId: selectedProjectId }],
     queryFn: async () => {
-      const res = await fetch(`/api/studio/campaigns?projectId=${encodeURIComponent(selectedProjectId)}`, { credentials: "include" });
+      const res = await fetch(`/api/studio/campaigns?projectId=${encodeURIComponent(selectedProjectId)}`, {
+        credentials: "include",
+      });
       if (!res.ok) throw new Error("Failed to fetch campaigns");
       return res.json();
     },
@@ -886,78 +1522,98 @@ export default function CampaignsView() {
 
   return (
     <StudioShell>
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="flex items-center gap-2 text-xl font-bold">
-            <Megaphone className="h-5 w-5 text-primary" /> Campaigns
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            Group content around a marketing goal. The AI proposes plans; you decide what ships.
-          </p>
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="flex items-center gap-2 text-xl font-bold">
+              <Megaphone className="h-5 w-5 text-primary" /> Campaigns
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              Group content around a marketing goal. The AI Day Planner builds a day-by-day schedule — you decide what ships.
+            </p>
+          </div>
+          {canCreate && (
+            <Button onClick={() => setCreateOpen(true)} data-testid="button-new-campaign">
+              <Plus className="mr-1 h-4 w-4" /> New campaign
+            </Button>
+          )}
         </div>
-        {canCreate && (
-          <Button onClick={() => setCreateOpen(true)} data-testid="button-new-campaign">
-            <Plus className="mr-1 h-4 w-4" /> New campaign
-          </Button>
+
+        {isLoading ? (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {[1, 2, 3].map((i) => <Skeleton key={i} className="h-36 w-full" />)}
+          </div>
+        ) : !campaigns?.length ? (
+          <Card>
+            <CardContent className="py-10 text-center text-sm text-muted-foreground">
+              <p>No campaigns yet. Create one to start planning coordinated content.</p>
+              <Link href={studioPath("/guide")}>
+                <span className="mt-2 inline-block cursor-pointer font-medium text-primary hover:underline" data-testid="link-campaigns-playbook">
+                  Read the Studio Playbook →
+                </span>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {campaigns.map((c) => {
+              const counts = c.ideaCounts ?? { total: 0, done: 0 };
+              const pct = counts.total ? Math.round((counts.done / counts.total) * 100) : 0;
+              const hasPlan = Array.isArray(c.dailyPlanJsonb) && c.dailyPlanJsonb.length > 0;
+              return (
+                <Link key={c.id} href={studioPath(`/campaigns/${c.id}`)}>
+                  <Card className="cursor-pointer transition-shadow hover:shadow-md" data-testid={`card-campaign-${c.id}`}>
+                    <CardHeader className="pb-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <CardTitle className="text-base">{c.name}</CardTitle>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          {hasPlan && (
+                            <Badge variant="secondary" className="text-xs">
+                              <CalendarDays className="mr-1 h-3 w-3" />
+                              {c.durationDays}d plan
+                            </Badge>
+                          )}
+                          <Badge className={STATUS_BADGE[c.status] ?? ""}>{c.status}</Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      {c.goal && (
+                        <p className="mb-2 line-clamp-2 text-sm text-muted-foreground">{c.goal}</p>
+                      )}
+                      <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+                        <span>{counts.done}/{counts.total} done</span>
+                        <span>{pct}%</span>
+                      </div>
+                      <div className="h-1.5 w-full rounded-full bg-muted">
+                        <div className="h-1.5 rounded-full bg-primary" style={{ width: `${pct}%` }} />
+                      </div>
+                      <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                        {c.startDate ? (
+                          <span className="flex items-center gap-1">
+                            <CalendarDays className="h-3 w-3" />
+                            {c.startDate}
+                            {c.durationDays ? ` · ${c.durationDays}d` : c.endDate ? ` → ${c.endDate}` : ""}
+                          </span>
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400">No start date</span>
+                        )}
+                        {hasPlan && (
+                          <span className="text-emerald-600 dark:text-emerald-400">✓ Day plan</span>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                </Link>
+              );
+            })}
+          </div>
+        )}
+
+        {createOpen && selectedProjectId && (
+          <CampaignFormDialog open={createOpen} onOpenChange={setCreateOpen} projectId={selectedProjectId} />
         )}
       </div>
-
-      {isLoading ? (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {[1, 2, 3].map((i) => <Skeleton key={i} className="h-36 w-full" />)}
-        </div>
-      ) : !campaigns?.length ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">
-            <p>No campaigns yet. Create one to start planning coordinated content.</p>
-            <Link href={studioPath("/guide")}>
-              <span className="mt-2 inline-block cursor-pointer font-medium text-primary hover:underline" data-testid="link-campaigns-playbook">
-                Read the Studio Playbook →
-              </span>
-            </Link>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {campaigns.map((c) => {
-            const counts = c.ideaCounts ?? { total: 0, done: 0 };
-            const pct = counts.total ? Math.round((counts.done / counts.total) * 100) : 0;
-            return (
-              <Link key={c.id} href={studioPath(`/campaigns/${c.id}`)}>
-                <Card className="cursor-pointer transition-shadow hover:shadow-md" data-testid={`card-campaign-${c.id}`}>
-                  <CardHeader className="pb-2">
-                    <div className="flex items-start justify-between gap-2">
-                      <CardTitle className="text-base">{c.name}</CardTitle>
-                      <Badge className={STATUS_BADGE[c.status] ?? ""}>{c.status}</Badge>
-                    </div>
-                  </CardHeader>
-                  <CardContent>
-                    {c.goal && <p className="mb-2 line-clamp-2 text-sm text-muted-foreground">{c.goal}</p>}
-                    <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                      <span>{counts.done}/{counts.total} done</span>
-                      <span>{pct}%</span>
-                    </div>
-                    <div className="h-1.5 w-full rounded-full bg-muted">
-                      <div className="h-1.5 rounded-full bg-primary" style={{ width: `${pct}%` }} />
-                    </div>
-                    {(c.startDate || c.endDate) && (
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        {c.startDate ?? "?"} → {c.endDate ?? "open"}
-                      </p>
-                    )}
-                  </CardContent>
-                </Card>
-              </Link>
-            );
-          })}
-        </div>
-      )}
-
-      {createOpen && selectedProjectId && (
-        <CampaignFormDialog open={createOpen} onOpenChange={setCreateOpen} projectId={selectedProjectId} />
-      )}
-    </div>
     </StudioShell>
   );
 }

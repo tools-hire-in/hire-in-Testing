@@ -90,6 +90,7 @@ import {
   isAiConfigured,
   AiGenerationError,
   generateCampaignPlan,
+  generateCampaignDayPlan,
   generateRepurposeIdeas,
   generateOutreachSequence,
   generateBdTemplate,
@@ -28617,12 +28618,20 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       try {
         const campaign = await storage.getStudioCampaign(req.params.id);
         if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-        const ideas = await storage.getStudioContentIdeas({ campaignId: campaign.id });
-        const counts = await storage.getStudioCampaignIdeaCounts([campaign.id]);
+        const [ideas, counts, { items: articles }] = await Promise.all([
+          storage.getStudioContentIdeas({ campaignId: campaign.id }),
+          storage.getStudioCampaignIdeaCounts([campaign.id]),
+          storage.getStudioArticles({ campaignId: campaign.id, pageSize: 100 }),
+        ]);
+        const ideaCount = counts.get(campaign.id) ?? { total: 0, done: 0 };
+        const articleDone = articles.filter(
+          (a) => a.status === "published" || a.status === "approved" || (a.status as string) === "final_approved",
+        ).length;
         res.json({
           ...campaign,
           ideas,
-          ideaCounts: counts.get(campaign.id) ?? { total: 0, done: 0 },
+          articles,
+          ideaCounts: { total: ideaCount.total + articles.length, done: ideaCount.done + articleDone },
         });
       } catch (error) {
         console.error("Get campaign error:", error);
@@ -28986,8 +28995,28 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         }
         const campaign = await storage.getStudioCampaign(req.params.id);
         if (!campaign) return res.status(404).json({ error: "Campaign not found" });
-        const template = await storage.getActiveStudioPromptTemplate("campaign_planner", campaign.projectId);
-        if (!template) return res.status(500).json({ error: "campaign_planner prompt template missing" });
+        let template = await storage.getActiveStudioPromptTemplate("campaign_planner", campaign.projectId);
+        if (!template) {
+          // Use a built-in fallback so the endpoint never 500 on a missing DB template row.
+          template = {
+            id: "_builtin_campaign_planner",
+            contentType: "campaign_planner",
+            version: 1,
+            systemPrompt:
+              "You are a senior content strategist for a staffing agency. From a campaign brief, propose a mixed-format content plan (articles, social posts) spread across the campaign duration. Every item must serve the campaign goal, funnel stage, and ICP. Vary formats and angles; avoid repetitive topics. suggested_week is 1-based from campaign start. These are PROPOSALS for a human planner to accept or discard.",
+            userPromptTemplate:
+              "Brand: {{brand_name}} ({{brand_tagline}}). Voice: {{brand_voice}}. Compliance mode: {{compliance_mode}}.\n\nCampaign: {{campaign_name}}\nBrief: {{campaign_brief}}\nGoal: {{campaign_goal}}\nFunnel stage: {{funnel_stage}}\nIdeal customer profile: {{icp}}\nPrimary CTA: {{primary_cta}}\nAllowed channels: {{allowed_channels}}\nDuration in weeks: {{duration_weeks}}\nNumber of items to propose: {{item_count}}\nContent pillars available: {{pillars}}\n\nPropose the campaign content plan now.",
+            modelName: "gpt-5.4",
+            modelTier: "standard",
+            maxTokens: 5000,
+            outputSchemaRef: "campaign_plan",
+            isActive: true,
+            projectId: null,
+            organizationId: null,
+            createdAt: new Date(),
+            updatedAt: new Date(),
+          } as any;
+        }
 
         const itemCount = Math.min(Math.max(Number(req.body?.itemCount) || 8, 3), 15);
         const channels = Array.isArray(campaign.channels) && (campaign.channels as string[]).length
@@ -29092,33 +29121,136 @@ Return JSON with keys: linkedin, instagram, facebook.`;
             brief: typeof s.brief === "string" ? s.brief.slice(0, 5000) : "",
           });
         }
-        const createdIdeas = [];
+        const createdIdeas: any[] = [];
+        const createdArticles: any[] = [];
+        // Track creation order so we can match back to day-plan positions.
+        const createdInOrder: { type: "article" | "social_post"; id: string }[] = [];
         for (const v of validated) {
-          const idea = await storage.createStudioContentIdea({
-            projectId: campaign.projectId,
-            campaignId: campaign.id,
-            topic: v.topic,
-            brief: v.brief || null,
-            contentType: v.contentType,
-            channels: v.channels as any,
-            pillar: v.pillar,
-            origin: "ai",
-            status: "suggested",
-            dueDate: v.suggestedDate,
-            createdByUserId: req.session.userId,
-          } as any);
-          createdIdeas.push(idea);
+          if (v.contentType === "article") {
+            // Long-form content → studio_articles as draft
+            const article = await storage.createStudioArticle({
+              projectId: campaign.projectId,
+              campaignId: campaign.id,
+              title: v.topic,
+              generationBrief: v.brief || null,
+              status: "draft",
+              scheduledAt: v.suggestedDate ? new Date(v.suggestedDate) : null,
+              createdBy: req.session.userId,
+            } as any);
+            createdArticles.push(article);
+            createdInOrder.push({ type: "article", id: String(article.id) });
+          } else {
+            // Social posts / stories → content ideas with status "idea" and scheduledDate
+            const idea = await storage.createStudioContentIdea({
+              projectId: campaign.projectId,
+              campaignId: campaign.id,
+              topic: v.topic,
+              brief: v.brief || null,
+              contentType: v.contentType,
+              channels: v.channels as any,
+              pillar: v.pillar,
+              origin: "ai",
+              status: "idea",
+              scheduledDate: v.suggestedDate || null,
+              dueDate: v.suggestedDate,
+              createdByUserId: req.session.userId,
+            } as any);
+            createdIdeas.push(idea);
+            createdInOrder.push({ type: "social_post", id: String(idea.id) });
+          }
         }
+        // Save the confirmed day plan snapshot to the campaign row, enriched with
+        // the IDs of the created records so deep-links in DayPlanGrid work.
+        const dayPlanSnapshot = req.body?.dayPlan;
+        if (dayPlanSnapshot && Array.isArray(dayPlanSnapshot)) {
+          let recIdx = 0;
+          const enrichedPlan = dayPlanSnapshot.map((day: any) => ({
+            ...day,
+            items: (day.items ?? []).map((item: any) => {
+              const rec = createdInOrder[recIdx++];
+              if (!rec) return item;
+              return {
+                ...item,
+                ...(rec.type === "article" ? { articleId: rec.id } : { ideaId: rec.id }),
+              };
+            }),
+          }));
+          await storage.updateStudioCampaign(campaign.id, {
+            dailyPlanJsonb: enrichedPlan,
+            status: campaign.status === "draft" ? "active" : campaign.status,
+          } as any);
+        }
+        const totalCreated = createdIdeas.length + createdArticles.length;
         notifyCampaignContributors(
           campaign as any,
           req.session.userId!,
           "campaign_plan_proposed",
-          `A content plan with ${createdIdeas.length} idea(s) was added to campaign "${campaign.name}". Review and accept or discard each one.`,
+          `A content plan with ${totalCreated} item(s) was added to campaign "${campaign.name}". Review and accept or discard each one.`,
         );
-        res.status(201).json({ created: createdIdeas.length, ideas: createdIdeas });
+        res.status(201).json({ created: totalCreated, ideas: createdIdeas, articles: createdArticles });
       } catch (error: any) {
         console.error("Campaign plan confirm error:", error);
         res.status(500).json({ error: error?.message || "Failed to confirm campaign plan" });
+      }
+    },
+  );
+
+  // ── AI Day Planner (Task #1495): Generate day-by-day content plan ──────────
+  app.post(
+    "/api/studio/campaigns/:id/generate-day-plan",
+    requireAuth,
+    requirePermission("studio.create_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        if (!isAiConfigured()) {
+          return res.status(503).json({ error: "AI is not configured on this environment." });
+        }
+        const campaign = await storage.getStudioCampaign(req.params.id);
+        if (!campaign) return res.status(404).json({ error: "Campaign not found" });
+        const durationDays = Number(req.body?.durationDays ?? (campaign as any).durationDays ?? 14);
+        if (durationDays < 1 || durationDays > 90) {
+          return res.status(400).json({ error: "durationDays must be between 1 and 90" });
+        }
+        // Persist durationDays onto campaign if it changed.
+        if ((campaign as any).durationDays !== durationDays) {
+          await storage.updateStudioCampaign(campaign.id, { durationDays } as any);
+        }
+        const startDate = (campaign.startDate as string) || new Date().toISOString().slice(0, 10);
+        const voice = await resolveBrandVoiceParams(campaign.projectId);
+        const result = await generateCampaignDayPlan({
+          campaignName: campaign.name,
+          campaignGoal: campaign.goal || "",
+          campaignBrief: campaign.brief || "",
+          icp: campaign.icp || "",
+          funnelStage: campaign.funnelStage || "awareness",
+          primaryCta: campaign.primaryCta || "",
+          durationDays,
+          startDate,
+          brandVoice: voice,
+        });
+        // Convert day_number to a concrete date and validate each item.
+        const startMs = new Date(startDate).getTime();
+        const plan = result.days
+          .sort((a, b) => a.day_number - b.day_number)
+          .filter((d) => d.day_number >= 1 && d.day_number <= durationDays)
+          .map((d) => {
+            const date = new Date(startMs + (d.day_number - 1) * 86400000).toISOString().slice(0, 10);
+            const items = (d.items || []).slice(0, 2).map((it) => ({
+              type: it.type === "article" ? "article" : "social_post",
+              platform: String(it.platform || "").toLowerCase(),
+              format: String(it.format || "post"),
+              topic: String(it.topic || ""),
+              keyMessage: String(it.keyMessage || ""),
+            }));
+            return { dayNumber: d.day_number, date, items };
+          });
+        res.json({ summary: result.summary, plan, model: result.model });
+      } catch (error: any) {
+        if (error instanceof AiGenerationError) {
+          return res.status(502).json({ error: error.message, code: error.code, retryable: error.retryable });
+        }
+        console.error("Campaign day-plan error:", error);
+        res.status(500).json({ error: error?.message || "Failed to generate day plan" });
       }
     },
   );
