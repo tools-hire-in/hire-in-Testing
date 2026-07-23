@@ -1,9 +1,11 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Search, Eye, CheckCircle, Clock } from "lucide-react";
+import { Search, Eye, CheckCircle, Clock, Inbox } from "lucide-react";
 import { format } from "date-fns";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -31,6 +33,7 @@ import type { Contact } from "@shared/schema";
 export default function AdminContacts() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -69,12 +72,20 @@ export default function AdminContacts() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold">Contact Inquiries</h1>
-          <p className="text-muted-foreground">Review and respond to contact form submissions</p>
-        </div>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Inbox}
+            eyebrow="Recruitment"
+            title="Contact Inquiries"
+            subtitle="Review and respond to contact form submissions"
+          />
+        ) : (
+          <div>
+            <h1 className="text-3xl font-bold">Contact Inquiries</h1>
+            <p className="text-muted-foreground">Review and respond to contact form submissions</p>
+          </div>
+        )}
 
         {/* Search */}
         <div className="relative max-w-md">

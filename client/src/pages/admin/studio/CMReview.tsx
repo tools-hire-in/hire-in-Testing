@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -31,6 +33,7 @@ type QueueItem = StudioArticle & {
 };
 
 export default function CMReview() {
+  const { enabled: newLook } = useNewLook();
   const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } = useStudioProject();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -106,16 +109,26 @@ export default function CMReview() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
+      <div className="space-y-4 v2-surface">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-cm-review-title">
-              Content Manager Review
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Review peer-approved articles, assign authors, and advance to author sign-off.
-            </p>
-          </div>
+          {newLook ? (
+            <V2PageHeader
+              icon={BookOpen}
+              eyebrow="Studio"
+              title="Content Manager Review"
+              subtitle="Review peer-approved articles, assign authors, and advance to author sign-off."
+              testId="text-cm-review-title"
+            />
+          ) : (
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-cm-review-title">
+                Content Manager Review
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Review peer-approved articles, assign authors, and advance to author sign-off.
+              </p>
+            </div>
+          )}
           <ProjectSwitcher
             projects={projects}
             projectsLoading={projectsLoading}

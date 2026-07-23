@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, ShieldCheck, Clock3 } from "lucide-react";
@@ -16,6 +18,7 @@ type QueueItem = StudioArticle & {
 };
 
 export default function FinalApproval() {
+  const { enabled: newLook } = useNewLook();
   const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } = useStudioProject();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -36,16 +39,26 @@ export default function FinalApproval() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
+      <div className="space-y-4 v2-surface">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-final-approval-title">
-              Final Sign-Off
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Super Admin only. Publish, schedule, or send articles back to draft.
-            </p>
-          </div>
+          {newLook ? (
+            <V2PageHeader
+              icon={ShieldCheck}
+              eyebrow="Studio"
+              title="Final Sign-Off"
+              subtitle="Super Admin only. Publish, schedule, or send articles back to draft."
+              testId="text-final-approval-title"
+            />
+          ) : (
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-final-approval-title">
+                Final Sign-Off
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Super Admin only. Publish, schedule, or send articles back to draft.
+              </p>
+            </div>
+          )}
           <ProjectSwitcher
             projects={projects}
             projectsLoading={projectsLoading}

@@ -4,6 +4,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -495,6 +497,7 @@ function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean 
 }
 
 export default function VaultPage() {
+  const { enabled: newLook } = useNewLook();
   const { user } = useAuth();
   const { toast } = useToast();
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
@@ -518,18 +521,27 @@ export default function VaultPage() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
-              <KeyRound className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <h1 className="text-xl font-semibold">Systems Vault</h1>
-              <p className="text-sm text-muted-foreground">Encrypted credential storage for company systems</p>
+      <div className="v2-surface p-6 max-w-6xl mx-auto space-y-6">
+        {newLook ? (
+          <V2PageHeader
+            icon={KeyRound}
+            eyebrow="Vault"
+            title="Systems Vault"
+            subtitle="Encrypted credential storage for company systems"
+          />
+        ) : (
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+                <KeyRound className="h-5 w-5 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold">Systems Vault</h1>
+                <p className="text-sm text-muted-foreground">Encrypted credential storage for company systems</p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <Alert className="border-blue-200 bg-blue-50/60 dark:bg-blue-950/20 dark:border-blue-800" data-testid="alert-vault-credential-rule">
           <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />

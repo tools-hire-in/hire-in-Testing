@@ -6,6 +6,8 @@ import {
   AlertTriangle, ChevronDown, ChevronUp, ExternalLink, Inbox,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -316,6 +318,7 @@ function CompletedRow({ row }: { row: ReviewRow }) {
 }
 
 export default function MySopReviews() {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { enabled, isLoading: accessLoading } = useSopAccess();
@@ -367,16 +370,26 @@ export default function MySopReviews() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-my-reviews-title">
-            <ShieldCheck className="h-6 w-6 text-primary" />
-            My SOP Reviews
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            SOPs assigned to you for review. Complete pending reviews before their deadlines.
-          </p>
-        </div>
+      <div className="v2-surface space-y-6">
+        {newLook ? (
+          <V2PageHeader
+            icon={ShieldCheck}
+            eyebrow="SOPs"
+            title="My SOP Reviews"
+            subtitle="SOPs assigned to you for review. Complete pending reviews before their deadlines."
+            testId="text-my-reviews-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-my-reviews-title">
+              <ShieldCheck className="h-6 w-6 text-primary" />
+              My SOP Reviews
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              SOPs assigned to you for review. Complete pending reviews before their deadlines.
+            </p>
+          </div>
+        )}
 
         {!canReview ? (
           <Card>

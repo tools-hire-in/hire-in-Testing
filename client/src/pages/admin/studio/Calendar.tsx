@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1731,6 +1733,7 @@ function DayWorkspaceSheet({
 
 // ─── Main Calendar Component ──────────────────────────────────────────────────
 export default function Calendar() {
+  const { enabled: newLook } = useNewLook();
   const [, navigate] = useLocation();
   const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } = useStudioProject();
   const { can } = usePermissions();
@@ -1968,34 +1971,44 @@ export default function Calendar() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
+      <div className="space-y-4 v2-surface">
         {/* Header */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-calendar-title">Publishing Calendar</h1>
-            <p className="text-sm text-muted-foreground">Articles + social posts. Click a chip to open its detail page.</p>
+        {newLook ? (
+          <V2PageHeader
+            icon={CalIcon}
+            eyebrow="Studio"
+            title="Publishing Calendar"
+            subtitle="Articles + social posts. Click a chip to open its detail page."
+            testId="text-calendar-title"
+          />
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-calendar-title">Publishing Calendar</h1>
+              <p className="text-sm text-muted-foreground">Articles + social posts. Click a chip to open its detail page.</p>
+            </div>
+            <div className="flex flex-wrap items-center gap-3">
+              {canCreateArticle && <AIPlanDialog projectId={selectedProjectId} monthStart={monthStart} monthEnd={monthEnd} />}
+              <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v as "month" | "week")} variant="outline" size="sm">
+                <ToggleGroupItem value="month" data-testid="toggle-month-view">Month</ToggleGroupItem>
+                <ToggleGroupItem value="week" data-testid="toggle-week-view">Week</ToggleGroupItem>
+              </ToggleGroup>
+              <ToggleGroup type="single" value={scope} onValueChange={(v) => v && setScope(v as "hireins" | "all")} variant="outline" size="sm">
+                <ToggleGroupItem value="hireins" data-testid="toggle-hireins">Hire'in</ToggleGroupItem>
+                <ToggleGroupItem value="all" data-testid="toggle-all-projects">All Projects</ToggleGroupItem>
+              </ToggleGroup>
+              <button
+                onClick={() => setInsightsOnly((v) => !v)}
+                className={`rounded border px-2 py-1 text-xs font-medium transition-colors ${insightsOnly ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-600" : "border-border text-muted-foreground hover:bg-muted"}`}
+                data-testid="toggle-insights-only"
+                title="Show only Insights editorial articles"
+              >
+                ◈ Insights
+              </button>
+              <ProjectSwitcher projects={projects} projectsLoading={projectsLoading} selectedProjectId={selectedProjectId} onChange={setSelectedProjectId} />
+            </div>
           </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {canCreateArticle && <AIPlanDialog projectId={selectedProjectId} monthStart={monthStart} monthEnd={monthEnd} />}
-            <ToggleGroup type="single" value={viewMode} onValueChange={(v) => v && setViewMode(v as "month" | "week")} variant="outline" size="sm">
-              <ToggleGroupItem value="month" data-testid="toggle-month-view">Month</ToggleGroupItem>
-              <ToggleGroupItem value="week" data-testid="toggle-week-view">Week</ToggleGroupItem>
-            </ToggleGroup>
-            <ToggleGroup type="single" value={scope} onValueChange={(v) => v && setScope(v as "hireins" | "all")} variant="outline" size="sm">
-              <ToggleGroupItem value="hireins" data-testid="toggle-hireins">Hire'in</ToggleGroupItem>
-              <ToggleGroupItem value="all" data-testid="toggle-all-projects">All Projects</ToggleGroupItem>
-            </ToggleGroup>
-            <button
-              onClick={() => setInsightsOnly((v) => !v)}
-              className={`rounded border px-2 py-1 text-xs font-medium transition-colors ${insightsOnly ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-600" : "border-border text-muted-foreground hover:bg-muted"}`}
-              data-testid="toggle-insights-only"
-              title="Show only Insights editorial articles"
-            >
-              ◈ Insights
-            </button>
-            <ProjectSwitcher projects={projects} projectsLoading={projectsLoading} selectedProjectId={selectedProjectId} onChange={setSelectedProjectId} />
-          </div>
-        </div>
+        )}
 
         {/* Filter pills */}
         <div className="flex flex-wrap items-center gap-4" data-testid="filter-bar">

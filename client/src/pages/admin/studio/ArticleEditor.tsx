@@ -12,6 +12,8 @@ import { StudioTip } from "@/components/studio/StudioTip";
 import { FieldHelp } from "@/components/studio/FieldHelp";
 import { studioPath } from "@/lib/studioBase";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { ObjectUploader } from "@/components/ObjectUploader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -247,6 +249,7 @@ interface EditorState {
 }
 
 function ArticleEditorInner({ id }: { id: string }) {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user: authUser } = useAuth();
@@ -3168,7 +3171,9 @@ export default function ArticleEditor() {
   const id = params.id as string;
   return (
     <AdminLayout>
-      <ArticleEditorInner id={id} key={id} />
+      <div className="h-full flex flex-col v2-surface">
+        <ArticleEditorInner id={id} key={id} />
+      </div>
     </AdminLayout>
   );
 }

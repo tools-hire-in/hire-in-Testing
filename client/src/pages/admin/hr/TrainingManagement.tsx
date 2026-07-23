@@ -7,6 +7,8 @@ import {
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -477,19 +479,32 @@ export default function TrainingManagement() {
     ? "Click a radio button to mark the correct answer"
     : null;
 
+  const { enabled: newLook } = useNewLook();
+
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="p-6 space-y-6 v2-surface">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <GraduationCap className="h-6 w-6 text-blue-600" />
-              Training Management
-              {isRayoEnabled && (
-                <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">Rayo Academy</span>
-              )}
-            </h1>
-            <p className="text-muted-foreground mt-1">Author tracks, manage content, and assign training to employees</p>
+            {newLook ? (
+              <V2PageHeader
+                icon={GraduationCap}
+                eyebrow="People & HR"
+                title="Training Management"
+                subtitle="Author tracks, manage content, and assign training to employees"
+              />
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold flex items-center gap-2">
+                  <GraduationCap className="h-6 w-6 text-blue-600" />
+                  Training Management
+                  {isRayoEnabled && (
+                    <span className="text-xs px-2 py-0.5 rounded-full font-medium bg-indigo-100 text-indigo-700">Rayo Academy</span>
+                  )}
+                </h1>
+                <p className="text-muted-foreground mt-1">Author tracks, manage content, and assign training to employees</p>
+              </>
+            )}
           </div>
           <div className="flex flex-wrap gap-2 justify-end">
             {isEndorser && (

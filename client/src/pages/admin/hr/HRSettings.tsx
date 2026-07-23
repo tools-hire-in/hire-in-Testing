@@ -4,6 +4,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { relocatedSettingsTabTarget } from "@/lib/settings-redirect";
 import { Settings, Plus, Pencil, Trash2, CalendarDays, Building2, Upload, Download, Info, Users, CheckSquare, FileText, ChevronDown, ChevronUp, Shield, Lock, Clock, X, ShieldCheck, Palette, Copy, Check, Eye } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -3574,6 +3576,7 @@ export const SETTINGS_GROUPS: Record<
 };
 
 export default function HRSettings({ group }: { group?: string }) {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { isEnabled } = useFeatureFlags();
@@ -3921,390 +3924,400 @@ export default function HRSettings({ group }: { group?: string }) {
   return (
     <AdminLayout>
       {/* Dialogs — always in DOM, controlled by open prop */}
-        <Dialog open={showLeaveType} onOpenChange={setShowLeaveType}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingLeaveType ? "Edit" : "Add"} Leave Type</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  value={ltForm.name}
-                  onChange={(e) => setLtForm(prev => ({ ...prev, name: e.target.value }))}
-                  data-testid="input-lt-name"
-                />
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Annual Days (Max)</Label>
-                  <Input
-                    type="number"
-                    value={ltForm.defaultDays}
-                    onChange={(e) => setLtForm(prev => ({ ...prev, defaultDays: e.target.value }))}
-                    data-testid="input-lt-days"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Monthly Accrual</Label>
-                  <Input
-                    type="number"
-                    step="0.01"
-                    value={ltForm.monthlyAccrual}
-                    onChange={(e) => setLtForm(prev => ({ ...prev, monthlyAccrual: e.target.value }))}
-                    data-testid="input-lt-monthly-accrual"
-                  />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Min Hours/Month</Label>
-                  <Input
-                    type="number"
-                    value={ltForm.minHoursForAccrual}
-                    onChange={(e) => setLtForm(prev => ({ ...prev, minHoursForAccrual: e.target.value }))}
-                    disabled={!ltForm.isConditional}
-                    data-testid="input-lt-min-hours"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Carry-Forward Cap (days)</Label>
-                  <Input
-                    type="number"
-                    value={ltForm.carryForwardCap}
-                    onChange={(e) => setLtForm(prev => ({ ...prev, carryForwardCap: e.target.value }))}
-                    placeholder="0 = no carry-forward"
-                    data-testid="input-lt-carry-forward-cap"
-                  />
-                </div>
-              </div>
-              <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={ltForm.description}
-                  onChange={(e) => setLtForm(prev => ({ ...prev, description: e.target.value }))}
-                  data-testid="input-lt-description"
-                />
-              </div>
-              <div className="flex items-center gap-6 flex-wrap">
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={ltForm.isActive}
-                    onCheckedChange={(v) => setLtForm(prev => ({ ...prev, isActive: v }))}
-                    data-testid="switch-lt-active"
-                  />
-                  <Label>Active</Label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={ltForm.isConditional}
-                    onCheckedChange={(v) => setLtForm(prev => ({ ...prev, isConditional: v }))}
-                    disabled={ltForm.blockEntitlement}
-                    data-testid="switch-lt-conditional"
-                  />
-                  <div>
-                    <Label>Conditional Accrual (EL)</Label>
-                    <p className="text-xs text-muted-foreground">If enabled, requires min hours/month to qualify. Disable for unconditional leave (SL).</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    checked={ltForm.blockEntitlement}
-                    onCheckedChange={(v) => setLtForm(prev => ({
-                      ...prev,
-                      blockEntitlement: v,
-                      ...(v ? { monthlyAccrual: "0", isConditional: false, carryForwardCap: "0" } : {}),
-                    }))}
-                    data-testid="switch-lt-block-entitlement"
-                  />
-                  <div>
-                    <Label>Block Entitlement (Maternity/Paternity)</Label>
-                    <p className="text-xs text-muted-foreground">Non-accruing. Granted on application up to "Annual Days (Max)" — no monthly accrual or carry-forward.</p>
-                  </div>
-                </div>
-              </div>
-              {!ltForm.isConditional && (
-                <div className="p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
-                  <p className="text-xs text-amber-700 dark:text-amber-400">
-                    <strong>Legal Note:</strong> Delhi S&amp;E Act mandates minimum 12 combined casual/sick days per year. Client policy sets 8 SL days following UP/Haryana rules. Confirm with legal before deployment.
-                  </p>
-                </div>
-              )}
+      <Dialog open={showLeaveType} onOpenChange={setShowLeaveType}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingLeaveType ? "Edit" : "Add"} Leave Type</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={ltForm.name}
+                onChange={(e) => setLtForm(prev => ({ ...prev, name: e.target.value }))}
+                data-testid="input-lt-name"
+              />
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowLeaveType(false)}>Cancel</Button>
-              <Button
-                onClick={() => leaveTypeMutation.mutate({
-                  id: editingLeaveType?.id,
-                  body: {
-                    ...ltForm,
-                    defaultDays: parseInt(ltForm.defaultDays),
-                    monthlyAccrual: ltForm.blockEntitlement ? "0" : ltForm.monthlyAccrual,
-                    minHoursForAccrual: ltForm.minHoursForAccrual,
-                    carryForwardCap: ltForm.blockEntitlement ? 0 : (parseInt(ltForm.carryForwardCap) || 0),
-                    isConditional: ltForm.blockEntitlement ? false : ltForm.isConditional,
-                    blockEntitlement: ltForm.blockEntitlement,
-                  },
-                })}
-                disabled={!ltForm.name || leaveTypeMutation.isPending}
-                data-testid="button-save-leave-type"
-              >
-                {leaveTypeMutation.isPending ? "Saving..." : "Save"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={!!deleteLtTarget} onOpenChange={(open) => { if (!open) { setDeleteLtTarget(null); setDeleteLtUsage(null); } }}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Delete "{deleteLtTarget?.name}"</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300">
-                This leave type is in use. Deleting affects{" "}
-                <strong>{deleteLtUsage?.employees ?? 0}</strong> employee(s),{" "}
-                <strong>{deleteLtUsage?.balances ?? 0}</strong> balance record(s) (
-                <strong>{deleteLtUsage?.remainingDays ?? 0}</strong> remaining day(s)),{" "}
-                <strong>{deleteLtUsage?.requests ?? 0}</strong> request(s) and{" "}
-                <strong>{deleteLtUsage?.accruals ?? 0}</strong> accrual record(s).
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Annual Days (Max)</Label>
+                <Input
+                  type="number"
+                  value={ltForm.defaultDays}
+                  onChange={(e) => setLtForm(prev => ({ ...prev, defaultDays: e.target.value }))}
+                  data-testid="input-lt-days"
+                />
               </div>
-              <div className="space-y-3">
-                <label className="flex items-start gap-2 cursor-pointer" data-testid="radio-delete-transfer">
-                  <input
-                    type="radio"
-                    className="mt-1"
-                    checked={deleteLtMode === "transfer"}
-                    onChange={() => setDeleteLtMode("transfer")}
-                  />
-                  <div>
-                    <div className="font-medium text-sm">Transfer balances to another leave type</div>
-                    <p className="text-xs text-muted-foreground">Remaining balances are merged into the chosen type; history is reassigned to it.</p>
-                  </div>
-                </label>
-                {deleteLtMode === "transfer" && (
-                  <div className="pl-6">
-                    <Select value={transferTargetId} onValueChange={setTransferTargetId}>
-                      <SelectTrigger data-testid="select-transfer-target">
-                        <SelectValue placeholder="Select target leave type" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(leaveTypes || [])
-                          .filter(t => t.id !== deleteLtTarget?.id && t.isActive)
-                          .map(t => (
-                            <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
-                          ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                )}
-                <label className="flex items-start gap-2 cursor-pointer" data-testid="radio-delete-expire">
-                  <input
-                    type="radio"
-                    className="mt-1"
-                    checked={deleteLtMode === "expire"}
-                    onChange={() => setDeleteLtMode("expire")}
-                  />
-                  <div>
-                    <div className="font-medium text-sm">Expire balances</div>
-                    <p className="text-xs text-muted-foreground">Remaining balances and history for this type are discarded.</p>
-                  </div>
-                </label>
+              <div className="space-y-2">
+                <Label>Monthly Accrual</Label>
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={ltForm.monthlyAccrual}
+                  onChange={(e) => setLtForm(prev => ({ ...prev, monthlyAccrual: e.target.value }))}
+                  data-testid="input-lt-monthly-accrual"
+                />
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => { setDeleteLtTarget(null); setDeleteLtUsage(null); }}>Cancel</Button>
-              <Button
-                variant="destructive"
-                disabled={deleteLeaveTypeMutation.isPending || (deleteLtMode === "transfer" && !transferTargetId)}
-                onClick={() => deleteLtTarget && deleteLeaveTypeMutation.mutate({
-                  id: deleteLtTarget.id,
-                  mode: deleteLtMode,
-                  targetLeaveTypeId: deleteLtMode === "transfer" ? transferTargetId : undefined,
-                })}
-                data-testid="button-confirm-delete-leave-type"
-              >
-                {deleteLeaveTypeMutation.isPending ? "Deleting..." : "Delete leave type"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={showDepartment} onOpenChange={setShowDepartment}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingDepartment ? "Edit" : "Add"} Department</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
-                <Label>Department Name</Label>
+                <Label>Min Hours/Month</Label>
                 <Input
-                  value={dForm.name}
-                  onChange={(e) => setDForm(prev => ({ ...prev, name: e.target.value }))}
-                  placeholder="e.g. Engineering, Healthcare, HR"
-                  data-testid="input-dept-name"
+                  type="number"
+                  value={ltForm.minHoursForAccrual}
+                  onChange={(e) => setLtForm(prev => ({ ...prev, minHoursForAccrual: e.target.value }))}
+                  disabled={!ltForm.isConditional}
+                  data-testid="input-lt-min-hours"
                 />
               </div>
               <div className="space-y-2">
-                <Label>Description</Label>
-                <Textarea
-                  value={dForm.description}
-                  onChange={(e) => setDForm(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Brief description of the department"
-                  data-testid="input-dept-description"
+                <Label>Carry-Forward Cap (days)</Label>
+                <Input
+                  type="number"
+                  value={ltForm.carryForwardCap}
+                  onChange={(e) => setLtForm(prev => ({ ...prev, carryForwardCap: e.target.value }))}
+                  placeholder="0 = no carry-forward"
+                  data-testid="input-lt-carry-forward-cap"
                 />
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={ltForm.description}
+                onChange={(e) => setLtForm(prev => ({ ...prev, description: e.target.value }))}
+                data-testid="input-lt-description"
+              />
+            </div>
+            <div className="flex items-center gap-6 flex-wrap">
               <div className="flex items-center gap-2">
                 <Switch
-                  checked={dForm.isActive}
-                  onCheckedChange={(v) => setDForm(prev => ({ ...prev, isActive: v }))}
-                  data-testid="switch-dept-active"
+                  checked={ltForm.isActive}
+                  onCheckedChange={(v) => setLtForm(prev => ({ ...prev, isActive: v }))}
+                  data-testid="switch-lt-active"
                 />
                 <Label>Active</Label>
               </div>
-            </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowDepartment(false)}>Cancel</Button>
-              <Button
-                onClick={() => deptMutation.mutate({
-                  id: editingDepartment?.id,
-                  body: dForm,
-                })}
-                disabled={!dForm.name || deptMutation.isPending}
-                data-testid="button-save-department"
-              >
-                {deptMutation.isPending ? "Saving..." : "Save"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={showHoliday} onOpenChange={setShowHoliday}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>{editingHoliday ? "Edit" : "Add"} Holiday</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>Name</Label>
-                <Input
-                  value={hForm.name}
-                  onChange={(e) => setHForm(prev => ({ ...prev, name: e.target.value }))}
-                  data-testid="input-holiday-name"
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={ltForm.isConditional}
+                  onCheckedChange={(v) => setLtForm(prev => ({ ...prev, isConditional: v }))}
+                  disabled={ltForm.blockEntitlement}
+                  data-testid="switch-lt-conditional"
                 />
-              </div>
-              <div className="space-y-2">
-                <Label>Date</Label>
-                <Input
-                  type="date"
-                  value={hForm.date}
-                  onChange={(e) => setHForm(prev => ({ ...prev, date: e.target.value }))}
-                  data-testid="input-holiday-date"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Type</Label>
-                <Select value={hForm.type} onValueChange={(v) => setHForm(prev => ({ ...prev, type: v }))}>
-                  <SelectTrigger data-testid="select-holiday-type">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="public">Public</SelectItem>
-                    <SelectItem value="national">National</SelectItem>
-                    <SelectItem value="religious">Religious</SelectItem>
-                    <SelectItem value="company">Company</SelectItem>
-                  </SelectContent>
-                </Select>
+                <div>
+                  <Label>Conditional Accrual (EL)</Label>
+                  <p className="text-xs text-muted-foreground">If enabled, requires min hours/month to qualify. Disable for unconditional leave (SL).</p>
+                </div>
               </div>
               <div className="flex items-center gap-2">
                 <Switch
-                  checked={hForm.isOptional}
-                  onCheckedChange={(v) => setHForm(prev => ({ ...prev, isOptional: v }))}
-                  data-testid="switch-holiday-optional"
+                  checked={ltForm.blockEntitlement}
+                  onCheckedChange={(v) => setLtForm(prev => ({
+                    ...prev,
+                    blockEntitlement: v,
+                    ...(v ? { monthlyAccrual: "0", isConditional: false, carryForwardCap: "0" } : {}),
+                  }))}
+                  data-testid="switch-lt-block-entitlement"
                 />
-                <Label>Optional Holiday</Label>
+                <div>
+                  <Label>Block Entitlement (Maternity/Paternity)</Label>
+                  <p className="text-xs text-muted-foreground">Non-accruing. Granted on application up to "Annual Days (Max)" — no monthly accrual or carry-forward.</p>
+                </div>
               </div>
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowHoliday(false)}>Cancel</Button>
-              <Button
-                onClick={() => holidayMutation.mutate({
-                  id: editingHoliday?.id,
-                  body: hForm,
-                })}
-                disabled={!hForm.name || !hForm.date || holidayMutation.isPending}
-                data-testid="button-save-holiday"
-              >
-                {holidayMutation.isPending ? "Saving..." : "Save"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
-
-        <Dialog open={showUploadHoliday} onOpenChange={setShowUploadHoliday}>
-          <DialogContent className="sm:max-w-lg">
-            <DialogHeader>
-              <DialogTitle>Upload Holiday Calendar</DialogTitle>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label>CSV File</Label>
-                <Input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".csv"
-                  onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
-                  data-testid="input-upload-holiday-file"
-                />
-                <p className="text-xs text-muted-foreground">
-                  CSV must have columns: Date, Holiday Name, Regional Holiday
+            {!ltForm.isConditional && (
+              <div className="p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800">
+                <p className="text-xs text-amber-700 dark:text-amber-400">
+                  <strong>Legal Note:</strong> Delhi S&amp;E Act mandates minimum 12 combined casual/sick days per year. Client policy sets 8 SL days following UP/Haryana rules. Confirm with legal before deployment.
                 </p>
               </div>
-              <div className="space-y-2">
-                <Label>Year</Label>
-                <Input
-                  type="number"
-                  value={uploadYear}
-                  onChange={(e) => setUploadYear(e.target.value)}
-                  data-testid="input-upload-holiday-year"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>Note</Label>
-                <Textarea
-                  value={uploadNote}
-                  onChange={(e) => setUploadNote(e.target.value)}
-                  rows={3}
-                  data-testid="input-upload-holiday-note"
-                />
-              </div>
-              <Button variant="outline" size="sm" onClick={downloadTemplate} data-testid="button-download-template">
-                <Download className="h-4 w-4 mr-1" />
-                Download Template
-              </Button>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowLeaveType(false)}>Cancel</Button>
+            <Button
+              onClick={() => leaveTypeMutation.mutate({
+                id: editingLeaveType?.id,
+                body: {
+                  ...ltForm,
+                  defaultDays: parseInt(ltForm.defaultDays),
+                  monthlyAccrual: ltForm.blockEntitlement ? "0" : ltForm.monthlyAccrual,
+                  minHoursForAccrual: ltForm.minHoursForAccrual,
+                  carryForwardCap: ltForm.blockEntitlement ? 0 : (parseInt(ltForm.carryForwardCap) || 0),
+                  isConditional: ltForm.blockEntitlement ? false : ltForm.isConditional,
+                  blockEntitlement: ltForm.blockEntitlement,
+                },
+              })}
+              disabled={!ltForm.name || leaveTypeMutation.isPending}
+              data-testid="button-save-leave-type"
+            >
+              {leaveTypeMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!deleteLtTarget} onOpenChange={(open) => { if (!open) { setDeleteLtTarget(null); setDeleteLtUsage(null); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete "{deleteLtTarget?.name}"</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="p-3 rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-sm text-amber-800 dark:text-amber-300">
+              This leave type is in use. Deleting affects{" "}
+              <strong>{deleteLtUsage?.employees ?? 0}</strong> employee(s),{" "}
+              <strong>{deleteLtUsage?.balances ?? 0}</strong> balance record(s) (
+              <strong>{deleteLtUsage?.remainingDays ?? 0}</strong> remaining day(s)),{" "}
+              <strong>{deleteLtUsage?.requests ?? 0}</strong> request(s) and{" "}
+              <strong>{deleteLtUsage?.accruals ?? 0}</strong> accrual record(s).
             </div>
-            <DialogFooter>
-              <Button variant="outline" onClick={() => setShowUploadHoliday(false)}>Cancel</Button>
-              <Button
-                onClick={() => uploadHolidayMutation.mutate()}
-                disabled={!uploadFile || uploadHolidayMutation.isPending}
-                data-testid="button-submit-upload-holidays"
-              >
-                {uploadHolidayMutation.isPending ? "Uploading..." : "Upload"}
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
+            <div className="space-y-3">
+              <label className="flex items-start gap-2 cursor-pointer" data-testid="radio-delete-transfer">
+                <input
+                  type="radio"
+                  className="mt-1"
+                  checked={deleteLtMode === "transfer"}
+                  onChange={() => setDeleteLtMode("transfer")}
+                />
+                <div>
+                  <div className="font-medium text-sm">Transfer balances to another leave type</div>
+                  <p className="text-xs text-muted-foreground">Remaining balances are merged into the chosen type; history is reassigned to it.</p>
+                </div>
+              </label>
+              {deleteLtMode === "transfer" && (
+                <div className="pl-6">
+                  <Select value={transferTargetId} onValueChange={setTransferTargetId}>
+                    <SelectTrigger data-testid="select-transfer-target">
+                      <SelectValue placeholder="Select target leave type" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(leaveTypes || [])
+                        .filter(t => t.id !== deleteLtTarget?.id && t.isActive)
+                        .map(t => (
+                          <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              <label className="flex items-start gap-2 cursor-pointer" data-testid="radio-delete-expire">
+                <input
+                  type="radio"
+                  className="mt-1"
+                  checked={deleteLtMode === "expire"}
+                  onChange={() => setDeleteLtMode("expire")}
+                />
+                <div>
+                  <div className="font-medium text-sm">Expire balances</div>
+                  <p className="text-xs text-muted-foreground">Remaining balances and history for this type are discarded.</p>
+                </div>
+              </label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setDeleteLtTarget(null); setDeleteLtUsage(null); }}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={deleteLeaveTypeMutation.isPending || (deleteLtMode === "transfer" && !transferTargetId)}
+              onClick={() => deleteLtTarget && deleteLeaveTypeMutation.mutate({
+                id: deleteLtTarget.id,
+                mode: deleteLtMode,
+                targetLeaveTypeId: deleteLtMode === "transfer" ? transferTargetId : undefined,
+              })}
+              data-testid="button-confirm-delete-leave-type"
+            >
+              {deleteLeaveTypeMutation.isPending ? "Deleting..." : "Delete leave type"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showDepartment} onOpenChange={setShowDepartment}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingDepartment ? "Edit" : "Add"} Department</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Department Name</Label>
+              <Input
+                value={dForm.name}
+                onChange={(e) => setDForm(prev => ({ ...prev, name: e.target.value }))}
+                placeholder="e.g. Engineering, Healthcare, HR"
+                data-testid="input-dept-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Description</Label>
+              <Textarea
+                value={dForm.description}
+                onChange={(e) => setDForm(prev => ({ ...prev, description: e.target.value }))}
+                placeholder="Brief description of the department"
+                data-testid="input-dept-description"
+              />
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={dForm.isActive}
+                onCheckedChange={(v) => setDForm(prev => ({ ...prev, isActive: v }))}
+                data-testid="switch-dept-active"
+              />
+              <Label>Active</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowDepartment(false)}>Cancel</Button>
+            <Button
+              onClick={() => deptMutation.mutate({
+                id: editingDepartment?.id,
+                body: dForm,
+              })}
+              disabled={!dForm.name || deptMutation.isPending}
+              data-testid="button-save-department"
+            >
+              {deptMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showHoliday} onOpenChange={setShowHoliday}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editingHoliday ? "Edit" : "Add"} Holiday</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>Name</Label>
+              <Input
+                value={hForm.name}
+                onChange={(e) => setHForm(prev => ({ ...prev, name: e.target.value }))}
+                data-testid="input-holiday-name"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Date</Label>
+              <Input
+                type="date"
+                value={hForm.date}
+                onChange={(e) => setHForm(prev => ({ ...prev, date: e.target.value }))}
+                data-testid="input-holiday-date"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Type</Label>
+              <Select value={hForm.type} onValueChange={(v) => setHForm(prev => ({ ...prev, type: v }))}>
+                <SelectTrigger data-testid="select-holiday-type">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="public">Public</SelectItem>
+                  <SelectItem value="national">National</SelectItem>
+                  <SelectItem value="religious">Religious</SelectItem>
+                  <SelectItem value="company">Company</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="flex items-center gap-2">
+              <Switch
+                checked={hForm.isOptional}
+                onCheckedChange={(v) => setHForm(prev => ({ ...prev, isOptional: v }))}
+                data-testid="switch-holiday-optional"
+              />
+              <Label>Optional Holiday</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowHoliday(false)}>Cancel</Button>
+            <Button
+              onClick={() => holidayMutation.mutate({
+                id: editingHoliday?.id,
+                body: hForm,
+              })}
+              disabled={!hForm.name || !hForm.date || holidayMutation.isPending}
+              data-testid="button-save-holiday"
+            >
+              {holidayMutation.isPending ? "Saving..." : "Save"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={showUploadHoliday} onOpenChange={setShowUploadHoliday}>
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Upload Holiday Calendar</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <Label>CSV File</Label>
+              <Input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                onChange={(e) => setUploadFile(e.target.files?.[0] || null)}
+                data-testid="input-upload-holiday-file"
+              />
+              <p className="text-xs text-muted-foreground">
+                CSV must have columns: Date, Holiday Name, Regional Holiday
+              </p>
+            </div>
+            <div className="space-y-2">
+              <Label>Year</Label>
+              <Input
+                type="number"
+                value={uploadYear}
+                onChange={(e) => setUploadYear(e.target.value)}
+                data-testid="input-upload-holiday-year"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label>Note</Label>
+              <Textarea
+                value={uploadNote}
+                onChange={(e) => setUploadNote(e.target.value)}
+                rows={3}
+                data-testid="input-upload-holiday-note"
+              />
+            </div>
+            <Button variant="outline" size="sm" onClick={downloadTemplate} data-testid="button-download-template">
+              <Download className="h-4 w-4 mr-1" />
+              Download Template
+            </Button>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowUploadHoliday(false)}>Cancel</Button>
+            <Button
+              onClick={() => uploadHolidayMutation.mutate()}
+              disabled={!uploadFile || uploadHolidayMutation.isPending}
+              data-testid="button-submit-upload-holidays"
+            >
+              {uploadHolidayMutation.isPending ? "Uploading..." : "Upload"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Settings sub-category page: header + single row of tabs */}
       <div className="space-y-6 v2-surface">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-settings-group-title">
-            <Settings className="h-5 w-5" />
-            {groupDef.label}
-          </h1>
-          <p className="text-muted-foreground text-sm">{groupDef.description}</p>
-        </div>
+        {newLook ? (
+          <V2PageHeader
+            icon={Settings}
+            eyebrow="Settings"
+            title={groupDef.label}
+            subtitle={groupDef.description}
+            testId="text-settings-group-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-settings-group-title">
+              <Settings className="h-5 w-5" />
+              {groupDef.label}
+            </h1>
+            <p className="text-muted-foreground text-sm">{groupDef.description}</p>
+          </div>
+        )}
 
         {visibleItems.length > 1 && (
           <div className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1 max-w-full" data-testid="tabs-settings-sections">

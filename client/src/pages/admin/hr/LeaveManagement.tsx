@@ -442,7 +442,7 @@ export default function LeaveManagement({ view }: { view?: "balance" | "apply" |
 
   return (
     <AdminLayout>
-      <div className="space-y-5 max-w-4xl">
+      <div className="space-y-5 max-w-4xl v2-surface">
         {/* Custom tab bar — year selector kept inline (name/CTC header removed; parent provides page context) */}
         <div>
           <div className={`flex items-center ${embedded ? "justify-end" : "justify-between border-b border-border"}`} data-testid="tabs-leave-management">

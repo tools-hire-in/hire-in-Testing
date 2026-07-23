@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { ClipboardList } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { MyReviewsContent } from "./MyReviews";
@@ -10,6 +12,7 @@ import { TeamReviewsContent } from "./TeamReviews";
 export default function Reviews() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   const showTeamTab = ["super_admin", "admin", "hr", "manager"].includes(user?.role || "");
 
@@ -38,16 +41,26 @@ export default function Reviews() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-reviews-title">
-            <ClipboardList className="h-6 w-6 text-primary" />
-            Reviews
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            View and manage performance reviews
-          </p>
-        </div>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={ClipboardList}
+            eyebrow="Performance"
+            title="Reviews"
+            subtitle="View and manage performance reviews"
+            testId="text-reviews-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-reviews-title">
+              <ClipboardList className="h-6 w-6 text-primary" />
+              Reviews
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              View and manage performance reviews
+            </p>
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-reviews">
           <TabsList>
             <TabsTrigger value="my-reviews" data-testid="tab-my-reviews">My Reviews</TabsTrigger>

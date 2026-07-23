@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -51,6 +53,7 @@ function StatusBadge({ status }: { status: SubscriberRow["status"] }) {
 }
 
 export default function Subscribers() {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const { can } = usePermissions();
   const canManage = can("studio.manage_settings");
@@ -90,25 +93,35 @@ export default function Subscribers() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Mail className="h-6 w-6" />
+          {newLook ? (
+            <V2PageHeader
+              icon={Mail}
+              eyebrow="Studio"
+              title="Subscribers"
+              subtitle="Manage newsletter subscribers."
+              testId="text-subscribers-title"
+            />
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Mail className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight" data-testid="text-subscribers-title">
+                  Subscribers
+                </h1>
+                <button
+                  onClick={() => setLocation("/admin/studio")}
+                  className="text-sm text-muted-foreground hover:text-foreground"
+                  data-testid="link-back-studio"
+                >
+                  ← Back to Content Studio
+                </button>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-subscribers-title">
-                Subscribers
-              </h1>
-              <button
-                onClick={() => setLocation("/admin/studio")}
-                className="text-sm text-muted-foreground hover:text-foreground"
-                data-testid="link-back-studio"
-              >
-                ← Back to Content Studio
-              </button>
-            </div>
-          </div>
+          )}
           <Button onClick={handleExport} variant="outline" data-testid="button-export-csv">
             <Download className="mr-2 h-4 w-4" />
             Export CSV

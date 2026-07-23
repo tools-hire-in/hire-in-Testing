@@ -2,6 +2,8 @@ import { useState, useMemo } from "react";
 import { useLocation, useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -89,6 +91,7 @@ function QuickCreateRow({
 }
 
 export default function StudioDayView() {
+  const { enabled: newLook } = useNewLook();
   const params = useParams<{ date: string }>();
   const date = params.date ?? "";
   const [, navigate] = useLocation();
@@ -208,26 +211,36 @@ export default function StudioDayView() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
+      <div className="space-y-4 v2-surface">
         {/* Header / back nav */}
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <button
-              onClick={() => navigate(backHref)}
-              className="mb-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-              data-testid="button-back-to-calendar"
-            >
-              <ChevronLeft className="h-4 w-4" />
-              Back to Calendar
-            </button>
-            <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="text-day-view-title">
-              <CalIcon className="h-6 w-6 text-muted-foreground" />
-              {displayDate}
-            </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {dayIdeas.length} idea{dayIdeas.length !== 1 ? "s" : ""} for this day
-            </p>
-          </div>
+          {newLook ? (
+            <V2PageHeader
+              icon={CalIcon}
+              eyebrow="Studio"
+              title={displayDate}
+              subtitle={`${dayIdeas.length} idea${dayIdeas.length !== 1 ? "s" : ""} for this day`}
+              testId="text-day-view-title"
+            />
+          ) : (
+            <div>
+              <button
+                onClick={() => navigate(backHref)}
+                className="mb-2 inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
+                data-testid="button-back-to-calendar"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Back to Calendar
+              </button>
+              <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2" data-testid="text-day-view-title">
+                <CalIcon className="h-6 w-6 text-muted-foreground" />
+                {displayDate}
+              </h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {dayIdeas.length} idea{dayIdeas.length !== 1 ? "s" : ""} for this day
+              </p>
+            </div>
+          )}
           <div className="flex items-center gap-3">
             <a
               href={`/studio/table?scheduled_date=${date}`}

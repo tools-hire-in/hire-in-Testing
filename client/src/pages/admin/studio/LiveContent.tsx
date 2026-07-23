@@ -4,6 +4,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,6 +49,7 @@ interface ArticleListResponse {
 const PAGE_SIZE = 50;
 
 export default function LiveContent() {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { role } = usePermissions();
@@ -107,25 +110,35 @@ export default function LiveContent() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Radio className="h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-live-content-title">
-                Live Content
-              </h1>
-              <button
-                onClick={() => setLocation("/admin/studio")}
-                className="text-sm text-muted-foreground hover:text-foreground"
-              >
-                ← Back to Content Studio
-              </button>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Radio}
+            eyebrow="Studio"
+            title="Live Content"
+            subtitle="Everything currently live on the public site."
+            testId="text-live-content-title"
+          />
+        ) : (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <Radio className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight" data-testid="text-live-content-title">
+                  Live Content
+                </h1>
+                <button
+                  onClick={() => setLocation("/admin/studio")}
+                  className="text-sm text-muted-foreground hover:text-foreground"
+                >
+                  ← Back to Content Studio
+                </button>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <p className="text-sm text-muted-foreground">
           Everything currently live on the public site. Take an item down to remove it

@@ -6,6 +6,8 @@ import {
   ChevronDown, ChevronRight, Plug, Users, BarChart2, Eye,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -755,6 +757,7 @@ function RecruiterPerformanceTab() {
 }
 
 export default function Integrations() {
+  const { enabled: newLook } = useNewLook();
   const { data, isLoading } = useQuery<{ integrations: IntegrationInfo[] }>({
     queryKey: ["/api/integrations/status"],
   });
@@ -766,12 +769,21 @@ export default function Integrations() {
   return (
     <AdminLayout>
       <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Plug}
+            eyebrow="Admin"
+            title="Integrations Hub"
+            subtitle="Manage external connections — Ceipal ATS and Zoom — and view recruiter performance."
+          />
+        ) : (
         <div>
           <h1 className="text-2xl font-bold">Integrations Hub</h1>
           <p className="text-muted-foreground text-sm mt-1">
             Manage external connections — Ceipal ATS and Zoom — and view recruiter performance.
           </p>
         </div>
+        )}
 
         <Tabs defaultValue="connections">
           <TabsList>

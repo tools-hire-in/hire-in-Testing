@@ -2,6 +2,8 @@ import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ShieldCheck, Download, AlertTriangle, ClipboardCheck, TrendingUp, Users, ChevronRight, BookOpen, ListChecks, Pencil, FileText } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -85,6 +87,7 @@ function findingStatusVariant(status: string): "default" | "destructive" | "seco
 }
 
 export default function SOPCompliance() {
+  const { enabled: newLook } = useNewLook();
   const { enabled, isLoading: accessLoading } = useSopAccess();
   const { user } = useAuth();
   // Governance dashboards are scoped to CEO/Ops/HR (+admin) — managers run audits
@@ -151,13 +154,25 @@ export default function SOPCompliance() {
 
   return (
     <AdminLayout>
-      <div className="p-4 sm:p-6 space-y-5 max-w-6xl mx-auto">
+      <div className="v2-surface p-4 sm:p-6 space-y-5 max-w-6xl mx-auto">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold flex items-center gap-2" data-testid="text-page-title">
-              <ShieldCheck className="h-5 w-5 text-primary" /> SOP Governance Dashboard
-            </h1>
-            <p className="text-sm text-muted-foreground">Adoption, audit coverage, and open findings across all live SOPs.</p>
+            {newLook ? (
+              <V2PageHeader
+                icon={ShieldCheck}
+                eyebrow="SOPs"
+                title="SOP Governance Dashboard"
+                subtitle="Adoption, audit coverage, and open findings across all live SOPs."
+                testId="text-page-title"
+              />
+            ) : (
+              <>
+                <h1 className="text-xl font-bold flex items-center gap-2" data-testid="text-page-title">
+                  <ShieldCheck className="h-5 w-5 text-primary" /> SOP Governance Dashboard
+                </h1>
+                <p className="text-sm text-muted-foreground">Adoption, audit coverage, and open findings across all live SOPs.</p>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" size="sm" onClick={exportCsv} data-testid="button-export-csv">

@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { useLocation } from "wouter";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { useAuth } from "@/hooks/use-auth";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -374,6 +376,7 @@ function ResetOnboardingSection() {
 export default function MyProfile() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const [activeTab, setActiveTab] = useState<Tab>(getTabFromSearch);
 
   useEffect(() => {
@@ -405,10 +408,20 @@ export default function MyProfile() {
   return (
     <AdminLayout>
       <div className="space-y-4 v2-surface">
-        <div className="v2-page-head">
-          <h1 className="text-2xl font-bold" data-testid="text-myprofile-title">My Profile</h1>
-          <p className="text-sm text-muted-foreground">Your profile, documents, and org chart</p>
-        </div>
+        {newLook ? (
+          <V2PageHeader
+            icon={User}
+            eyebrow="Profile"
+            title="My Profile"
+            subtitle="Your profile, documents, and org chart"
+            testId="text-myprofile-title"
+          />
+        ) : (
+          <div className="v2-page-head">
+            <h1 className="text-2xl font-bold" data-testid="text-myprofile-title">My Profile</h1>
+            <p className="text-sm text-muted-foreground">Your profile, documents, and org chart</p>
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-myprofile">
           <TabsList className="grid grid-cols-3 w-full max-w-md">
             <TabsTrigger value="profile" data-testid="tab-profile">Profile</TabsTrigger>

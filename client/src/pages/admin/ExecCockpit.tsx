@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -732,6 +734,7 @@ function DisbursementTab() {
 }
 
 export default function ExecCockpit() {
+  const { enabled: newLook } = useNewLook();
   const [tab, setTab] = useState(() => {
     try {
       const param = new URLSearchParams(window.location.search).get("tab");
@@ -742,11 +745,21 @@ export default function ExecCockpit() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-cockpit-title">Executive Cockpit</h1>
-          <p className="text-muted-foreground mt-1">Read-only view of workforce compliance and payroll data</p>
-        </div>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={TrendingUp}
+            eyebrow="Analytics"
+            title="Executive Cockpit"
+            subtitle="Read-only view of workforce compliance and payroll data"
+            testId="text-cockpit-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-cockpit-title">Executive Cockpit</h1>
+            <p className="text-muted-foreground mt-1">Read-only view of workforce compliance and payroll data</p>
+          </div>
+        )}
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList className="mb-4">

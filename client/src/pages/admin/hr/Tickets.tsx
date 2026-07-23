@@ -1,7 +1,9 @@
 import { useEffect } from "react";
 import { useLocation } from "wouter";
-import { ArrowRight, Info } from "lucide-react";
+import { ArrowRight, Info, TicketCheck } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
@@ -9,6 +11,7 @@ import { useAuth } from "@/hooks/use-auth";
 export function TicketsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) setLocation("/admin/login");
@@ -17,11 +20,21 @@ export function TicketsContent() {
   if (authLoading || !isAuthenticated) return null;
 
   return (
-    <div className="space-y-6 max-w-xl">
+    <div className="space-y-6 max-w-xl v2-surface">
+      {newLook ? (
+        <V2PageHeader
+          icon={TicketCheck}
+          eyebrow="My Work"
+          title="Attendance Regularization"
+          subtitle="Moved to the Attendance tab"
+          testId="text-tickets-title"
+        />
+      ) : (
       <div>
         <h1 className="text-2xl font-bold" data-testid="text-tickets-title">Attendance Regularization</h1>
         <p className="text-muted-foreground text-sm mt-1">Moved to the Attendance tab</p>
       </div>
+      )}
 
       <Card className="border-2 border-primary/20 bg-primary/5">
         <CardContent className="p-6 space-y-4">

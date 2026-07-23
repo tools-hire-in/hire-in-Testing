@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { CalendarCheck, Check, X } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +45,7 @@ interface AdminUser {
 }
 
 export default function LeaveApprovals() {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { toast } = useToast();
@@ -113,11 +116,17 @@ export default function LeaveApprovals() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h1 className="text-3xl font-bold" data-testid="text-leave-approvals-title">Leave Approvals</h1>
-            <p className="text-muted-foreground">Review and manage team leave requests</p>
+            {newLook ? (
+              <V2PageHeader icon={CalendarCheck} eyebrow="HR" title="Leave Approvals" subtitle="Review and manage team leave requests" testId="text-leave-approvals-title" />
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold" data-testid="text-leave-approvals-title">Leave Approvals</h1>
+                <p className="text-muted-foreground">Review and manage team leave requests</p>
+              </>
+            )}
           </div>
           <Select value={statusFilter} onValueChange={setStatusFilter}>
             <SelectTrigger className="w-[150px]" data-testid="select-status-filter">

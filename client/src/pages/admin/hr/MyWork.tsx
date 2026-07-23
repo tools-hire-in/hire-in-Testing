@@ -1,7 +1,10 @@
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
+import { LayoutDashboard } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { useAuth } from "@/hooks/use-auth";
 import HRDashboard from "./HRDashboard";
 import Attendance from "./Attendance";
@@ -23,6 +26,7 @@ function getTabFromSearch(): Tab {
 export default function MyWork() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const [activeTab, setActiveTab] = useState<Tab>(getTabFromSearch);
 
   useEffect(() => {
@@ -44,11 +48,21 @@ export default function MyWork() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-mywork-title">My Work</h1>
-          <p className="text-sm text-muted-foreground">Your dashboard, attendance, leaves, and holidays</p>
-        </div>
+      <div className="space-y-4 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={LayoutDashboard}
+            eyebrow="My Work"
+            title="My Work"
+            subtitle="Your dashboard, attendance, leaves, and holidays"
+            testId="text-mywork-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-mywork-title">My Work</h1>
+            <p className="text-sm text-muted-foreground">Your dashboard, attendance, leaves, and holidays</p>
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-mywork">
           <TabsList className="grid grid-cols-5 w-full max-w-2xl">
             <TabsTrigger value="dashboard" data-testid="tab-mywork-dashboard">Dashboard</TabsTrigger>

@@ -5,6 +5,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -114,6 +116,7 @@ export default function PolicySigningPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   const [currentPageIndex, setCurrentPageIndex] = useState(0);
   const [pageInitials, setPageInitials] = useState<Record<number, string>>({});
@@ -280,8 +283,16 @@ export default function PolicySigningPage() {
 
   return (
     <AdminLayout>
-      <div className="max-w-3xl mx-auto space-y-6 pb-16">
-        {/* Header */}
+      <div className="max-w-3xl mx-auto space-y-6 pb-16 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Shield}
+            eyebrow="Policies"
+            title={policy.policyTitle}
+            subtitle="Read each page carefully and initial at the bottom before proceeding."
+            testId="text-policy-title"
+          />
+        ) : (
         <div className="space-y-1">
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
@@ -292,6 +303,7 @@ export default function PolicySigningPage() {
             Read each page carefully and initial at the bottom before proceeding.
           </p>
         </div>
+        )}
 
         {/* Progress */}
         <div className="space-y-2">

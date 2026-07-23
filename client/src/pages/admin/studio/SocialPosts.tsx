@@ -1,6 +1,8 @@
 import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -276,6 +278,7 @@ function JobSearchCombobox({
 }
 
 export default function SocialPosts() {
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const [selectedJobId, setSelectedJobId] = useState<string>("");
   const [captions, setCaptions] = useState<SocialCaptions | null>(null);
@@ -357,21 +360,31 @@ export default function SocialPosts() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Share2 className="h-6 w-6" />
+        {newLook ? (
+          <V2PageHeader
+            icon={Share2}
+            eyebrow="Studio"
+            title="Social Posts"
+            subtitle="Generate LinkedIn, Instagram, and Facebook captions for any active job in one click."
+            testId="text-social-posts-title"
+          />
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Share2 className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-social-posts-title">
+                Social Posts
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Generate LinkedIn, Instagram, and Facebook captions for any active job in one click.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-social-posts-title">
-              Social Posts
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Generate LinkedIn, Instagram, and Facebook captions for any active job in one click.
-            </p>
-          </div>
-        </div>
+        )}
 
         {/* Job picker */}
         <Card>

@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1124,6 +1126,7 @@ function SpendDashboard() {
 }
 
 export default function Studio() {
+  const { enabled: newLook } = useNewLook();
   const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } = useStudioProject();
   const { can } = usePermissions();
   const canCreate = can("studio.create_article");
@@ -1157,24 +1160,36 @@ export default function Studio() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         {/* Header */}
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <Newspaper className="h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-studio-title">
-                Content Studio
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Plan, write, review, and publish marketing content.
-              </p>
-            </div>
+          <div>
+            {newLook ? (
+              <V2PageHeader
+                icon={Newspaper}
+                eyebrow="Studio"
+                title="Content Studio"
+                subtitle="Plan, write, review, and publish marketing content."
+                testId="text-studio-title"
+              />
+            ) : (
+              <div className="flex items-center gap-3">
+                <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                  <Newspaper className="h-6 w-6" />
+                </div>
+                <div>
+                  <h1 className="text-2xl font-bold tracking-tight" data-testid="text-studio-title">
+                    Content Studio
+                  </h1>
+                  <p className="text-sm text-muted-foreground">
+                    Plan, write, review, and publish marketing content.
+                  </p>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Project switcher */}
+          {/* Project switcher — always shown */}
           <div className="flex items-center gap-2">
             <span className="text-xs font-medium text-muted-foreground">Project</span>
             <Select

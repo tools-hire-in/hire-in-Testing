@@ -1,6 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -39,26 +41,37 @@ function dueMeta(dueAt: string | Date | null) {
 }
 
 export default function StudioInbox() {
+  const { enabled: newLook } = useNewLook();
   const { data: items, isLoading } = useQuery<InboxItem[]>({
     queryKey: ["/api/admin/studio/inbox"],
   });
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <InboxIcon className="h-6 w-6" />
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={InboxIcon}
+            eyebrow="Studio"
+            title="Reviewer Inbox"
+            subtitle="Articles awaiting your review or sign-off, oldest first."
+            testId="text-inbox-title"
+          />
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <InboxIcon className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-inbox-title">
+                Reviewer Inbox
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Articles awaiting your review or sign-off, oldest first.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-inbox-title">
-              Reviewer Inbox
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Articles awaiting your review or sign-off, oldest first.
-            </p>
-          </div>
-        </div>
+        )}
 
         {isLoading ? (
           <div className="flex items-center justify-center py-16">

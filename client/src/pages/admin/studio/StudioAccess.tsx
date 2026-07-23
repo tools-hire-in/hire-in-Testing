@@ -4,6 +4,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
@@ -171,6 +173,7 @@ function AddOnBadge({ addOn }: { addOn: string | null }) {
 }
 
 export function StudioAccessPanel() {
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const { can } = usePermissions();
   const canManage = can("studio.manage_authors");
@@ -274,21 +277,31 @@ export function StudioAccessPanel() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 v2-surface">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <UserCog className="h-6 w-6" />
+          {newLook ? (
+            <V2PageHeader
+              icon={UserCog}
+              eyebrow="Studio"
+              title="Studio Access"
+              subtitle="Control who can work in Content Studio without changing their base role."
+              testId="text-studio-access-title"
+            />
+          ) : (
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <UserCog className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight" data-testid="text-studio-access-title">
+                  Studio Access
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Control who can work in Content Studio without changing their base role.
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-studio-access-title">
-                Studio Access
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Control who can work in Content Studio without changing their base role.
-              </p>
-            </div>
-          </div>
+          )}
           {canManage && (
             <Button onClick={() => setAddOpen(true)} data-testid="button-add-author">
               <Plus className="mr-2 h-4 w-4" />

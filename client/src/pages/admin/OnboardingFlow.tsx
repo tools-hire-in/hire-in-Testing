@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation, Redirect } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { StepCard, type OnboardingStep } from "@/components/onboarding/StepCard";
 import { ManagerCommandCard } from "@/components/onboarding/ManagerCommandCard";
 import { useAuth } from "@/hooks/use-auth";
@@ -240,6 +242,7 @@ const TRACK_LABELS: Record<string, string> = {
 
 export default function OnboardingFlow() {
   const { user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { isEnabled, isLoading: flagsLoading } = useFeatureFlags();
   const [, setLocation] = useLocation();
   const [pdfDownloading, setPdfDownloading] = useState(false);
@@ -326,10 +329,12 @@ export default function OnboardingFlow() {
   if (isLoading || flagsLoading || !data) {
     return (
       <AdminLayout>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="flex flex-col items-center gap-3 text-muted-foreground">
-            <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin" />
-            <span className="text-sm">Loading your onboarding guide…</span>
+        <div className="flex flex-col space-y-4 v2-surface h-full">
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="flex flex-col items-center gap-3 text-muted-foreground">
+              <div className="w-8 h-8 border-2 border-current border-t-transparent rounded-full animate-spin" />
+              <span className="text-sm">Loading your onboarding guide…</span>
+            </div>
           </div>
         </div>
       </AdminLayout>
@@ -339,21 +344,23 @@ export default function OnboardingFlow() {
   if (data.steps.length === 0) {
     return (
       <AdminLayout>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center space-y-3 max-w-sm">
-            <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto" />
-            <h2 className="text-xl font-bold">No steps configured yet</h2>
-            <p className="text-muted-foreground text-sm">
-              Onboarding steps for your role haven't been set up yet. Check back soon.
-            </p>
-            <div className="flex flex-col items-center gap-2">
-              <Button onClick={() => setLocation("/admin/my-desk")}>Go to Dashboard</Button>
-              {isAdmin && (
-                <Button variant="outline" className="gap-2" onClick={() => setShowPreviewDialog(true)} data-testid="button-preview-track">
-                  <Eye className="h-4 w-4" />
-                  Preview Track
-                </Button>
-              )}
+        <div className="flex flex-col space-y-4 v2-surface h-full">
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="text-center space-y-3 max-w-sm">
+              <CheckCircle2 className="h-12 w-12 text-green-500 mx-auto" />
+              <h2 className="text-xl font-bold">No steps configured yet</h2>
+              <p className="text-muted-foreground text-sm">
+                Onboarding steps for your role haven't been set up yet. Check back soon.
+              </p>
+              <div className="flex flex-col items-center gap-2">
+                <Button onClick={() => setLocation("/admin/my-desk")}>Go to Dashboard</Button>
+                {isAdmin && (
+                  <Button variant="outline" className="gap-2" onClick={() => setShowPreviewDialog(true)} data-testid="button-preview-track">
+                    <Eye className="h-4 w-4" />
+                    Preview Track
+                  </Button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -397,7 +404,8 @@ export default function OnboardingFlow() {
 
     return (
       <AdminLayout>
-        <div className={isManagerTrack ? "max-w-4xl mx-auto py-6 px-4" : "flex items-center justify-center min-h-[60vh]"}>
+        <div className="flex flex-col space-y-4 v2-surface h-full">
+          <div className={isManagerTrack ? "max-w-4xl mx-auto py-6 px-4" : "flex items-center justify-center min-h-[60vh]"}>
           {/* Completion banner */}
           <div className={`text-center space-y-4 ${isManagerTrack ? "mb-8" : "max-w-md"}`}>
             <div className="w-20 h-20 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto">
@@ -489,6 +497,7 @@ export default function OnboardingFlow() {
         </div>
         <PreviewStartDialog open={showPreviewDialog} onClose={() => setShowPreviewDialog(false)} onStart={() => { setShowPreviewDialog(false); setPreviewOpen(true); }} />
         {previewOpen && <PreviewOverlay onClose={() => setPreviewOpen(false)} />}
+        </div>
       </AdminLayout>
     );
   }
@@ -497,10 +506,12 @@ export default function OnboardingFlow() {
   if (!currentStep) {
     return (
       <AdminLayout>
-        <div className="flex items-center justify-center min-h-[60vh]">
-          <div className="text-center space-y-2">
-            <p className="text-muted-foreground">Step not found.</p>
-            <Button variant="outline" onClick={() => setStepIndex(0)}>Start from beginning</Button>
+        <div className="flex flex-col space-y-4 v2-surface h-full">
+          <div className="flex items-center justify-center min-h-[60vh]">
+            <div className="text-center space-y-2">
+              <p className="text-muted-foreground">Step not found.</p>
+              <Button variant="outline" onClick={() => setStepIndex(0)}>Start from beginning</Button>
+            </div>
           </div>
         </div>
       </AdminLayout>
@@ -509,7 +520,16 @@ export default function OnboardingFlow() {
 
   return (
     <AdminLayout>
-      {/* Admin toolbar */}
+      <div className="flex flex-col space-y-4 v2-surface h-full">
+        {newLook && (
+          <V2PageHeader
+            icon={Rocket}
+            eyebrow="Onboarding"
+            title="Onboarding Guide"
+            subtitle={`Step ${resolvedIndex + 1} of ${data.steps.length}`}
+          />
+        )}
+        {/* Admin toolbar */}
       {isAdmin && (
         <div className="flex justify-end mb-2" data-testid="admin-onboarding-toolbar">
           <Button
@@ -546,6 +566,7 @@ export default function OnboardingFlow() {
         onStart={() => { setShowPreviewDialog(false); setPreviewOpen(true); }}
       />
       {previewOpen && <PreviewOverlay onClose={() => setPreviewOpen(false)} />}
+      </div>
     </AdminLayout>
   );
 }

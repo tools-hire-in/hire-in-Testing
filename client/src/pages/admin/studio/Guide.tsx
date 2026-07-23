@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Badge } from "@/components/ui/badge";
 import {
   BookOpen,
@@ -220,6 +222,7 @@ const SECTIONS: { id: string; index: string; label: string }[] = [
 ];
 
 export default function Guide() {
+  const { enabled: newLook } = useNewLook();
   const [activeId, setActiveId] = useState<string>("s0");
 
   useEffect(() => {
@@ -246,20 +249,32 @@ export default function Guide() {
 
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-6xl">
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <BookOpen className="h-6 w-6" />
+      <div className="mx-auto max-w-6xl v2-surface">
+        {newLook ? (
+          <div className="mb-6">
+            <V2PageHeader
+              icon={BookOpen}
+              eyebrow="Studio"
+              title="The Studio Playbook"
+              subtitle="How to run a full content operation — strategy, AI, and signals — as a team of one."
+              testId="text-guide-title"
+            />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-guide-title">
-              The Studio Playbook
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              How to run a full content operation — strategy, AI, and signals — as a team of one.
-            </p>
+        ) : (
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <BookOpen className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-guide-title">
+                The Studio Playbook
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                How to run a full content operation — strategy, AI, and signals — as a team of one.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="grid gap-8 lg:grid-cols-[240px_1fr]">
           {/* Sticky anchor nav */}

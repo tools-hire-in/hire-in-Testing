@@ -5,6 +5,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation, useParams } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
@@ -215,6 +217,7 @@ function actionLabel(action: string): string {
 
 export default function HelpDeskTicket() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const params = useParams<{ id: string }>();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
@@ -398,13 +401,21 @@ export default function HelpDeskTicket() {
 
   return (
     <AdminLayout>
-      <div className="max-w-4xl mx-auto space-y-5" data-testid="ticket-detail-page">
+      <div className="max-w-4xl mx-auto space-y-5 v2-surface" data-testid="ticket-detail-page">
         <div className="flex items-center gap-3">
           <Button variant="ghost" size="sm" onClick={() => setLocation(backHref)} data-testid="button-back">
             <ArrowLeft className="h-4 w-4 mr-1" />Back
           </Button>
           <span className="text-sm text-muted-foreground font-mono">{ticket.requestNumber}</span>
         </div>
+        {newLook ? (
+          <V2PageHeader
+            icon={Tag}
+            eyebrow="Admin"
+            title={ticket.title}
+            subtitle={ticket.requestNumber}
+          />
+        ) : null}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div className="md:col-span-2 space-y-4">

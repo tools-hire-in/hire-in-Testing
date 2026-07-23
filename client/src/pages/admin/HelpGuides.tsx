@@ -1,6 +1,8 @@
 import { BookOpen, Compass, ClipboardList, BookMarked, HelpCircle } from "lucide-react";
 import { Link } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 
 interface GuideCard {
   icon: React.ReactNode;
@@ -35,18 +37,29 @@ const guides: GuideCard[] = [
 ];
 
 export default function HelpGuides() {
+  const { enabled: newLook } = useNewLook();
+
   return (
     <AdminLayout>
-      <div className="max-w-3xl mx-auto px-6 py-10">
-        <div className="flex items-center gap-3 mb-2">
-          <div className="h-10 w-10 rounded-lg bg-orange-100 flex items-center justify-center">
-            <HelpCircle className="h-5 w-5 text-orange-500" />
+      <div className="max-w-3xl mx-auto px-6 py-10 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={HelpCircle}
+            eyebrow="Help"
+            title="Help & Guides"
+            subtitle="Platform playbooks and reference guides"
+          />
+        ) : (
+          <div className="flex items-center gap-3 mb-2">
+            <div className="h-10 w-10 rounded-lg bg-orange-100 flex items-center justify-center">
+              <HelpCircle className="h-5 w-5 text-orange-500" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Help & Guides</h1>
+              <p className="text-sm text-muted-foreground">Platform playbooks and reference guides</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold text-foreground">Help & Guides</h1>
-            <p className="text-sm text-muted-foreground">Platform playbooks and reference guides</p>
-          </div>
-        </div>
+        )}
 
         <div className="mt-8 grid gap-4">
           {guides.map((guide) => (

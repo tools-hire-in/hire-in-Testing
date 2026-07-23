@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
@@ -38,6 +40,7 @@ type AuditLog = {
 };
 
 export default function VaultAuditPage() {
+  const { enabled: newLook } = useNewLook();
   const { user } = useAuth();
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
 
@@ -82,18 +85,27 @@ export default function VaultAuditPage() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-6xl mx-auto space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Shield className="h-5 w-5 text-primary" />
+      <div className="v2-surface p-6 max-w-6xl mx-auto space-y-6">
+        {newLook ? (
+          <V2PageHeader
+            icon={Shield}
+            eyebrow="Vault"
+            title="Vault Audit Log"
+            subtitle="All credential access events. Retention: Low = 3 months, Medium = 6 months, High = 12 months, Critical = indefinite."
+          />
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+              <Shield className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold">Vault Audit Log</h1>
+              <p className="text-sm text-muted-foreground">
+                All credential access events. Retention: Low = 3 months, Medium = 6 months, High = 12 months, Critical = indefinite.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold">Vault Audit Log</h1>
-            <p className="text-sm text-muted-foreground">
-              All credential access events. Retention: Low = 3 months, Medium = 6 months, High = 12 months, Critical = indefinite.
-            </p>
-          </div>
-        </div>
+        )}
 
         <div className="flex flex-wrap gap-3 items-end border rounded-lg p-4 bg-muted/30">
           <div className="space-y-1">

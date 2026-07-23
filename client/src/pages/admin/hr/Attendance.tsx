@@ -904,7 +904,7 @@ export default function Attendance({ view }: { view?: "attendance" | "grace" } =
 
   return (
     <AdminLayout>
-      <div className="space-y-5">
+      <div className="space-y-5 v2-surface">
         <PillTabs value={effectiveTab} onValueChange={handleTabChange} data-testid="tabs-attendance">
           {!embedded && (
             <PillTabsList>

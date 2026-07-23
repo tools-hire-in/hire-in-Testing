@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Loader2, Inbox, Clock3 } from "lucide-react";
@@ -16,6 +18,7 @@ type QueueItem = StudioArticle & {
 };
 
 export default function Approvals() {
+  const { enabled: newLook } = useNewLook();
   const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } = useStudioProject();
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -36,23 +39,33 @@ export default function Approvals() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-approvals-title">
-              Marketing Approvals
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Polish reviewer-approved articles and recommend them for final sign-off.
-            </p>
-          </div>
-          <ProjectSwitcher
-            projects={projects}
-            projectsLoading={projectsLoading}
-            selectedProjectId={selectedProjectId}
-            onChange={setSelectedProjectId}
+      <div className="space-y-4 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Inbox}
+            eyebrow="Studio"
+            title="Marketing Approvals"
+            subtitle="Polish reviewer-approved articles and recommend them for final sign-off."
+            testId="text-approvals-title"
           />
-        </div>
+        ) : (
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-approvals-title">
+                Marketing Approvals
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Polish reviewer-approved articles and recommend them for final sign-off.
+              </p>
+            </div>
+            <ProjectSwitcher
+              projects={projects}
+              projectsLoading={projectsLoading}
+              selectedProjectId={selectedProjectId}
+              onChange={setSelectedProjectId}
+            />
+          </div>
+        )}
 
         <div className="grid gap-4 lg:grid-cols-[320px_1fr]">
           <div className="space-y-2">

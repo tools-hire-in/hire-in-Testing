@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { CalendarDays, Check, Info, Lock } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -29,6 +31,7 @@ interface RegionalSelection {
 export default function HolidayCalendar() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const year = new Date().getFullYear();
 
@@ -98,11 +101,21 @@ export default function HolidayCalendar() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-holidays-title">Leave Calendar {year}</h1>
-          <p className="text-muted-foreground">Company holidays and observances</p>
-        </div>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={CalendarDays}
+            eyebrow="My Work"
+            title={`Holiday Calendar ${year}`}
+            subtitle="Company holidays and observances"
+            testId="text-holidays-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-holidays-title">Leave Calendar {year}</h1>
+            <p className="text-muted-foreground">Company holidays and observances</p>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card>

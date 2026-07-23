@@ -11,6 +11,8 @@ import {
 import { PolicySignoffsContent } from "./PolicySignoffs";
 import { Textarea } from "@/components/ui/textarea";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -4498,6 +4500,7 @@ export function OfferLettersDashboard() {
 }
 
 export default function HRTools() {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
 
@@ -4549,11 +4552,15 @@ export default function HRTools() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-hr-tools-title">HR Tools</h1>
-          <p className="text-muted-foreground">Generate salary slips and HR letters</p>
-        </div>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader icon={Wrench} eyebrow="HR Tools" title="HR Tools" subtitle="Generate salary slips and HR letters" testId="text-hr-tools-title" />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-hr-tools-title">HR Tools</h1>
+            <p className="text-muted-foreground">Generate salary slips and HR letters</p>
+          </div>
+        )}
 
         <Tabs defaultValue={initialTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList data-testid="tabs-hr-tools" className="flex-wrap h-auto gap-1">

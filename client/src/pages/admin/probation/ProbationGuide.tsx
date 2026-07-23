@@ -10,6 +10,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,6 +44,7 @@ function passRuleMin(passRule: any): number | null {
 }
 
 export default function ProbationGuide() {
+  const { enabled: newLook } = useNewLook();
   const { data, isLoading } = useQuery<ScoringResponse>({
     queryKey: ["/api/hr/probation-scoring-bands"],
   });
@@ -56,13 +59,25 @@ export default function ProbationGuide() {
       <div className="v2-surface p-6 max-w-4xl mx-auto space-y-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
-              <ShieldCheck className="h-6 w-6 text-primary" />
-              90-Day Probation Guide
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              As the owning manager you are accountable for running this plan to completion.
-            </p>
+            {newLook ? (
+              <V2PageHeader
+                icon={ShieldCheck}
+                eyebrow="Probation"
+                title="90-Day Probation Guide"
+                subtitle="As the owning manager you are accountable for running this plan to completion."
+                testId="text-page-title"
+              />
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+                  <ShieldCheck className="h-6 w-6 text-primary" />
+                  90-Day Probation Guide
+                </h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  As the owning manager you are accountable for running this plan to completion.
+                </p>
+              </>
+            )}
           </div>
           <Link href="/admin/performance/check-ins">
             <Button data-testid="button-open-checkins">

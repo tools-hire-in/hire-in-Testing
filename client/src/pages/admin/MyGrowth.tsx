@@ -2,12 +2,14 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import {
   Award, BookOpen, Target, CalendarCheck, MessageSquare,
   ClipboardList, Map, Users, Flag, FileCheck, Briefcase,
-  GraduationCap, Settings2,
+  GraduationCap, Settings2, TrendingUp,
 } from "lucide-react";
 import MyTraining from "./hr/MyTraining";
 import { MyGoalsContent } from "./performance/MyGoals";
@@ -151,6 +153,7 @@ const ADMIN_ITEMS: SubItem[] = [
 export default function MyGrowth() {
   const [, setLocation] = useLocation();
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   const { data: myPlanData, isLoading: planLoading } = useQuery<any | null>({
     queryKey: ["/api/hr/my-plan"],
@@ -228,11 +231,20 @@ export default function MyGrowth() {
   return (
     <AdminLayout>
       <div className="v2-surface space-y-4">
-        {/* Page header */}
+        {newLook ? (
+          <V2PageHeader
+            icon={TrendingUp}
+            eyebrow="My Growth"
+            title="My Growth"
+            subtitle="Recognition, training, goals, check-ins, feedback, and reviews"
+            testId="text-mygrowth-title"
+          />
+        ) : (
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-mygrowth-title">My Growth</h1>
           <p className="text-sm text-muted-foreground">Recognition, training, goals, check-ins, feedback, and reviews</p>
         </div>
+        )}
 
         {/* Top segment bar */}
         <nav

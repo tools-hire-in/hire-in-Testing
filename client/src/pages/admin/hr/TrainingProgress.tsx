@@ -6,6 +6,8 @@ import {
   ShieldCheck, CalendarDays, Pencil, Info, Trash2, ShieldOff,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -42,6 +44,7 @@ function StatusCell({ status }: { status: string }) {
 }
 
 export default function TrainingProgress() {
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const { user } = useAuth();
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -215,14 +218,20 @@ export default function TrainingProgress() {
 
   return (
     <AdminLayout>
-      <div className="v2-surface p-6 space-y-6">
-        <div className="flex items-center justify-between">
+      <div className="p-6 space-y-6 v2-surface">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2">
-              <BarChart3 className="h-6 w-6 text-blue-600" />
-              Training Progress
-            </h1>
-            <p className="text-muted-foreground mt-1">Monitor your team's training completion across all tracks</p>
+            {newLook ? (
+              <V2PageHeader icon={BarChart3} eyebrow="Learning" title="Training Progress" subtitle="Monitor your team's training completion across all tracks" />
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold flex items-center gap-2">
+                  <BarChart3 className="h-6 w-6 text-blue-600" />
+                  Training Progress
+                </h1>
+                <p className="text-muted-foreground mt-1">Monitor your team's training completion across all tracks</p>
+              </>
+            )}
           </div>
           <div className="flex gap-2">
             {isRayoEnabled && (

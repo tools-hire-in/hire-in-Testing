@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -13,6 +15,7 @@ import { useToast } from "@/hooks/use-toast";
 import type { StudioArticle } from "@shared/schema";
 
 export default function AuthorSignOff() {
+  const { enabled: newLook } = useNewLook();
   const { id } = useParams<{ id: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
@@ -66,7 +69,7 @@ export default function AuthorSignOff() {
 
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-3xl space-y-6">
+      <div className="mx-auto max-w-3xl space-y-6 v2-surface">
         <div className="flex items-center gap-3">
           <Button
             variant="ghost"
@@ -79,19 +82,29 @@ export default function AuthorSignOff() {
           </Button>
         </div>
 
-        <div className="flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-            <PenLine className="h-6 w-6" />
+        {newLook ? (
+          <V2PageHeader
+            icon={PenLine}
+            eyebrow="Studio"
+            title="Author Sign-Off"
+            subtitle="Review the article below and approve or request changes before it goes to marketing."
+            testId="text-signoff-title"
+          />
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
+              <PenLine className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-signoff-title">
+                Author Sign-Off
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Review the article below and approve or request changes before it goes to marketing.
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-signoff-title">
-              Author Sign-Off
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Review the article below and approve or request changes before it goes to marketing.
-            </p>
-          </div>
-        </div>
+        )}
 
         {isLoading ? (
           <div className="flex justify-center py-16">

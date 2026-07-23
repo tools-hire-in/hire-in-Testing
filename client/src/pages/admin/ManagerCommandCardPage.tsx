@@ -1,4 +1,7 @@
+import { BookOpen } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { ManagerCommandCard } from "@/components/onboarding/ManagerCommandCard";
 import { useAuth } from "@/hooks/use-auth";
 import { Redirect } from "wouter";
@@ -7,6 +10,7 @@ const MANAGER_TRACK_ROLES = ["manager", "hr", "admin", "super_admin", "operation
 
 export default function ManagerCommandCardPage() {
   const { user } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   if (!user) return null;
 
@@ -16,7 +20,17 @@ export default function ManagerCommandCardPage() {
 
   return (
     <AdminLayout>
-      <div className="max-w-4xl mx-auto py-6 px-4 print:p-0" data-testid="manager-command-card-page">
+      <div className="max-w-4xl mx-auto py-6 px-4 print:p-0 v2-surface" data-testid="manager-command-card-page">
+        {newLook ? (
+          <div className="mb-6 print:hidden">
+            <V2PageHeader
+              icon={BookOpen}
+              eyebrow="My Team"
+              title="Manager Check-in Reference Card"
+              subtitle="Quick reference for probation cadence, escalation rules, leave approvals, and compliance essentials."
+            />
+          </div>
+        ) : (
         <div className="mb-6 print:hidden">
           <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
             <span>My Team</span>
@@ -29,6 +43,7 @@ export default function ManagerCommandCardPage() {
             Bookmark this page or print it for offline use.
           </p>
         </div>
+        )}
         <ManagerCommandCard />
       </div>
     </AdminLayout>

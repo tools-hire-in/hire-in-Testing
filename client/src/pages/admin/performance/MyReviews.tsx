@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ClipboardList, Star, ChevronDown, ChevronUp, ExternalLink } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -74,6 +76,7 @@ function StarRating({ value, onChange, readOnly = false }: { value: number; onCh
 export function MyReviewsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const [showSelfReview, setShowSelfReview] = useState(false);
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
@@ -148,22 +151,32 @@ export function MyReviewsContent() {
 
   return (
       <div className="v2-surface space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-2">
-          <div>
-            <h1 className="text-3xl font-bold" data-testid="text-my-reviews-title">My Reviews</h1>
-            <p className="text-muted-foreground">View and complete your performance reviews</p>
+        {newLook ? (
+          <V2PageHeader
+            icon={ClipboardList}
+            eyebrow="Performance"
+            title="My Reviews"
+            subtitle="View and complete your performance reviews"
+            testId="text-my-reviews-title"
+          />
+        ) : (
+          <div className="flex items-center justify-between flex-wrap gap-2">
+            <div>
+              <h1 className="text-3xl font-bold" data-testid="text-my-reviews-title">My Reviews</h1>
+              <p className="text-muted-foreground">View and complete your performance reviews</p>
+            </div>
+            {rayoAcademyUrl && (
+              <Button
+                variant="outline"
+                onClick={() => window.open(`${rayoAcademyUrl}?email=${encodeURIComponent(user?.email || "")}`, "_blank")}
+                data-testid="button-rayo-academy"
+              >
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Go to Rayo Academy
+              </Button>
+            )}
           </div>
-          {rayoAcademyUrl && (
-            <Button
-              variant="outline"
-              onClick={() => window.open(`${rayoAcademyUrl}?email=${encodeURIComponent(user?.email || "")}`, "_blank")}
-              data-testid="button-rayo-academy"
-            >
-              <ExternalLink className="h-4 w-4 mr-2" />
-              Go to Rayo Academy
-            </Button>
-          )}
-        </div>
+        )}
 
         {rayoAcademyUrl && (
           <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-900">

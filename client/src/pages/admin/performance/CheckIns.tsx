@@ -22,6 +22,8 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1243,15 +1245,27 @@ export default function CheckIns({ mode }: CheckInsProps = {}) {
   return (
     <AdminLayout>
       <div className="v2-surface p-6 max-w-5xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
-              <MessageSquare className="h-6 w-6 text-primary" />
-              {title}
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              {subtitle}
-            </p>
+            {newLook ? (
+              <V2PageHeader
+                icon={MessageSquare}
+                eyebrow="Performance"
+                title={title}
+                subtitle={subtitle}
+                testId="text-page-title"
+              />
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+                  <MessageSquare className="h-6 w-6 text-primary" />
+                  {title}
+                </h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  {subtitle}
+                </p>
+              </>
+            )}
           </div>
           {showScheduleButton && (
             <Button onClick={() => setCreateOpen(true)} data-testid="button-create-checkin">

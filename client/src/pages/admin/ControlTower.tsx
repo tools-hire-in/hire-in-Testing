@@ -2,6 +2,8 @@ import { lazy, Suspense, useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useAuth } from "@/hooks/use-auth";
@@ -209,11 +211,29 @@ export default function ControlTower() {
   });
   const heldCount = heldData?.count ?? 0;
 
+  const { enabled: newLook } = useNewLook();
+
   if (authLoading || !isAuthenticated || !canAccess) return null;
+
+  const ctTitle = isSuperAdmin ? "Control Tower" : role === "admin" ? "Governance Hub" : "Data Maintenance";
+  const ctSubtitle = isSuperAdmin
+    ? "Super Admin only. One audited surface for the platform's highest-privilege controls."
+    : role === "admin"
+    ? "Org Pulse, SOP rollout visibility, and governance oversight."
+    : "Backfill, correction, and cleanup utilities for attendance and leave data.";
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Radar}
+            eyebrow="Admin"
+            title={ctTitle}
+            subtitle={ctSubtitle}
+            testId="text-control-tower-title"
+          />
+        ) : (
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
             <div className="mt-0.5 rounded-lg bg-primary/10 p-2 text-primary shrink-0">
@@ -221,18 +241,15 @@ export default function ControlTower() {
             </div>
             <div>
               <h1 className="text-2xl font-bold tracking-tight" data-testid="text-control-tower-title">
-                {isSuperAdmin ? "Control Tower" : role === "admin" ? "Governance Hub" : "Data Maintenance"}
+                {ctTitle}
               </h1>
               <p className="max-w-2xl text-sm text-muted-foreground">
-                {isSuperAdmin
-                  ? "Super Admin only. One audited surface for the platform's highest-privilege controls."
-                  : role === "admin"
-                  ? "Org Pulse, SOP rollout visibility, and governance oversight."
-                  : "Backfill, correction, and cleanup utilities for attendance and leave data."}
+                {ctSubtitle}
               </p>
             </div>
           </div>
         </div>
+        )}
 
         <div className="inline-flex flex-wrap gap-1 rounded-lg bg-muted p-1" data-testid="tabs-control-tower">
           {allowedTabs.map((key) => (

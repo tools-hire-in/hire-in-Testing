@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -54,6 +56,7 @@ function formatDate(dateStr: string) {
 
 export default function AutomatedChanges({ embedded = false }: { embedded?: boolean } = {}) {
   const { toast } = useToast();
+  const { enabled: newLook } = useNewLook();
   const [statusFilter, setStatusFilter] = useState<"pending" | "approved" | "rejected">("pending");
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
@@ -164,7 +167,16 @@ export default function AutomatedChanges({ embedded = false }: { embedded?: bool
   const isReadOnly = statusFilter !== "pending";
 
   const content = (
-      <div className="space-y-5">
+      <div className="space-y-5 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={ShieldCheck}
+            eyebrow="Admin"
+            title="Automated Changes"
+            subtitle="Super Admin only. Automated jobs propose changes here for your review before applying them."
+            testId="text-automated-changes-title"
+          />
+        ) : (
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex items-start gap-3">
             <div className="mt-0.5 rounded-lg bg-primary/10 p-2 text-primary shrink-0">
@@ -182,6 +194,7 @@ export default function AutomatedChanges({ embedded = false }: { embedded?: bool
             </div>
           </div>
         </div>
+        )}
 
         <Tabs value={statusFilter} onValueChange={(v) => { setStatusFilter(v as any); setSelected(new Set()); }}>
           <TabsList data-testid="tabs-status-filter">

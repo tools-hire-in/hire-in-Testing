@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { RefreshCw, Plus, ChevronDown, ChevronUp, Calendar, Loader2 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -52,6 +54,7 @@ const typeLabels: Record<string, string> = {
 export default function ReviewCycles() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
   const [expandedCycleId, setExpandedCycleId] = useState<string | null>(null);
@@ -118,8 +121,20 @@ export default function ReviewCycles() {
       <div className="v2-surface space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h1 className="text-3xl font-bold" data-testid="text-review-cycles-title">Review Cycles</h1>
-            <p className="text-muted-foreground">Create and manage performance review cycles</p>
+            {newLook ? (
+              <V2PageHeader
+                icon={RefreshCw}
+                eyebrow="Performance"
+                title="Review Cycles"
+                subtitle="Create and manage performance review cycles"
+                testId="text-review-cycles-title"
+              />
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold" data-testid="text-review-cycles-title">Review Cycles</h1>
+                <p className="text-muted-foreground">Create and manage performance review cycles</p>
+              </>
+            )}
           </div>
           <Button onClick={() => setShowCreate(true)} data-testid="button-create-cycle">
             <Plus className="h-4 w-4 mr-2" />

@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Bell, Mail, MailX, ToggleLeft, ExternalLink, RefreshCw, Send } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -43,6 +45,7 @@ function formatWhen(dateStr: string | null, prefix?: string): string {
 export default function NotificationSettings() {
   const [, setLocation] = useLocation();
   const { user, isLoading: authLoading, isAuthenticated } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
 
   useEffect(() => {
@@ -135,6 +138,15 @@ export default function NotificationSettings() {
   return (
     <AdminLayout>
       <div className="max-w-4xl mx-auto space-y-6 p-4 md:p-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Bell}
+            eyebrow="Admin"
+            title="Notifications & Email"
+            subtitle="One place to control all outbound email and in-app notifications. Super Admin only."
+            testId="text-notif-settings-title"
+          />
+        ) : (
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-notif-settings-title">
             <Bell className="h-5 w-5" />
@@ -144,6 +156,7 @@ export default function NotificationSettings() {
             One place to control all outbound email and in-app notifications. Super Admin only.
           </p>
         </div>
+        )}
 
         {isLoading ? (
           <div className="space-y-3">

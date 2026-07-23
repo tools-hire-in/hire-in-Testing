@@ -2,7 +2,9 @@ import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { format } from "date-fns";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw, LogOut, Briefcase, Clock, History, FolderOpen, Copy, Check } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Shield, UserPlus, Trash2, Building2, Network, Mail, KeyRound, Pencil, UserX, UserCheck, AlertTriangle, Upload, FileSpreadsheet, CheckCircle, XCircle, Loader2, Download, RotateCcw, LogOut, Briefcase, Clock, History, FolderOpen, Copy, Check, Users } from "lucide-react";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { EmployeeDossierSheet } from "@/components/admin/EmployeeDossierSheet";
 import { Button } from "@/components/ui/button";
@@ -131,6 +133,7 @@ const DESIGNATIONS = [
 export default function AdminUsers() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { can } = usePermissions();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
@@ -557,14 +560,24 @@ export default function AdminUsers() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+          {newLook ? (
+            <V2PageHeader
+              icon={Users}
+              eyebrow="People & HR"
+              title="Team Management"
+              subtitle="Manage team members, roles, departments, and hierarchy"
+              testId="text-page-title"
+            />
+          ) : (
           <div>
             <h1 className="text-3xl font-bold" data-testid="text-page-title">Team Management</h1>
             <p className="text-muted-foreground">
               Manage team members, roles, departments, and hierarchy
             </p>
           </div>
+          )}
           {canManageUsers && (
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => { setBulkOpen(true); setBulkResults(null); setBulkFile(null); }} data-testid="button-bulk-upload">

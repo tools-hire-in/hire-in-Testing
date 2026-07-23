@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { Link } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import {
   Compass,
   Lightbulb,
@@ -111,6 +113,7 @@ const SECTIONS: { id: string; index: string; label: string }[] = [
 // ── Page ─────────────────────────────────────────────────────────────────────
 
 export default function CeoGuide() {
+  const { enabled: newLook } = useNewLook();
   const [activeId, setActiveId] = useState<string>("s1");
 
   useEffect(() => {
@@ -137,21 +140,33 @@ export default function CeoGuide() {
 
   return (
     <AdminLayout>
-      <div className="mx-auto max-w-6xl">
+      <div className="mx-auto max-w-6xl v2-surface">
         {/* Header */}
-        <div className="mb-6 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <Compass className="h-6 w-6" />
+        {newLook ? (
+          <div className="mb-6">
+            <V2PageHeader
+              icon={Compass}
+              eyebrow="Guides"
+              title="CEO Command Guide"
+              subtitle="One reference for every major platform lever — how to run the business from the portal."
+              testId="text-ceo-guide-title"
+            />
           </div>
-          <div>
-            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-ceo-guide-title">
-              CEO Command Guide
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              One reference for every major platform lever — how to run the business from the portal.
-            </p>
+        ) : (
+          <div className="mb-6 flex items-center gap-3">
+            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <Compass className="h-6 w-6" />
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-ceo-guide-title">
+                CEO Command Guide
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                One reference for every major platform lever — how to run the business from the portal.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="grid gap-8 lg:grid-cols-[240px_1fr]">
           {/* Sticky anchor nav */}

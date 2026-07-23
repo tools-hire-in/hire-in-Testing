@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Clock, ChevronLeft, ChevronRight, Download, X, ArrowLeft, Coffee, UtensilsCrossed, Pencil, AlertTriangle, CheckCircle } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -312,15 +314,29 @@ export default function TeamAttendance({ view }: { view?: "attendance" | "except
     setMemberMonth(`${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}`);
   };
 
+  const { enabled: newLook } = useNewLook();
+
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         {showHeader && (
         <>
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h1 className="text-3xl font-bold" data-testid="text-team-attendance-title">Team Attendance</h1>
-            <p className="text-muted-foreground">View your team's attendance records</p>
+            {newLook ? (
+              <V2PageHeader
+                icon={Clock}
+                eyebrow="My Team"
+                title="Team Attendance"
+                subtitle="View your team's attendance records"
+                testId="text-team-attendance-title"
+              />
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold" data-testid="text-team-attendance-title">Team Attendance</h1>
+                <p className="text-muted-foreground">View your team's attendance records</p>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {canDownload && (

@@ -7,6 +7,8 @@ import {
   FileQuestion, ChevronDown, ChevronUp,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -673,6 +675,7 @@ function ExtensionRequestForm({ assignmentId, trackTitle, onSubmitted, isOverdue
 }
 
 export default function MyTraining() {
+  const { enabled: newLook } = useNewLook();
   const { user } = useAuth();
   const { toast } = useToast();
   const [activeAssignmentId, setActiveAssignmentId] = useState<string | null>(() => {
@@ -845,21 +848,29 @@ export default function MyTraining() {
 
   return (
     <AdminLayout>
-      <div className="v2-surface p-6 space-y-6">
-        <div className="flex items-start justify-between gap-4">
+      <div className="p-6 space-y-6 v2-surface">
+        <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">
-            <h1 className="text-xl font-semibold leading-tight">My Training</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Complete your assigned learning tracks and earn your acknowledgements</p>
+            {newLook ? (
+              <V2PageHeader icon={GraduationCap} eyebrow="Learning" title="My Training" subtitle="Complete your assigned learning tracks and earn your acknowledgements" />
+            ) : (
+              <>
+                <h1 className="text-xl font-semibold leading-tight">My Training</h1>
+                <p className="text-sm text-muted-foreground mt-0.5">Complete your assigned learning tracks and earn your acknowledgements</p>
+              </>
+            )}
           </div>
-          <Button
-            variant="outline"
-            onClick={() => window.open("https://rayo.academy", "_blank")}
-            className="shrink-0"
-            data-testid="button-open-rayo-academy"
-          >
-            <ExternalLink className="h-4 w-4 mr-2" />
-            Open Rayo Academy
-          </Button>
+          {isRayoEnabled && (
+            <Button
+              variant="outline"
+              onClick={() => window.open("https://rayo.academy", "_blank")}
+              className="shrink-0"
+              data-testid="button-open-rayo-academy"
+            >
+              <ExternalLink className="h-4 w-4 mr-2" />
+              Open Rayo Academy
+            </Button>
+          )}
         </div>
 
         {showFallbackBanner && (

@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import { GoalDetailPanel } from "@/components/performance/GoalDetailPanel";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { BulkAddGoalsDialog } from "@/components/performance/BulkAddGoalsDialog";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -645,6 +647,7 @@ function MemberGoalsSection({ member }: { member: TeamMemberGoals }) {
 
 export function TeamGoalsContent() {
   const { user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
 
@@ -706,15 +709,27 @@ export function TeamGoalsContent() {
 
   return (
       <div className="v2-surface p-6 max-w-5xl mx-auto space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
-              <Users className="h-6 w-6 text-primary" />
-              Team Goals
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Overview of your team's performance goals
-            </p>
+            {newLook ? (
+              <V2PageHeader
+                icon={Users}
+                eyebrow="Performance"
+                title="Team Goals"
+                subtitle="Overview of your team's performance goals"
+                testId="text-page-title"
+              />
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+                  <Users className="h-6 w-6 text-primary" />
+                  Team Goals
+                </h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  Overview of your team's performance goals
+                </p>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setBulkOpen(true)} data-testid="button-bulk-add-team-goals">

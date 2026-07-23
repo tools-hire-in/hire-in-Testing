@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   NOTIFICATION_CATEGORIES,
@@ -54,6 +56,7 @@ function formatWhen(dateStr: string): string {
 }
 
 export default function NotificationCentre() {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const [page, setPage] = useState(1);
   const [category, setCategory] = useState<NotificationCategory | "all">("all");
@@ -93,7 +96,16 @@ export default function NotificationCentre() {
 
   return (
     <AdminLayout>
-      <div className="max-w-3xl mx-auto space-y-4 p-4 md:p-6">
+      <div className="max-w-3xl mx-auto space-y-4 p-4 md:p-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Bell}
+            eyebrow="My Work"
+            title="Notifications"
+            subtitle="Your activity feed and alerts"
+            testId="text-notification-centre-title"
+          />
+        ) : (
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div className="flex items-center gap-2">
             <Bell className="h-5 w-5 text-muted-foreground" />
@@ -130,6 +142,7 @@ export default function NotificationCentre() {
             )}
           </div>
         </div>
+        )}
 
         <div className="flex flex-wrap gap-2">
           <Button

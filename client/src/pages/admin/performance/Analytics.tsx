@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Target, RefreshCw, Star, MessageSquare, TrendingUp, ClipboardList } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
@@ -199,12 +200,22 @@ export default function Analytics() {
   return (
     <AdminLayout>
       <div className="v2-surface space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-analytics-title">Performance Analytics</h1>
-          <p className="text-muted-foreground">
-            {isHrOrAdmin ? "Company-wide performance overview" : "Team performance overview"}
-          </p>
-        </div>
+        {newLook ? (
+          <V2PageHeader
+            icon={BarChart3}
+            eyebrow="Performance"
+            title="Performance Analytics"
+            subtitle={isHrOrAdmin ? "Company-wide performance overview" : "Team performance overview"}
+            testId="text-analytics-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-analytics-title">Performance Analytics</h1>
+            <p className="text-muted-foreground">
+              {isHrOrAdmin ? "Company-wide performance overview" : "Team performance overview"}
+            </p>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

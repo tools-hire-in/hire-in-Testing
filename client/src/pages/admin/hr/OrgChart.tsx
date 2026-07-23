@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Network, ChevronDown, ChevronRight, User, Building2, Users } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -137,6 +139,7 @@ function OrgNode({ node, departments, depth = 0 }: { node: TreeNode; departments
 export default function OrgChart() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   const { data: orgData, isLoading } = useQuery<{ users: OrgUser[]; departments: Department[] }>({
     queryKey: ["/api/org-tree"],
@@ -194,11 +197,21 @@ export default function OrgChart() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-org-chart-title">Organization Chart</h1>
-          <p className="text-muted-foreground">Company hierarchy and reporting structure</p>
-        </div>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Network}
+            eyebrow="People & HR"
+            title="Organization Chart"
+            subtitle="Company hierarchy and reporting structure"
+            testId="text-org-chart-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-org-chart-title">Organization Chart</h1>
+            <p className="text-muted-foreground">Company hierarchy and reporting structure</p>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="space-y-4">

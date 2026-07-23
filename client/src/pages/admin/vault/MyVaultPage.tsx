@@ -4,6 +4,8 @@ import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
@@ -361,6 +363,7 @@ function SharedWithMeTable({ secrets }: { secrets: any[] }) {
 }
 
 export default function MyVaultPage() {
+  const { enabled: newLook } = useNewLook();
   const { data: personalVault, isLoading: vaultLoading } = useQuery<{ id: string; name: string } | null>({
     queryKey: ["/api/my-personal-vault"],
   });
@@ -371,16 +374,25 @@ export default function MyVaultPage() {
 
   return (
     <AdminLayout>
-      <div className="p-6 max-w-5xl mx-auto space-y-6">
-        <div className="flex items-center gap-3">
-          <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
-            <KeyRound className="h-5 w-5 text-primary" />
+      <div className="v2-surface p-6 max-w-5xl mx-auto space-y-6">
+        {newLook ? (
+          <V2PageHeader
+            icon={KeyRound}
+            eyebrow="Vault"
+            title="My Vault"
+            subtitle="Your personal credentials and shared company access"
+          />
+        ) : (
+          <div className="flex items-center gap-3">
+            <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center">
+              <KeyRound className="h-5 w-5 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-xl font-semibold">My Vault</h1>
+              <p className="text-sm text-muted-foreground">Your personal credentials and shared company access</p>
+            </div>
           </div>
-          <div>
-            <h1 className="text-xl font-semibold">My Vault</h1>
-            <p className="text-sm text-muted-foreground">Your personal credentials and shared company access</p>
-          </div>
-        </div>
+        )}
 
         <Tabs defaultValue="shared">
           <TabsList>

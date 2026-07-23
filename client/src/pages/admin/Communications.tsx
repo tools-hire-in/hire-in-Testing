@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Megaphone } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { useAuth } from "@/hooks/use-auth";
 import { cn } from "@/lib/utils";
 import { CommunicationsSection } from "./hr/settings/CommunicationsSection";
@@ -27,6 +29,7 @@ const TABS: { id: CommunicationsTab; label: string; heading: string; description
 export default function Communications() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const isHrOrAbove = ["super_admin", "admin", "hr"].includes(user?.role || "");
 
   const [activeTab, setActiveTab] = useState<CommunicationsTab>(() => {
@@ -57,6 +60,15 @@ export default function Communications() {
   return (
     <AdminLayout>
       <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Megaphone}
+            eyebrow="Admin"
+            title="Communications"
+            subtitle="Announcements and release notes broadcast to the team"
+            testId="text-communications-title"
+          />
+        ) : (
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-communications-title">
             <Megaphone className="h-5 w-5" />
@@ -66,6 +78,7 @@ export default function Communications() {
             Announcements and release notes broadcast to the team
           </p>
         </div>
+        )}
 
         {isHrOrAbove ? (
           <>

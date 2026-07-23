@@ -1,8 +1,10 @@
 import { useEffect } from "react";
 import { Link, useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { Briefcase, Users, FileText, Mail, TrendingUp, Clock, PencilLine } from "lucide-react";
+import { Briefcase, Users, FileText, Mail, TrendingUp, Clock, PencilLine, LayoutDashboard } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatCard } from "@/components/ui/stat-card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,6 +28,7 @@ interface CorrectionsSummary {
 export default function AdminDashboard() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   const { data: stats, isLoading } = useQuery<DashboardStats>({
     queryKey: ["/api/admin/stats"],
@@ -88,14 +91,23 @@ export default function AdminDashboard() {
 
   return (
     <AdminLayout>
-      <div className="space-y-8">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
-          <p className="text-muted-foreground">
-            Welcome back, {user?.firstName || "Admin"}
-          </p>
-        </div>
+      <div className="space-y-8 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={LayoutDashboard}
+            eyebrow="Recruitment"
+            title="Dashboard"
+            subtitle={`Welcome back, ${user?.firstName || "Admin"}`}
+            testId="text-dashboard-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
+            <p className="text-muted-foreground">
+              Welcome back, {user?.firstName || "Admin"}
+            </p>
+          </div>
+        )}
 
         {/* Stats Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">

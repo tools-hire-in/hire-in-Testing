@@ -1,6 +1,8 @@
 import { useEffect, useMemo } from "react";
 import { useLocation, useSearch } from "wouter";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { useAuth } from "@/hooks/use-auth";
 import MyTeam from "./MyTeam";
 import TeamAttendance from "./TeamAttendance";
@@ -30,6 +32,7 @@ const SECTION_HEADERS: Partial<Record<Tab, { title: string; desc: string }>> = {
 };
 
 export default function MyTeamTabs() {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const search = useSearch();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
@@ -74,10 +77,20 @@ export default function MyTeamTabs() {
     <AdminLayout>
       <div className="space-y-4 v2-surface">
         {sectionHeader && (
-          <div className="v2-page-head">
-            <h1 className="text-2xl font-bold" data-testid="text-myteam-title">{sectionHeader.title}</h1>
-            <p className="text-sm text-muted-foreground">{sectionHeader.desc}</p>
-          </div>
+          newLook ? (
+            <V2PageHeader
+              icon={Users}
+              eyebrow="My Team"
+              title={sectionHeader.title}
+              subtitle={sectionHeader.desc}
+              testId="text-myteam-title"
+            />
+          ) : (
+            <div className="v2-page-head">
+              <h1 className="text-2xl font-bold" data-testid="text-myteam-title">{sectionHeader.title}</h1>
+              <p className="text-sm text-muted-foreground">{sectionHeader.desc}</p>
+            </div>
+          )
         )}
 
         {/* Content driven by the sidebar Team sub-nav — single level, no nested tabs */}

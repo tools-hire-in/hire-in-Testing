@@ -7,6 +7,8 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { FileBarChart, Download, Send, Eye, Users, Clock, DollarSign, Loader2, Mail, Plus, X, ChevronDown, ChevronUp, Save, RefreshCw, AlertTriangle, ArrowRight, CheckCircle2, Clock3, History, Pencil, MessageSquare, ShieldCheck, CalendarDays, XCircle, BellRing, Receipt, Layers, Trash2, Banknote, FileDown, Shield } from "lucide-react";
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -2483,6 +2485,7 @@ function RunHistoryList({ runs, onRunsChanged }: { runs: SalaryRun[]; onRunsChan
 export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
 
   const now = new Date();
@@ -2819,11 +2822,21 @@ export function SalaryReportsContent({ readOnly }: { readOnly?: boolean } = {}) 
   const selectedRun = runs.find(r => r.id === selectedRunId) || null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 v2-surface">
+      {newLook ? (
+        <V2PageHeader
+          icon={FileBarChart}
+          eyebrow="People & HR"
+          title="Salary Reports"
+          subtitle="Review, adjust, and approve monthly salary processing reports before dispatch"
+          testId="text-salary-reports-title"
+        />
+      ) : (
       <div>
         <h1 className="text-3xl font-bold" data-testid="text-salary-reports-title">Salary Reports</h1>
         <p className="text-muted-foreground">Review, adjust, and approve monthly salary processing reports before dispatch</p>
       </div>
+      )}
 
       {/* Pending approval banner */}
       {pendingRuns.length > 0 && (

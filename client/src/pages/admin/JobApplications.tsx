@@ -4,6 +4,8 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { Search, Eye, Download, CheckCircle, XCircle, Clock, ExternalLink, Briefcase, RefreshCw, ArrowLeft } from "lucide-react";
 import { format } from "date-fns";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
@@ -65,6 +67,7 @@ export default function JobApplications() {
   const jobId = params.jobId;
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
@@ -153,7 +156,7 @@ export default function JobApplications() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         <div className="flex items-start gap-4">
           <Button
             variant="ghost"
@@ -164,18 +167,30 @@ export default function JobApplications() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div className="flex-1">
-            <h1 className="text-3xl font-bold" data-testid="text-job-title">
-              {isLoading ? <Skeleton className="h-8 w-64" /> : (jobInfo?.title || "Job Applications")}
-            </h1>
-            <p className="text-muted-foreground">
-              {isLoading ? (
-                <Skeleton className="h-4 w-48 mt-1" />
-              ) : (
-                <>
-                  {filteredApps?.length ?? 0} application{(filteredApps?.length ?? 0) !== 1 ? "s" : ""}
-                </>
-              )}
-            </p>
+            {newLook ? (
+              <V2PageHeader
+                icon={Briefcase}
+                eyebrow="Recruitment"
+                title={isLoading ? "Loading..." : (jobInfo?.title || "Job Applications")}
+                subtitle={isLoading ? "Loading applications..." : `${filteredApps?.length ?? 0} application${(filteredApps?.length ?? 0) !== 1 ? "s" : ""}`}
+                testId="text-job-title"
+              />
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold" data-testid="text-job-title">
+                  {isLoading ? <Skeleton className="h-8 w-64" /> : (jobInfo?.title || "Job Applications")}
+                </h1>
+                <p className="text-muted-foreground">
+                  {isLoading ? (
+                    <Skeleton className="h-4 w-48 mt-1" />
+                  ) : (
+                    <>
+                      {filteredApps?.length ?? 0} application{(filteredApps?.length ?? 0) !== 1 ? "s" : ""}
+                    </>
+                  )}
+                </p>
+              </>
+            )}
           </div>
         </div>
 

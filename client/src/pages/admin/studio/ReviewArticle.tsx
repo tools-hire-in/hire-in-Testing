@@ -6,6 +6,8 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { usePermissions } from "@/hooks/use-permissions";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -59,6 +61,7 @@ function reviewerName(r: Reviewer) {
 }
 
 function ReviewArticleInner({ id }: { id: string }) {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const { role } = usePermissions();
@@ -169,22 +172,32 @@ function ReviewArticleInner({ id }: { id: string }) {
 
   return (
     <AdminLayout>
-      <div className="space-y-4">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <button
-            onClick={() => setLocation("/admin/studio/inbox")}
-            className="inline-flex items-center gap-1 hover:text-foreground"
-            data-testid="button-back-inbox"
-          >
-            <ArrowLeft className="h-4 w-4" />
-            Inbox
-          </button>
-          <ChevronRight className="h-3 w-3" />
-          <span className="truncate font-medium text-foreground">{article.title}</span>
-          <Badge variant="secondary" className={STATUS_BADGE_CLASS[article.status] ?? ""}>
-            {STATUS_LABELS[article.status] ?? article.status}
-          </Badge>
-        </div>
+      <div className="space-y-4 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={PenLine}
+            eyebrow="Studio"
+            title="Review Article"
+            subtitle={article.title}
+            testId="text-review-title"
+          />
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <button
+              onClick={() => setLocation("/admin/studio/inbox")}
+              className="inline-flex items-center gap-1 hover:text-foreground"
+              data-testid="button-back-inbox"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Inbox
+            </button>
+            <ChevronRight className="h-3 w-3" />
+            <span className="truncate font-medium text-foreground">{article.title}</span>
+            <Badge variant="secondary" className={STATUS_BADGE_CLASS[article.status] ?? ""}>
+              {STATUS_LABELS[article.status] ?? article.status}
+            </Badge>
+          </div>
+        )}
 
         <div className="grid gap-4 lg:grid-cols-[1fr_340px]">
           {/* Article content */}

@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Users, Star, Loader2, ShieldCheck } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -127,6 +129,7 @@ function StarRating({ value, onChange, readOnly = false }: { value: number; onCh
 export function TeamReviewsContent() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const [selectedReview, setSelectedReview] = useState<TeamReview | null>(null);
   const [showConfirm, setShowConfirm] = useState(false);
@@ -193,10 +196,20 @@ export function TeamReviewsContent() {
 
   return (
       <div className="v2-surface space-y-6">
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-team-reviews-title">Team Reviews</h1>
-          <p className="text-muted-foreground">Review your direct reports' performance</p>
-        </div>
+        {newLook ? (
+          <V2PageHeader
+            icon={Users}
+            eyebrow="Performance"
+            title="Team Reviews"
+            subtitle="Review your direct reports' performance"
+            testId="text-team-reviews-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-team-reviews-title">Team Reviews</h1>
+            <p className="text-muted-foreground">Review your direct reports' performance</p>
+          </div>
+        )}
 
         {isLoading ? (
           <div className="space-y-2">

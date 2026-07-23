@@ -1,5 +1,7 @@
 import { useState, useEffect } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -199,6 +201,7 @@ colors: {
 },`;
 
 export default function BrandKit() {
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const [copiedHex, setCopiedHex] = useState<string | null>(null);
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
@@ -241,15 +244,25 @@ export default function BrandKit() {
 
   return (
     <AdminLayout>
-      <div className="max-w-5xl mx-auto px-4 lg:px-6 py-6 space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight" data-testid="text-brand-kit-title">
-            Brand Kit
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Official logo files, colors, typography, tokens, and guidelines for the marketing and design team.
-          </p>
-        </div>
+      <div className="max-w-5xl mx-auto px-4 lg:px-6 py-6 space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Palette}
+            eyebrow="Studio"
+            title="Brand Kit"
+            subtitle="Official logo files, colors, typography, tokens, and guidelines for the marketing and design team."
+            testId="text-brand-kit-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold tracking-tight" data-testid="text-brand-kit-title">
+              Brand Kit
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Official logo files, colors, typography, tokens, and guidelines for the marketing and design team.
+            </p>
+          </div>
+        )}
 
         {/* ── Logo Files ────────────────────────────────────────────────── */}
         <Card data-testid="card-brand-logos">

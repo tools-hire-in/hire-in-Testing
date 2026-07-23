@@ -1,7 +1,10 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { Eye } from "lucide-react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { PulseHeader } from "@/components/observation/PulseHeader";
 import { PlansBoard } from "@/components/observation/PlansBoard";
 import { ComplianceRadar } from "@/components/observation/ComplianceRadar";
@@ -14,6 +17,7 @@ const ALLOWED_ROLES = ["super_admin", "admin"];
 export default function ObservationTower() {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
+  const { enabled: newLook } = useNewLook();
   const [lastRefreshed, setLastRefreshed] = useState(new Date());
   const pulseRefetchRef = useRef<(() => void) | null>(null);
 
@@ -37,15 +41,24 @@ export default function ObservationTower() {
 
   return (
     <AdminLayout>
-      <div className="space-y-4 max-w-[1400px]" data-testid="observation-tower-page">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-lg font-bold text-foreground">Observation Tower</h1>
-            <p className="text-xs text-muted-foreground mt-0.5">
-              Live org intelligence — plans, compliance, goals & early exit signals
-            </p>
+      <div className="space-y-4 max-w-[1400px] v2-surface" data-testid="observation-tower-page">
+        {newLook ? (
+          <V2PageHeader
+            icon={Eye}
+            eyebrow="Analytics"
+            title="Observation Tower"
+            subtitle="Live org intelligence — plans, compliance, goals & early exit signals"
+          />
+        ) : (
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-lg font-bold text-foreground">Observation Tower</h1>
+              <p className="text-xs text-muted-foreground mt-0.5">
+                Live org intelligence — plans, compliance, goals & early exit signals
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Org Health banner — full width */}
         <PulseHeader

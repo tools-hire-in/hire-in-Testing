@@ -42,6 +42,8 @@ import {
   Radar,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -4368,6 +4370,7 @@ function PlanOverdueCell({ planId }: { planId: string }) {
 }
 
 export default function MyTeam() {
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const { can } = usePermissions();
   const canEditPayroll = can("payroll.employee.flags");
@@ -5291,16 +5294,20 @@ export default function MyTeam() {
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
-        <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
-              <Users className="h-6 w-6" />
-              My Team
-            </h1>
-            <p className="text-muted-foreground mt-1">View and manage employee data for your team members</p>
+      <div className="p-6 space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader icon={Users} eyebrow="My Team" title="My Team" subtitle="View and manage employee data for your team members" testId="text-page-title" />
+        ) : (
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+                <Users className="h-6 w-6" />
+                My Team
+              </h1>
+              <p className="text-muted-foreground mt-1">View and manage employee data for your team members</p>
+            </div>
           </div>
-        </div>
+        )}
 
         <Tabs value={pageTab} onValueChange={v => setPageTab(v as any)}>
           <TabsList data-testid="tabs-page-level">

@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { ShieldCheck, History, Lock, Pencil, Plus, Search, FileText, Clock, AlertTriangle, MessageSquare, Users, CheckCircle2, Send, Link2, Archive, ThumbsUp, Layers, Zap, Play, Target, UserCheck, X, Loader2, ExternalLink, BookOpen, Brain, Award, Trash2, GripVertical, CalendarDays, Sparkles, ChevronDown, ChevronUp, TrendingUp } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -69,6 +71,7 @@ function lifecycleVariant(status: string): "default" | "secondary" | "outline" |
 type SopDetail = SopDocument & { versions: SopDocument[]; roleAssignments: SopRoleAssignment[]; questionCount?: number };
 
 export default function SOPLibrary() {
+  const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const { enabled, canManage, isLoading: accessLoading } = useSopAccess();
@@ -151,16 +154,28 @@ export default function SOPLibrary() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="v2-surface space-y-6">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-sop-title">
-              <ShieldCheck className="h-6 w-6 text-primary" />
-              Process Governance Center
-            </h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              The Standard Operating Procedure library. Published SOPs are version-locked; edits create a new draft version.
-            </p>
+            {newLook ? (
+              <V2PageHeader
+                icon={ShieldCheck}
+                eyebrow="SOPs"
+                title="Process Governance Center"
+                subtitle="The Standard Operating Procedure library. Published SOPs are version-locked; edits create a new draft version."
+                testId="text-sop-title"
+              />
+            ) : (
+              <>
+                <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-sop-title">
+                  <ShieldCheck className="h-6 w-6 text-primary" />
+                  Process Governance Center
+                </h1>
+                <p className="text-muted-foreground text-sm mt-1">
+                  The Standard Operating Procedure library. Published SOPs are version-locked; edits create a new draft version.
+                </p>
+              </>
+            )}
           </div>
           <div className="flex items-center gap-2">
             {(canManageRollout || canManageReviewers) && (

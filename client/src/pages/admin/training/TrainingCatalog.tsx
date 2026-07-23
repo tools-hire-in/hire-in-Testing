@@ -2,6 +2,8 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BookOpen, GraduationCap, Loader2, Search, Filter, ExternalLink } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -34,6 +36,7 @@ function WaveBadge({ wave }: { wave?: string | null }) {
 }
 
 export default function TrainingCatalog() {
+  const { enabled: newLook } = useNewLook();
   const [, navigate] = useLocation();
   const [q, setQ] = useState("");
   const [waveFilter, setWaveFilter] = useState("all");
@@ -67,17 +70,26 @@ export default function TrainingCatalog() {
   return (
     <AdminLayout>
       <div className="v2-surface p-6 space-y-6">
-        <div className="flex items-start justify-between gap-4">
-          <div>
-            <h1 className="text-xl font-semibold flex items-center gap-2">
-              <BookOpen className="h-5 w-5 text-blue-600" />
-              SOP Training Catalog
-            </h1>
-            <p className="text-sm text-muted-foreground mt-0.5">
-              {tracks.length} module{tracks.length !== 1 ? "s" : ""} — SOP compliance training library
-            </p>
+        {newLook ? (
+          <V2PageHeader
+            icon={BookOpen}
+            eyebrow="Learning"
+            title="SOP Training Catalog"
+            subtitle={`${tracks.length} module${tracks.length !== 1 ? "s" : ""} — SOP compliance training library`}
+          />
+        ) : (
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h1 className="text-xl font-semibold flex items-center gap-2">
+                <BookOpen className="h-5 w-5 text-blue-600" />
+                SOP Training Catalog
+              </h1>
+              <p className="text-sm text-muted-foreground mt-0.5">
+                {tracks.length} module{tracks.length !== 1 ? "s" : ""} — SOP compliance training library
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {waveTotals.length > 0 && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

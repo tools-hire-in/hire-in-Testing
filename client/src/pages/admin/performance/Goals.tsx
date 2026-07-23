@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Target } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { MyGoalsContent } from "./MyGoals";
@@ -10,6 +12,7 @@ import { TeamGoalsContent } from "./TeamGoals";
 export default function Goals() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   const showTeamTab = ["super_admin", "admin", "hr", "manager"].includes(user?.role || "");
 
@@ -38,16 +41,26 @@ export default function Goals() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-goals-title">
-            <Target className="h-6 w-6 text-primary" />
-            Goals
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Track and manage performance goals
-          </p>
-        </div>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Target}
+            eyebrow="Performance"
+            title="Goals"
+            subtitle="Track and manage performance goals"
+            testId="text-goals-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-goals-title">
+              <Target className="h-6 w-6 text-primary" />
+              Goals
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Track and manage performance goals
+            </p>
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-goals">
           <TabsList>
             <TabsTrigger value="my-goals" data-testid="tab-my-goals">My Goals</TabsTrigger>

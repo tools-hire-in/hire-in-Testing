@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { FileBarChart } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/hooks/use-auth";
 import { SalaryReportsContent } from "./SalaryReports";
@@ -12,6 +14,7 @@ import { PolicyComplianceContent } from "./PolicyCompliance";
 export default function ReportsCompliance() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   const isAdmin = ["super_admin", "admin"].includes(user?.role || "");
   const isHR = ["super_admin", "admin", "hr"].includes(user?.role || "");
@@ -60,16 +63,26 @@ export default function ReportsCompliance() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-reports-title">
-            <FileBarChart className="h-6 w-6 text-primary" />
-            Reports & Compliance
-          </h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Salary reports, document compliance, policy acknowledgments, and audit logs
-          </p>
-        </div>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={FileBarChart}
+            eyebrow="People & HR"
+            title="Reports & Compliance"
+            subtitle="Salary reports, document compliance, policy acknowledgments, and audit logs"
+            testId="text-reports-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-reports-title">
+              <FileBarChart className="h-6 w-6 text-primary" />
+              Reports & Compliance
+            </h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Salary reports, document compliance, policy acknowledgments, and audit logs
+            </p>
+          </div>
+        )}
         <Tabs value={activeTab} onValueChange={handleTabChange} data-testid="tabs-reports">
           <TabsList>
             {(isHR || isFinance || isExecutive) && <TabsTrigger value="salary" data-testid="tab-salary">Salary Reports</TabsTrigger>}

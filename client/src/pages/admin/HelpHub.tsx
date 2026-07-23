@@ -3,6 +3,8 @@ import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import ReactMarkdown from "react-markdown";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -64,6 +66,7 @@ function DocReader({ content }: { content: string | null }) {
 
 export default function HelpHub() {
   const { user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const [selectedDoc, setSelectedDoc] = useState<HelpDoc | null>(null);
 
   const { data: docs = [], isLoading, isError } = useQuery<HelpDoc[]>({
@@ -74,21 +77,33 @@ export default function HelpHub() {
 
   return (
     <AdminLayout>
-      <div className="h-full flex flex-col">
+      <div className="h-full flex flex-col v2-surface">
         {/* Page header */}
-        <div className="mb-5 flex items-center gap-3 shrink-0">
-          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
-            <HelpCircle className="h-5 w-5" />
+        {newLook ? (
+          <div className="mb-5 shrink-0">
+            <V2PageHeader
+              icon={HelpCircle}
+              eyebrow="Help"
+              title="Help & Guides"
+              subtitle="Documentation and guides shared with your role."
+              testId="text-help-hub-title"
+            />
           </div>
-          <div>
-            <h1 className="text-xl font-bold tracking-tight" data-testid="text-help-hub-title">
-              Help &amp; Guides
-            </h1>
-            <p className="text-sm text-muted-foreground">
-              Documentation and guides shared with your role.
-            </p>
+        ) : (
+          <div className="mb-5 flex items-center gap-3 shrink-0">
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <HelpCircle className="h-5 w-5" />
+            </div>
+            <div>
+              <h1 className="text-xl font-bold tracking-tight" data-testid="text-help-hub-title">
+                Help &amp; Guides
+              </h1>
+              <p className="text-sm text-muted-foreground">
+                Documentation and guides shared with your role.
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Two-column layout */}
         <div className="flex-1 grid grid-cols-[320px_1fr] gap-0 min-h-0 border rounded-lg overflow-hidden">

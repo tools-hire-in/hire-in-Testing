@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -590,6 +592,7 @@ function SpendDashboard() {
 const toIsoDate = (d: Date) => d.toISOString().slice(0, 10);
 
 export default function StudioAnalytics() {
+  const { enabled: newLook } = useNewLook();
   const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } = useStudioProject();
   const { can } = usePermissions();
   const { user } = useAuth();
@@ -652,23 +655,33 @@ export default function StudioAnalytics() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
+      <div className="space-y-6 v2-surface">
         {/* Header */}
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-3">
-            <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
-              <BarChart3 className="h-6 w-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-analytics-title">
-                Content Analytics
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Workflow throughput, audience engagement, and AI spend.
-              </p>
+        {newLook ? (
+          <V2PageHeader
+            icon={BarChart3}
+            eyebrow="Studio"
+            title="Content Analytics"
+            subtitle="Workflow throughput, audience engagement, and AI spend."
+            testId="text-analytics-title"
+          />
+        ) : (
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
+                <BarChart3 className="h-6 w-6" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight" data-testid="text-analytics-title">
+                  Content Analytics
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Workflow throughput, audience engagement, and AI spend.
+                </p>
+              </div>
             </div>
           </div>
-        </div>
+        )}
 
         <Tabs defaultValue="performance">
           <TabsList>

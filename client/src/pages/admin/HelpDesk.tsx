@@ -5,6 +5,8 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -71,6 +73,7 @@ type QueueTab = typeof QUEUE_TABS[number]["value"];
 export default function HelpDesk() {
   const { user, isAuthenticated, isLoading: authLoading } = useAuth();
   const [, setLocation] = useLocation();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
@@ -151,7 +154,16 @@ export default function HelpDesk() {
 
   return (
     <AdminLayout>
-      <div className="space-y-5" data-testid="help-desk-page">
+      <div className="space-y-5 v2-surface" data-testid="help-desk-page">
+        {newLook ? (
+          <V2PageHeader
+            icon={Inbox}
+            eyebrow="Admin"
+            title="Help Desk Queue"
+            subtitle="Manage and resolve internal requests"
+            testId="text-helpdesk-title"
+          />
+        ) : (
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold" data-testid="text-helpdesk-title">Help Desk Queue</h1>
@@ -159,6 +171,7 @@ export default function HelpDesk() {
           </div>
           <Badge variant="outline" className="text-sm font-mono">HIRD</Badge>
         </div>
+        )}
 
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           {statCards.map((s) => (

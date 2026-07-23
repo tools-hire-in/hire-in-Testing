@@ -1,6 +1,8 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -183,6 +185,7 @@ function RowTable({ rows, className }: { rows: { label: string; weekly?: string;
 
 export default function TravelCalculator() {
   const { user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const qc = useQueryClient();
   const isAdmin = ["super_admin", "admin", "hr"].includes(user?.role ?? "");
@@ -497,7 +500,15 @@ are subject to IRS accountable plan requirements.`;
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6 max-w-[1400px] mx-auto">
+      <div className="p-6 space-y-6 max-w-[1400px] mx-auto v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Calculator}
+            eyebrow="Finance"
+            title="Travel Pay Calculator"
+            subtitle="GSA per diem · IRS accountable plan · Blended rate engine"
+          />
+        ) : (
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -514,6 +525,7 @@ are subject to IRS accountable plan requirements.`;
             )}
           </div>
         </div>
+        )}
 
         <Tabs value={tab} onValueChange={setTab}>
           <TabsList>

@@ -28,6 +28,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import {
   FileCheck,
   Upload,
@@ -114,6 +116,7 @@ const bankFormSchema = z.object({
 
 export default function MyDocuments() {
   const { toast } = useToast();
+  const { enabled: newLook } = useNewLook();
   const [uploadingDocId, setUploadingDocId] = useState<string | null>(null);
   const { data: documents, isLoading: docsLoading } = useQuery<EmployeeDocument[]>({
     queryKey: ["/api/hr/my-documents"],
@@ -229,13 +232,23 @@ export default function MyDocuments() {
 
   return (
     <AdminLayout>
-    <div className="space-y-6" data-testid="page-my-documents">
+    <div className="space-y-6 v2-surface" data-testid="page-my-documents">
+      {newLook ? (
+        <V2PageHeader
+          icon={FileCheck}
+          eyebrow="My Work"
+          title="My Documents"
+          subtitle="Upload your onboarding documents and complete your profile"
+          testId="text-page-title"
+        />
+      ) : (
       <div>
         <h1 className="text-2xl font-bold" data-testid="text-page-title">My Documents</h1>
         <p className="text-muted-foreground text-sm mt-1">
           Upload your onboarding documents and complete your profile
         </p>
       </div>
+      )}
 
       {pendingPolicies.length > 0 && (
         <Card className="border-amber-200 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-800" data-testid="card-pending-policies">

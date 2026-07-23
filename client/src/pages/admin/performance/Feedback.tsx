@@ -3,6 +3,8 @@ import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { MessageSquare, Plus, Send, Search } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,6 +52,7 @@ const feedbackTypeColors: Record<string, string> = {
 export default function Feedback() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const [tab, setTab] = useState("received");
   const [showSend, setShowSend] = useState(false);
@@ -134,8 +137,20 @@ export default function Feedback() {
       <div className="v2-surface space-y-6">
         <div className="flex items-center justify-between flex-wrap gap-2">
           <div>
-            <h1 className="text-3xl font-bold" data-testid="text-feedback-title">Feedback</h1>
-            <p className="text-muted-foreground">Give and receive performance feedback</p>
+            {newLook ? (
+              <V2PageHeader
+                icon={MessageSquare}
+                eyebrow="Performance"
+                title="Feedback"
+                subtitle="Give and receive performance feedback"
+                testId="text-feedback-title"
+              />
+            ) : (
+              <>
+                <h1 className="text-3xl font-bold" data-testid="text-feedback-title">Feedback</h1>
+                <p className="text-muted-foreground">Give and receive performance feedback</p>
+              </>
+            )}
           </div>
           <Button onClick={() => setShowSend(true)} data-testid="button-send-feedback">
             <Plus className="h-4 w-4 mr-2" />
