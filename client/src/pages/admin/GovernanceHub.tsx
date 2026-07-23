@@ -635,7 +635,7 @@ export default function GovernanceHub({ readonly = false }: { readonly?: boolean
   });
 
   return (
-    <div className="space-y-8" data-testid="governance-hub">
+    <div className="space-y-8 v2-surface" data-testid="governance-hub">
       {/* Org Pulse — 6 stat cards */}
       <div className="space-y-4">
         <div className="flex items-center gap-2">

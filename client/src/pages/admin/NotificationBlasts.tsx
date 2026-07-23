@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   Dialog,
   DialogContent,
@@ -39,6 +40,8 @@ import {
 } from "lucide-react";
 import { format } from "date-fns";
 import DOMPurify from "dompurify";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 
 interface BlastRecipient {
   userId: string;
@@ -303,43 +306,49 @@ function BlastDetailModal({
             )}
 
             {canApprove && showEdit && (
-              <div className="space-y-3 border rounded p-3 bg-amber-50">
-                <p className="text-sm font-medium text-amber-800">Edit before approving (optional)</p>
-                <div>
-                  <Label className="text-xs">Override subject (leave blank to keep original)</Label>
-                  <Input
-                    value={editSubject}
-                    onChange={e => setEditSubject(e.target.value)}
-                    placeholder={blast.subject}
-                    className="mt-1 text-sm"
-                    data-testid="input-blast-override-subject"
-                  />
-                </div>
-                <div>
-                  <Label className="text-xs">Override body HTML (leave blank to keep original)</Label>
-                  <Textarea
-                    value={editBody}
-                    onChange={e => setEditBody(e.target.value)}
-                    placeholder="Enter HTML or leave blank to keep original body…"
-                    rows={5}
-                    className="mt-1 text-sm font-mono"
-                    data-testid="input-blast-override-body"
-                  />
-                </div>
-              </div>
+              <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertTitle className="text-amber-800 dark:text-amber-200 text-sm">Edit before approving (optional)</AlertTitle>
+                <AlertDescription className="space-y-3 mt-2">
+                  <div>
+                    <Label className="text-xs">Override subject (leave blank to keep original)</Label>
+                    <Input
+                      value={editSubject}
+                      onChange={e => setEditSubject(e.target.value)}
+                      placeholder={blast.subject}
+                      className="mt-1 text-sm"
+                      data-testid="input-blast-override-subject"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Override body HTML (leave blank to keep original)</Label>
+                    <Textarea
+                      value={editBody}
+                      onChange={e => setEditBody(e.target.value)}
+                      placeholder="Enter HTML or leave blank to keep original body…"
+                      rows={5}
+                      className="mt-1 text-sm font-mono"
+                      data-testid="input-blast-override-body"
+                    />
+                  </div>
+                </AlertDescription>
+              </Alert>
             )}
 
             {showCancel && (
-              <div className="space-y-2 border rounded p-3 bg-red-50">
-                <p className="text-sm font-medium text-red-800">Cancel reason (optional)</p>
-                <Input
-                  value={cancelReason}
-                  onChange={e => setCancelReason(e.target.value)}
-                  placeholder="Reason for cancellation…"
-                  className="text-sm"
-                  data-testid="input-blast-cancel-reason"
-                />
-              </div>
+              <Alert variant="destructive" data-testid="alert-cancel-reason">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle className="text-sm">Cancel reason (optional)</AlertTitle>
+                <AlertDescription className="mt-2">
+                  <Input
+                    value={cancelReason}
+                    onChange={e => setCancelReason(e.target.value)}
+                    placeholder="Reason for cancellation…"
+                    className="text-sm bg-background"
+                    data-testid="input-blast-cancel-reason"
+                  />
+                </AlertDescription>
+              </Alert>
             )}
           </div>
         )}
@@ -383,6 +392,7 @@ function BlastDetailModal({
 
 export default function NotificationBlasts() {
   const { user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const [activeTab, setActiveTab] = useState("pending");
   const [selectedBlastId, setSelectedBlastId] = useState<string | null>(null);
 
@@ -415,23 +425,38 @@ export default function NotificationBlasts() {
 
   return (
     <AdminLayout>
-      <div className="max-w-5xl mx-auto px-4 py-6 space-y-5">
-        <div className="flex items-start justify-between">
-          <div>
-            <h1 className="text-xl font-semibold flex items-center gap-2">
-              <Mail className="h-5 w-5 text-primary" />
-              Email Blast Review Queue
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1">
-              Automated bulk emails above the recipient threshold are held here for review before delivery.
-              {pendingCount > 0 && (
-                <span className="ml-2 font-medium text-amber-700" data-testid="text-blast-pending-count">
-                  {pendingCount} pending review
-                </span>
-              )}
-            </p>
+      <div className="max-w-5xl mx-auto px-4 py-6 space-y-5 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Mail}
+            eyebrow="Admin"
+            title="Email Blast Review Queue"
+            subtitle="Automated bulk emails above the recipient threshold are held here for review before delivery."
+            testId="text-blast-queue-title"
+            actions={pendingCount > 0 ? (
+              <span className="rounded-full bg-white/20 px-3 py-1 text-sm font-medium text-white" data-testid="text-blast-pending-count">
+                {pendingCount} pending
+              </span>
+            ) : undefined}
+          />
+        ) : (
+          <div className="flex items-start justify-between">
+            <div>
+              <h1 className="text-xl font-semibold flex items-center gap-2">
+                <Mail className="h-5 w-5 text-primary" />
+                Email Blast Review Queue
+              </h1>
+              <p className="text-sm text-muted-foreground mt-1">
+                Automated bulk emails above the recipient threshold are held here for review before delivery.
+                {pendingCount > 0 && (
+                  <span className="ml-2 font-medium text-amber-700" data-testid="text-blast-pending-count">
+                    {pendingCount} pending review
+                  </span>
+                )}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         <Card>
           <CardHeader className="pb-0">

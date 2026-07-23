@@ -32,6 +32,8 @@ import {
   ChevronsUpDown,
   Users,
 } from "lucide-react";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 
 const roleLabels: Record<string, { label: string; color: string }> = {
   super_admin: { label: "Super Admin", color: "bg-primary text-primary-foreground" },
@@ -738,6 +740,7 @@ function SuperAdminView({
 
 export default function KnowledgeHub() {
   const { user, isLoading: authLoading } = useAuth();
+  const { enabled: newLook } = useNewLook();
 
   const isSuperAdmin = user?.role === "super_admin";
   const isHr = user?.role === "hr";
@@ -774,25 +777,36 @@ export default function KnowledgeHub() {
         }
       `}</style>
 
-      {isSuperAdmin ? (
-        <SuperAdminView
-          docs={docs}
-          isLoading={isLoading}
-          isError={isError}
-          refetch={refetch}
-          readCounts={readCounts}
-          readPaths={readPaths}
-        />
-      ) : (
-        <SimplifiedTrainingView
-          docs={docs}
-          isLoading={isLoading}
-          isError={isError}
-          refetch={refetch}
-          readPaths={readPaths}
-          readCounts={canSeeReadCounts ? readCounts : null}
-        />
-      )}
+      <div className="space-y-6 v2-surface">
+        {newLook && (
+          <V2PageHeader
+            icon={BookOpen}
+            eyebrow="Knowledge"
+            title="Knowledge Hub"
+            subtitle="Role-curated training documents and operational guides"
+            testId="text-knowledge-hub-title"
+          />
+        )}
+        {isSuperAdmin ? (
+          <SuperAdminView
+            docs={docs}
+            isLoading={isLoading}
+            isError={isError}
+            refetch={refetch}
+            readCounts={readCounts}
+            readPaths={readPaths}
+          />
+        ) : (
+          <SimplifiedTrainingView
+            docs={docs}
+            isLoading={isLoading}
+            isError={isError}
+            refetch={refetch}
+            readPaths={readPaths}
+            readCounts={canSeeReadCounts ? readCounts : null}
+          />
+        )}
+      </div>
     </AdminLayout>
   );
 }

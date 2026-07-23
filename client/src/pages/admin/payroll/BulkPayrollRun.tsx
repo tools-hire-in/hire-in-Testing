@@ -28,6 +28,8 @@ import {
   Building2,
 } from "lucide-react";
 import { SalaryReportsContent } from "@/pages/admin/hr/SalaryReports";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 
 const MONTHS = [
   { value: "1", label: "January" },
@@ -380,6 +382,7 @@ function handleStatutoryDownload(year: string, month: string) {
 
 export default function BulkPayrollRun() {
   const { toast } = useToast();
+  const { enabled: newLook } = useNewLook();
   const [year, setYear] = useState(String(currentYear));
   const [month, setMonth] = useState(String(currentMonth));
   const [generateResult, setGenerateResult] = useState<GenerateResult | null>(null);
@@ -490,15 +493,24 @@ export default function BulkPayrollRun() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-bold" data-testid="text-page-title">Bulk Payroll Run</h1>
-          <p className="text-muted-foreground mt-1">
-            Validate gates, generate the monthly payroll run, and bulk-create salary slips with full
-            statutory computation for all employees.
-          </p>
-        </div>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={ClipboardCheck}
+            eyebrow="Payroll"
+            title="Bulk Payroll Run"
+            subtitle="Validate gates, generate the monthly payroll run, and bulk-create salary slips with full statutory computation for all employees."
+            testId="text-page-title"
+          />
+        ) : (
+          <div>
+            <h1 className="text-3xl font-bold" data-testid="text-page-title">Bulk Payroll Run</h1>
+            <p className="text-muted-foreground mt-1">
+              Validate gates, generate the monthly payroll run, and bulk-create salary slips with full
+              statutory computation for all employees.
+            </p>
+          </div>
+        )}
 
         {/* Period selector + action buttons */}
         <Card>

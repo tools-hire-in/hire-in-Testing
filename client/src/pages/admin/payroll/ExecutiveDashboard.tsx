@@ -27,6 +27,8 @@ import {
   ShieldCheck,
   Building2,
 } from "lucide-react";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 
 const MONTHS = [
   { value: "1", label: "January" },
@@ -239,6 +241,7 @@ function handleDownload(year: string, month: string) {
 }
 
 export default function ExecutiveDashboard() {
+  const { enabled: newLook } = useNewLook();
   const [year, setYear] = useState(String(currentYear));
   const [month, setMonth] = useState(String(currentMonth));
 
@@ -278,28 +281,49 @@ export default function ExecutiveDashboard() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold" data-testid="text-exec-dashboard-title">
-              Payroll Executive Dashboard
-            </h1>
-            <p className="text-muted-foreground mt-1">
-              Month-level payroll analytics, statutory totals, and cost breakdown.
-            </p>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={TrendingUp}
+            eyebrow="Payroll"
+            title="Payroll Executive Dashboard"
+            subtitle="Month-level payroll analytics, statutory totals, and cost breakdown."
+            testId="text-exec-dashboard-title"
+            actions={
+              <Button
+                variant="outline"
+                onClick={() => handleDownload(year, month)}
+                disabled={!hasData}
+                data-testid="button-statutory-export"
+                className="gap-2 shrink-0 bg-white/10 border-white/30 text-white hover:bg-white/20"
+              >
+                <Download className="h-4 w-4" />
+                Export Statutory CSV
+              </Button>
+            }
+          />
+        ) : (
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold" data-testid="text-exec-dashboard-title">
+                Payroll Executive Dashboard
+              </h1>
+              <p className="text-muted-foreground mt-1">
+                Month-level payroll analytics, statutory totals, and cost breakdown.
+              </p>
+            </div>
+            <Button
+              variant="outline"
+              onClick={() => handleDownload(year, month)}
+              disabled={!hasData}
+              data-testid="button-statutory-export"
+              className="gap-2 shrink-0"
+            >
+              <Download className="h-4 w-4" />
+              Export Statutory CSV
+            </Button>
           </div>
-          <Button
-            variant="outline"
-            onClick={() => handleDownload(year, month)}
-            disabled={!hasData}
-            data-testid="button-statutory-export"
-            className="gap-2 shrink-0"
-          >
-            <Download className="h-4 w-4" />
-            Export Statutory CSV
-          </Button>
-        </div>
+        )}
 
         {/* Period selector */}
         <div className="flex flex-wrap items-end gap-3">

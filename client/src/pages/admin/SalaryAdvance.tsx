@@ -15,6 +15,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   Wallet, Loader2, Clock, CheckCircle2, XCircle, AlertCircle, ChevronRight,
@@ -22,6 +23,8 @@ import {
   Crown, Paperclip, Upload, X, FileText,
 } from "lucide-react";
 import { format } from "date-fns";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 
 interface AdvanceUser {
   id: string; firstName: string; lastName: string; email: string; role: string;
@@ -144,6 +147,7 @@ export default function SalaryAdvance() {
   const qc = useQueryClient();
   const { user } = useAuth();
   const { toast } = useToast();
+  const { enabled: newLook } = useNewLook();
   const [location, setLocation] = useLocation();
   const { isEnabled, isLoading: flagsLoading } = useFeatureFlags();
 
@@ -200,17 +204,27 @@ export default function SalaryAdvance() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
-              <Wallet className="h-6 w-6" /> Salary Advance
-            </h1>
-            <p className="text-muted-foreground text-sm">
-              {recordOnly ? "Record salary advances and overpayments for employees" : "Request a salary advance and track repayment"}
-            </p>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Wallet}
+            eyebrow="HR"
+            title="Salary Advance"
+            subtitle={recordOnly ? "Record salary advances and overpayments for employees" : "Request a salary advance and track repayment"}
+            testId="text-page-title"
+          />
+        ) : (
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h1 className="text-2xl font-bold flex items-center gap-2" data-testid="text-page-title">
+                <Wallet className="h-6 w-6" /> Salary Advance
+              </h1>
+              <p className="text-muted-foreground text-sm">
+                {recordOnly ? "Record salary advances and overpayments for employees" : "Request a salary advance and track repayment"}
+              </p>
+            </div>
           </div>
-        </div>
+        )}
 
         <Tabs value={tab} onValueChange={setTabAndUrl}>
           <TabsList className="flex flex-wrap gap-1 h-auto">
@@ -465,14 +479,16 @@ function MyRequestsTab({ policy, onOpen }: { policy?: Policy; onOpen: (id: strin
               </div>
             )}
             {eligibility?.warnings?.length ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 space-y-1">
-                {eligibility.warnings.map((w, i) => (
-                  <p key={i} className="text-xs text-amber-700 flex items-start gap-1.5" data-testid={`text-warning-${i}`}>
-                    <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" /> {w}
-                  </p>
-                ))}
-                <p className="text-xs text-amber-600 pt-1">These are advisory — you may still submit; approvers will review.</p>
-              </div>
+              <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertTitle className="text-amber-800 dark:text-amber-200 text-xs font-medium">Advisory warnings</AlertTitle>
+                <AlertDescription className="space-y-0.5 mt-1">
+                  {eligibility.warnings.map((w, i) => (
+                    <p key={i} className="text-xs text-amber-700 dark:text-amber-300" data-testid={`text-warning-${i}`}>{w}</p>
+                  ))}
+                  <p className="text-xs text-amber-600 dark:text-amber-400 pt-1">These are advisory — you may still submit; approvers will review.</p>
+                </AlertDescription>
+              </Alert>
             ) : null}
             <Button
               onClick={() => createMutation.mutate()}
@@ -814,13 +830,13 @@ function RecordForEmployeeDialog({ open, onClose }: { open: boolean; onClose: ()
           </div>
 
           {startMonthWarning && (
-            <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-sm" data-testid="banner-start-month-warning">
-              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-              <div className="text-amber-800 dark:text-amber-200">
-                <p className="font-medium">Advance recorded — but recovery month is already locked</p>
-                <p className="text-xs mt-0.5">The salary run for {startMonth ? `${MONTHS[parseInt(startMonth, 10)]} ${startYear}` : "the chosen month"} is already locked. The advance was created with your chosen start month. <strong>Regenerate the salary report</strong> to include this recovery deduction.</p>
-              </div>
-            </div>
+            <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700" data-testid="banner-start-month-warning">
+              <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+              <AlertTitle className="text-amber-800 dark:text-amber-200 text-sm">Advance recorded — but recovery month is already locked</AlertTitle>
+              <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
+                The salary run for {startMonth ? `${MONTHS[parseInt(startMonth, 10)]} ${startYear}` : "the chosen month"} is already locked. The advance was created with your chosen start month. <strong>Regenerate the salary report</strong> to include this recovery deduction.
+              </AlertDescription>
+            </Alert>
           )}
 
           {amt > 0 && (
@@ -1470,14 +1486,17 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
         ) : (
           <div className="space-y-4">
             {(isManagerApprover || isFinal) && advance.eligibilityWarnings?.length ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-800" data-testid="banner-eligibility-warnings">
-                <p className="flex items-center gap-1.5 font-medium"><AlertTriangle className="h-4 w-4" /> Policy warnings</p>
-                <ul className="mt-1 list-disc pl-5 space-y-0.5">
-                  {advance.eligibilityWarnings.map((w, i) => (
-                    <li key={i} data-testid={`text-eligibility-warning-${i}`}>{w}</li>
-                  ))}
-                </ul>
-              </div>
+              <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700" data-testid="banner-eligibility-warnings">
+                <AlertTriangle className="h-4 w-4 text-amber-600" />
+                <AlertTitle className="text-amber-800 dark:text-amber-200 text-sm">Policy warnings</AlertTitle>
+                <AlertDescription>
+                  <ul className="mt-1 list-disc pl-5 space-y-0.5 text-sm text-amber-700 dark:text-amber-300">
+                    {advance.eligibilityWarnings.map((w, i) => (
+                      <li key={i} data-testid={`text-eligibility-warning-${i}`}>{w}</li>
+                    ))}
+                  </ul>
+                </AlertDescription>
+              </Alert>
             ) : null}
             <div className="grid grid-cols-2 gap-3 text-sm">
               <Info label="Employee" value={userName(advance.requester)} />
@@ -1493,16 +1512,18 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
               <p className="text-sm">{advance.reason}</p>
             </div>
             {advance.returnNote && advance.status === "returned" && (
-              <div className="rounded-lg border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
-                <p className="font-medium">Returned for more info:</p>
-                <p>{advance.returnNote}</p>
-              </div>
+              <Alert className="border-rose-300 bg-rose-50 dark:bg-rose-950/30 dark:border-rose-700">
+                <AlertTriangle className="h-4 w-4 text-rose-600" />
+                <AlertTitle className="text-rose-800 dark:text-rose-200 text-sm">Returned for more info</AlertTitle>
+                <AlertDescription className="text-rose-700 dark:text-rose-300 text-sm">{advance.returnNote}</AlertDescription>
+              </Alert>
             )}
             {advance.rejectionReason && advance.status === "rejected" && (
-              <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
-                <p className="font-medium">Rejected:</p>
-                <p>{advance.rejectionReason}</p>
-              </div>
+              <Alert variant="destructive">
+                <AlertTriangle className="h-4 w-4" />
+                <AlertTitle className="text-sm">Rejected</AlertTitle>
+                <AlertDescription className="text-sm">{advance.rejectionReason}</AlertDescription>
+              </Alert>
             )}
 
             {/* Repayment schedule */}
@@ -1643,13 +1664,13 @@ function AdvanceDetailDialog({ advanceId, open, onClose, role, userId, policy }:
                 )}
                 <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Optional note" data-testid="input-final-note" />
                 {finalStartMonthWarning && (
-                  <div className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3 text-sm" data-testid="banner-final-start-month-warning">
-                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                    <div className="text-amber-800 dark:text-amber-200">
-                      <p className="font-medium">Approved — but recovery month is already locked</p>
-                      <p className="text-xs mt-0.5">The salary run for {finalStartMonth ? `${MONTHS[parseInt(finalStartMonth, 10)]} ${finalStartYear}` : "the chosen month"} is already locked. The schedule has been created with your chosen start month. <strong>Regenerate the salary report</strong> to include this deduction.</p>
-                    </div>
-                  </div>
+                  <Alert className="border-amber-300 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-700" data-testid="banner-final-start-month-warning">
+                    <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    <AlertTitle className="text-amber-800 dark:text-amber-200 text-sm">Approved — but recovery month is already locked</AlertTitle>
+                    <AlertDescription className="text-amber-700 dark:text-amber-300 text-xs mt-0.5">
+                      The salary run for {finalStartMonth ? `${MONTHS[parseInt(finalStartMonth, 10)]} ${finalStartYear}` : "the chosen month"} is already locked. The schedule has been created with your chosen start month. <strong>Regenerate the salary report</strong> to include this deduction.
+                    </AlertDescription>
+                  </Alert>
                 )}
                 <div className="flex flex-wrap gap-2">
                   {!showPreviewSchedule && (

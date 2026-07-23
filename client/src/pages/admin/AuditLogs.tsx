@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ChevronLeft, ChevronRight, Clock, UserPlus, Pencil, KeyRound, Mail, Trash2, Network } from "lucide-react";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 
 interface AuditLogEntry {
   id: string;
@@ -102,7 +104,7 @@ function ChangeSummary({ action, changes }: { action: string; changes: any }) {
   return null;
 }
 
-export function AuditLogsContent() {
+export function AuditLogsContent({ showHeader = true }: { showHeader?: boolean }) {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
   const [page, setPage] = useState(0);
@@ -143,26 +145,46 @@ export function AuditLogsContent() {
 
   return (
       <div className="space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
-          <div>
-            <h1 className="text-3xl font-bold" data-testid="text-audit-logs-title">Audit Logs</h1>
-            <p className="text-muted-foreground">Track all user management changes</p>
+        {showHeader && (
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+            <div>
+              <h1 className="text-3xl font-bold" data-testid="text-audit-logs-title">Audit Logs</h1>
+              <p className="text-muted-foreground">Track all user management changes</p>
+            </div>
+            <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-48" data-testid="select-audit-filter">
+                <SelectValue placeholder="Filter by action" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Actions</SelectItem>
+                <SelectItem value="create_user">User Created</SelectItem>
+                <SelectItem value="update_user">User Updated</SelectItem>
+                <SelectItem value="reset_password">Password Reset</SelectItem>
+                <SelectItem value="resend_invite">Invitation Resent</SelectItem>
+                <SelectItem value="update_hierarchy">Hierarchy Updated</SelectItem>
+                <SelectItem value="delete_user">User Deleted</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
-          <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(0); }}>
-            <SelectTrigger className="w-48" data-testid="select-audit-filter">
-              <SelectValue placeholder="Filter by action" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All Actions</SelectItem>
-              <SelectItem value="create_user">User Created</SelectItem>
-              <SelectItem value="update_user">User Updated</SelectItem>
-              <SelectItem value="reset_password">Password Reset</SelectItem>
-              <SelectItem value="resend_invite">Invitation Resent</SelectItem>
-              <SelectItem value="update_hierarchy">Hierarchy Updated</SelectItem>
-              <SelectItem value="delete_user">User Deleted</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
+        )}
+        {!showHeader && (
+          <div className="flex justify-end">
+            <Select value={actionFilter} onValueChange={(v) => { setActionFilter(v); setPage(0); }}>
+              <SelectTrigger className="w-48" data-testid="select-audit-filter">
+                <SelectValue placeholder="Filter by action" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Actions</SelectItem>
+                <SelectItem value="create_user">User Created</SelectItem>
+                <SelectItem value="update_user">User Updated</SelectItem>
+                <SelectItem value="reset_password">Password Reset</SelectItem>
+                <SelectItem value="resend_invite">Invitation Resent</SelectItem>
+                <SelectItem value="update_hierarchy">Hierarchy Updated</SelectItem>
+                <SelectItem value="delete_user">User Deleted</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        )}
 
         <Card>
           <CardHeader>
@@ -227,9 +249,21 @@ export function AuditLogsContent() {
 }
 
 export default function AuditLogs() {
+  const { enabled: newLook } = useNewLook();
   return (
     <AdminLayout>
-      <AuditLogsContent />
+      <div className="space-y-6 v2-surface">
+        {newLook && (
+          <V2PageHeader
+            icon={Clock}
+            eyebrow="People & HR"
+            title="Audit Logs"
+            subtitle="Track all user management changes"
+            testId="text-audit-logs-title"
+          />
+        )}
+        <AuditLogsContent showHeader={!newLook} />
+      </div>
     </AdminLayout>
   );
 }

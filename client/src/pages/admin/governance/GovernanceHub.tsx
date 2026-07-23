@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -1098,6 +1100,7 @@ function ManagerReadinessCard() {
 export default function GovernanceHub() {
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const role = user?.role;
 
   const ALLOWED_ROLES = ["super_admin", "admin", "hr", "manager"];
@@ -1139,37 +1142,62 @@ export default function GovernanceHub() {
 
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-start gap-3">
-            <div className="mt-0.5 rounded-lg bg-primary/10 p-2 text-primary shrink-0">
-              <ShieldCheck className="h-5 w-5" />
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={ShieldCheck}
+            eyebrow="Governance"
+            title="Governance Hub"
+            subtitle="Org-wide compliance health across SOPs, training, PIPs, probation, goals, and check-ins."
+            testId="text-governance-hub-title"
+            actions={(criticalCount > 0 || warningCount > 0) ? (
+              <div className="flex items-center gap-2">
+                {criticalCount > 0 && (
+                  <Badge className="bg-red-500 text-white hover:bg-red-500 gap-1" data-testid="badge-critical-count">
+                    <AlertTriangle className="h-3 w-3" />
+                    {criticalCount} critical
+                  </Badge>
+                )}
+                {warningCount > 0 && (
+                  <Badge className="bg-amber-500 text-white hover:bg-amber-500" data-testid="badge-warning-count">
+                    {warningCount} warning{warningCount !== 1 ? "s" : ""}
+                  </Badge>
+                )}
+              </div>
+            ) : undefined}
+          />
+        ) : (
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-start gap-3">
+              <div className="mt-0.5 rounded-lg bg-primary/10 p-2 text-primary shrink-0">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <h1 className="text-2xl font-bold tracking-tight" data-testid="text-governance-hub-title">
+                  Governance Hub
+                </h1>
+                <p className="text-sm text-muted-foreground max-w-xl">
+                  Org-wide compliance health across SOPs, training, PIPs, probation, goals, and check-ins.
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-governance-hub-title">
-                Governance Hub
-              </h1>
-              <p className="text-sm text-muted-foreground max-w-xl">
-                Org-wide compliance health across SOPs, training, PIPs, probation, goals, and check-ins.
-              </p>
-            </div>
+            {(criticalCount > 0 || warningCount > 0) && (
+              <div className="flex items-center gap-2">
+                {criticalCount > 0 && (
+                  <Badge className="bg-red-500 text-white hover:bg-red-500 gap-1" data-testid="badge-critical-count">
+                    <AlertTriangle className="h-3 w-3" />
+                    {criticalCount} critical
+                  </Badge>
+                )}
+                {warningCount > 0 && (
+                  <Badge className="bg-amber-500 text-white hover:bg-amber-500" data-testid="badge-warning-count">
+                    {warningCount} warning{warningCount !== 1 ? "s" : ""}
+                  </Badge>
+                )}
+              </div>
+            )}
           </div>
-          {(criticalCount > 0 || warningCount > 0) && (
-            <div className="flex items-center gap-2">
-              {criticalCount > 0 && (
-                <Badge className="bg-red-500 text-white hover:bg-red-500 gap-1" data-testid="badge-critical-count">
-                  <AlertTriangle className="h-3 w-3" />
-                  {criticalCount} critical
-                </Badge>
-              )}
-              {warningCount > 0 && (
-                <Badge className="bg-amber-500 text-white hover:bg-amber-500" data-testid="badge-warning-count">
-                  {warningCount} warning{warningCount !== 1 ? "s" : ""}
-                </Badge>
-              )}
-            </div>
-          )}
-        </div>
+        )}
 
         {isLoading && (
           <div className="flex items-center justify-center py-16">

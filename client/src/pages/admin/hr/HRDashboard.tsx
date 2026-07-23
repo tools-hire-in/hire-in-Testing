@@ -20,6 +20,8 @@ import {
   X,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -285,35 +287,61 @@ export default function HRDashboard() {
     refetchInterval: 60000,
   });
 
+  const { enabled: newLook } = useNewLook();
+
   return (
     <AdminLayout>
-      <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold" data-testid="text-hr-dashboard-title">
-            Good {today.getHours() < 12 ? "morning" : today.getHours() < 17 ? "afternoon" : "evening"}, {user?.firstName || "there"} 👋
-          </h1>
-          <p className="text-sm text-muted-foreground">
-            {today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
-          </p>
-          {pinnedBadges.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mt-2" data-testid="dashboard-pinned-badges">
-              {pinnedBadges.map((post) => (
-                <span
-                  key={post.id}
-                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
-                  style={{
-                    backgroundColor: post.badgeType ? `${post.badgeType.color}20` : "#f3f4f6",
-                    color: post.badgeType?.color ?? "#374151",
-                  }}
-                  title={`${post.badgeType?.name} from ${post.giverName}`}
-                  data-testid={`dashboard-pinned-badge-${post.id}`}
-                >
-                  {post.badgeType?.emoji} {post.badgeType?.name}
-                </span>
-              ))}
-            </div>
-          )}
-        </div>
+      <div className="space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={Sun}
+            eyebrow="My Work"
+            title={`Good ${today.getHours() < 12 ? "morning" : today.getHours() < 17 ? "afternoon" : "evening"}, ${user?.firstName || "there"} 👋`}
+            subtitle={today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            testId="text-hr-dashboard-title"
+            actions={pinnedBadges.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5" data-testid="dashboard-pinned-badges">
+                {pinnedBadges.map((post) => (
+                  <span
+                    key={post.id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-white/20 text-white"
+                    title={`${post.badgeType?.name} from ${post.giverName}`}
+                    data-testid={`dashboard-pinned-badge-${post.id}`}
+                  >
+                    {post.badgeType?.emoji} {post.badgeType?.name}
+                  </span>
+                ))}
+              </div>
+            ) : undefined}
+          />
+        ) : (
+          <div>
+            <h1 className="text-2xl font-bold" data-testid="text-hr-dashboard-title">
+              Good {today.getHours() < 12 ? "morning" : today.getHours() < 17 ? "afternoon" : "evening"}, {user?.firstName || "there"} 👋
+            </h1>
+            <p className="text-sm text-muted-foreground">
+              {today.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" })}
+            </p>
+            {pinnedBadges.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2" data-testid="dashboard-pinned-badges">
+                {pinnedBadges.map((post) => (
+                  <span
+                    key={post.id}
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium"
+                    style={{
+                      backgroundColor: post.badgeType ? `${post.badgeType.color}20` : "#f3f4f6",
+                      color: post.badgeType?.color ?? "#374151",
+                    }}
+                    title={`${post.badgeType?.name} from ${post.giverName}`}
+                    data-testid={`dashboard-pinned-badge-${post.id}`}
+                  >
+                    {post.badgeType?.emoji} {post.badgeType?.name}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* 5-hour lunch reminder banner */}
         {showLunchReminder && (

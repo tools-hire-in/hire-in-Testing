@@ -20,6 +20,8 @@ import {
   Loader2, ShieldCheck, Users, Globe, User, ScrollText
 } from "lucide-react";
 import type { Contract, ContractClient } from "@shared/schema";
+import { V2PageHeader } from "@/components/admin/V2PageHeader";
+import { useNewLook } from "@/hooks/use-new-look";
 import ContractGenerator from "./ContractGenerator";
 import FreeformMsaGenerator from "./FreeformMsaGenerator";
 import ImportContract from "./ImportContract";
@@ -74,6 +76,7 @@ function isExternalEmail(email: string) {
 export default function ContractsHub() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { enabled: newLook } = useNewLook();
   const [tab, setTab] = useState("contracts");
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
@@ -256,27 +259,49 @@ export default function ContractsHub() {
 
   return (
     <AdminLayout>
-      <div className="p-6 space-y-6">
-        {/* Header */}
-        <div className="flex items-center justify-between flex-wrap gap-3">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900">Finance & Contracts</h1>
-            <p className="text-sm text-muted-foreground mt-0.5">Manage client contracts, compliance documents, and invoice tracking</p>
-          </div>
-          {canManage && (
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => setShowImport(true)} data-testid="button-import-contract">
-                <Upload className="h-4 w-4 mr-2" /> Import Contract
-              </Button>
-              <Button variant="outline" onClick={() => setShowMsaBuilder(true)} data-testid="button-new-msa">
-                <ScrollText className="h-4 w-4 mr-2" /> New MSA (Freeform)
-              </Button>
-              <Button onClick={() => setShowGenerator(true)} data-testid="button-new-contract">
-                <Plus className="h-4 w-4 mr-2" /> Generate Contract
-              </Button>
+      <div className="p-6 space-y-6 v2-surface">
+        {newLook ? (
+          <V2PageHeader
+            icon={ReceiptText}
+            eyebrow="Finance"
+            title="Finance & Contracts"
+            subtitle="Manage client contracts, compliance documents, and invoice tracking"
+            testId="text-contracts-hub-title"
+            actions={canManage ? (
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowImport(true)} data-testid="button-import-contract" className="bg-white/10 border-white/30 text-white hover:bg-white/20">
+                  <Upload className="h-4 w-4 mr-2" /> Import
+                </Button>
+                <Button variant="outline" onClick={() => setShowMsaBuilder(true)} data-testid="button-new-msa" className="bg-white/10 border-white/30 text-white hover:bg-white/20">
+                  <ScrollText className="h-4 w-4 mr-2" /> New MSA
+                </Button>
+                <Button onClick={() => setShowGenerator(true)} data-testid="button-new-contract" className="bg-white/20 border-white/30 text-white hover:bg-white/30">
+                  <Plus className="h-4 w-4 mr-2" /> Generate
+                </Button>
+              </div>
+            ) : undefined}
+          />
+        ) : (
+          <div className="flex items-center justify-between flex-wrap gap-3">
+            <div>
+              <h1 className="text-2xl font-bold text-slate-900" data-testid="text-contracts-hub-title">Finance & Contracts</h1>
+              <p className="text-sm text-muted-foreground mt-0.5">Manage client contracts, compliance documents, and invoice tracking</p>
             </div>
-          )}
-        </div>
+            {canManage && (
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => setShowImport(true)} data-testid="button-import-contract">
+                  <Upload className="h-4 w-4 mr-2" /> Import Contract
+                </Button>
+                <Button variant="outline" onClick={() => setShowMsaBuilder(true)} data-testid="button-new-msa">
+                  <ScrollText className="h-4 w-4 mr-2" /> New MSA (Freeform)
+                </Button>
+                <Button onClick={() => setShowGenerator(true)} data-testid="button-new-contract">
+                  <Plus className="h-4 w-4 mr-2" /> Generate Contract
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Stats Strip */}
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
