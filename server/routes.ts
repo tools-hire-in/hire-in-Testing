@@ -15,6 +15,7 @@ import { db, pool } from "./db";
 import { workingDaysUntilLock, maybeSendManagerCountdownAlert } from "./complianceCountdown";
 import { eq, and, inArray, sql, desc, isNull, isNotNull, or, asc } from "drizzle-orm";
 import { getCurrentShiftTiming, getAllShiftsWithTiming } from "./shiftUtils";
+import { getAllReporteeIdsFromDb } from "./orgUtils";
 import { setupSession, requireAuth as requireAuthImported, require2FA } from "./auth";
 import { resolveRoles, getEffectiveMatrix, isDbDrivenAccessControl, ACCESS_CONTROL_ROLES, ACCESS_REGISTRY, getStudioAddOnPermissions } from "@shared/accessControl";
 import { registerAuthRoutes } from "./authRoutes";
@@ -3949,7 +3950,7 @@ Canonical domain: ${BASE}
       // Manager: validate they can only correct their own direct reports
       if (actorRole === "manager") {
         const existing = guardRecord;
-        const reporteeIds = await getAllReporteeIds(actorId);
+        const reporteeIds = await getAllReporteeIdsFromDb(actorId);
         if (!reporteeIds.includes(existing.userId)) {
           return res.status(403).json({ error: "You do not have permission to correct this employee's attendance" });
         }
@@ -4087,7 +4088,7 @@ Canonical domain: ${BASE}
 
       // Manager: validate team access
       if (actorRole === "manager") {
-        const reporteeIds = await getAllReporteeIds(actorId);
+        const reporteeIds = await getAllReporteeIdsFromDb(actorId);
         if (!reporteeIds.includes(userId)) {
           return res.status(403).json({ error: "You do not have permission to correct this employee's attendance" });
         }
@@ -4192,7 +4193,7 @@ Canonical domain: ${BASE}
       // Manager: restrict to direct reportees only
       let userIdFilter: string[] | null = null;
       if (actorRole === "manager") {
-        userIdFilter = await getAllReporteeIds(actorId);
+        userIdFilter = await getAllReporteeIdsFromDb(actorId);
         if (userIdFilter.length === 0) {
           return res.json({ totalCorrections: 0, affectedCount: 0, perEmployee: [] });
         }
@@ -6015,7 +6016,7 @@ Canonical domain: ${BASE}
       // Managers may review requests for anyone in their full reporting line
       // (direct reports and people reporting to their sub-managers).
       if (actorRole === "manager") {
-        const reporteeIds = await getAllReporteeIds(actorId);
+        const reporteeIds = await getAllReporteeIdsFromDb(actorId);
         if (!reporteeIds.includes(request.employeeId)) {
           return res.status(403).json({ error: "You can only review requests for your reporting line" });
         }
@@ -6392,7 +6393,7 @@ Canonical domain: ${BASE}
       // For managers, validate all requests belong to their full reporting line
       let teamIds: Set<string> | null = null;
       if (actorRole === "manager") {
-        const reporteeIds = await getAllReporteeIds(actorId);
+        const reporteeIds = await getAllReporteeIdsFromDb(actorId);
         teamIds = new Set(reporteeIds);
       }
 
@@ -14210,20 +14211,6 @@ Canonical domain: ${BASE}
     }
   });
 
-  async function getAllReporteeIds(managerId: string): Promise<string[]> {
-    const result: string[] = [];
-    const queue = [managerId];
-    while (queue.length > 0) {
-      const currentId = queue.shift()!;
-      const directReports = await storage.getTeamMembers(currentId);
-      for (const report of directReports) {
-        result.push(report.id);
-        queue.push(report.id);
-      }
-    }
-    return result;
-  }
-
   async function validateMyTeamAccess(req: Request, res: Response, targetUserId: string): Promise<boolean> {
     const actorRole = req.session.role!;
     const actorId = req.session.userId!;
@@ -14233,7 +14220,7 @@ Canonical domain: ${BASE}
     }
 
     if (actorRole === "manager") {
-      const reporteeIds = await getAllReporteeIds(actorId);
+      const reporteeIds = await getAllReporteeIdsFromDb(actorId);
       if (reporteeIds.includes(targetUserId)) {
         return true;
       }
@@ -14920,7 +14907,7 @@ Canonical domain: ${BASE}
       if (["super_admin", "admin", "hr", "operations"].includes(actorRole)) {
         members = await storage.getAdminUsers();
       } else {
-        const reporteeIds = await getAllReporteeIds(actorId);
+        const reporteeIds = await getAllReporteeIdsFromDb(actorId);
         const allUsers = await storage.getAdminUsers();
         members = allUsers.filter(u => reporteeIds.includes(u.id));
       }

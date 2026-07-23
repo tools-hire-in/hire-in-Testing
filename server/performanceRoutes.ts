@@ -15,6 +15,7 @@ import {
   cadenceCheckInType, PROBATION_CADENCE_DAYS, milestoneDayFor, probationAreaKey,
   computeWeightedOverall, type ProbationWeight, type ProbationReviewScores,
 } from "@shared/probation";
+import { getAllReporteeIds, getAllReporteeIdsFromDb } from "./orgUtils";
 
 // ─── Healthcare Plan types ────────────────────────────────────────────────────
 interface PlanGoalTemplate {
@@ -721,10 +722,6 @@ async function enforceProbationCompletion(opts: {
 
 // ─────────────────────────────────────────────────────────────────────────────
 
-async function getTeamMemberIds(managerId: string): Promise<string[]> {
-  const members = await storage.getTeamMembers(managerId);
-  return members.map(m => m.id);
-}
 
 interface AuditLogChanges {
   goalId?: string;
@@ -767,7 +764,7 @@ async function getAccessibleGoal(userId: string, role: string, goalId: string): 
   if (!goal) return null;
   if (goal.employeeId === userId) return goal;
   if (ADMIN_ROLES.includes(role)) return goal;
-  const teamIds = await getTeamMemberIds(userId);
+  const teamIds = await getAllReporteeIdsFromDb(userId);
   if (teamIds.includes(goal.employeeId)) return goal;
   return null;
 }
@@ -892,7 +889,7 @@ export function registerPerformanceRoutes(app: Express) {
     if (!(await requireFeatureAccess(req, res))) return;
 
     try {
-      const teamIds = await getTeamMemberIds(userId);
+      const teamIds = await getAllReporteeIdsFromDb(userId);
       if (teamIds.length === 0) return res.json([]);
 
       const goals = await db.select().from(performanceGoals)
@@ -974,6 +971,39 @@ export function registerPerformanceRoutes(app: Express) {
     }
   });
 
+  // Flat list of accessible employees for picker UIs (goal/check-in dialogs).
+  // Managers get direct AND indirect reports; admins/HR get all active employees.
+  app.get("/api/performance/team-members", async (req: Request, res: Response) => {
+    const userId = requirePermission(req, res, "performance.teamGoals", MANAGER_ROLES);
+    if (!userId) return;
+    if (!(await requireFeatureAccess(req, res))) return;
+
+    try {
+      const role = req.session.role!;
+      const allUsers = await storage.getAdminUsers();
+
+      let accessible: typeof allUsers;
+      if (ADMIN_ROLES.includes(role)) {
+        accessible = allUsers.filter(u => u.isActive && u.id !== userId);
+      } else {
+        const reporteeIds = getAllReporteeIds(userId, allUsers);
+        accessible = allUsers.filter(u => reporteeIds.includes(u.id) && u.isActive);
+      }
+
+      res.json(accessible.map(u => ({
+        id: u.id,
+        firstName: u.firstName,
+        lastName: u.lastName,
+        email: u.email,
+        designation: (u as any).designation || null,
+        role: u.role,
+      })));
+    } catch (error) {
+      console.error("Error fetching performance team members:", error);
+      res.status(500).json({ error: "Failed to fetch team members" });
+    }
+  });
+
   // Grouped team goals endpoint — returns members shape expected by TeamGoals.tsx
   app.get("/api/performance/team-goals", async (req: Request, res: Response) => {
     const userId = requirePermission(req, res, "performance.teamGoals", MANAGER_ROLES);
@@ -988,8 +1018,9 @@ export function registerPerformanceRoutes(app: Express) {
       if (ADMIN_ROLES.includes(role)) {
         teamMembers = allUsers.filter(u => u.isActive && u.id !== userId);
       } else {
-        const members = await storage.getTeamMembers(userId);
-        teamMembers = members.filter(u => u.isActive);
+        // Use full org-chain BFS (direct and indirect reports)
+        const reporteeIds = getAllReporteeIds(userId, allUsers);
+        teamMembers = allUsers.filter(u => reporteeIds.includes(u.id) && u.isActive);
       }
 
       const teamIds = teamMembers.map(m => m.id);
@@ -1063,7 +1094,7 @@ export function registerPerformanceRoutes(app: Express) {
 
       const targetEmployee = employeeId || userId;
       if (targetEmployee !== userId) {
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (!teamIds.includes(targetEmployee) && !ADMIN_ROLES.includes(role)) {
           return res.status(403).json({ error: "Cannot create goals for this employee" });
         }
@@ -1132,7 +1163,7 @@ export function registerPerformanceRoutes(app: Express) {
       // managers can only create for their direct reports; everyone can create for themselves.
       const role = req.session.role!;
       if (targetEmployee !== userId && !ADMIN_ROLES.includes(role)) {
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (!teamIds.includes(targetEmployee)) {
           return res.status(403).json({ error: "Not authorized to create goals for this employee" });
         }
@@ -1153,7 +1184,7 @@ export function registerPerformanceRoutes(app: Express) {
         }
         const batchRole = req.session.role!;
         if (!ADMIN_ROLES.includes(batchRole) && linkedPlan.employee_id !== userId) {
-          const planTeamIds = await getTeamMemberIds(userId);
+          const planTeamIds = await getAllReporteeIdsFromDb(userId);
           if (!planTeamIds.includes(linkedPlan.employee_id)) {
             return res.status(403).json({ error: "Not authorized to link goals to this plan" });
           }
@@ -1241,7 +1272,7 @@ export function registerPerformanceRoutes(app: Express) {
       if (!existing) return res.status(404).json({ error: "Goal not found" });
 
       if (existing.employeeId !== userId) {
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (!teamIds.includes(existing.employeeId) && !ADMIN_ROLES.includes(role)) {
           return res.status(403).json({ error: "Not authorized to update this goal" });
         }
@@ -1296,7 +1327,7 @@ export function registerPerformanceRoutes(app: Express) {
       if (!existing) return res.status(404).json({ error: "Goal not found" });
 
       if (existing.employeeId !== userId) {
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (!teamIds.includes(existing.employeeId) && !ADMIN_ROLES.includes(role)) {
           return res.status(403).json({ error: "Not authorized to delete this goal" });
         }
@@ -1731,7 +1762,7 @@ export function registerPerformanceRoutes(app: Express) {
       const { employeeId, scheduledDate, employeeNotes, managerNotes, actionItems, goalId } = req.body;
       if (!employeeId || !scheduledDate) return res.status(400).json({ error: "Employee and scheduled date required" });
 
-      const teamIds = await getTeamMemberIds(userId);
+      const teamIds = await getAllReporteeIdsFromDb(userId);
       if (!teamIds.includes(employeeId) && !ADMIN_ROLES.includes(req.session.role!)) {
         return res.status(403).json({ error: "Cannot schedule check-in for this employee" });
       }
@@ -1983,7 +2014,7 @@ export function registerPerformanceRoutes(app: Express) {
 
     try {
       const cycleId = req.query.cycleId as string;
-      const teamIds = await getTeamMemberIds(userId);
+      const teamIds = await getAllReporteeIdsFromDb(userId);
       if (teamIds.length === 0) return res.json([]);
 
       const conditions = [inArray(reviews.employeeId, teamIds)];
@@ -2014,7 +2045,7 @@ export function registerPerformanceRoutes(app: Express) {
       if (!review) return res.status(404).json({ error: "Review not found" });
 
       if (review.employeeId !== userId && review.reviewerId !== userId && !ADMIN_ROLES.includes(req.session.role!)) {
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (!teamIds.includes(review.employeeId)) {
           return res.status(403).json({ error: "Not authorized to view this review" });
         }
@@ -2074,7 +2105,7 @@ export function registerPerformanceRoutes(app: Express) {
       const { cycleId, employeeId, goalsReflection, strengths, improvements, developmentNeeds, rating, comments } = req.body;
       if (!cycleId || !employeeId) return res.status(400).json({ error: "Cycle ID and employee ID required" });
 
-      const teamIds = await getTeamMemberIds(userId);
+      const teamIds = await getAllReporteeIdsFromDb(userId);
       if (!teamIds.includes(employeeId) && !ADMIN_ROLES.includes(req.session.role!)) {
         return res.status(403).json({ error: "Cannot review this employee" });
       }
@@ -2493,7 +2524,7 @@ export function registerPerformanceRoutes(app: Express) {
       // Managers can only create plans for their direct reports; admins/hr are unrestricted
       const planCreatorRole = req.session.role!;
       if (!ADMIN_ROLES.includes(planCreatorRole)) {
-        const creatorTeamIds = await getTeamMemberIds(userId);
+        const creatorTeamIds = await getAllReporteeIdsFromDb(userId);
         if (!creatorTeamIds.includes(employee_id)) {
           return res.status(403).json({ error: "Not authorized to create plans for this employee" });
         }
@@ -2662,7 +2693,7 @@ export function registerPerformanceRoutes(app: Express) {
         rows = r.rows as EmployeePlan[];
       } else {
         // Manager: see plans for their direct reports; if employee_id specified, verify team membership
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (teamIds.length === 0) { rows = []; }
         else if (employee_id) {
           if (!teamIds.includes(employee_id)) {
@@ -2700,7 +2731,7 @@ export function registerPerformanceRoutes(app: Express) {
       const plan = result.rows[0] as EmployeePlan;
       const role = req.session.role!;
       if (!ADMIN_ROLES.includes(role)) {
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (!teamIds.includes(plan.employee_id) && plan.employee_id !== userId) {
           return res.status(403).json({ error: "Not authorized to view this plan" });
         }
@@ -2732,7 +2763,7 @@ export function registerPerformanceRoutes(app: Express) {
       const existingPlan = existingResult.rows[0] as EmployeePlan;
       const patchRole = req.session.role!;
       if (!ADMIN_ROLES.includes(patchRole)) {
-        const patchTeamIds = await getTeamMemberIds(userId);
+        const patchTeamIds = await getAllReporteeIdsFromDb(userId);
         if (!patchTeamIds.includes(existingPlan.employee_id)) {
           return res.status(403).json({ error: "Not authorized to update this plan" });
         }
@@ -2814,7 +2845,7 @@ export function registerPerformanceRoutes(app: Express) {
       const patchRole = req.session.role!;
       if (!ADMIN_ROLES.includes(patchRole)) {
         if (ci.manager_id !== userId) {
-          const teamIds = await getTeamMemberIds(userId);
+          const teamIds = await getAllReporteeIdsFromDb(userId);
           if (!teamIds.includes(ci.employee_id)) {
             return res.status(403).json({ error: "Not authorized to update this check-in" });
           }
@@ -3075,7 +3106,7 @@ export function registerPerformanceRoutes(app: Express) {
           return res.status(403).json({ error: "Not authorized to update this goal" });
         }
       } else if (role === "manager" && !ADMIN_ROLES.includes(role)) {
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (goal.plan_employee_id !== userId && !teamIds.includes(goal.plan_employee_id)) {
           return res.status(403).json({ error: "Not authorized to update this goal" });
         }
@@ -3252,7 +3283,7 @@ export function registerPerformanceRoutes(app: Express) {
       // Object-level authorization: admins/HR see all; managers only their team
       const role = req.session.role!;
       if (!ADMIN_ROLES.includes(role)) {
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (!teamIds.includes(plan.employee_id)) {
           return res.status(403).json({ error: "Not authorized to view this coaching log" });
         }
@@ -3293,7 +3324,7 @@ export function registerPerformanceRoutes(app: Express) {
       // Object-level authorization: admins/HR may log for anyone; managers only their team
       const role = req.session.role!;
       if (!ADMIN_ROLES.includes(role)) {
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (!teamIds.includes(plan.employee_id)) {
           return res.status(403).json({ error: "Not authorized to add to this coaching log" });
         }
@@ -3376,7 +3407,7 @@ export function registerPerformanceRoutes(app: Express) {
       }
       // Managers may only view check-ins from their own team
       if (role === "manager") {
-        const teamIds = await getTeamMemberIds(userId);
+        const teamIds = await getAllReporteeIdsFromDb(userId);
         if (!teamIds.includes(ci.employee_id) && ci.manager_id !== userId) {
           return res.status(403).json({ error: "Not authorized — not in your team" });
         }

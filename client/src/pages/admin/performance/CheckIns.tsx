@@ -138,6 +138,13 @@ interface CheckInsResponse {
   userRole: string;
 }
 
+interface PerformanceMember {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+}
+
 interface TeamGoalsResponse {
   members: {
     userId: string;
@@ -1183,8 +1190,21 @@ export default function CheckIns({ mode }: CheckInsProps = {}) {
     queryKey: ["/api/performance/check-ins"],
   });
 
+  // Independent picker source: full direct + indirect report list so the
+  // Schedule Check-In dialog shows all reportees, not just L1 direct reports.
+  const isManagerRole = user?.role && ["super_admin", "admin", "hr", "manager"].includes(user.role);
+  const { data: membersData } = useQuery<PerformanceMember[]>({
+    queryKey: ["/api/performance/team-members"],
+    enabled: !!isManagerRole,
+  });
+
   const allCheckIns = data?.checkIns || [];
-  const teamMembers = data?.teamMembers || [];
+  const teamMembers: TeamMember[] = (membersData || []).map(m => ({
+    id: m.id,
+    firstName: m.firstName,
+    lastName: m.lastName,
+    email: m.email,
+  }));
   const userRole = data?.userRole || user?.role || "employee";
   const userId = user?.id || "";
 

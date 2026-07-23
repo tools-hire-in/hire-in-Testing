@@ -109,6 +109,15 @@ interface TeamGoalsResponse {
   };
 }
 
+interface PerformanceMember {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  designation: string | null;
+  role: string;
+}
+
 const CATEGORIES = [
   "professional_development",
   "project_delivery",
@@ -647,6 +656,22 @@ export function TeamGoalsContent() {
     enabled: hasAccess,
   });
 
+  // Independent picker source: full direct + indirect report list, including
+  // employees who have no goals yet (avoids empty-picker bug).
+  const { data: membersData } = useQuery<PerformanceMember[]>({
+    queryKey: ["/api/performance/team-members"],
+    enabled: hasAccess,
+  });
+
+  const pickerMembers: TeamMemberGoals[] = (membersData || []).map(m => ({
+    userId: m.id,
+    firstName: m.firstName,
+    lastName: m.lastName,
+    email: m.email,
+    designation: m.designation,
+    goals: [],
+  }));
+
   if (!hasAccess) {
     return (
         <div className="p-6 max-w-5xl mx-auto">
@@ -767,13 +792,13 @@ export function TeamGoalsContent() {
         <CreateGoalForMemberDialog
           open={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
-          members={data?.members || []}
+          members={pickerMembers}
         />
 
         <BulkAddGoalsDialog
           open={bulkOpen}
           onOpenChange={setBulkOpen}
-          members={(data?.members || []).map((m) => ({
+          members={pickerMembers.map((m) => ({
             userId: m.userId,
             firstName: m.firstName,
             lastName: m.lastName,
