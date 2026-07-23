@@ -2215,6 +2215,61 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                 />
               )}
 
+              {/* BD TOOLS — portal sidebar for roles with BD access */}
+              {can("studio.bd_agent") && (
+                <SidebarGroup>
+                  <SidebarGroupLabel className="text-[10px] font-semibold tracking-widest text-muted-foreground/60 uppercase px-2 pt-3 pb-1 group-data-[collapsible=icon]:hidden">
+                    BD Tools
+                  </SidebarGroupLabel>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={location.startsWith(`${STUDIO_BASE}/bd-agent`)}
+                          tooltip="BD Agent"
+                          data-testid="nav-item-bd-agent"
+                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                        >
+                          <Link href={`${STUDIO_BASE}/bd-agent`} className="flex items-center gap-2 w-full">
+                            <Briefcase className="h-4 w-4 shrink-0" />
+                            <span className="group-data-[collapsible=icon]:hidden">BD Agent</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={location.startsWith(`${STUDIO_BASE}/bd-templates`)}
+                          tooltip="BD Templates"
+                          data-testid="nav-item-bd-templates"
+                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                        >
+                          <Link href={`${STUDIO_BASE}/bd-templates`} className="flex items-center gap-2 w-full">
+                            <FileText className="h-4 w-4 shrink-0" />
+                            <span className="group-data-[collapsible=icon]:hidden">BD Templates</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={location.startsWith(`${STUDIO_BASE}/bd-guide`)}
+                          tooltip="BD Guide"
+                          data-testid="nav-item-bd-guide"
+                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                        >
+                          <Link href={`${STUDIO_BASE}/bd-guide`} className="flex items-center gap-2 w-full">
+                            <BookOpen className="h-4 w-4 shrink-0" />
+                            <span className="group-data-[collapsible=icon]:hidden">BD Guide</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </SidebarGroup>
+              )}
+
               {/* PAYROLL — collapsible section with sub-pages */}
               <PayrollSection
                 hasPayrollAccess={hasPayrollAccess}

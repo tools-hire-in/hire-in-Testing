@@ -45,6 +45,7 @@ import {
   insertStudioIdeaCommentSchema,
   insertStudioAuthorProfileSchema,
   studioArticles,
+  studioAuditEvents,
   studioAuthorProfiles,
   performanceGoals,
   type PerformanceGoal,
@@ -19302,6 +19303,62 @@ Canonical domain: ${BASE}
     },
   );
 
+  // Recent content activity feed — last 10 meaningful content actions across
+  // all articles in the project (or global if no projectId given).
+  app.get(
+    "/api/admin/studio/recent-activity",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId =
+          typeof req.query.projectId === "string" && req.query.projectId
+            ? req.query.projectId
+            : undefined;
+        const CONTENT_EVENT_TYPES = [
+          "article_created",
+          "article_updated",
+          "article_published",
+          "article_unpublished",
+          "article_scheduled",
+          "article_archived",
+          "review_approved",
+          "review_changes_requested",
+          "review_declined",
+          "ai_article_generated",
+          "insights_gate_a_approved",
+          "insights_gate_a_rejected",
+        ];
+        const rows = await db
+          .select({
+            id: studioAuditEvents.id,
+            eventType: studioAuditEvents.eventType,
+            createdAt: studioAuditEvents.createdAt,
+            metadata: studioAuditEvents.metadata,
+            articleId: studioAuditEvents.articleId,
+            articleTitle: studioArticles.title,
+            actorName: adminUsers.name,
+            projectId: studioArticles.projectId,
+          })
+          .from(studioAuditEvents)
+          .leftJoin(studioArticles, eq(studioAuditEvents.articleId, studioArticles.id))
+          .leftJoin(adminUsers, eq(studioAuditEvents.actorUserId, adminUsers.id))
+          .where(
+            and(
+              inArray(studioAuditEvents.eventType, CONTENT_EVENT_TYPES),
+              projectId ? eq(studioArticles.projectId, projectId) : undefined,
+            )
+          )
+          .orderBy(desc(studioAuditEvents.createdAt))
+          .limit(10);
+        res.json({ items: rows });
+      } catch (error) {
+        console.error("Get studio recent-activity error:", error);
+        res.status(500).json({ error: "Failed to fetch recent activity" });
+      }
+    },
+  );
+
   // Analytics dashboard (read layer): workflow + audience metrics aggregated
   // from studio_audit_events, article reactions, and the article pipeline.
   app.get(
@@ -29576,12 +29633,12 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   });
 
   // ============================================================================
-  // Studio BD Agent (Task #942)
-  // Chat + template generation restricted to super_admin / admin / hr.
+  // Studio BD Agent
+  // Chat + template generation visible to super_admin / admin / operations / manager.
   // Tables: bd_conversations, bd_messages (applied via scripts/apply-bd-agent-tables.ts)
   // ============================================================================
 
-  const requireBdAgent = requirePermission("studio.bd_agent", "super_admin", "admin", "hr");
+  const requireBdAgent = requirePermission("studio.bd_agent", "super_admin", "admin", "operations", "manager");
 
   /** Resolve brand voice context string from a projectId (returns empty string if no project or config). */
   const resolveBdBrandVoice = async (projectId?: string): Promise<string> => {

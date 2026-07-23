@@ -55,6 +55,14 @@ import {
   UserCircle,
   CalendarDays,
   Sparkles,
+  Activity,
+  PenLine,
+  BotMessageSquare,
+  ThumbsUp,
+  ThumbsDown,
+  CalendarX,
+  Archive,
+  Eye,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import type { StudioProject, StudioBrandSettings, StudioContentIdea, StudioOccasion } from "@shared/schema";
@@ -205,7 +213,7 @@ function TriageCard({ projectId }: { projectId: string }) {
       <CardContent>
         <div className="space-y-1">
           {data.items.map((a) => (
-            <Link key={a.id} href={`/admin/studio/articles/${a.id}`}>
+            <Link key={a.id} href={`/studio/articles/${a.id}/edit`}>
               <div
                 className="flex cursor-pointer items-center justify-between rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-muted/60"
                 data-testid={`row-triage-${a.id}`}
@@ -217,7 +225,7 @@ function TriageCard({ projectId }: { projectId: string }) {
           ))}
         </div>
         <div className="mt-2 text-right">
-          <Link href="?tab=articles&status=in_review">
+          <Link href="/studio/articles?status=in_review">
             <span className="text-xs font-medium text-primary hover:underline" data-testid="link-triage-all">
               See all →
             </span>
@@ -500,7 +508,7 @@ function OpenJobsIdeasPanel() {
                     </div>
                   </div>
                   <a
-                    href={`/admin/studio?tab=articles&new=1&title=${encodeURIComponent(s.articleTitle)}&brief=${encodeURIComponent(s.angle)}`}
+                    href={`/studio/articles?new=1&title=${encodeURIComponent(s.articleTitle)}&brief=${encodeURIComponent(s.angle)}`}
                     className="shrink-0"
                     data-testid={`link-job-idea-use-${i}`}
                     title="Pre-fill a new article brief with this idea"
@@ -520,12 +528,122 @@ function OpenJobsIdeasPanel() {
   );
 }
 
+interface ActivityItem {
+  id: string;
+  eventType: string;
+  createdAt: string;
+  articleId: string | null;
+  articleTitle: string | null;
+  actorName: string | null;
+}
+
+const EVENT_META: Record<string, { label: string; icon: React.ComponentType<{ className?: string }>; color: string }> = {
+  article_created: { label: "Article created", icon: PenLine, color: "text-blue-500" },
+  article_updated: { label: "Article updated", icon: FileEdit, color: "text-slate-500" },
+  article_published: { label: "Article published", icon: Send, color: "text-violet-500" },
+  article_unpublished: { label: "Article unpublished", icon: CalendarX, color: "text-orange-500" },
+  article_scheduled: { label: "Article scheduled", icon: CalendarClock, color: "text-blue-400" },
+  article_archived: { label: "Article archived", icon: Archive, color: "text-slate-400" },
+  review_approved: { label: "Review approved", icon: ThumbsUp, color: "text-emerald-500" },
+  review_changes_requested: { label: "Changes requested", icon: ThumbsDown, color: "text-amber-500" },
+  review_declined: { label: "Review declined", icon: ThumbsDown, color: "text-red-500" },
+  ai_article_generated: { label: "AI draft generated", icon: BotMessageSquare, color: "text-primary" },
+  insights_gate_a_approved: { label: "Gate A approved", icon: CheckCircle2, color: "text-emerald-500" },
+  insights_gate_a_rejected: { label: "Gate A rejected", icon: ThumbsDown, color: "text-red-500" },
+};
+
+function RecentActivityFeed({ projectId }: { projectId: string }) {
+  const { data, isLoading } = useQuery<{ items: ActivityItem[] }>({
+    queryKey: ["/api/admin/studio/recent-activity", { projectId }],
+    queryFn: async () => {
+      const res = await fetch(
+        `/api/admin/studio/recent-activity?projectId=${encodeURIComponent(projectId)}`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return { items: [] };
+      return res.json();
+    },
+    enabled: !!projectId,
+    staleTime: 60 * 1000,
+  });
+
+  return (
+    <Card data-testid="card-recent-activity">
+      <CardHeader className="pb-2">
+        <CardTitle className="flex items-center gap-2 text-base">
+          <Activity className="h-4 w-4 text-primary" />
+          Recent Activity
+          <span className="text-xs font-normal text-muted-foreground">last 10 content actions</span>
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+            <Loader2 className="h-4 w-4 animate-spin" />
+            Loading activity…
+          </div>
+        ) : !data?.items.length ? (
+          <p className="text-sm text-muted-foreground" data-testid="text-activity-empty">
+            No content actions yet — start writing to see activity here.
+          </p>
+        ) : (
+          <div className="divide-y">
+            {data.items.map((item) => {
+              const meta = EVENT_META[item.eventType] ?? { label: item.eventType, icon: Eye, color: "text-muted-foreground" };
+              const Icon = meta.icon;
+              const timeAgo = (() => {
+                const diff = Date.now() - new Date(item.createdAt).getTime();
+                const m = Math.floor(diff / 60000);
+                if (m < 1) return "just now";
+                if (m < 60) return `${m}m ago`;
+                const h = Math.floor(m / 60);
+                if (h < 24) return `${h}h ago`;
+                return `${Math.floor(h / 24)}d ago`;
+              })();
+              return (
+                <div key={item.id} className="flex items-start gap-3 py-2.5 first:pt-0 last:pb-0" data-testid={`row-activity-${item.id}`}>
+                  <Icon className={`mt-0.5 h-4 w-4 shrink-0 ${meta.color}`} />
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm">
+                      <span className="font-medium">{meta.label}</span>
+                      {item.articleTitle && (
+                        <>
+                          {" — "}
+                          {item.articleId ? (
+                            <Link href={`/studio/articles/${item.articleId}/edit`}>
+                              <span className="cursor-pointer text-primary hover:underline" data-testid={`link-activity-article-${item.id}`}>
+                                {item.articleTitle}
+                              </span>
+                            </Link>
+                          ) : (
+                            <span className="text-muted-foreground">{item.articleTitle}</span>
+                          )}
+                        </>
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">
+                      {item.actorName ?? "System"} · {timeAgo}
+                    </p>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 interface StudioStats {
   totalArticles: number;
   byStatus: Record<string, number>;
   pendingReviews: number;
   scheduled: number;
   published: number;
+  publishedThisWeek: number;
+  ideasAwaitingActivation: number;
+  activeCampaigns: number;
 }
 
 const STATUS_LABELS: Record<string, string> = {
@@ -1006,25 +1124,9 @@ function SpendDashboard() {
 }
 
 export default function Studio() {
-  const [location] = useLocation();
-  // wouter useLocation returns the path only; search params live on window.location.search.
-  const tabFromUrl = new URLSearchParams(window.location.search).get("tab");
-  const [activeTab, setActiveTab] = useState(tabFromUrl ?? "dashboard");
   const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } = useStudioProject();
-  const { can, role } = usePermissions();
-  const canManageSettings = can("studio.manage_settings");
-  const canSpendDashboard = can("studio.spend_dashboard");
+  const { can } = usePermissions();
   const canCreate = can("studio.create_article");
-  const isSuperAdmin = role === "super_admin";
-
-  // Sync tab when URL search param changes (e.g. clicking a clickable stat card).
-  useEffect(() => {
-    const t = new URLSearchParams(window.location.search).get("tab");
-    if (t && t !== activeTab) {
-      setActiveTab(t);
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location]);
 
   const { data: stats, isLoading: statsLoading } = useQuery<StudioStats>({
     queryKey: ["/api/admin/studio/stats", selectedProjectId],
@@ -1097,304 +1199,138 @@ export default function Studio() {
           </div>
         </div>
 
-        {/* Sub-navigation */}
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="flex-wrap">
-            <TabsTrigger value="dashboard" data-testid="tab-studio-dashboard">
-              Dashboard
-            </TabsTrigger>
-            <TabsTrigger value="articles" data-testid="tab-studio-articles">
-              Articles
-            </TabsTrigger>
-            <TabsTrigger value="authors" data-testid="tab-studio-authors">
-              Authors
-            </TabsTrigger>
-            <TabsTrigger value="projects" data-testid="tab-studio-projects">
-              Projects
-            </TabsTrigger>
-            <TabsTrigger value="analytics" data-testid="tab-studio-analytics">
-              Analytics
-            </TabsTrigger>
-            <TabsTrigger value="settings" data-testid="tab-studio-settings">
-              Settings
-            </TabsTrigger>
-            {canSpendDashboard && (
-              <TabsTrigger value="spend" data-testid="tab-studio-spend">
-                AI Spend
-              </TabsTrigger>
-            )}
-          </TabsList>
-
-          {/* Dashboard */}
-          <TabsContent value="dashboard" className="mt-6 space-y-6">
-            {statsLoading || !stats ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <>
-                {selectedProjectId && (
-                  <StudioOnboardingChecklist
-                    projectId={selectedProjectId}
-                    publishedCount={stats.published}
-                  />
-                )}
-                {brandVoice && !brandVoice.config && (
-                  <StudioTip
-                    id="dashboard-brand-voice"
-                    title="AI is running on default voice"
-                    body="Configure your Brand Voice in Settings to make every generated piece sound like your brand — not like everyone else's AI."
-                    action={{ label: "Configure Brand Voice", href: studioPath("/settings/brand-voice") }}
-                  />
-                )}
-                <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium text-muted-foreground">Content pipeline</p>
-                  {canCreate && (
-                    <Link href="?tab=articles&new=1">
-                      <Button size="sm" data-testid="button-write-something">
+        {/* Dashboard content */}
+        <div className="mt-6 space-y-6">
+          {statsLoading || !stats ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            </div>
+          ) : (
+            <>
+              {selectedProjectId && (
+                <StudioOnboardingChecklist
+                  projectId={selectedProjectId}
+                  publishedCount={stats.published}
+                />
+              )}
+              {brandVoice && !brandVoice.config && (
+                <StudioTip
+                  id="dashboard-brand-voice"
+                  title="AI is running on default voice"
+                  body="Configure your Brand Voice in Settings to make every generated piece sound like your brand — not like everyone else's AI."
+                  action={{ label: "Configure Brand Voice", href: studioPath("/settings/brand-voice") }}
+                />
+              )}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-medium text-muted-foreground">Content pipeline</p>
+                {canCreate && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Link href={`${studioPath("/ideas")}?create=true`}>
+                      <Button size="sm" variant="outline" data-testid="button-new-social-post">
                         <Plus className="mr-1.5 h-4 w-4" />
-                        Write something
+                        New Social Post
                       </Button>
                     </Link>
-                  )}
-                </div>
-                <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                  <StatCard
-                    label="Total Articles"
-                    value={stats.totalArticles}
-                    icon={Newspaper}
-                    color="text-primary"
-                    testId="stat-total"
-                    href={`?tab=articles`}
-                  />
-                  <StatCard
-                    label="Pending Reviews"
-                    value={stats.pendingReviews}
-                    icon={Clock3}
-                    color="text-amber-500"
-                    testId="stat-pending-reviews"
-                    href={`?tab=articles&status=in_review`}
-                  />
-                  <StatCard
-                    label="Scheduled"
-                    value={stats.scheduled}
-                    icon={CalendarClock}
-                    color="text-blue-500"
-                    testId="stat-scheduled"
-                    href={`?tab=articles&status=scheduled`}
-                  />
-                  <StatCard
-                    label="Published"
-                    value={stats.published}
-                    icon={Send}
-                    color="text-violet-500"
-                    testId="stat-published"
-                    href={`?tab=articles&status=published`}
-                  />
-                </div>
-
-                <Card>
-                  <CardHeader>
-                    <CardTitle className="text-base">Pipeline by status</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
-                      {STATUS_META.map(({ key, icon: Icon, color }) => (
-                        <Link key={key} href={`?tab=articles&status=${key}`}>
-                          <div
-                            className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border p-3 text-center transition-shadow hover:shadow-md"
-                            data-testid={`pipeline-${key}`}
-                          >
-                            <Icon className={`h-5 w-5 ${color}`} />
-                            <span className="text-xl font-bold tabular-nums">
-                              {stats.byStatus[key] ?? 0}
-                            </span>
-                            <span className="text-[11px] text-muted-foreground">
-                              {STATUS_LABELS[key]}
-                            </span>
-                          </div>
-                        </Link>
-                      ))}
-                    </div>
-                    {stats.totalArticles === 0 && (
-                      <div className="mt-4 text-center text-sm text-muted-foreground">
-                        <p>No articles yet for {selectedProject?.name ?? "this project"}.</p>
-                        <Link href={studioPath("/guide")}>
-                          <span className="mt-1 inline-block cursor-pointer font-medium text-primary hover:underline" data-testid="link-empty-playbook">
-                            Read the Studio Playbook →
-                          </span>
-                        </Link>
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-
-                <ContentPipelineSummaryCard projectId={selectedProjectId} />
-                <TriageCard projectId={selectedProjectId} />
-                <ContentPulseCard projectId={selectedProjectId} />
-                <UpcomingOccasionsPanel
-                  projectId={selectedProjectId}
-                  hasOccasionPreferences={!!(selectedProject?.occasionPreferences)}
-                />
-                <OpenJobsIdeasPanel />
-              </>
-            )}
-          </TabsContent>
-
-          {/* Articles */}
-          <TabsContent value="articles" className="mt-6">
-            {selectedProjectId ? (
-              <ArticlesPanel
-                projectId={selectedProjectId}
-                initialStatus={new URLSearchParams(window.location.search).get("status") ?? undefined}
-              />
-            ) : (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Authors */}
-          <TabsContent value="authors" className="mt-6">
-            {selectedProjectId ? (
-              <AuthorsPanel projectId={selectedProjectId} />
-            ) : (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Projects */}
-          <TabsContent value="projects" className="mt-6">
-            {canManageSettings && (
-              <div className="mb-4 flex justify-end">
-                <NewProjectDialog onCreated={() => queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/projects"] })} />
-              </div>
-            )}
-            {projectsLoading ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {projects?.map((p) => (
-                  <Card key={p.id} data-testid={`card-project-${p.id}`}>
-                    <CardContent className="space-y-3 p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <div
-                            className="h-8 w-8 shrink-0 rounded-md"
-                            style={{ backgroundColor: p.brandColor ?? "#1F3A6E" }}
-                          />
-                          <div>
-                            <div className="flex items-center gap-1.5 font-semibold">
-                              {p.name}
-                              {p.isPrimary && <Star className="h-3.5 w-3.5 text-amber-500" />}
-                            </div>
-                            <div className="text-xs text-muted-foreground">/{p.slug}</div>
-                          </div>
-                        </div>
-                        <Badge variant={p.isActive ? "default" : "secondary"}>
-                          {p.isActive ? "Active" : "Inactive"}
-                        </Badge>
-                      </div>
-                      {p.description && (
-                        <p className="text-sm text-muted-foreground">{p.description}</p>
-                      )}
-                      {p.publishesToInsights && (
-                        <Badge variant="outline" className="gap-1">
-                          <Globe className="h-3 w-3" />
-                          Publishes to Insights
-                        </Badge>
-                      )}
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            )}
-          </TabsContent>
-
-          {/* Analytics */}
-          <TabsContent value="analytics" className="mt-6">
-            <Card className="border-dashed">
-              <CardContent className="flex flex-col items-center justify-center gap-3 py-16 text-center">
-                <h3 className="text-lg font-semibold">Content Analytics</h3>
-                <p className="max-w-md text-sm text-muted-foreground">
-                  Track workflow throughput, views, reactions, CTA clicks, and newsletter growth
-                  across your content.
-                </p>
-                <Link href="/admin/studio/analytics">
-                  <Button data-testid="button-open-analytics">Open analytics dashboard</Button>
-                </Link>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* AI Spend Dashboard — super admin only */}
-          {canSpendDashboard && (
-            <TabsContent value="spend" className="mt-6">
-              <SpendDashboard />
-            </TabsContent>
-          )}
-
-          {/* Settings */}
-          <TabsContent value="settings" className="mt-6 space-y-6">
-            <BrandReference brand={brand ?? undefined} />
-            {!canManageSettings ? (
-              <ComingSoon
-                title="Studio Settings"
-                description="You don't have permission to manage studio settings."
-              />
-            ) : !selectedProjectId ? (
-              <div className="flex items-center justify-center py-16">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-              </div>
-            ) : (
-              <div className="space-y-4">
-                <div>
-                  <h2 className="text-lg font-semibold" data-testid="text-routing-heading">
-                    Review Routing
-                  </h2>
-                  <p className="text-sm text-muted-foreground">
-                    Route articles to reviewer pools by category for{" "}
-                    {selectedProject?.name ?? "this project"}.
-                  </p>
-                </div>
-                <RoutingSettings projectId={selectedProjectId} />
-
-                <div className="border-t pt-4">
-                  <h2 className="text-lg font-semibold" data-testid="text-templates-heading">
-                    Social Card Templates
-                  </h2>
-                  <p className="mb-3 text-sm text-muted-foreground">
-                    Manage the branded card variants rendered when articles are approved.
-                  </p>
-                  <Link href="/admin/studio/settings/templates">
-                    <Button variant="outline" data-testid="button-manage-templates">
-                      Manage card templates
-                    </Button>
-                  </Link>
-                </div>
-
-                <NewsletterSettings />
-
-                {isSuperAdmin && (
-                  <div className="border-t pt-4" data-testid="section-regen-requests">
-                    <h2 className="text-lg font-semibold mb-1">Regeneration Requests</h2>
-                    <p className="text-sm text-muted-foreground mb-4">
-                      Review and approve requests from content editors to regenerate or rework articles.
-                    </p>
-                    <RegenRequestsQueue />
+                    <Link href={`${studioPath("/articles")}?create=true`}>
+                      <Button size="sm" variant="outline" data-testid="button-new-article">
+                        <Plus className="mr-1.5 h-4 w-4" />
+                        New Article
+                      </Button>
+                    </Link>
+                    <Link href={`${studioPath("/campaigns")}?create=true`}>
+                      <Button size="sm" data-testid="button-new-campaign">
+                        <Plus className="mr-1.5 h-4 w-4" />
+                        New Campaign
+                      </Button>
+                    </Link>
                   </div>
                 )}
-
-                <LaunchControlPanel />
               </div>
-            )}
-          </TabsContent>
-        </Tabs>
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                <StatCard
+                  label="Posts Published This Week"
+                  value={stats.publishedThisWeek}
+                  icon={Send}
+                  color="text-violet-500"
+                  testId="stat-published-this-week"
+                  href={`${studioPath("/ideas")}?status=published`}
+                />
+                <StatCard
+                  label="Articles In Review"
+                  value={stats.pendingReviews}
+                  icon={Clock3}
+                  color="text-amber-500"
+                  testId="stat-articles-in-review"
+                  href={`${studioPath("/articles")}?status=in_review`}
+                />
+                <StatCard
+                  label="Ideas to Activate"
+                  value={stats.ideasAwaitingActivation}
+                  icon={Lightbulb}
+                  color="text-yellow-500"
+                  testId="stat-ideas-awaiting"
+                  href={`${studioPath("/ideas")}?status=suggested`}
+                />
+                <StatCard
+                  label="Active Campaigns"
+                  value={stats.activeCampaigns}
+                  icon={Briefcase}
+                  color="text-primary"
+                  testId="stat-active-campaigns"
+                  href={studioPath("/campaigns")}
+                />
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="text-base">Pipeline by status</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+                    {STATUS_META.map(({ key, icon: Icon, color }) => (
+                      <Link key={key} href={`${studioPath("/articles")}?status=${key}`}>
+                        <div
+                          className="flex cursor-pointer flex-col items-center gap-1 rounded-lg border p-3 text-center transition-shadow hover:shadow-md"
+                          data-testid={`pipeline-${key}`}
+                        >
+                          <Icon className={`h-5 w-5 ${color}`} />
+                          <span className="text-xl font-bold tabular-nums">
+                            {stats.byStatus[key] ?? 0}
+                          </span>
+                          <span className="text-[11px] text-muted-foreground">
+                            {STATUS_LABELS[key]}
+                          </span>
+                        </div>
+                      </Link>
+                    ))}
+                  </div>
+                  {stats.totalArticles === 0 && (
+                    <div className="mt-4 text-center text-sm text-muted-foreground">
+                      <p>No articles yet for {selectedProject?.name ?? "this project"}.</p>
+                      <Link href={studioPath("/guide")}>
+                        <span className="mt-1 inline-block cursor-pointer font-medium text-primary hover:underline" data-testid="link-empty-playbook">
+                          Read the Studio Playbook →
+                        </span>
+                      </Link>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <ContentPipelineSummaryCard projectId={selectedProjectId} />
+              <div className="grid gap-4 lg:grid-cols-2">
+                <TriageCard projectId={selectedProjectId} />
+                <RecentActivityFeed projectId={selectedProjectId} />
+              </div>
+              <ContentPulseCard projectId={selectedProjectId} />
+              <UpcomingOccasionsPanel
+                projectId={selectedProjectId}
+                hasOccasionPreferences={!!(selectedProject?.occasionPreferences)}
+              />
+              <OpenJobsIdeasPanel />
+            </>
+          )}
+        </div>
       </div>
     </AdminLayout>
   );

@@ -1,12 +1,16 @@
 import { useLocation } from "wouter";
+import { useState } from "react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
-import { Newspaper } from "lucide-react";
+import { Newspaper, Users } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useStudioProject } from "./useStudioProject";
 import { ProjectSwitcher } from "./ProjectSwitcher";
 import { ArticlesPanel } from "./ArticlesPanel";
+import { AuthorsPanel } from "./AuthorsPanel";
 
 export default function Articles() {
   const [, setLocation] = useLocation();
+  const [activeTab, setActiveTab] = useState("articles");
   const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } =
     useStudioProject();
 
@@ -38,7 +42,26 @@ export default function Articles() {
           />
         </div>
 
-        {selectedProjectId && <ArticlesPanel projectId={selectedProjectId} />}
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
+          <TabsList>
+            <TabsTrigger value="articles" data-testid="tab-articles">
+              <Newspaper className="mr-1.5 h-4 w-4" />
+              Articles
+            </TabsTrigger>
+            <TabsTrigger value="authors" data-testid="tab-authors">
+              <Users className="mr-1.5 h-4 w-4" />
+              Authors
+            </TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="articles" className="mt-4">
+            {selectedProjectId && <ArticlesPanel projectId={selectedProjectId} />}
+          </TabsContent>
+
+          <TabsContent value="authors" className="mt-4">
+            {selectedProjectId && <AuthorsPanel projectId={selectedProjectId} />}
+          </TabsContent>
+        </Tabs>
       </div>
     </AdminLayout>
   );

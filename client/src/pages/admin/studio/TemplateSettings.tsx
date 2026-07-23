@@ -352,7 +352,7 @@ export default function TemplateSettings() {
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
       <div className="flex items-center gap-3">
-        <Link href="/admin/studio">
+        <Link href="/studio/settings">
           <Button variant="ghost" size="icon" data-testid="button-back">
             <ArrowLeft className="h-4 w-4" />
           </Button>

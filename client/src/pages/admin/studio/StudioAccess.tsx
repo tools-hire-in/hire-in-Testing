@@ -170,7 +170,7 @@ function AddOnBadge({ addOn }: { addOn: string | null }) {
   );
 }
 
-export default function StudioAccess() {
+export function StudioAccessPanel() {
   const { toast } = useToast();
   const { can } = usePermissions();
   const canManage = can("studio.manage_authors");
@@ -274,8 +274,7 @@ export default function StudioAccess() {
   };
 
   return (
-    <AdminLayout>
-      <div className="space-y-6">
+    <div className="space-y-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div className="flex h-11 w-11 items-center justify-center rounded-lg bg-primary/10 text-primary">
@@ -426,7 +425,6 @@ export default function StudioAccess() {
             </div>
           </CardContent>
         </Card>
-      </div>
 
       <Dialog open={addOpen} onOpenChange={setAddOpen}>
         <DialogContent className="max-w-lg">
@@ -605,6 +603,10 @@ export default function StudioAccess() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </AdminLayout>
+    </div>
   );
+}
+
+export default function StudioAccess() {
+  return <AdminLayout><StudioAccessPanel /></AdminLayout>;
 }

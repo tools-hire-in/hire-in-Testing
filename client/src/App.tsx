@@ -82,6 +82,7 @@ const NewHire = lazy(() => import("@/pages/admin/NewHire"));
 const ContractsHub = lazy(() => import("@/pages/admin/finance/ContractsHub"));
 const Studio = lazy(() => import("@/pages/admin/studio/Studio"));
 const StudioGuide = lazy(() => import("@/pages/admin/studio/Guide"));
+const StudioChangelog = lazy(() => import("@/pages/studio/StudioChangelog"));
 const StudioArticles = lazy(() => import("@/pages/admin/studio/Articles"));
 const StudioLiveContent = lazy(() => import("@/pages/admin/studio/LiveContent"));
 const StudioAuthors = lazy(() => import("@/pages/admin/studio/Authors"));
@@ -113,6 +114,8 @@ const StudioBdTemplatesView = lazy(() => import("@/pages/studio/BdTemplatesView"
 const StudioBdGuideView = lazy(() => import("@/pages/studio/BdGuideView"));
 const StudioAnalyticsGuide = lazy(() => import("@/pages/studio/AnalyticsGuide"));
 const StudioFeedbackInsights = lazy(() => import("@/pages/studio/FeedbackInsightsPage"));
+const StudioSettingsView = lazy(() => import("@/pages/studio/StudioSettingsView"));
+const StudioIdeaDetailPage = lazy(() => import("@/pages/studio/StudioIdeaDetailPage"));
 const PolicySigningPage = lazy(() => import("@/pages/admin/hr/PolicySigningPage"));
 const TravelCalculator = lazy(() => import("@/pages/admin/TravelCalculator"));
 const Communications = lazy(() => import("@/pages/admin/Communications"));
@@ -452,9 +455,9 @@ function PublicRouter() {
       <Route path="/studio/approvals">{() => <StudioV2><StudioApprovals /></StudioV2>}</Route>
       <Route path="/studio/final-approval">{() => <StudioV2><StudioFinalApproval /></StudioV2>}</Route>
       <Route path="/studio/calendar/:date">{() => <StudioV2><DayViewRedirect /></StudioV2>}</Route>
-      <Route path="/studio/calendar">{() => <StudioV2><StudioPipelineView lens="calendar" /></StudioV2>}</Route>
-      <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
-      <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
+      <Route path="/studio/calendar">{() => <StudioV2><StudioPipelineView lens="calendar" navigateOnClick /></StudioV2>}</Route>
+      <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" navigateOnClick /></StudioV2>}</Route>
+      <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" navigateOnClick /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar/:date">{() => <StudioV2><DayViewRedirect /></StudioV2>}</Route>
       <Route path="/studio/day_board">{() => <StudioV2><Redirect to="/studio/board" /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
@@ -466,11 +469,15 @@ function PublicRouter() {
       <Route path="/studio/bd-guide">{() => <StudioV2><StudioBdGuideView /></StudioV2>}</Route>
       <Route path="/studio/feedback-insights">{() => <StudioV2><StudioFeedbackInsights /></StudioV2>}</Route>
       <Route path="/studio/social-posts">{() => <StudioV2><StudioSocialPosts /></StudioV2>}</Route>
-      <Route path="/studio/settings/brand-voice">{() => <StudioV2><StudioBrandVoiceView /></StudioV2>}</Route>
-      <Route path="/studio/settings/templates">{() => <StudioV2><StudioTemplateSettings /></StudioV2>}</Route>
+      <Route path="/studio/settings/brand-voice">{() => <StudioV2><Redirect to="/studio/settings?tab=brand-voice" /></StudioV2>}</Route>
+      <Route path="/studio/settings/templates">{() => <StudioV2><Redirect to="/studio/settings?tab=templates" /></StudioV2>}</Route>
+      <Route path="/studio/settings">{() => <StudioV2><StudioSettingsView /></StudioV2>}</Route>
+      <Route path="/studio/ideas/:id">{() => <StudioV2><StudioIdeaDetailPage /></StudioV2>}</Route>
+      <Route path="/studio/ideas">{() => <StudioV2><StudioPipelineView lens="board" navigateOnClick /></StudioV2>}</Route>
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
       <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
-      <Route path="/studio/access">{() => <StudioV2><StudioAccess /></StudioV2>}</Route>
+      <Route path="/studio/access">{() => <StudioV2><Redirect to="/studio/settings?tab=access" /></StudioV2>}</Route>
+      <Route path="/studio/changelog">{() => <StudioV2><StudioChangelog /></StudioV2>}</Route>
       <Route path="/studio/guide/analytics">{() => <StudioV2><StudioAnalyticsGuide /></StudioV2>}</Route>
       <Route path="/studio/guide">{() => <StudioV2><StudioGuide /></StudioV2>}</Route>
       <Route path="/studio">{() => <StudioV2><Studio /></StudioV2>}</Route>
@@ -680,9 +687,9 @@ function EmployeeRouter() {
       <Route path="/studio/approvals">{() => <StudioV2><StudioApprovals /></StudioV2>}</Route>
       <Route path="/studio/final-approval">{() => <StudioV2><StudioFinalApproval /></StudioV2>}</Route>
       <Route path="/studio/calendar/:date">{() => <StudioV2><DayViewRedirect /></StudioV2>}</Route>
-      <Route path="/studio/calendar">{() => <StudioV2><StudioPipelineView lens="calendar" /></StudioV2>}</Route>
-      <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" /></StudioV2>}</Route>
-      <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" /></StudioV2>}</Route>
+      <Route path="/studio/calendar">{() => <StudioV2><StudioPipelineView lens="calendar" navigateOnClick /></StudioV2>}</Route>
+      <Route path="/studio/board">{() => <StudioV2><StudioPipelineView lens="board" navigateOnClick /></StudioV2>}</Route>
+      <Route path="/studio/table">{() => <StudioV2><StudioPipelineView lens="table" navigateOnClick /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar/:date">{() => <StudioV2><DayViewRedirect /></StudioV2>}</Route>
       <Route path="/studio/day_board">{() => <StudioV2><Redirect to="/studio/board" /></StudioV2>}</Route>
       <Route path="/studio/publishing-calendar">{() => <StudioV2><StudioCalendar /></StudioV2>}</Route>
@@ -694,11 +701,15 @@ function EmployeeRouter() {
       <Route path="/studio/bd-guide">{() => <StudioV2><StudioBdGuideView /></StudioV2>}</Route>
       <Route path="/studio/feedback-insights">{() => <StudioV2><StudioFeedbackInsights /></StudioV2>}</Route>
       <Route path="/studio/social-posts">{() => <StudioV2><StudioSocialPosts /></StudioV2>}</Route>
-      <Route path="/studio/settings/brand-voice">{() => <StudioV2><StudioBrandVoiceView /></StudioV2>}</Route>
-      <Route path="/studio/settings/templates">{() => <StudioV2><StudioTemplateSettings /></StudioV2>}</Route>
+      <Route path="/studio/settings/brand-voice">{() => <StudioV2><Redirect to="/studio/settings?tab=brand-voice" /></StudioV2>}</Route>
+      <Route path="/studio/settings/templates">{() => <StudioV2><Redirect to="/studio/settings?tab=templates" /></StudioV2>}</Route>
+      <Route path="/studio/settings">{() => <StudioV2><StudioSettingsView /></StudioV2>}</Route>
+      <Route path="/studio/ideas/:id">{() => <StudioV2><StudioIdeaDetailPage /></StudioV2>}</Route>
+      <Route path="/studio/ideas">{() => <StudioV2><StudioPipelineView lens="board" navigateOnClick /></StudioV2>}</Route>
       <Route path="/studio/subscribers">{() => <StudioV2><StudioSubscribers /></StudioV2>}</Route>
       <Route path="/studio/analytics">{() => <StudioV2><StudioAnalytics /></StudioV2>}</Route>
-      <Route path="/studio/access">{() => <StudioV2><StudioAccess /></StudioV2>}</Route>
+      <Route path="/studio/access">{() => <StudioV2><Redirect to="/studio/settings?tab=access" /></StudioV2>}</Route>
+      <Route path="/studio/changelog">{() => <StudioV2><StudioChangelog /></StudioV2>}</Route>
       <Route path="/studio/guide/analytics">{() => <StudioV2><StudioAnalyticsGuide /></StudioV2>}</Route>
       <Route path="/studio/guide">{() => <StudioV2><StudioGuide /></StudioV2>}</Route>
       <Route path="/studio">{() => <StudioV2><Studio /></StudioV2>}</Route>

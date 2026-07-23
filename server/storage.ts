@@ -562,6 +562,9 @@ export interface IStorage {
     pendingReviews: number;
     scheduled: number;
     published: number;
+    publishedThisWeek: number;
+    ideasAwaitingActivation: number;
+    activeCampaigns: number;
   }>;
   // Articles
   getStudioArticles(filters: {
@@ -3903,6 +3906,9 @@ export class DatabaseStorage implements IStorage {
     pendingReviews: number;
     scheduled: number;
     published: number;
+    publishedThisWeek: number;
+    ideasAwaitingActivation: number;
+    activeCampaigns: number;
   }> {
     const whereClause = projectId ? eq(studioArticles.projectId, projectId) : undefined;
 
@@ -3926,12 +3932,48 @@ export class DatabaseStorage implements IStorage {
       totalArticles += r.count;
     }
 
+    // Posts (ideas) published in the last 7 days
+    const oneWeekAgo = new Date();
+    oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+    const ideasConditions = [
+      eq(studioContentIdeas.status, "published"),
+      sql`${studioContentIdeas.updatedAt} >= ${oneWeekAgo.toISOString()}`,
+      isNull(studioContentIdeas.archivedAt),
+    ];
+    if (projectId) ideasConditions.push(eq(studioContentIdeas.projectId, projectId));
+    const [{ publishedThisWeek }] = await db
+      .select({ publishedThisWeek: sql<number>`count(*)::int` })
+      .from(studioContentIdeas)
+      .where(and(...ideasConditions));
+
+    // Ideas sitting in "suggested" state (awaiting team activation)
+    const awaitingConditions = [
+      eq(studioContentIdeas.status, "suggested"),
+      isNull(studioContentIdeas.archivedAt),
+    ];
+    if (projectId) awaitingConditions.push(eq(studioContentIdeas.projectId, projectId));
+    const [{ ideasAwaitingActivation }] = await db
+      .select({ ideasAwaitingActivation: sql<number>`count(*)::int` })
+      .from(studioContentIdeas)
+      .where(and(...awaitingConditions));
+
+    // Active campaigns
+    const campaignConditions = [eq(studioCampaigns.status, "active")];
+    if (projectId) campaignConditions.push(eq(studioCampaigns.projectId, projectId));
+    const [{ activeCampaigns }] = await db
+      .select({ activeCampaigns: sql<number>`count(*)::int` })
+      .from(studioCampaigns)
+      .where(and(...campaignConditions));
+
     return {
       totalArticles,
       byStatus,
       pendingReviews: byStatus.in_review,
       scheduled: byStatus.scheduled,
       published: byStatus.published,
+      publishedThisWeek,
+      ideasAwaitingActivation,
+      activeCampaigns,
     };
   }
 

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useRoute } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -861,6 +861,12 @@ export default function CampaignsView() {
   const { can } = usePermissions();
   const canCreate = can("studio.create_article");
   const [createOpen, setCreateOpen] = useState(false);
+
+  useEffect(() => {
+    const p = new URLSearchParams(window.location.search);
+    if (p.get("create") === "true" && canCreate) setCreateOpen(true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: campaigns, isLoading } = useQuery<CampaignRow[]>({
     queryKey: ["/api/studio/campaigns", { projectId: selectedProjectId }],

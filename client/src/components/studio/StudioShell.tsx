@@ -14,6 +14,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { NotificationBell } from "@/components/NotificationBell";
 import { useStudioProject } from "@/pages/admin/studio/useStudioProject";
 import {
@@ -28,19 +34,20 @@ import {
   ArrowLeft,
   BarChart3,
   BookOpen,
-  Briefcase,
   CalendarDays,
   ChevronDown,
   Clapperboard,
-  FileText,
+  HelpCircle,
+  Keyboard,
   LayoutDashboard,
+  Lightbulb,
   LogOut,
   Megaphone,
+  MessageSquare,
   Newspaper,
   Plus,
-  Send,
+  Rocket,
   Settings,
-  Users,
 } from "lucide-react";
 
 /**
@@ -54,6 +61,7 @@ type NavChild = {
   label: string;
   icon: React.ComponentType<{ className?: string }>;
   active: boolean;
+  action?: () => void;
 };
 
 type NavDirect = NavChild & { kind: "direct" };
@@ -75,9 +83,6 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
   const { can } = usePermissions();
   const notificationsEnabled = isEnabled("notifications_enabled");
   const canCreate = can("studio.create_article");
-  const canManageAuthors = can("studio.manage_authors");
-  const canBd = can("studio.bd_agent");
-  const isHrAdmin = ["super_admin", "admin", "hr"].includes(user?.role ?? "");
   const { projects, projectsLoading, selectedProjectId, setSelectedProjectId } = useStudioProject();
 
   useEffect(() => {
@@ -93,12 +98,26 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
   const nav: NavItem[] = [
     {
       kind: "direct",
+      href: STUDIO_BASE,
+      label: "Dashboard",
+      icon: LayoutDashboard,
+      active: location === STUDIO_BASE,
+    },
+    {
+      kind: "direct",
       href: studioPath("/calendar"),
-      label: "Content Plan",
+      label: "Calendar",
       icon: CalendarDays,
       active: ["/calendar", "/board", "/table"].some((p) =>
         location.startsWith(studioPath(p))
       ),
+    },
+    {
+      kind: "direct",
+      href: studioPath("/ideas"),
+      label: "Ideas Bank",
+      icon: Lightbulb,
+      active: location.startsWith(studioPath("/ideas")),
     },
     {
       kind: "direct",
@@ -111,119 +130,73 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
     },
     {
       kind: "direct",
-      href: studioPath("/outreach"),
-      label: "Outreach",
-      icon: Send,
-      active: location.startsWith(studioPath("/outreach")),
+      href: studioPath("/campaigns"),
+      label: "Campaigns",
+      icon: Megaphone,
+      active: location.startsWith(studioPath("/campaigns")),
     },
-    ...(canBd
-      ? [
-          {
-            kind: "group" as const,
-            label: "BD Tools",
-            icon: Briefcase,
-            active:
-              location.startsWith(studioPath("/bd-agent")) ||
-              location.startsWith(studioPath("/bd-templates")) ||
-              (location.startsWith(studioPath("/bd-guide")) &&
-                !location.startsWith(studioPath("/guide"))),
-            children: [
-              {
-                href: studioPath("/bd-agent"),
-                label: "BD Agent",
-                icon: Briefcase,
-                active: location.startsWith(studioPath("/bd-agent")),
-              },
-              {
-                href: studioPath("/bd-templates"),
-                label: "BD Templates",
-                icon: FileText,
-                active: location.startsWith(studioPath("/bd-templates")),
-              },
-              {
-                href: studioPath("/bd-guide"),
-                label: "BD Guide",
-                icon: BookOpen,
-                active:
-                  location.startsWith(studioPath("/bd-guide")) &&
-                  !location.startsWith(studioPath("/guide")),
-              },
-            ],
-          },
-        ]
-      : []),
     {
-      kind: "group",
-      label: "Insights",
+      kind: "direct",
+      href: studioPath("/analytics"),
+      label: "Analytics",
       icon: BarChart3,
       active:
+        location.startsWith(studioPath("/analytics")) ||
         location.startsWith(studioPath("/feedback-insights")) ||
         location.startsWith(studioPath("/guide/analytics")),
-      children: [
-        ...(isHrAdmin
-          ? [
-              {
-                href: studioPath("/feedback-insights"),
-                label: "Feedback Insights",
-                icon: BarChart3,
-                active: location.startsWith(studioPath("/feedback-insights")),
-              },
-            ]
-          : []),
-        {
-          href: studioPath("/guide/analytics"),
-          label: "Analytics Guide",
-          icon: BarChart3,
-          active: location.startsWith(studioPath("/guide/analytics")),
-        },
-      ],
+    },
+    {
+      kind: "direct",
+      href: studioPath("/settings"),
+      label: "Settings",
+      icon: Settings,
+      active:
+        location.startsWith(studioPath("/settings")) ||
+        location.startsWith(studioPath("/access")),
     },
     {
       kind: "group",
       label: "Help",
-      icon: BookOpen,
-      active: location === studioPath("/guide"),
+      icon: HelpCircle,
+      active: location === studioPath("/guide") || location === studioPath("/guide/analytics"),
       children: [
         {
           href: studioPath("/guide"),
-          label: "Guide",
+          label: "Quick Start Guide",
           icon: BookOpen,
           active: location === studioPath("/guide"),
         },
-      ],
-    },
-    {
-      kind: "group",
-      label: "More",
-      icon: LayoutDashboard,
-      active:
-        location === STUDIO_BASE ||
-        location.startsWith(studioPath("/campaigns")) ||
-        location.startsWith(studioPath("/authors")),
-      children: [
         {
-          href: STUDIO_BASE,
-          label: "Dashboard",
-          icon: LayoutDashboard,
-          active: location === STUDIO_BASE,
+          href: studioPath("/guide/analytics"),
+          label: "Analytics Guide",
+          icon: BarChart3,
+          active: location === studioPath("/guide/analytics"),
         },
         {
-          href: studioPath("/campaigns"),
-          label: "Campaigns",
-          icon: Megaphone,
-          active: location.startsWith(studioPath("/campaigns")),
+          href: "#keyboard",
+          label: "Keyboard Shortcuts",
+          icon: Keyboard,
+          active: false,
+          action: () => setShowShortcuts(true),
         },
         {
-          href: studioPath("/authors"),
-          label: "Authors",
-          icon: Users,
-          active: location.startsWith(studioPath("/authors")),
+          href: studioPath("/changelog"),
+          label: "What's New",
+          icon: Rocket,
+          active: false,
+        },
+        {
+          href: "mailto:support@hirein.solutions",
+          label: "Support",
+          icon: MessageSquare,
+          active: false,
         },
       ],
     },
   ];
 
   const [createOpen, setCreateOpen] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
 
   return (
     <div className="flex h-screen w-full flex-col bg-background">
@@ -307,7 +280,15 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
                   {group.children.map((child) => (
                     <DropdownMenuItem
                       key={child.href}
-                      onClick={() => navigate(child.href)}
+                      onClick={() => {
+                        if (child.action) {
+                          child.action();
+                        } else if (!child.href.startsWith("#") && !child.href.startsWith("mailto:")) {
+                          navigate(child.href);
+                        } else if (child.href.startsWith("mailto:")) {
+                          window.location.href = child.href;
+                        }
+                      }}
                       className={
                         child.active ? "bg-primary/10 font-medium text-primary" : ""
                       }
@@ -325,24 +306,6 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
 
         {/* Right section */}
         <div className="flex shrink-0 items-center gap-1.5">
-          {/* Settings icon — only for authors managers */}
-          {canManageAuthors && (
-            <Link href={studioPath("/settings/templates")}>
-              <span
-                className={`flex h-8 w-8 cursor-pointer items-center justify-center rounded-md transition-colors ${
-                  location.startsWith(studioPath("/settings")) ||
-                  location.startsWith(studioPath("/access"))
-                    ? "bg-white/20 text-white"
-                    : "text-white/60 hover:bg-white/10 hover:text-white"
-                }`}
-                data-testid="nav-studio-settings"
-                title="Settings"
-              >
-                <Settings className="h-4 w-4" />
-              </span>
-            </Link>
-          )}
-
           {/* Project switcher */}
           <Select
             value={selectedProjectId}
@@ -387,16 +350,22 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
                 <DropdownMenuItem
-                  onClick={() => navigate(`${studioPath("/calendar")}?create=1`)}
-                  data-testid="menu-create-idea"
+                  onClick={() => navigate(`${studioPath("/ideas")}?create=true`)}
+                  data-testid="menu-create-social-post"
                 >
-                  New content idea
+                  New Social Post
                 </DropdownMenuItem>
                 <DropdownMenuItem
-                  onClick={() => navigate(studioPath("/articles"))}
+                  onClick={() => navigate(`${studioPath("/articles")}?create=true`)}
                   data-testid="menu-create-article"
                 >
-                  New article
+                  New Article
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => navigate(`${studioPath("/campaigns")}?create=true`)}
+                  data-testid="menu-create-campaign"
+                >
+                  New Campaign
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -446,6 +415,35 @@ export function StudioShell({ children }: { children: React.ReactNode }) {
       <main className="flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1600px] p-4 sm:p-6">{children}</div>
       </main>
+
+      <Dialog open={showShortcuts} onOpenChange={setShowShortcuts}>
+        <DialogContent className="max-w-sm" data-testid="dialog-keyboard-shortcuts">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Keyboard className="h-5 w-5" />
+              Keyboard Shortcuts
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2.5 text-sm">
+            {[
+              { key: "N", label: "New article" },
+              { key: "S", label: "Save draft" },
+              { key: "P", label: "Publish / submit for review" },
+              { key: "E", label: "Open editor" },
+              { key: "?", label: "Show shortcuts" },
+              { key: "G D", label: "Go to Dashboard" },
+              { key: "G A", label: "Go to Articles" },
+              { key: "G C", label: "Go to Calendar" },
+              { key: "G N", label: "Go to Analytics" },
+            ].map(({ key, label }) => (
+              <div key={key} className="flex items-center justify-between gap-4">
+                <span className="text-muted-foreground">{label}</span>
+                <kbd className="rounded border border-border bg-muted px-2 py-0.5 font-mono text-xs">{key}</kbd>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

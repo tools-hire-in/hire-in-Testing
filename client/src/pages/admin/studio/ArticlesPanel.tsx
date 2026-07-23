@@ -77,10 +77,11 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
   const [typeFilter, setTypeFilter] = useState("all");
   const [page, setPage] = useState(1);
 
-  // Handle ?new=1 URL param to auto-open the create dialog.
-  const [createOpen, setCreateOpen] = useState(
-    () => new URLSearchParams(window.location.search).get("new") === "1" && canCreate
-  );
+  // Handle ?new=1 or ?create=true URL param to auto-open the create dialog.
+  const [createOpen, setCreateOpen] = useState(() => {
+    const p = new URLSearchParams(window.location.search);
+    return (p.get("new") === "1" || p.get("create") === "true") && canCreate;
+  });
   const [newTitle, setNewTitle] = useState(
     () => new URLSearchParams(window.location.search).get("title") ?? ""
   );
@@ -280,7 +281,7 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
       setNewInsightsWhyNow("");
       setNewInsightsMode("");
       toast({ title: "Article created", description: "Opening the editor…" });
-      setLocation(`/admin/studio/articles/${created.id}/edit`);
+      setLocation(`/studio/articles/${created.id}/edit`);
     },
     onError: (err: Error) => {
       toast({ title: "Could not create article", description: err.message, variant: "destructive" });
@@ -485,7 +486,7 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                         />
                       </TableCell>
                     )}
-                    <TableCell className="font-medium" data-testid={`text-article-title-${a.id}`} onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
+                    <TableCell className="font-medium" data-testid={`text-article-title-${a.id}`} onClick={() => setLocation(`/studio/articles/${a.id}/edit`)}>
                       <span className="flex flex-col gap-0.5">
                         <span>{a.title}</span>
                         <span className="flex items-center gap-1 flex-wrap">
@@ -496,12 +497,12 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                           )}
                           <OutdatedModelBadge
                             articleId={a.id}
-                            onRegenClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}
+                            onRegenClick={() => setLocation(`/studio/articles/${a.id}/edit`)}
                           />
                         </span>
                       </span>
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
+                    <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/studio/articles/${a.id}/edit`)}>
                       <span className="flex flex-wrap items-center gap-1">
                         <span>{getStudioContentType(a.contentType)?.label ?? a.contentType}</span>
                         {isInsightsContentType(a.contentType) && a.status === "planning_review" && (
@@ -521,7 +522,7 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                         })()}
                       </span>
                     </TableCell>
-                    <TableCell onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
+                    <TableCell onClick={() => setLocation(`/studio/articles/${a.id}/edit`)}>
                       {(() => {
                         const isRejected = a.status === "draft" && !!(a as any).lastRejectionReason;
                         const displayKey = isRejected ? "needs_revision" : a.status;
@@ -537,16 +538,16 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                         );
                       })()}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
+                    <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/studio/articles/${a.id}/edit`)}>
                       {a.authorName ?? "—"}
                     </TableCell>
-                    <TableCell className="text-right text-sm tabular-nums text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
+                    <TableCell className="text-right text-sm tabular-nums text-muted-foreground" onClick={() => setLocation(`/studio/articles/${a.id}/edit`)}>
                       <span className="inline-flex items-center gap-1">
                         <Clock3 className="h-3 w-3" />
                         {a.readTimeMinutes ?? "—"}m
                       </span>
                     </TableCell>
-                    <TableCell className="text-right text-xs tabular-nums text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
+                    <TableCell className="text-right text-xs tabular-nums text-muted-foreground" onClick={() => setLocation(`/studio/articles/${a.id}/edit`)}>
                       {(a as any).totalCostUsd != null ? (
                         <span className="inline-flex items-center gap-0.5" data-testid={`text-cost-${a.id}`}>
                           <DollarSign className="h-3 w-3" />
@@ -554,7 +555,7 @@ export function ArticlesPanel({ projectId, initialStatus }: { projectId: string;
                         </span>
                       ) : "—"}
                     </TableCell>
-                    <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/admin/studio/articles/${a.id}/edit`)}>
+                    <TableCell className="text-sm text-muted-foreground" onClick={() => setLocation(`/studio/articles/${a.id}/edit`)}>
                       {a.updatedAt ? new Date(a.updatedAt).toLocaleDateString() : "—"}
                     </TableCell>
                     {isSuperAdmin && (() => {

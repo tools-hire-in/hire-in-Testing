@@ -65,7 +65,7 @@ function ListField({
 type PlatformDraft = { tone: string[]; signaturePhrases: string[] };
 const emptyPlatform = (): PlatformDraft => ({ tone: [], signaturePhrases: [] });
 
-export default function BrandVoiceView() {
+export function BrandVoicePanel() {
   const { toast } = useToast();
   const { can } = usePermissions();
   const canEdit = can("studio.edit_article");
@@ -162,11 +162,10 @@ export default function BrandVoiceView() {
     onError: (e: any) => toast({ title: "Failed to save", description: e?.message, variant: "destructive" }),
   });
 
-  if (!selectedProjectId) return <StudioShell><p className="text-sm text-muted-foreground">Select a project first.</p></StudioShell>;
-  if (isLoading) return <StudioShell><Skeleton className="h-80 w-full" /></StudioShell>;
+  if (!selectedProjectId) return <p className="py-8 text-center text-sm text-muted-foreground">Select a project first.</p>;
+  if (isLoading) return <Skeleton className="h-80 w-full" />;
 
   return (
-    <StudioShell>
     <div className="mx-auto max-w-3xl space-y-4">
       <div>
         <h1 className="flex items-center gap-2 text-xl font-bold">
@@ -310,6 +309,9 @@ export default function BrandVoiceView() {
         </Card>
       )}
     </div>
-    </StudioShell>
   );
+}
+
+export default function BrandVoiceView() {
+  return <StudioShell><BrandVoicePanel /></StudioShell>;
 }

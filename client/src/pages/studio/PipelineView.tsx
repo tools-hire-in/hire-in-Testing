@@ -1253,12 +1253,14 @@ export function IdeaPeek({
   onOpenGallery,
   fromCalendar,
   onMutated,
+  standalone,
 }: {
   ideaId: string | null;
   onClose: () => void;
   onOpenGallery?: () => void;
   fromCalendar?: boolean;
   onMutated?: () => void;
+  standalone?: boolean;
 }) {
   const { toast } = useToast();
   const { can } = usePermissions();
@@ -1449,20 +1451,30 @@ export function IdeaPeek({
   const promotable = !!idea && (!!typeCfg || isInsightsIdea) && idea.status === "approved" && !idea.linkedArticleId;
   const isSocialIdea = typeCfg?.family === "social";
 
-  return (
-    <Sheet open={!!ideaId} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
-        {isLoading || !idea ? (
-          <div className="flex h-40 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>
-        ) : (
-          <>
-            <SheetHeader>
-              <SheetTitle className="pr-6 text-left" data-testid="text-peek-topic">
-                {TYPE_ICON[idea.contentType] || ""} {idea.topic}
-              </SheetTitle>
-            </SheetHeader>
+  const innerBody = !idea ? null : (
+    <>
+      {standalone ? (
+        <div className="flex items-center gap-3 pb-2 border-b mb-3">
+          <button
+            onClick={onClose}
+            className="text-sm text-muted-foreground hover:text-foreground flex items-center gap-1"
+            data-testid="button-peek-back"
+          >
+            ← Back
+          </button>
+          <h1 className="pr-6 text-left text-base font-semibold" data-testid="text-peek-topic">
+            {TYPE_ICON[idea.contentType] || ""} {idea.topic}
+          </h1>
+        </div>
+      ) : (
+        <SheetHeader>
+          <SheetTitle className="pr-6 text-left" data-testid="text-peek-topic">
+            {TYPE_ICON[idea.contentType] || ""} {idea.topic}
+          </SheetTitle>
+        </SheetHeader>
+      )}
 
-            {/* Tab switcher */}
+      {/* Tab switcher */}
             <div className="mt-3 flex gap-1 border-b pb-0">
               <button
                 className={`flex items-center gap-1.5 rounded-t px-3 py-1.5 text-xs font-medium transition-colors ${peekTab === "details" ? "border-b-2 border-primary text-primary" : "text-muted-foreground hover:text-foreground"}`}
@@ -1982,15 +1994,30 @@ export function IdeaPeek({
                 </div>
               </DialogContent>
             </Dialog>
-          </>
-        )}
+    </>
+  );
+
+  const loadingEl = <div className="flex h-40 items-center justify-center"><Loader2 className="h-5 w-5 animate-spin" /></div>;
+
+  if (standalone) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-4 p-4 overflow-y-auto" data-testid="idea-detail-standalone">
+        {isLoading || !idea ? loadingEl : innerBody}
+      </div>
+    );
+  }
+
+  return (
+    <Sheet open={!!ideaId} onOpenChange={(v) => { if (!v) onClose(); }}>
+      <SheetContent className="w-full overflow-y-auto sm:max-w-md">
+        {isLoading || !idea ? loadingEl : innerBody}
       </SheetContent>
     </Sheet>
   );
 }
 
 // ── Main page ───────────────────────────────────────────────────────────────
-export default function PipelineView({ lens }: { lens: Lens }) {
+export default function PipelineView({ lens, navigateOnClick }: { lens: Lens; navigateOnClick?: boolean }) {
   const [, navigate] = useLocation();
   const { can } = usePermissions();
   const { toast } = useToast();
@@ -2008,6 +2035,10 @@ export default function PipelineView({ lens }: { lens: Lens }) {
   const [assigneeFilter, setAssigneeFilter] = useState("all");
   const [month, setMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
   const [peekId, setPeekId] = useState<string | null>(null);
+  const handleIdeaClick = (id: string) => {
+    if (navigateOnClick) navigate(`/studio/ideas/${id}`);
+    else setPeekId(id);
+  };
   const [createOpen, setCreateOpen] = useState(false);
   const [createDate, setCreateDate] = useState<string | undefined>(undefined);
   const [importOpen, setImportOpen] = useState(false);
@@ -2185,7 +2216,7 @@ export default function PipelineView({ lens }: { lens: Lens }) {
   const IdeaChip = ({ idea }: { idea: StudioContentIdea }) => (
     <button
       className={`block w-full rounded px-1.5 py-0.5 text-left text-[11px] leading-tight ${STATUS_CLASS[idea.status] || "bg-muted"}`}
-      onClick={() => setPeekId(idea.id)}
+      onClick={() => handleIdeaClick(idea.id)}
       title={idea.topic}
       data-testid={`chip-idea-${idea.id}`}
     >
@@ -2411,7 +2442,7 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                           <button
                             key={idea.id}
                             className={`rounded px-2 py-1 text-[11px] ${STATUS_CLASS[idea.status] || "bg-muted"}`}
-                            onClick={() => setPeekId(idea.id)}
+                            onClick={() => handleIdeaClick(idea.id)}
                             data-testid={`backlog-idea-${idea.id}`}
                           >
                             {TYPE_ICON[idea.contentType] || ""} {idea.topic}
@@ -2505,7 +2536,7 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                                 <button
                                   key={idea.id}
                                   className="w-full rounded-md border bg-background p-2 text-left text-xs shadow-sm hover:border-primary/40"
-                                  onClick={() => setPeekId(idea.id)}
+                                  onClick={() => handleIdeaClick(idea.id)}
                                   data-testid={`board-card-${idea.id}`}
                                 >
                                   <p className="font-medium leading-snug">{TYPE_ICON[idea.contentType] || ""} {idea.topic}</p>
@@ -2673,7 +2704,7 @@ export default function PipelineView({ lens }: { lens: Lens }) {
                       );
                       const linkedArtStatus = idea.linkedArticleId ? articleStatusMap[idea.linkedArticleId] : null;
                       return (
-                        <TableRow key={idea.id} className="cursor-pointer" onClick={() => setPeekId(idea.id)} data-testid={`row-idea-${idea.id}`}>
+                        <TableRow key={idea.id} className="cursor-pointer" onClick={() => handleIdeaClick(idea.id)} data-testid={`row-idea-${idea.id}`}>
                           <TableCell className="whitespace-nowrap text-xs" onClick={(e) => canEdit && e.stopPropagation()}>
                             {canEdit ? (
                               <Input
