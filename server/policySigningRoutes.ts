@@ -226,6 +226,105 @@ export function registerPolicySigningRoutes(app: Express) {
     }
   });
 
+  // Send reminder email(s) to pending employees for a policy (HR)
+  // Optional ?employeeId= query param limits to a single employee.
+  app.post("/api/hr/policies/:policyId/remind-pending", requireHR, async (req: Request, res: Response) => {
+    try {
+      const { policyId } = req.params;
+      const { employeeId } = req.query as { employeeId?: string };
+      const { dispatchAutomatedEmail } = await import("./email");
+      const { getPortalBaseUrl } = await import("./portalUrl");
+      const portalUrl = getPortalBaseUrl();
+
+      const [policy] = await db.select({ title: policyDocuments.title })
+        .from(policyDocuments)
+        .where(and(eq(policyDocuments.id, policyId), eq(policyDocuments.isActive, true)));
+      if (!policy) return res.status(404).json({ error: "Policy not found" });
+
+      const conditions: any[] = [
+        eq(policySigningRequests.policyDocumentId, policyId),
+        eq(policySigningRequests.status, "pending"),
+        eq(adminUsers.isActive, true),
+      ];
+      if (employeeId) {
+        conditions.push(eq(policySigningRequests.employeeId, employeeId));
+      }
+
+      const pending = await db
+        .select({
+          requestId: policySigningRequests.id,
+          employeeId: policySigningRequests.employeeId,
+          dueDate: policySigningRequests.dueDate,
+          firstName: adminUsers.firstName,
+          lastName: adminUsers.lastName,
+          email: adminUsers.email,
+        })
+        .from(policySigningRequests)
+        .innerJoin(adminUsers, eq(policySigningRequests.employeeId, adminUsers.id))
+        .where(and(...conditions));
+
+      let sent = 0;
+      for (const row of pending) {
+        if (!row.email) continue;
+        try {
+          const dueStr = row.dueDate
+            ? new Date(row.dueDate).toLocaleDateString("en-IN", { dateStyle: "long" })
+            : "N/A";
+
+          const bodyHtml = `
+            <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+              <div style="background:linear-gradient(135deg,#1F3A6E 0%,#2c5282 100%);padding:28px 32px;text-align:center;">
+                <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">Hire&rsquo;in Solutions</h1>
+                <p style="color:#bfdbfe;margin:6px 0 0;font-size:13px;">Policy Compliance Reminder</p>
+              </div>
+              <div style="padding:32px;">
+                <p style="color:#1e293b;margin:0 0 16px;">Hi ${row.firstName},</p>
+                <p style="color:#475569;line-height:1.6;margin:0 0 16px;">
+                  This is a reminder that your signature is required for the following policy:
+                </p>
+                <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:16px 20px;margin:0 0 20px;">
+                  <p style="color:#475569;margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:0.05em;">Policy</p>
+                  <p style="color:#1e293b;margin:0;font-weight:600;">${policy.title}</p>
+                  ${row.dueDate ? `<p style="color:#9a3412;margin:8px 0 0;font-size:13px;">Due: ${dueStr}</p>` : ""}
+                </div>
+                <p style="color:#475569;line-height:1.6;margin:0 0 24px;">
+                  Please log in to the portal and complete your policy acknowledgement as soon as possible.
+                </p>
+                <div style="text-align:center;margin:24px 0;">
+                  <a href="${portalUrl}/admin/policy-gate"
+                     style="display:inline-block;background:#F47C20;color:#fff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:14px;">
+                    Sign Policy Now
+                  </a>
+                </div>
+                <p style="color:#94a3b8;font-size:12px;margin:0;">This is a reminder sent by your HR team. If you have already signed this policy, please disregard.</p>
+              </div>
+            </div>`;
+
+          const bodyText = `Hi ${row.firstName},\n\nThis is a reminder that your signature is required for the "${policy.title}" policy${row.dueDate ? ` (due: ${dueStr})` : ""}.\n\nPlease log in and sign it here: ${portalUrl}/admin/policy-gate`;
+
+          await dispatchAutomatedEmail(
+            "policy_pending_employee_reminder",
+            "policy_remind_pending_endpoint",
+            {
+              to: row.email,
+              subject: `Reminder: Please sign the "${policy.title}" policy`,
+              html: bodyHtml,
+              text: bodyText,
+            },
+          );
+          sent++;
+        } catch (empErr) {
+          console.error(`[policySigningRoutes] Reminder failed for ${row.email}:`, empErr);
+        }
+      }
+
+      res.json({ sent });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to send reminders" });
+    }
+  });
+
   // Resend a signing request (HR) — resets to pending
   app.post("/api/hr/policy-requests/:requestId/resend", requireHR, async (req: Request, res: Response) => {
     try {

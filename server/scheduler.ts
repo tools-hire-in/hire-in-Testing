@@ -1964,7 +1964,7 @@ export function startScheduler() {
         FROM policy_signing_requests psr
         JOIN admin_users au  ON au.id  = psr.employee_id
         JOIN admin_users mgr ON mgr.id = au.manager_id
-        JOIN policy_documents pd ON pd.id = psr.policy_id
+        JOIN policy_documents pd ON pd.id = psr.policy_document_id
         WHERE psr.status = 'pending'
           AND psr.due_date < NOW() - INTERVAL '2 days'
           AND au.manager_id IS NOT NULL
@@ -1973,12 +1973,7 @@ export function startScheduler() {
           AND mgr.deleted_at IS NULL
       `);
 
-      if (!overdueRows.rows.length) {
-        console.log("[scheduler] Policy overdue manager digest: no overdue requests found.");
-        return;
-      }
-
-      // Group by manager
+      // Group by manager — send digest only if there are manager-linked overdue rows
       const byManager = new Map<string, { mgr: any; employees: any[] }>();
       for (const row of overdueRows.rows as any[]) {
         if (!byManager.has(row.manager_id)) {
@@ -2034,6 +2029,83 @@ export function startScheduler() {
       }
 
       console.log(`[scheduler] Policy overdue manager digest: sent ${sent} email(s) covering ${overdueRows.rows.length} overdue request(s).`);
+
+      // ── Second pass: direct employee reminder emails ──────────────────────
+      // Each overdue employee also receives their own direct reminder — separate
+      // from the manager digest — so they are aware they are overdue.
+      const employeeRows = await db.execute(sql`
+        SELECT
+          psr.id          AS request_id,
+          psr.employee_id,
+          psr.due_date,
+          au.first_name   AS emp_first,
+          au.last_name    AS emp_last,
+          au.email        AS emp_email,
+          au.employee_id  AS emp_id,
+          pd.title        AS policy_title
+        FROM policy_signing_requests psr
+        JOIN admin_users au ON au.id = psr.employee_id
+        JOIN policy_documents pd ON pd.id = psr.policy_document_id
+        WHERE psr.status = 'pending'
+          AND psr.due_date < NOW() - INTERVAL '2 days'
+          AND au.is_active = true
+          AND au.deleted_at IS NULL
+          AND au.email IS NOT NULL
+      `);
+
+      let empSent = 0;
+      for (const row of employeeRows.rows as any[]) {
+        try {
+          const dueStr = new Date(row.due_date).toLocaleDateString("en-IN", { dateStyle: "long" });
+          const daysOverdue = Math.floor((Date.now() - new Date(row.due_date).getTime()) / 86400000);
+
+          const bodyHtml = `
+            <div style="font-family:'Segoe UI',Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;">
+              <div style="background:linear-gradient(135deg,#1F3A6E 0%,#2c5282 100%);padding:28px 32px;text-align:center;">
+                <h1 style="color:#fff;margin:0;font-size:20px;font-weight:700;">Hire&rsquo;in Solutions</h1>
+                <p style="color:#bfdbfe;margin:6px 0 0;font-size:13px;">Policy Compliance Reminder</p>
+              </div>
+              <div style="padding:32px;">
+                <p style="color:#1e293b;margin:0 0 16px;">Hi ${row.emp_first},</p>
+                <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:8px;padding:16px 20px;margin:0 0 20px;">
+                  <p style="color:#c2410c;font-weight:600;margin:0 0 6px;">⚠ Action required — policy signature overdue</p>
+                  <p style="color:#9a3412;margin:0;font-size:14px;">
+                    You have not yet signed the <strong>${row.policy_title}</strong> policy.
+                    This was due on ${dueStr} (${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue).
+                  </p>
+                </div>
+                <p style="color:#475569;line-height:1.6;margin:0 0 24px;">
+                  Please log in to the portal and complete your policy acknowledgement as soon as possible.
+                  Unsigned policies may restrict your access to certain features.
+                </p>
+                <div style="text-align:center;margin:24px 0;">
+                  <a href="${portalUrl}/admin/policy-gate"
+                     style="display:inline-block;background:#F47C20;color:#fff;text-decoration:none;padding:12px 32px;border-radius:6px;font-weight:600;font-size:14px;">
+                    Sign Policy Now
+                  </a>
+                </div>
+                <p style="color:#94a3b8;font-size:12px;margin:0;">This is an automated reminder. If you have already signed this policy, please disregard.</p>
+              </div>
+            </div>`;
+
+          const bodyText = `Hi ${row.emp_first},\n\nYou have not yet signed the "${row.policy_title}" policy. This was due on ${dueStr} (${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue).\n\nPlease log in and complete your policy acknowledgement: ${portalUrl}/admin/policy-gate`;
+
+          await dispatchAutomatedEmail(
+            "policy_overdue_employee_reminder",
+            "policy_overdue_manager_digest",
+            {
+              to: row.emp_email,
+              subject: `Action Required: "${row.policy_title}" policy signature overdue`,
+              html: bodyHtml,
+              text: bodyText,
+            },
+          );
+          empSent++;
+        } catch (empErr) {
+          console.error(`[scheduler] Policy employee reminder failed for ${row.emp_email}:`, empErr);
+        }
+      }
+      console.log(`[scheduler] Policy overdue employee reminders: sent ${empSent} direct email(s) to overdue employees.`);
     } catch (err) {
       console.error("[scheduler] Policy overdue manager digest failed:", err);
     }

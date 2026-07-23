@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Shield, CheckCircle, AlertTriangle, Clock, RefreshCw, Download, Moon, Users } from "lucide-react";
+import { Shield, CheckCircle, AlertTriangle, Clock, RefreshCw, Download, Moon, Users, Bell } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -98,6 +99,7 @@ function statusBadge(status: string, label?: string) {
 }
 
 function PolicyMatrix({ data }: { data: PolicyComplianceData }) {
+  const { toast } = useToast();
   const tracks = data.policyTracks;
   const matrix = data.matrix;
 
@@ -105,6 +107,63 @@ function PolicyMatrix({ data }: { data: PolicyComplianceData }) {
     row.trackStatuses.every(s => s.status === "signed")
   ).length;
   const pendingCount = matrix.length - signedCount;
+
+  const [remindingAll, setRemindingAll] = useState<Set<string>>(new Set());
+  const [remindingRow, setRemindingRow] = useState<string | null>(null);
+
+  async function handleRemindAll(trackId: string, trackTitle: string) {
+    setRemindingAll(prev => new Set(prev).add(trackId));
+    try {
+      const res = await fetch(`/api/hr/policies/${trackId}/remind-pending`, {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error("Request failed");
+      const data = await res.json();
+      toast({ title: `Reminders sent`, description: `${data.sent} reminder email${data.sent === 1 ? "" : "s"} sent for "${trackTitle}".` });
+    } catch {
+      toast({ title: "Failed to send reminders", variant: "destructive" });
+    } finally {
+      setRemindingAll(prev => { const n = new Set(prev); n.delete(trackId); return n; });
+    }
+  }
+
+  async function handleRemindEmployee(userId: string, unsignedTracks: PolicyTrackMeta[]) {
+    setRemindingRow(userId);
+    let totalSent = 0;
+    let failures = 0;
+    try {
+      for (const t of unsignedTracks) {
+        try {
+          const res = await fetch(`/api/hr/policies/${t.id}/remind-pending?employeeId=${userId}`, {
+            method: "POST",
+            credentials: "include",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+          });
+          if (res.ok) {
+            const d = await res.json();
+            totalSent += d.sent ?? 0;
+          } else {
+            failures++;
+          }
+        } catch {
+          failures++;
+        }
+      }
+      if (failures > 0 && totalSent === 0) {
+        toast({ title: "Failed to send reminder", variant: "destructive" });
+      } else if (failures > 0) {
+        toast({ title: "Partial success", description: `${totalSent} sent, ${failures} failed.`, variant: "destructive" });
+      } else {
+        toast({ title: "Reminder sent", description: `${totalSent} reminder email${totalSent === 1 ? "" : "s"} sent.` });
+      }
+    } finally {
+      setRemindingRow(null);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -144,29 +203,48 @@ function PolicyMatrix({ data }: { data: PolicyComplianceData }) {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="sticky left-0 bg-background z-10 min-w-[180px]">Employee</TableHead>
+              <TableHead className="sticky left-0 bg-background z-10 min-w-[200px]">Employee</TableHead>
               <TableHead className="min-w-[100px]">Role</TableHead>
-              {tracks.map(t => (
-                <TableHead key={t.id} className="min-w-[140px]">
-                  <div className="space-y-0.5">
-                    <div className="font-medium truncate max-w-32">{t.title}</div>
-                    <div className="flex items-center gap-1 flex-wrap">
-                      <span className="text-xs font-normal text-muted-foreground">v{t.versionNumber}</span>
-                      {t.isUniversal && (
-                        <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 px-1.5 py-0 rounded-full font-medium leading-tight">Universal</span>
-                      )}
+              {tracks.map(t => {
+                const pendingForTrack = matrix.filter(row => {
+                  const s = row.trackStatuses.find(ts => ts.trackId === t.id);
+                  return s && (s.status === "not_signed" || s.status === "outdated" || s.status === "in_progress");
+                }).length;
+                return (
+                  <TableHead key={t.id} className="min-w-[160px]">
+                    <div className="space-y-1">
+                      <div className="font-medium truncate max-w-36">{t.title}</div>
+                      <div className="flex items-center gap-1 flex-wrap">
+                        <span className="text-xs font-normal text-muted-foreground">v{t.versionNumber}</span>
+                        {t.isUniversal && (
+                          <span className="text-xs bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400 px-1.5 py-0 rounded-full font-medium leading-tight">Universal</span>
+                        )}
+                      </div>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-6 text-xs px-2 gap-1"
+                        disabled={pendingForTrack === 0 || remindingAll.has(t.id)}
+                        onClick={() => handleRemindAll(t.id, t.title)}
+                        data-testid={`button-remind-all-${t.id}`}
+                      >
+                        <Bell className="h-3 w-3" />
+                        {remindingAll.has(t.id) ? "Sending…" : `Remind All (${pendingForTrack})`}
+                      </Button>
                     </div>
-                  </div>
-                </TableHead>
-              ))}
+                  </TableHead>
+                );
+              })}
               <TableHead className="min-w-[120px]">Night Shift</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {matrix.map(row => {
-              const hasUnsignedTrack = row.trackStatuses.some(s =>
-                s.status === "not_signed" || s.status === "outdated" || s.status === "in_progress"
-              );
+              const unsignedTracks = tracks.filter(t => {
+                const s = row.trackStatuses.find(ts => ts.trackId === t.id);
+                return s && (s.status === "not_signed" || s.status === "outdated" || s.status === "in_progress");
+              });
+              const hasUnsignedTrack = unsignedTracks.length > 0;
               const hasNsIssue = row.user.gender === "Female" && (
                 !row.nightShiftStatus || row.nightShiftStatus.status === "expired" || row.nightShiftStatus.status === "not_signed"
               );
@@ -191,6 +269,19 @@ function PolicyMatrix({ data }: { data: PolicyComplianceData }) {
                       )}
                     </div>
                     <div className="text-xs text-muted-foreground">{row.user.employeeId || row.user.email}</div>
+                    {isNonCompliant && unsignedTracks.length > 0 && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-xs px-2 gap-1 text-amber-700 hover:text-amber-800 hover:bg-amber-50"
+                        disabled={remindingRow === row.user.id}
+                        onClick={() => handleRemindEmployee(row.user.id, unsignedTracks)}
+                        data-testid={`button-remind-employee-${row.user.id}`}
+                      >
+                        <Bell className="h-3 w-3" />
+                        {remindingRow === row.user.id ? "Sending…" : "Send Reminder"}
+                      </Button>
+                    )}
                   </div>
                 </TableCell>
                 <TableCell>
