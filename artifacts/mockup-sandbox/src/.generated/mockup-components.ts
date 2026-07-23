@@ -2,12 +2,12 @@
 type ModuleMap = Record<string, () => Promise<Record<string, unknown>>>;
 export const modules: ModuleMap = {
   "./components/mockups/brand-in-action/BrandInAction.tsx": () => import("../components/mockups/brand-in-action/BrandInAction.tsx"),
+  "./components/mockups/insights-studio-ux/InsightsStudioCanvas.tsx": () => import("../components/mockups/insights-studio-ux/InsightsStudioCanvas.tsx"),
   "./components/mockups/insight-article/ArticlePreview.tsx": () => import("../components/mockups/insight-article/ArticlePreview.tsx"),
   "./components/mockups/insight-article/ArticlePreviewMobile.tsx": () => import("../components/mockups/insight-article/ArticlePreviewMobile.tsx"),
   "./components/mockups/insight-article/ArticlePreviewTablet.tsx": () => import("../components/mockups/insight-article/ArticlePreviewTablet.tsx"),
   "./components/mockups/insight-article/InsightsListView.tsx": () => import("../components/mockups/insight-article/InsightsListView.tsx"),
   "./components/mockups/insight-article/InsightsListViewMobile.tsx": () => import("../components/mockups/insight-article/InsightsListViewMobile.tsx"),
   "./components/mockups/insight-article/InsightsListViewTablet.tsx": () => import("../components/mockups/insight-article/InsightsListViewTablet.tsx"),
-  "./components/mockups/user-management/UserManagementMockup.tsx": () => import("../components/mockups/user-management/UserManagementMockup.tsx"),
-  "./components/mockups/insights-studio-ux/InsightsStudioCanvas.tsx": () => import("../components/mockups/insights-studio-ux/InsightsStudioCanvas.tsx")
+  "./components/mockups/user-management/UserManagementMockup.tsx": () => import("../components/mockups/user-management/UserManagementMockup.tsx")
 };
