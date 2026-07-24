@@ -1,0 +1,141 @@
+User Details
+This endpoint retrieves the complete user details based on the user ID provided as a parameter.
+
+
+Header Parameters
+Content-Type
+string
+Authorization
+string
+Response
+200
+Object
+Response Attributes
+id
+string
+first_name
+string
+middle_name
+string
+last_name
+string
+display_name
+string
+nick_name
+string
+email_id
+string
+contact_number
+string
+office_no
+string
+status
+string
+reporting_to
+string
+business_unit_id
+number
+created
+string
+joining_date
+string
+accessible_bu
+string
+role
+string
+team_name
+string
+admin_privilege
+string
+timezone
+string
+400
+Object
+{ "message": "Invalid parameters or filters." }
+
+Response Attributes
+status
+number
+message
+string
+401
+Object
+{ "message": "Please provide the access token." }
+
+403
+Object
+{ "message": "Your company access is temporarily disabled." }
+
+404
+Object
+{ "message": "Data not found." }
+
+429
+Object
+{ "message": "Request limit exceeded. Please try again later." }
+
+Was this section helpful?
+Yes
+No
+
+Previous
+
+Users
+
+Next
+
+Master Data
+
+GET
+
+/v2/getUserDetails/z5G7h3l6a1kMk8XR6g4J0Yc5M5HYXes/
+
+Node.js
+
+
+var myHeaders = new Headers();
+myHeaders.append("Content-Type", "application/json");
+myHeaders.append("Authorization", "Bearer eyJ0eXAiU3NDcyNDYwLCJpY.S2JDSPBLMOvaFpz8pIkTAd94J3T-ju7kUA9YSoxunHA");
+
+var requestOptions = {
+  method: 'GET',
+  headers: myHeaders,
+  redirect: 'follow'
+};
+
+fetch("https://api.ceipal.com/v2/getUserDetails/z5G7h3l6a1kMk8XR6g4J0Yc5M5HYXes/", requestOptions)
+  .then(response => response.text())
+  .then(result => console.log(result))
+  .catch(error => console.log('error', error));
+Response
+
+200
+400
+401
+403
+404
+429
+
+{
+  "id": "a09vRzYzelJMQ25kQngxV2JpSWpVUT09",
+  "first_name": "Abhilash",
+  "middle_name": "",
+  "last_name": "Kulashekara",
+  "display_name": "Abhilash  Kulashekara",
+  "nick_name": "Abhilash",
+  "email_id": "abhilash.k@ceipal.com",
+  "contact_number": "",
+  "office_no": "",
+  "status": "Active",
+  "reporting_to": "dTNmQnpjbjBkdCtzaGdpQ1VvbnUzUT09",
+  "business_unit_id": 2,
+  "created": "2021-03-03 08:41:47",
+  "joining_date": "2021-03-01",
+  "accessible_bu": "1, 2, 3",
+  "role": "Operational manager",
+  "team_name": "Geetha Team",
+  "admin_privilege": "No",
+  "timezone": "America/New_York"
+}
+
+Show more

@@ -1,0 +1,106 @@
+My honest answer to “Should most be for all?”
+Yes — but as awareness, not full certification.
+
+I would make these mandatory awareness for ALL:
+
+SOP	Why all should know it
+GOV-001	Everyone needs to know SOPs are controlled and versioned
+REQ-001	Everyone should understand Hire’in’s clarity-first model
+TA-001	Everyone should know no work starts without intake/rate clarity
+TA-003	Submission quality is a company standard, not only recruiter work
+CX-001	Candidate experience is brand-critical
+PLAT-001	Everyone must understand KleriQ/ProKred are separate SaaS platforms
+LEGAL-001	Everyone handles some form of confidential or sensitive data
+OPS-001	Tool access and security affects all users
+HR-001	Everyone must understand training, acknowledgment, and performance linkage
+AUDIT-001	Everyone should know KPIs and audits are part of operations
+TRAIN-001	Everyone should know how training and certification work
+
+That is 11 out of 21 SOPs as ALL awareness.
+
+But I would not make every employee complete deep training for Finance, BD, Marketing, Healthcare Credentialing, IT Technical Screening, Engineering/Professional Services, and Manager Templates unless it applies to their role.
+
+Best app logic for Replit
+
+Add these fields to training assignment:
+
+assignment_level:
+- awareness
+- required
+- certification
+- optional_reference
+
+assignment_reason:
+- company_standard
+- daily_workflow
+- manager_responsibility
+- compliance_sensitive
+- department_specific
+- system_access_required
+Completion rules
+Assignment Level	Requirement
+Awareness	Read/watch + 3–5 question quiz + acknowledgment
+Required	Full module + 8-question quiz + pass score
+Certification	Full module + quiz + live work sample/manager approval
+Optional Reference	View only; no completion required
+Pass rules
+Level	Pass Score
+Awareness	70%
+Required	80%
+Certification	85% + manager signoff
+Role-based rollout recommendation
+Week 1–2: Everyone gets company foundation
+
+Assign to ALL:
+
+GOV-001
+REQ-001
+TA-001
+TA-003
+OPS-001
+CX-001
+PLAT-001
+
+Keep it light. These are the “how Hire’in works” modules.
+
+Week 3–4: Recruiter/delivery certification
+
+Assign deeper role training to recruiters/leads:
+
+TA-002
+TA-004
+HC-001 for healthcare
+IT-001 for IT
+ENG-001 for engineering/professional services
+Week 5–6: Growth and client-facing teams
+
+Assign to Sales/BD/Marketing:
+
+SALES-001
+BD-001
+MKT-001
+CX-001 deeper version
+PLAT-001 platform positioning
+Week 7–8: Operating control teams
+
+Assign to Ops/HR/Finance/Managers:
+
+LEGAL-001
+FIN-001
+HR-001
+AUDIT-001
+TRAIN-001
+TPL-001
+Final recommendation
+
+Your instinct is correct:
+
+Most SOPs should be visible to everyone.
+Many SOPs should have awareness training for everyone.
+Only role-relevant SOPs should require certification.
+
+That gives you the best balance:
+
+Common company language without training overload.
+Role accountability without confusion.
+Compliance evidence without fake checkbox completion.

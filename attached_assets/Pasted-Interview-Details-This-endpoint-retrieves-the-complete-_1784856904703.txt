@@ -1,0 +1,152 @@
+Interview Details
+This endpoint retrieves the complete interview details based on the interview ID provided as a parameter.
+
+Header Parameters
+Content-Type
+string
+Authorization
+string
+Response
+200
+Object
+Response Attributes
+id
+string
+business_unit_id
+number
+job_id
+string
+interview_date
+string
+interview_outcome
+string
+end_time
+string
+time_zone
+string
+interview_mode
+string
+contact_number
+string
+skype_id
+string
+venue
+string
+interview_round
+string
+interview_end_client
+string
+modified
+string
+created
+string
+guests
+string
+internal_interviewers
+string
+external_interviewers
+string
+resume_token
+string
+attachment_token
+string
+job_seeker_id
+string
+submission_id
+string
+created_by
+string
+400
+Object
+{ "message": "Invalid parameters or filters." }
+
+Response Attributes
+status
+number
+message
+string
+401
+Object
+{ "message": "Please provide the access token." }
+
+403
+Object
+{ "message": "Your company access is temporarily disabled." }
+
+404
+Object
+{ "message": "Data not found." }
+
+429
+Object
+{ "message": "Request limit exceeded. Please try again later." }
+
+Was this section helpful?
+Yes
+No
+
+Previous
+
+Interviews
+
+Next
+
+Placements
+
+GET
+
+/v2/getInterviewDetails/z5G7h3l6a1kMvyS65NP3c1T4TPxeaA8U5U_K5LIwyNE/
+
+Node.js
+
+
+var myHeaders = new Headers();
+myHeaders.append("Content-Type", "application/json");
+myHeaders.append("Authorization", "Bearer eyJ0eXAiU3NDcyNDYwLCJpY.S2JDSPBLMOvaFpz8pIkTAd94J3T-ju7kUA9YSoxunHA");
+
+var requestOptions = {
+  method: 'GET',
+  headers: myHeaders,
+  redirect: 'follow'
+};
+
+fetch("https://api.ceipal.com/v2/getInterviewDetails/z5G7h3l6a1kMvyS65NP3c1T4TPxeaA8U5U_K5LIwyNE/", requestOptions)
+  .then(response => response.text())
+  .then(result => console.log(result))
+  .catch(error => console.log('error', error));
+Response
+
+200
+400
+401
+403
+404
+429
+
+{
+  "id": "bmdkbU9Ka0QvcjlWZUdDTnZFMFFGdz09",
+  "business_unit_id": 6,
+  "job_id": "aVRUWWVCelJ6T2ZGVzhaclcrMUxEUT09",
+  "interview_date": "2026-06-10 23:00:00",
+  "interview_outcome": "",
+  "end_time": "23:30:00",
+  "time_zone": "Asia/Kolkata",
+  "interview_mode": "Google Hangout",
+  "contact_number": "(+91)9440606447",
+  "skype_id": "",
+  "venue": "",
+  "interview_round": "1st Internal Interview",
+  "interview_end_client": "",
+  "modified": "2026-06-09 22:06:43",
+  "created": "2026-06-09 12:34:09",
+  "guests": "",
+  "internal_interviewers": "",
+  "external_interviewers": "",
+  "resume_token": "T6rejpVULXq1sueRLP/gIdNQcBJXhQ6WEv+4CRIjvmoA7DJsMridDlG0dfEaplzpmUyAx7XBtcbiP4B48s2wBBAuaVaGviCrxILzNL7/y/35K/giLGQzTWNPNgyI83Rl3X966S766Is8pZrPrOBnEHGg5JppFRPtb8hlbBKDMBHrUJLUOkg9Dxzx5ghhBOMM7ajtla00mpEEWnVUkvZnEQ==",
+  "attachment_token": "n5b9cWMe8Fs1eORW+BK5c8jnD5ym+PR76yGmssviDUqn68iYvPtdeiz7p0Uxv7l9cdwLfstTWsvRkrO/imjjIu6mHmG6l52f/3BVNY1qVVsvqZqPSS3HmLEwf5wFPRReV5jhP/UWkCfcm7g/FUsIDA==",
+  "job_seeker_id": "NjUvektwNTkrSzVXTlBhOHlYdlBLUT09",
+  "submission_id": "WHFHS2toR1dYSHhQdklQWjhnYXYzUT09",
+  "created_by": "MmRLTXRNQm9XL0hhdWYrcVgrRmR0UT09"
+}
+
+Show more

@@ -1,0 +1,45 @@
+# Tech Task #1568 — SOP Quiz Question Schema Support
+
+## Problem
+The corrected SOP quiz bank v3 includes structured fields needed for quiz rendering, analytics, and auto-grading. The current app table `section_quiz_questions` only supports `question_text` and `explanation`, so importing the seed JSON would lose required metadata.
+
+## Required schema fields
+Add the following columns to `section_quiz_questions` or the equivalent quiz-question table:
+
+- question_type TEXT NOT NULL DEFAULT 'single_choice'
+- cognitive_level TEXT NULL
+- tags JSONB NOT NULL DEFAULT '[]'::jsonb
+- auto_gradable BOOLEAN NOT NULL DEFAULT TRUE
+- points INTEGER NOT NULL DEFAULT 1
+- options JSONB NOT NULL DEFAULT '[]'::jsonb
+- correct_option TEXT NULL
+- correct_answer_text TEXT NULL
+- requires_human_review BOOLEAN NOT NULL DEFAULT FALSE
+- quiz_version TEXT NULL
+
+## Supported question_type values
+- single_choice
+- scenario_single_choice
+
+## Supported cognitive_level values
+- awareness
+- understanding
+- application
+- analysis
+
+## Import requirement
+The import service must support both:
+1. `trainingModules[].quizQuestions[]` nested questions
+2. flat `quizQuestions[]` array
+
+## UI requirement
+If `question_type = scenario_single_choice`, render the prompt with scenario styling but still grade it as a single-choice MCQ.
+
+## Acceptance criteria
+1. JSON seed imports all 168 questions without dropping fields.
+2. Question options render A/B/C/D exactly as provided.
+3. Correct option is stored and used for auto-grading.
+4. Tags and cognitive_level are searchable/filterable for analytics.
+5. Scenario questions render differently from standard questions.
+6. No open-text/human review queue is created for this quiz bank.
+7. Existing quiz questions remain backward compatible.

@@ -1,0 +1,4084 @@
+{
+  "version": "1.0",
+  "generatedAt": "2026-07-24T02:20:38.529068",
+  "trainingCatalog": [
+    {
+      "trainingId": "HIS-TRN-GOV-001",
+      "sopCode": "HIS-SOP-GOV-001",
+      "title": "SOP Governance, Document Control & Change Management",
+      "category": "General / Governance",
+      "wave": "Wave 0",
+      "duration": "45 min",
+      "audience": "CEO, Ops, HR, Department Heads, SOP Owners, Managers",
+      "why": "Creates one disciplined way to own, approve, version, publish, revise, retire, and enforce SOPs so process changes do not become scattered documents.",
+      "objectives": [
+        "Explain why SOPs are operating standards, not paperwork.",
+        "Use a controlled lifecycle from draft through active or retired status.",
+        "Route reviews using the central workflow service instead of side approvals.",
+        "Identify owner, approver, version, effective date, and review cadence for every SOP."
+      ],
+      "checklist": [
+        "SOP code assigned",
+        "Owner and approver assigned",
+        "Workflow review opened",
+        "Review due date set",
+        "Training mapped",
+        "Acknowledgment enabled",
+        "Published version locked",
+        "Version history retained"
+      ],
+      "kpi": "100% active SOPs have owner, version, effective date, training mapping, and review status.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-REQ-001",
+      "sopCode": "HIS-SOP-REQ-001",
+      "title": "AI-Driven Requirement Synthesis, Hiring Manager Alignment & Execution Brief",
+      "category": "Requirement Clarity",
+      "wave": "Wave 1",
+      "duration": "45 min",
+      "audience": "Recruiters, Leads, AMs, Delivery Managers, Sales, BD",
+      "why": "Prevents blind sourcing by converting fragmented JDs, VMS notes, client emails, and manager expectations into one clear execution brief before recruiting starts.",
+      "objectives": [
+        "Separate must-haves, nice-to-haves, disqualifiers, and open questions.",
+        "Create a recruiter-ready execution brief from raw requirement inputs.",
+        "Use AI/KleriQ-style synthesis as assistance while preserving human review.",
+        "Document clarifications, risks, and version changes in the system of record."
+      ],
+      "checklist": [
+        "JD/VMS/email inputs captured",
+        "Must-haves extracted",
+        "Disqualifiers captured",
+        "Rate/pay aligned",
+        "Candidate pitch drafted",
+        "Screening questions created",
+        "Risks listed",
+        "Manager/AM approved"
+      ],
+      "kpi": "90%+ intake completeness before sourcing starts.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-001",
+      "sopCode": "HIS-SOP-TA-001",
+      "title": "Requisition Intake, Rate Alignment & Delivery Kickoff",
+      "category": "TA Delivery",
+      "wave": "Wave 1",
+      "duration": "45 min",
+      "audience": "Recruiters, Leads, AMs, Delivery Managers",
+      "why": "Ensures every recruiter starts with aligned role, rate, pay, margin, urgency, target profile, and submission expectations.",
+      "objectives": [
+        "Complete intake fields before recruiter kickoff.",
+        "Confirm bill rate, pay range, margin guardrails, and escalation rules.",
+        "Translate client requirements into recruiter action steps.",
+        "Identify low-feasibility jobs before they consume sourcing time."
+      ],
+      "checklist": [
+        "Requirement recorded",
+        "Rate/pay guidance recorded",
+        "Priority level assigned",
+        "Recruiters assigned",
+        "Submission template available",
+        "Screening questions ready",
+        "Escalation owner listed"
+      ],
+      "kpi": "95% requisitions have complete intake before active sourcing.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-002",
+      "sopCode": "HIS-SOP-TA-002",
+      "title": "Sourcing, Outreach, Candidate Ownership & Consent",
+      "category": "TA Delivery",
+      "wave": "Wave 2",
+      "duration": "45 min",
+      "audience": "Recruiters, Sourcers, Leads, Managers",
+      "why": "Controls sourcing quality, respectful outreach, duplicate prevention, candidate ownership, and submission consent/RTR.",
+      "objectives": [
+        "Run duplicate checks before creating or submitting a candidate.",
+        "Use respectful and accurate outreach messages.",
+        "Document ownership, interest, and consent where required.",
+        "Escalate ownership disputes without team conflict."
+      ],
+      "checklist": [
+        "Duplicate search completed",
+        "Candidate source recorded",
+        "Outreach compliant",
+        "Interest confirmed",
+        "Consent/RTR captured where required",
+        "Ownership clear",
+        "Next follow-up recorded"
+      ],
+      "kpi": "Avoidable duplicate submission rate below 5%; 100% consent/RTR where required.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-TA-003",
+      "sopCode": "HIS-SOP-TA-003",
+      "title": "Screening, Qualification & Submission QC",
+      "category": "TA Delivery",
+      "wave": "Wave 1",
+      "duration": "45 min",
+      "audience": "Recruiters, Leads, Delivery Managers, QC Reviewers",
+      "why": "Raises submission quality by requiring qualification, screening notes, evidence, and manager/QC checks before client submission.",
+      "objectives": [
+        "Use a consistent screening standard before submission.",
+        "Validate role fit, interest, availability, pay, location, and documents.",
+        "Create structured notes that support recruiter-to-client handoff.",
+        "Identify when a candidate is not submission-ready."
+      ],
+      "checklist": [
+        "Must-have match verified",
+        "Interest confirmed",
+        "Pay/rate aligned",
+        "Availability confirmed",
+        "Location/shift aligned",
+        "Resume current",
+        "Notes complete",
+        "Packet/doc status clear",
+        "QC completed"
+      ],
+      "kpi": "95%+ submission QC pass rate.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": true
+    },
+    {
+      "trainingId": "HIS-TRN-TA-004",
+      "sopCode": "HIS-SOP-TA-004",
+      "title": "Interview, Offer, Start & Retention Follow-Through",
+      "category": "TA Delivery",
+      "wave": "Wave 2",
+      "duration": "45 min",
+      "audience": "Recruiters, Leads, AMs, Onboarding/Ops",
+      "why": "Protects conversion after submission by ensuring interviews, offers, starts, and post-start check-ins are actively managed.",
+      "objectives": [
+        "Confirm interview details and candidate readiness.",
+        "Track client feedback, offer status, acceptance, and start risk.",
+        "Document dropout/no-show reasons and re-engagement opportunities.",
+        "Run post-start check-ins to protect retention and referrals."
+      ],
+      "checklist": [
+        "Interview details confirmed",
+        "Candidate prepped",
+        "Feedback logged",
+        "Offer terms verified",
+        "Start date confirmed",
+        "Onboarding blockers resolved",
+        "Post-start check-in scheduled"
+      ],
+      "kpi": "90%+ interview confirmation and start-status update accuracy.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-HC-001",
+      "sopCode": "HIS-SOP-HC-001",
+      "title": "Healthcare Credential Packet & Compliance Readiness",
+      "category": "Healthcare",
+      "wave": "Wave 2",
+      "duration": "45 min",
+      "audience": "Healthcare Recruiters, Credentialing/Ops, Leads, AMs",
+      "why": "Ensures healthcare candidates are credential-aware and packet-ready for roles requiring licenses, certifications, IDs, skills checklists, and program documents.",
+      "objectives": [
+        "Identify role-specific healthcare credential requirements.",
+        "Track document completeness, expiry, and pending items.",
+        "Use ProKred or approved workflows for secure candidate-side document collection where applicable.",
+        "Avoid unsafe sharing or inaccurate credential claims."
+      ],
+      "checklist": [
+        "License/cert list confirmed",
+        "Expiration dates checked",
+        "Required documents requested securely",
+        "Packet status visible",
+        "Missing items tracked",
+        "Candidate consent clear",
+        "Submission packet QC complete"
+      ],
+      "kpi": "95%+ credential packet completeness for healthcare submissions.",
+      "passingScore": 90,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": true
+    },
+    {
+      "trainingId": "HIS-TRN-IT-001",
+      "sopCode": "HIS-SOP-IT-001",
+      "title": "IT Staffing Delivery, Technical Screening & Submission Governance",
+      "category": "IT Staffing",
+      "wave": "Wave 2",
+      "duration": "45 min",
+      "audience": "IT Recruiters, Technical Screeners, Leads, Sales/AM",
+      "why": "Provides consistent IT role intake, technical screening, candidate positioning, rate alignment, and submission governance.",
+      "objectives": [
+        "Translate IT requirements into technical and delivery criteria.",
+        "Screen for actual experience, tools, domain fit, and work authorization where relevant.",
+        "Prepare accurate resume/submission summaries without exaggeration.",
+        "Control rate, contract type, availability, and client submission rules."
+      ],
+      "checklist": [
+        "Tech stack validated",
+        "Domain/seniority confirmed",
+        "Work authorization handled appropriately",
+        "Availability confirmed",
+        "Rate aligned",
+        "Resume accurate",
+        "Submission summary evidence-based"
+      ],
+      "kpi": "Improved submission-to-interview ratio through technical fit accuracy.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-ENG-001",
+      "sopCode": "HIS-SOP-ENG-001",
+      "title": "Engineering & Professional Services Delivery Standards",
+      "category": "Engineering / Professional Services",
+      "wave": "Wave 3",
+      "duration": "45 min",
+      "audience": "Recruiters, Sourcers, Leads, BD, Sales",
+      "why": "Extends delivery discipline beyond healthcare and IT into engineering, professional services, finance, admin, operations, and other specialized roles.",
+      "objectives": [
+        "Differentiate vertical requirements from healthcare/IT assumptions.",
+        "Identify role-specific credentials, portfolios, domain experience, and business context.",
+        "Create screening criteria for specialized professional roles.",
+        "Package candidates with evidence relevant to the role."
+      ],
+      "checklist": [
+        "Vertical context identified",
+        "Must-haves clarified",
+        "Licenses/certs/portfolio needs checked",
+        "Candidate evidence gathered",
+        "Business communication screened",
+        "Submission narrative tailored"
+      ],
+      "kpi": "Vertical-specific intake and submission QC completion.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-SALES-001",
+      "sopCode": "HIS-SOP-SALES-001",
+      "title": "Client, MSP/VMS, Rate Governance & Escalation",
+      "category": "Sales / Account Management",
+      "wave": "Wave 1",
+      "duration": "45 min",
+      "audience": "Sales, AMs, Delivery Managers, Leads, Recruiters",
+      "why": "Controls client communication, MSP/VMS rules, rate/margin decisions, escalations, submission formats, and feedback loops.",
+      "objectives": [
+        "Follow client/MSP/VMS communication and submission rules.",
+        "Protect margin and rate confidentiality.",
+        "Escalate blockers, rate issues, and feedback delays early.",
+        "Maintain disciplined client status communication."
+      ],
+      "checklist": [
+        "Client requirement confirmed",
+        "MSP/VMS rules known",
+        "Rate/margin guardrail approved",
+        "Communication channel confirmed",
+        "Escalation path known",
+        "Feedback cadence set"
+      ],
+      "kpi": "100% documented rate/margin exceptions and compliant MSP/VMS communication.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-BD-001",
+      "sopCode": "HIS-SOP-BD-001",
+      "title": "New Client Acquisition, Proposals, RFPs & Client Onboarding",
+      "category": "Business Development",
+      "wave": "Wave 3",
+      "duration": "45 min",
+      "audience": "BD, Sales, Leadership, AMs, Marketing",
+      "why": "Standardizes how Hire'in prospects new clients, qualifies opportunities, prepares proposals/RFPs, and hands new accounts to delivery.",
+      "objectives": [
+        "Qualify prospects and avoid low-fit opportunities.",
+        "Create consistent discovery notes, proposals, and RFP responses.",
+        "Set expectations before client handoff.",
+        "Convert signed opportunities into clean delivery kickoff."
+      ],
+      "checklist": [
+        "Prospect qualified",
+        "Discovery completed",
+        "Needs documented",
+        "Proposal approved",
+        "Terms/fee model clear",
+        "Onboarding checklist complete",
+        "Delivery handoff scheduled"
+      ],
+      "kpi": "New client onboarding completeness and handoff quality score.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-MKT-001",
+      "sopCode": "HIS-SOP-MKT-001",
+      "title": "Employer Brand, Digital Marketing & Lead Generation",
+      "category": "Marketing",
+      "wave": "Wave 3",
+      "duration": "45 min",
+      "audience": "Marketing, BD, Sales, Leadership, Content Studio Users",
+      "why": "Turns marketing into a delivery accelerator by standardizing brand voice, candidate attraction, client credibility, insights, content approvals, and lead generation.",
+      "objectives": [
+        "Create content aligned to Hire'in values and audience needs.",
+        "Separate candidate, client, partner, and employer-brand messages.",
+        "Use approval workflow before publishing sensitive claims.",
+        "Measure marketing impact on leads, candidate trust, and sales enablement."
+      ],
+      "checklist": [
+        "Audience selected",
+        "Message aligned",
+        "Claims verified",
+        "CTA defined",
+        "Approval completed",
+        "Lead capture tagged",
+        "Performance tracked"
+      ],
+      "kpi": "Content approval compliance, lead quality, and campaign-to-BD handoff rate.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-CX-001",
+      "sopCode": "HIS-SOP-CX-001",
+      "title": "Candidate Experience, Communication SLA & Re-Engagement",
+      "category": "Candidate Experience",
+      "wave": "Wave 2",
+      "duration": "45 min",
+      "audience": "Recruiters, Sourcers, Leads, AMs, Onboarding",
+      "why": "Makes candidate communication, rejection handling, interview prep, placement follow-up, re-engagement, and referrals consistent.",
+      "objectives": [
+        "Use clear candidate communication SLAs and next-step expectations.",
+        "Handle rejections, delays, and missing feedback with professionalism.",
+        "Maintain candidate relationships beyond one submission.",
+        "Capture candidate feedback and re-engagement notes."
+      ],
+      "checklist": [
+        "Role explained",
+        "Next steps clear",
+        "Communication logged",
+        "Follow-up date set",
+        "Rejection handled respectfully",
+        "Re-engagement tag added",
+        "Feedback captured"
+      ],
+      "kpi": "90%+ candidate communication SLA adherence and re-engagement tracking.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-PLAT-001",
+      "sopCode": "HIS-SOP-PLAT-001",
+      "title": "Independent SaaS Platform Usage - KleriQ.ai and ProKred.com",
+      "category": "Platform / Partner Tools",
+      "wave": "Wave 2",
+      "duration": "45 min",
+      "audience": "Recruiters, Leads, Sales, Marketing, Ops, Candidate-facing Teams",
+      "why": "Clarifies how employees should position and use KleriQ and ProKred as separate SaaS platforms used by Hire'in as pilot/design-partner tools.",
+      "objectives": [
+        "Explain KleriQ and ProKred accurately without confusing them as internal-only tools.",
+        "Use approved scripts for candidate and client conversations.",
+        "Position ProKred\u2019s candidate-side value without forcing adoption unless approved.",
+        "Avoid unsupported privacy, legal, AI, or ownership claims."
+      ],
+      "checklist": [
+        "Correct platform explanation used",
+        "Candidate consent clear",
+        "Approved script used",
+        "No false mandatory claim",
+        "No unsupported legal/privacy claim",
+        "SaaS branding separated"
+      ],
+      "kpi": "ProKred adoption tracked for applicable candidates without forced or misleading messaging.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-LEGAL-001",
+      "sopCode": "HIS-SOP-LEGAL-001",
+      "title": "Contracts, Data Privacy, EEOC & Immigration Compliance",
+      "category": "Legal / Compliance",
+      "wave": "Wave 4",
+      "duration": "45 min",
+      "audience": "HR, Ops, Sales, AMs, Recruiters, Managers, Finance",
+      "why": "Reduces legal and compliance risk in contracts, NDAs, candidate data, privacy, job-related screening, work authorization, and escalation.",
+      "objectives": [
+        "Identify legal/compliance-sensitive issues that require escalation.",
+        "Handle candidate/client data with confidentiality and approved systems.",
+        "Use job-related screening and avoid discriminatory criteria.",
+        "Document work authorization/immigration information carefully and lawfully."
+      ],
+      "checklist": [
+        "Privacy risk checked",
+        "Contract/NDA routed",
+        "Selection criteria job-related",
+        "Work authorization handled appropriately",
+        "Discriminatory request escalated",
+        "Data shared only via approved channels"
+      ],
+      "kpi": "100% legal/compliance exceptions escalated and documented.",
+      "passingScore": 90,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": true
+    },
+    {
+      "trainingId": "HIS-TRN-FIN-001",
+      "sopCode": "HIS-SOP-FIN-001",
+      "title": "Invoicing, Contractor Payroll, AR/AP & Margin Governance",
+      "category": "Finance / Billing",
+      "wave": "Wave 4",
+      "duration": "45 min",
+      "audience": "Finance, Ops, Sales, AMs, Managers",
+      "why": "Protects revenue, margin, payroll accuracy, billing confidence, AR/AP follow-up, and client trust.",
+      "objectives": [
+        "Connect delivery activity to timesheets, billing, payroll, and margin.",
+        "Document rate/margin approvals and exceptions.",
+        "Prevent invoice disputes through accurate records.",
+        "Escalate AR/AP and payroll risks early."
+      ],
+      "checklist": [
+        "Rate approved",
+        "Start/end dates confirmed",
+        "Timesheet status tracked",
+        "Invoice data verified",
+        "Payroll input validated",
+        "Margin exception documented",
+        "AR follow-up scheduled"
+      ],
+      "kpi": "100% rate/margin exceptions documented; 90%+ invoices without avoidable dispute.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": true
+    },
+    {
+      "trainingId": "HIS-TRN-OPS-001",
+      "sopCode": "HIS-SOP-OPS-001",
+      "title": "Tool Access, Credential Control & Deprovisioning",
+      "category": "Operations / Security",
+      "wave": "Wave 1",
+      "duration": "45 min",
+      "audience": "Ops, HR, Managers, Admins, All Tool Users",
+      "why": "Controls access requests, least privilege, credential sharing, password resets, exit access removal, and tool misuse prevention.",
+      "objectives": [
+        "Request and approve access through authorized workflow.",
+        "Apply role-based access and least privilege.",
+        "Use secure password/access practices.",
+        "Remove access quickly during exits, role changes, or misuse."
+      ],
+      "checklist": [
+        "Manager approval",
+        "Role-based access selected",
+        "Security acknowledgment complete",
+        "Access logged",
+        "Password policy followed",
+        "Exit removal completed",
+        "Monthly access review"
+      ],
+      "kpi": "100% exit access removed same day; 100% access requests approved before provisioning.",
+      "passingScore": 90,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": true
+    },
+    {
+      "trainingId": "HIS-TRN-HR-001",
+      "sopCode": "HIS-SOP-HR-001",
+      "title": "Training, Acknowledgment, Goals & Performance Linkage",
+      "category": "HR / People Operations",
+      "wave": "Wave 0",
+      "duration": "45 min",
+      "audience": "HR, Managers, Leads, Ops, Leadership",
+      "why": "Connects SOPs to training, acknowledgment, role expectations, scorecards, coaching, probation, PIP, and performance management.",
+      "objectives": [
+        "Assign SOP training by role and department.",
+        "Collect acknowledgment only after training completion.",
+        "Link process adoption to measurable role goals.",
+        "Use coaching and performance actions fairly with evidence."
+      ],
+      "checklist": [
+        "Training assigned",
+        "Role mapping accurate",
+        "Quiz/live sample completed",
+        "Acknowledgment captured",
+        "Goals updated",
+        "Manager coaching documented",
+        "Performance linkage clear"
+      ],
+      "kpi": "95%+ training completion by due date and version-specific acknowledgments.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-AUDIT-001",
+      "sopCode": "HIS-SOP-AUDIT-001",
+      "title": "KPI Dashboard, Weekly Audit & Monthly Business Review",
+      "category": "Management / Audit",
+      "wave": "Wave 0",
+      "duration": "45 min",
+      "audience": "CEO, Managers, Leads, Ops, HR, Finance",
+      "why": "Creates weekly audit, KPI review, corrective action, and MBR discipline so SOPs become business performance controls.",
+      "objectives": [
+        "Use weekly audits to identify process gaps and coaching needs.",
+        "Connect SOP adoption to KPIs and role scorecards.",
+        "Track corrective actions to closure.",
+        "Run monthly business reviews from system data, not opinions."
+      ],
+      "checklist": [
+        "Dashboard reviewed",
+        "Sample selected",
+        "Findings recorded",
+        "Owner assigned",
+        "Due date set",
+        "Corrective action tracked",
+        "MBR decision logged"
+      ],
+      "kpi": "90%+ audit findings closed on time and SOP adoption score improvement.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": true
+    },
+    {
+      "trainingId": "HIS-TRN-TRAIN-001",
+      "sopCode": "HIS-TRAIN-001",
+      "title": "Role-Based Training Curriculum & Certification Plan",
+      "category": "Training",
+      "wave": "Wave 4",
+      "duration": "45 min",
+      "audience": "HR, Managers, Trainers, Ops, Leads",
+      "why": "Defines how training is designed, assigned, evaluated, and certified by role so employees can apply SOPs in real work.",
+      "objectives": [
+        "Build role-based curriculum for each department and level.",
+        "Use micro-training, live samples, quiz, and acknowledgment.",
+        "Evaluate learning through reaction, knowledge, behavior, and results.",
+        "Create certification evidence for critical workflows."
+      ],
+      "checklist": [
+        "Audience defined",
+        "Objectives written",
+        "Materials prepared",
+        "Quiz created",
+        "Live sample selected",
+        "Certification criteria set",
+        "Completion recorded"
+      ],
+      "kpi": "95% training completion and manager-certified work sample pass rate.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    },
+    {
+      "trainingId": "HIS-TRN-TPL-001",
+      "sopCode": "HIS-TPL-001",
+      "title": "Manager Acknowledgment, Audit Checklists & Field Templates",
+      "category": "Templates",
+      "wave": "Wave 4",
+      "duration": "45 min",
+      "audience": "Managers, Leads, Ops, HR, Trainers",
+      "why": "Standardizes checklists, acknowledgments, audit forms, coaching notes, field templates, and manager follow-through tools.",
+      "objectives": [
+        "Use approved templates for audits, acknowledgments, coaching, and handoffs.",
+        "Reduce inconsistent manager execution.",
+        "Capture evidence in structured formats.",
+        "Feed template outputs into SOP governance and performance review."
+      ],
+      "checklist": [
+        "Correct template selected",
+        "Fields completed",
+        "Evidence attached",
+        "Owner assigned",
+        "Due date entered",
+        "Stored in approved system",
+        "Version current"
+      ],
+      "kpi": "100% manager audits and acknowledgments completed using current approved templates.",
+      "passingScore": 80,
+      "acknowledgmentRequired": true,
+      "liveEvidenceRequired": false
+    }
+  ],
+  "lessons": [
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Creates one disciplined way to own, approve, version, publish, revise, retire, and enforce SOPs so process changes do not become scattered documents. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Every SOP must have a code, owner, category, status, version, effective date, and review cycle. Published SOPs must be locked; updates create a new version rather than silently changing the old record. Managers may comment, approve, request changes, or mark reviewed, but open-ended review should not delay rollout. CEO/Super Admin retains final publish authority when reviewer SLA has passed. Employees acknowledge the specific SOP version after training, not before.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Use the SOP governance workflow, version history, assigned owners, and training links. Do not: Do not circulate uncontrolled SOP copies, collect approvals over WhatsApp, or overwrite published versions. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A manager wants to modify a published SOP after a team complaint. The correct action is to open a revision/version request, not edit the active SOP directly. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: SOP code assigned, Owner and approver assigned, Workflow review opened, Review due date set, Training mapped, Acknowledgment enabled, Published version locked, Version history retained. Explain success measure: 100% active SOPs have owner, version, effective date, training mapping, and review status. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Prevents blind sourcing by converting fragmented JDs, VMS notes, client emails, and manager expectations into one clear execution brief before recruiting starts. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: A job description is not the same as a delivery brief. The brief must include role summary, must-haves, disqualifiers, pay/rate guardrails, screening questions, submission checklist, and candidate pitch. AI output must be reviewed by a human before sourcing or client/candidate communication. Unclear requirements should be escalated before recruiters spend sourcing hours. Requirement changes must be versioned and communicated to all active recruiters.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Clarify the role first and use AI to structure information, not to make final decisions. Do not: Do not let recruiters guess must-haves or pitch candidates from a vague JD. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A healthcare role says 'RN needed ASAP' but does not include shift, specialty, license, rate, location, or start date. The recruiter should not source at scale until gaps are clarified and recorded. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: JD/VMS/email inputs captured, Must-haves extracted, Disqualifiers captured, Rate/pay aligned, Candidate pitch drafted, Screening questions created, Risks listed, Manager/AM approved. Explain success measure: 90%+ intake completeness before sourcing starts. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Ensures every recruiter starts with aligned role, rate, pay, margin, urgency, target profile, and submission expectations. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: No role should be released for sourcing without role clarity, rate/pay guidance, priority, and owner. Rate alignment must happen before candidates are pitched. Recruiters need a clear candidate pitch and screening criteria. Low rate, unclear requirements, or poor client responsiveness must be flagged early. Kickoff should produce next actions and measurable sourcing expectations.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Kick off roles with facts, rate alignment, and documented responsibilities. Do not: Do not let recruiters work roles based only on a screenshot or verbal instruction. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A role has strong requirements but pay is below market. The team should flag rate risk and align with AM/manager before pushing candidates aggressively. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Requirement recorded, Rate/pay guidance recorded, Priority level assigned, Recruiters assigned, Submission template available, Screening questions ready, Escalation owner listed. Explain success measure: 95% requisitions have complete intake before active sourcing. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Controls sourcing quality, respectful outreach, duplicate prevention, candidate ownership, and submission consent/RTR. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Candidate ownership is based on documented engagement, not claims in chat. Candidates should know the role, location, pay range, facility/client context where allowed, and next steps before submission. Consent/RTR must be captured where required. Outreach must not mislead candidates on rate, client approval, or job certainty. Duplicate submissions damage trust and must be controlled.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Document outreach, ownership, consent, and follow-up in the ATS. Do not: Do not submit candidates without clear interest or consent. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: Two recruiters claim the same candidate. The lead should review system history and documented engagement, not decide based on who argues louder. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Duplicate search completed, Candidate source recorded, Outreach compliant, Interest confirmed, Consent/RTR captured where required, Ownership clear, Next follow-up recorded. Explain success measure: Avoidable duplicate submission rate below 5%; 100% consent/RTR where required. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Raises submission quality by requiring qualification, screening notes, evidence, and manager/QC checks before client submission. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Submission quality matters more than submission volume alone. Candidate fit must be validated against must-haves, not vague impressions. Screening notes should help the client, lead, or AM understand the candidate quickly. Missing documents or unclear pay/location/availability should block or flag submission. QC is a business control, not a criticism of recruiters.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Submit fewer but stronger, complete, traceable candidates. Do not: Do not send weak, incomplete, or unclear profiles to hit activity numbers. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A candidate has a strong resume but has not confirmed pay expectations or start availability. The candidate should not be marked ready without these details. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Must-have match verified, Interest confirmed, Pay/rate aligned, Availability confirmed, Location/shift aligned, Resume current, Notes complete, Packet/doc status clear, QC completed. Explain success measure: 95%+ submission QC pass rate. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Protects conversion after submission by ensuring interviews, offers, starts, and post-start check-ins are actively managed. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: The recruiter\u2019s responsibility does not stop at submission. Interview confirmations must be documented and sent clearly. Offer details must not be miscommunicated or promised before confirmation. Start readiness includes documents, schedule, location, onboarding, and candidate commitment. Post-start follow-up supports retention, redeployment, and brand trust.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Manage every candidate through interview, offer, start, and retention. Do not: Do not assume a candidate will show up just because they once said yes. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A candidate verbally confirms interview but does not receive written details. The recruiter should send confirmation and update the ATS immediately. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Interview details confirmed, Candidate prepped, Feedback logged, Offer terms verified, Start date confirmed, Onboarding blockers resolved, Post-start check-in scheduled. Explain success measure: 90%+ interview confirmation and start-status update accuracy. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Ensures healthcare candidates are credential-aware and packet-ready for roles requiring licenses, certifications, IDs, skills checklists, and program documents. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Healthcare submission readiness often depends on licenses, certifications, immunization/background steps, skills checklists, and client-specific documents. Recruiters must not claim a credential is valid unless verified or documented appropriately. Expired or missing documents should be clearly marked. ProKred can support secure candidate-friendly document readiness and visibility. Credential packet completeness reduces onboarding delay and client rework.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Track and verify credential readiness carefully. Do not: Do not alter, fabricate, or casually share healthcare documents. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: An RN candidate says they have BLS but cannot provide the card. The record should show BLS pending, not verified. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: License/cert list confirmed, Expiration dates checked, Required documents requested securely, Packet status visible, Missing items tracked, Candidate consent clear, Submission packet QC complete. Explain success measure: 95%+ credential packet completeness for healthcare submissions. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Provides consistent IT role intake, technical screening, candidate positioning, rate alignment, and submission governance. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: IT staffing requires clarity on tech stack, domain, seniority, project scope, contract type, and work authorization requirements. Technical keywords are not enough; recruiters must validate depth, duration, and recency. Resume edits must not misrepresent candidate experience. Submissions should explain match evidence and risk. Rate/pay alignment must be clear before submission.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Validate real technical fit and represent it accurately. Do not: Do not keyword-stuff or oversell the candidate. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A candidate lists AWS on a resume but only used it in training. The recruiter should note exposure accurately, not sell it as production experience. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Tech stack validated, Domain/seniority confirmed, Work authorization handled appropriately, Availability confirmed, Rate aligned, Resume accurate, Submission summary evidence-based. Explain success measure: Improved submission-to-interview ratio through technical fit accuracy. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Extends delivery discipline beyond healthcare and IT into engineering, professional services, finance, admin, operations, and other specialized roles. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Engineering and professional services roles often require industry context, certifications, project exposure, licenses, portfolio examples, or client-facing skill validation. Recruiters must not force healthcare/IT screening logic onto unrelated roles. Requirement synthesis should clarify deliverables, environment, reporting lines, and business impact. Candidate fit should include soft skills, communication, domain knowledge, and measurable achievements. Submissions need relevant evidence, not generic profile forwarding.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Use role-specific screening and evidence. Do not: Do not apply generic staffing shortcuts to specialized roles. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A professional services role requires client-facing project coordination. A strong technical resume alone is not enough without communication and coordination evidence. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Vertical context identified, Must-haves clarified, Licenses/certs/portfolio needs checked, Candidate evidence gathered, Business communication screened, Submission narrative tailored. Explain success measure: Vertical-specific intake and submission QC completion. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Controls client communication, MSP/VMS rules, rate/margin decisions, escalations, submission formats, and feedback loops. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Sales and delivery must operate from one version of the client requirement. Rate, bill rate, pay package, margin, and terms are confidential and role-restricted. MSP/VMS rules must be followed exactly, including communication channels and submission formats. Escalation should happen before roles age or candidates drop. Client updates should be factual, structured, and tied to pipeline status.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Coordinate client communication through approved channels. Do not: Do not bypass MSP/VMS rules or disclose margin information. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A recruiter wants to contact a client hiring manager directly but MSP rules prohibit direct communication. The recruiter must use the approved account/MSP channel. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Client requirement confirmed, MSP/VMS rules known, Rate/margin guardrail approved, Communication channel confirmed, Escalation path known, Feedback cadence set. Explain success measure: 100% documented rate/margin exceptions and compliant MSP/VMS communication. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Standardizes how Hire'in prospects new clients, qualifies opportunities, prepares proposals/RFPs, and hands new accounts to delivery. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Business development is not just outreach; it is qualification, discovery, proposal, negotiation, onboarding, and handoff. New client messaging must align with Hire'in values and service scope. RFP and proposal claims must be evidence-based and approved. Delivery should not receive a new client without terms, priorities, communication rules, and submission standards. Handoff quality affects first impression and fill outcomes.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Qualify, document, propose, approve, and hand off cleanly. Do not: Do not promise capabilities, rates, or delivery timelines without approval. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A prospect asks for nationwide coverage but gives no priority roles or rates. BD should qualify need and readiness before promising capacity. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Prospect qualified, Discovery completed, Needs documented, Proposal approved, Terms/fee model clear, Onboarding checklist complete, Delivery handoff scheduled. Explain success measure: New client onboarding completeness and handoff quality score. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Turns marketing into a delivery accelerator by standardizing brand voice, candidate attraction, client credibility, insights, content approvals, and lead generation. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Marketing is not decoration; it supports candidate trust, client credibility, BD, and recruiter enablement. Claims must be accurate, source-aware, and approved when they mention compliance, AI, clients, or performance. Content should clarify problems and provide useful insight, not generic promotion. Lead generation must hand off to BD/Sales with context and consent. Employer brand should reinforce quality, transparency, candidate care, and AI-with-human-judgment.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Publish useful, accurate, approved content tied to business goals. Do not: Do not make unsupported AI, compliance, client, or performance claims. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A post claims Hire'in can fill roles in hours nationwide. Marketing should require proof or revise to a safer evidence-based claim. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Audience selected, Message aligned, Claims verified, CTA defined, Approval completed, Lead capture tagged, Performance tracked. Explain success measure: Content approval compliance, lead quality, and campaign-to-BD handoff rate. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Makes candidate communication, rejection handling, interview prep, placement follow-up, re-engagement, and referrals consistent. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Candidate experience is part of brand and conversion. Candidates deserve clarity on role, pay, location, documents, process, and timeline. No response after submission/interview harms trust. Rejections should be handled respectfully with available feedback. Strong candidates should be re-engaged and redeployed, not lost.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Keep candidates informed before, during, and after submission. Do not: Do not ghost candidates after rejection or delay. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A candidate interviews but receives no update for a week. The recruiter should proactively follow up with client/AM and give the candidate a transparent status update. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Role explained, Next steps clear, Communication logged, Follow-up date set, Rejection handled respectfully, Re-engagement tag added, Feedback captured. Explain success measure: 90%+ candidate communication SLA adherence and re-engagement tracking. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Clarifies how employees should position and use KleriQ and ProKred as separate SaaS platforms used by Hire'in as pilot/design-partner tools. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: KleriQ supports requirement clarity and communication standardization; it does not replace recruiter judgment. ProKred supports secure candidate-side documentation, credential profile, submission packet readiness, and visibility. They are separate SaaS platforms built within the founder ecosystem and used by Hire'in where appropriate. Recruiters must use approved scripts and FAQs. Candidates should understand the value and consent path.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Explain platform value clearly and accurately. Do not: Do not improvise security, privacy, ownership, or mandatory-use claims. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A recruiter says 'ProKred is Hire'in's internal form; you must upload.' This should be corrected to approved language about secure candidate-friendly documentation support. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Correct platform explanation used, Candidate consent clear, Approved script used, No false mandatory claim, No unsupported legal/privacy claim, SaaS branding separated. Explain success measure: ProKred adoption tracked for applicable candidates without forced or misleading messaging. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Reduces legal and compliance risk in contracts, NDAs, candidate data, privacy, job-related screening, work authorization, and escalation. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Staffing touches sensitive candidate, client, contract, compensation, work authorization, and selection data. Selection standards must be job-related and consistently applied. Recruiters should escalate discriminatory, unsafe, or improper client requests. Contracts, NDAs, non-solicits, client terms, and privacy claims should not be improvised by staff. Work authorization details should be handled factually and only as relevant to lawful placement.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Apply consistent, job-related, confidential, and documented practices. Do not: Do not give legal interpretations or follow discriminatory requests. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A client says not to submit candidates from a certain protected group. The team must not follow the instruction and must escalate immediately. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Privacy risk checked, Contract/NDA routed, Selection criteria job-related, Work authorization handled appropriately, Discriminatory request escalated, Data shared only via approved channels. Explain success measure: 100% legal/compliance exceptions escalated and documented. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Protects revenue, margin, payroll accuracy, billing confidence, AR/AP follow-up, and client trust. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Finance controls are not separate from delivery; bad timesheet, rate, or start data causes billing risk. Bill rate, pay rate, margin, start date, end date, and timesheet approvals must be traceable. Exceptions must be approved and documented. Contractor payroll must align with verified work and client terms. AR follow-up protects cash flow and company stability.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Make billing and payroll traceable to approved system records. Do not: Do not change rates, terms, or payroll data informally. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A contractor starts but the start date was not updated in the system. Finance may invoice incorrectly; the manager must correct and document immediately. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Rate approved, Start/end dates confirmed, Timesheet status tracked, Invoice data verified, Payroll input validated, Margin exception documented, AR follow-up scheduled. Explain success measure: 100% rate/margin exceptions documented; 90%+ invoices without avoidable dispute. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Controls access requests, least privilege, credential sharing, password resets, exit access removal, and tool misuse prevention. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Access is based on role and business need, not convenience. Work credentials should not be shared through chat, email, spreadsheets, or personal notes. Password resets, upgrades, downgrades, and removal require workflow record. Exit deprovisioning must be same day or immediate for risk. Tool misuse can create data, client, and financial risk.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Grant only approved access and track every change. Do not: Do not share credentials or keep access after role need ends. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: An employee asks a teammate for a Dice/LinkedIn/Ceipal password over Teams. The teammate must refuse and route through access workflow. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Manager approval, Role-based access selected, Security acknowledgment complete, Access logged, Password policy followed, Exit removal completed, Monthly access review. Explain success measure: 100% exit access removed same day; 100% access requests approved before provisioning. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Connects SOPs to training, acknowledgment, role expectations, scorecards, coaching, probation, PIP, and performance management. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Training is not complete until the employee understands, practices, and acknowledges the applicable SOP. Role expectations should be tied to SOPs and KPIs. Managers should coach first, then escalate repeated gaps. PIPs and performance reviews should rely on documented metrics and controllable behaviors. Training records and acknowledgments must be retained.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Train, practice, acknowledge, then enforce. Do not: Do not enforce unclear expectations without training and documentation. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: An employee is asked to acknowledge a SOP before training. HR should delay acknowledgment until the training has occurred. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Training assigned, Role mapping accurate, Quiz/live sample completed, Acknowledgment captured, Goals updated, Manager coaching documented, Performance linkage clear. Explain success measure: 95%+ training completion by due date and version-specific acknowledgments. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Creates weekly audit, KPI review, corrective action, and MBR discipline so SOPs become business performance controls. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Audits are not punishment; they are how managers see whether the process works. KPIs should include activity, quality, conversion, aging, compliance, candidate experience, and financial impact. Audit findings need owner, due date, severity, action, and closure proof. MBR should review trends and decide improvements. Version 1.1 updates should come from audit evidence.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Use audits to turn process gaps into action. Do not: Do not rely on feelings when system data and samples are available. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A weekly audit finds repeated missing screening notes. The manager should assign coaching and track improvement, not just complain in a meeting. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Dashboard reviewed, Sample selected, Findings recorded, Owner assigned, Due date set, Corrective action tracked, MBR decision logged. Explain success measure: 90%+ audit findings closed on time and SOP adoption score improvement. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Defines how training is designed, assigned, evaluated, and certified by role so employees can apply SOPs in real work. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Training should be practical, short, role-based, and tied to live work. Recruiters do not need deep finance training; finance does not need deep sourcing training. Use quizzes to verify understanding and live samples to verify application. Managers should certify real work samples. Training should refresh after adoption gaps emerge.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Train for behavior change, not just attendance. Do not: Do not mark people trained only because they opened a document. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A training includes 50 slides but no practice. The trainer should add role-play, sample intake, sample screen, or audit activity. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Audience defined, Objectives written, Materials prepared, Quiz created, Live sample selected, Certification criteria set, Completion recorded. Explain success measure: 95% training completion and manager-certified work sample pass rate. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "lesson_no": 1,
+      "topic": "Purpose & Value",
+      "trainer_notes": "Explain why this SOP exists: Standardizes checklists, acknowledgments, audit forms, coaching notes, field templates, and manager follow-through tools. Relate it to Hire'in's values: communication clarity, candidate-first delivery, speed with quality, process transparency, and ownership.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "lesson_no": 2,
+      "topic": "Operating Standard",
+      "trainer_notes": "Teach the required behavior: Templates help managers execute consistently across teams and shifts. A template is useful only if it captures the right evidence and action. Managers should not create private side-process templates unless approved. Checklist outputs should connect to training, audit, KPI, or coaching records. Version-controlled templates prevent conflicting standards.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "lesson_no": 3,
+      "topic": "Do / Do Not",
+      "trainer_notes": "Do: Use standardized templates and store them in the system. Do not: Do not create side templates that become unofficial SOPs. Reinforce that shortcuts create staffing chaos, rework, candidate confusion, client risk, or compliance gaps.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "lesson_no": 4,
+      "topic": "Live Scenario Practice",
+      "trainer_notes": "Use this scenario: A manager uses a personal spreadsheet for audits that no one else can see. The manager should move to the approved template/workflow. Ask learners to decide what to do, what to document, who owns the next step, and what system must be updated.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "lesson_no": 5,
+      "topic": "Checklist, KPI & Acknowledgment",
+      "trainer_notes": "Walk through the checklist: Correct template selected, Fields completed, Evidence attached, Owner assigned, Due date entered, Stored in approved system, Version current. Explain success measure: 100% manager audits and acknowledgments completed using current approved templates. Learners acknowledge only after training and quiz/practice completion.",
+      "learner_activity": "Discuss, apply to one live or sample work item, and identify the required system update.",
+      "evidence": "Completed quiz + one checklist or scenario response."
+    }
+  ],
+  "quiz": [
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-GOV-001?",
+      "options": [
+        "Creates one disciplined way to own, approve, version, publish, revise, retire, and enforce SOPs so process changes do not become scattered documents.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with SOP Governance, Document Control & Change Management?",
+      "options": [
+        "Use the SOP governance workflow, version history, assigned owners, and training links.",
+        "Do not circulate uncontrolled SOP copies, collect approvals over WhatsApp, or overwrite published versions.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A manager wants to modify a published SOP after a team complaint. The correct action is to open a revision/version request, not edit the active SOP directly. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-GOV-001?",
+      "options": [
+        "100% active SOPs have owner, version, effective date, training mapping, and review status.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-GOV-001",
+      "sop_code": "HIS-SOP-GOV-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-REQ-001?",
+      "options": [
+        "Prevents blind sourcing by converting fragmented JDs, VMS notes, client emails, and manager expectations into one clear execution brief before recruiting starts.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with AI-Driven Requirement Synthesis, Hiring Manager Alignment & Execution Brief?",
+      "options": [
+        "Clarify the role first and use AI to structure information, not to make final decisions.",
+        "Do not let recruiters guess must-haves or pitch candidates from a vague JD.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A healthcare role says 'RN needed ASAP' but does not include shift, specialty, license, rate, location, or start date. The recruiter should not source at scale until gaps are clarified and recorded. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-REQ-001?",
+      "options": [
+        "90%+ intake completeness before sourcing starts.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-REQ-001",
+      "sop_code": "HIS-SOP-REQ-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-TA-001?",
+      "options": [
+        "Ensures every recruiter starts with aligned role, rate, pay, margin, urgency, target profile, and submission expectations.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Requisition Intake, Rate Alignment & Delivery Kickoff?",
+      "options": [
+        "Kick off roles with facts, rate alignment, and documented responsibilities.",
+        "Do not let recruiters work roles based only on a screenshot or verbal instruction.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A role has strong requirements but pay is below market. The team should flag rate risk and align with AM/manager before pushing candidates aggressively. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-TA-001?",
+      "options": [
+        "95% requisitions have complete intake before active sourcing.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-TA-001",
+      "sop_code": "HIS-SOP-TA-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-TA-002?",
+      "options": [
+        "Controls sourcing quality, respectful outreach, duplicate prevention, candidate ownership, and submission consent/RTR.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Sourcing, Outreach, Candidate Ownership & Consent?",
+      "options": [
+        "Document outreach, ownership, consent, and follow-up in the ATS.",
+        "Do not submit candidates without clear interest or consent.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: Two recruiters claim the same candidate. The lead should review system history and documented engagement, not decide based on who argues louder. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-TA-002?",
+      "options": [
+        "Avoidable duplicate submission rate below 5%; 100% consent/RTR where required.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-TA-002",
+      "sop_code": "HIS-SOP-TA-002",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-TA-003?",
+      "options": [
+        "Raises submission quality by requiring qualification, screening notes, evidence, and manager/QC checks before client submission.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Screening, Qualification & Submission QC?",
+      "options": [
+        "Submit fewer but stronger, complete, traceable candidates.",
+        "Do not send weak, incomplete, or unclear profiles to hit activity numbers.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A candidate has a strong resume but has not confirmed pay expectations or start availability. The candidate should not be marked ready without these details. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-TA-003?",
+      "options": [
+        "95%+ submission QC pass rate.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-TA-003",
+      "sop_code": "HIS-SOP-TA-003",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-TA-004?",
+      "options": [
+        "Protects conversion after submission by ensuring interviews, offers, starts, and post-start check-ins are actively managed.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Interview, Offer, Start & Retention Follow-Through?",
+      "options": [
+        "Manage every candidate through interview, offer, start, and retention.",
+        "Do not assume a candidate will show up just because they once said yes.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A candidate verbally confirms interview but does not receive written details. The recruiter should send confirmation and update the ATS immediately. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-TA-004?",
+      "options": [
+        "90%+ interview confirmation and start-status update accuracy.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-TA-004",
+      "sop_code": "HIS-SOP-TA-004",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-HC-001?",
+      "options": [
+        "Ensures healthcare candidates are credential-aware and packet-ready for roles requiring licenses, certifications, IDs, skills checklists, and program documents.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Healthcare Credential Packet & Compliance Readiness?",
+      "options": [
+        "Track and verify credential readiness carefully.",
+        "Do not alter, fabricate, or casually share healthcare documents.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: An RN candidate says they have BLS but cannot provide the card. The record should show BLS pending, not verified. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-HC-001?",
+      "options": [
+        "95%+ credential packet completeness for healthcare submissions.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-HC-001",
+      "sop_code": "HIS-SOP-HC-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-IT-001?",
+      "options": [
+        "Provides consistent IT role intake, technical screening, candidate positioning, rate alignment, and submission governance.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with IT Staffing Delivery, Technical Screening & Submission Governance?",
+      "options": [
+        "Validate real technical fit and represent it accurately.",
+        "Do not keyword-stuff or oversell the candidate.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A candidate lists AWS on a resume but only used it in training. The recruiter should note exposure accurately, not sell it as production experience. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-IT-001?",
+      "options": [
+        "Improved submission-to-interview ratio through technical fit accuracy.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-IT-001",
+      "sop_code": "HIS-SOP-IT-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-ENG-001?",
+      "options": [
+        "Extends delivery discipline beyond healthcare and IT into engineering, professional services, finance, admin, operations, and other specialized roles.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Engineering & Professional Services Delivery Standards?",
+      "options": [
+        "Use role-specific screening and evidence.",
+        "Do not apply generic staffing shortcuts to specialized roles.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A professional services role requires client-facing project coordination. A strong technical resume alone is not enough without communication and coordination evidence. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-ENG-001?",
+      "options": [
+        "Vertical-specific intake and submission QC completion.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-ENG-001",
+      "sop_code": "HIS-SOP-ENG-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-SALES-001?",
+      "options": [
+        "Controls client communication, MSP/VMS rules, rate/margin decisions, escalations, submission formats, and feedback loops.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Client, MSP/VMS, Rate Governance & Escalation?",
+      "options": [
+        "Coordinate client communication through approved channels.",
+        "Do not bypass MSP/VMS rules or disclose margin information.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A recruiter wants to contact a client hiring manager directly but MSP rules prohibit direct communication. The recruiter must use the approved account/MSP channel. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-SALES-001?",
+      "options": [
+        "100% documented rate/margin exceptions and compliant MSP/VMS communication.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-SALES-001",
+      "sop_code": "HIS-SOP-SALES-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-BD-001?",
+      "options": [
+        "Standardizes how Hire'in prospects new clients, qualifies opportunities, prepares proposals/RFPs, and hands new accounts to delivery.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with New Client Acquisition, Proposals, RFPs & Client Onboarding?",
+      "options": [
+        "Qualify, document, propose, approve, and hand off cleanly.",
+        "Do not promise capabilities, rates, or delivery timelines without approval.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A prospect asks for nationwide coverage but gives no priority roles or rates. BD should qualify need and readiness before promising capacity. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-BD-001?",
+      "options": [
+        "New client onboarding completeness and handoff quality score.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-BD-001",
+      "sop_code": "HIS-SOP-BD-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-MKT-001?",
+      "options": [
+        "Turns marketing into a delivery accelerator by standardizing brand voice, candidate attraction, client credibility, insights, content approvals, and lead generation.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Employer Brand, Digital Marketing & Lead Generation?",
+      "options": [
+        "Publish useful, accurate, approved content tied to business goals.",
+        "Do not make unsupported AI, compliance, client, or performance claims.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A post claims Hire'in can fill roles in hours nationwide. Marketing should require proof or revise to a safer evidence-based claim. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-MKT-001?",
+      "options": [
+        "Content approval compliance, lead quality, and campaign-to-BD handoff rate.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-MKT-001",
+      "sop_code": "HIS-SOP-MKT-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-CX-001?",
+      "options": [
+        "Makes candidate communication, rejection handling, interview prep, placement follow-up, re-engagement, and referrals consistent.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Candidate Experience, Communication SLA & Re-Engagement?",
+      "options": [
+        "Keep candidates informed before, during, and after submission.",
+        "Do not ghost candidates after rejection or delay.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A candidate interviews but receives no update for a week. The recruiter should proactively follow up with client/AM and give the candidate a transparent status update. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-CX-001?",
+      "options": [
+        "90%+ candidate communication SLA adherence and re-engagement tracking.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-CX-001",
+      "sop_code": "HIS-SOP-CX-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-PLAT-001?",
+      "options": [
+        "Clarifies how employees should position and use KleriQ and ProKred as separate SaaS platforms used by Hire'in as pilot/design-partner tools.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Independent SaaS Platform Usage - KleriQ.ai and ProKred.com?",
+      "options": [
+        "Explain platform value clearly and accurately.",
+        "Do not improvise security, privacy, ownership, or mandatory-use claims.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A recruiter says 'ProKred is Hire'in's internal form; you must upload.' This should be corrected to approved language about secure candidate-friendly documentation support. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-PLAT-001?",
+      "options": [
+        "ProKred adoption tracked for applicable candidates without forced or misleading messaging.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-PLAT-001",
+      "sop_code": "HIS-SOP-PLAT-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-LEGAL-001?",
+      "options": [
+        "Reduces legal and compliance risk in contracts, NDAs, candidate data, privacy, job-related screening, work authorization, and escalation.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Contracts, Data Privacy, EEOC & Immigration Compliance?",
+      "options": [
+        "Apply consistent, job-related, confidential, and documented practices.",
+        "Do not give legal interpretations or follow discriminatory requests.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A client says not to submit candidates from a certain protected group. The team must not follow the instruction and must escalate immediately. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-LEGAL-001?",
+      "options": [
+        "100% legal/compliance exceptions escalated and documented.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-LEGAL-001",
+      "sop_code": "HIS-SOP-LEGAL-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-FIN-001?",
+      "options": [
+        "Protects revenue, margin, payroll accuracy, billing confidence, AR/AP follow-up, and client trust.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Invoicing, Contractor Payroll, AR/AP & Margin Governance?",
+      "options": [
+        "Make billing and payroll traceable to approved system records.",
+        "Do not change rates, terms, or payroll data informally.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A contractor starts but the start date was not updated in the system. Finance may invoice incorrectly; the manager must correct and document immediately. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-FIN-001?",
+      "options": [
+        "100% rate/margin exceptions documented; 90%+ invoices without avoidable dispute.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-FIN-001",
+      "sop_code": "HIS-SOP-FIN-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-OPS-001?",
+      "options": [
+        "Controls access requests, least privilege, credential sharing, password resets, exit access removal, and tool misuse prevention.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Tool Access, Credential Control & Deprovisioning?",
+      "options": [
+        "Grant only approved access and track every change.",
+        "Do not share credentials or keep access after role need ends.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: An employee asks a teammate for a Dice/LinkedIn/Ceipal password over Teams. The teammate must refuse and route through access workflow. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-OPS-001?",
+      "options": [
+        "100% exit access removed same day; 100% access requests approved before provisioning.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-OPS-001",
+      "sop_code": "HIS-SOP-OPS-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-HR-001?",
+      "options": [
+        "Connects SOPs to training, acknowledgment, role expectations, scorecards, coaching, probation, PIP, and performance management.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Training, Acknowledgment, Goals & Performance Linkage?",
+      "options": [
+        "Train, practice, acknowledge, then enforce.",
+        "Do not enforce unclear expectations without training and documentation.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: An employee is asked to acknowledge a SOP before training. HR should delay acknowledgment until the training has occurred. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-HR-001?",
+      "options": [
+        "95%+ training completion by due date and version-specific acknowledgments.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-HR-001",
+      "sop_code": "HIS-SOP-HR-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-SOP-AUDIT-001?",
+      "options": [
+        "Creates weekly audit, KPI review, corrective action, and MBR discipline so SOPs become business performance controls.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with KPI Dashboard, Weekly Audit & Monthly Business Review?",
+      "options": [
+        "Use audits to turn process gaps into action.",
+        "Do not rely on feelings when system data and samples are available.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A weekly audit finds repeated missing screening notes. The manager should assign coaching and track improvement, not just complain in a meeting. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-SOP-AUDIT-001?",
+      "options": [
+        "90%+ audit findings closed on time and SOP adoption score improvement.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-AUDIT-001",
+      "sop_code": "HIS-SOP-AUDIT-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-TRAIN-001?",
+      "options": [
+        "Defines how training is designed, assigned, evaluated, and certified by role so employees can apply SOPs in real work.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Role-Based Training Curriculum & Certification Plan?",
+      "options": [
+        "Train for behavior change, not just attendance.",
+        "Do not mark people trained only because they opened a document.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A training includes 50 slides but no practice. The trainer should add role-play, sample intake, sample screen, or audit activity. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-TRAIN-001?",
+      "options": [
+        "95% training completion and manager-certified work sample pass rate.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-TRAIN-001",
+      "sop_code": "HIS-TRAIN-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "q_no": 1,
+      "type": "MCQ",
+      "q": "What is the primary purpose of HIS-TPL-001?",
+      "options": [
+        "Standardizes checklists, acknowledgments, audit forms, coaching notes, field templates, and manager follow-through tools.",
+        "To increase paperwork only",
+        "To replace managers with AI",
+        "To avoid documenting work"
+      ],
+      "answer": "A",
+      "rationale": "The SOP is intended to standardize behavior and improve execution, not create paperwork."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "q_no": 2,
+      "type": "MCQ",
+      "q": "Which behavior best aligns with Manager Acknowledgment, Audit Checklists & Field Templates?",
+      "options": [
+        "Use standardized templates and store them in the system.",
+        "Do not create side templates that become unofficial SOPs.",
+        "Use verbal confirmation only",
+        "Delay updates until month-end"
+      ],
+      "answer": "A",
+      "rationale": "The correct answer follows the operating behavior required by the SOP."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "q_no": 3,
+      "type": "MCQ",
+      "q": "What should happen before employees formally acknowledge an SOP?",
+      "options": [
+        "They should receive role-relevant training and understand expectations",
+        "They should sign immediately without discussion",
+        "Only managers should sign",
+        "Acknowledgment is never needed"
+      ],
+      "answer": "A",
+      "rationale": "The playbook requires acknowledgment after training, not before."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "q_no": 4,
+      "type": "MCQ",
+      "q": "What is the correct response when a process gap or blocker is found?",
+      "options": [
+        "Document it and escalate through the approved workflow",
+        "Ignore it if the work is urgent",
+        "Discuss verbally only",
+        "Create a private side process"
+      ],
+      "answer": "A",
+      "rationale": "Hire'in's operating model relies on documentation, workflow visibility, and early escalation."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "q_no": 5,
+      "type": "Scenario",
+      "q": "Scenario: A manager uses a personal spreadsheet for audits that no one else can see. The manager should move to the approved template/workflow. What should the learner do first?",
+      "options": [
+        "Follow the SOP checklist and document the action in the approved system",
+        "Proceed informally to save time",
+        "Wait until the end of the month",
+        "Ask a peer to decide without manager/system visibility"
+      ],
+      "answer": "A",
+      "rationale": "The scenario requires documented, SOP-aligned action."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "q_no": 6,
+      "type": "MCQ",
+      "q": "Which KPI or proof point should be watched for HIS-TPL-001?",
+      "options": [
+        "100% manager audits and acknowledgments completed using current approved templates.",
+        "Only number of messages sent",
+        "Only attendance",
+        "No KPI is needed"
+      ],
+      "answer": "A",
+      "rationale": "The KPI links the SOP to business impact and adoption."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "q_no": 7,
+      "type": "Short Answer",
+      "q": "In one or two sentences, explain how this SOP reduces staffing chaos or improves delivery quality.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must connect the SOP to Hire'in's values and daily work."
+    },
+    {
+      "training_id": "HIS-TRN-TPL-001",
+      "sop_code": "HIS-TPL-001",
+      "q_no": 8,
+      "type": "Short Answer",
+      "q": "List two records or system updates required after applying this SOP in live work.",
+      "options": [
+        "Open response",
+        "",
+        "",
+        ""
+      ],
+      "answer": "Trainer review",
+      "rationale": "Learner must identify documentation and system-of-record expectations."
+    }
+  ]
+}

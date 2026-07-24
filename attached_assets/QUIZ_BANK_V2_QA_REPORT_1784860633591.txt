@@ -1,0 +1,9 @@
+Hirein SOP Quiz Bank v2 QA Report
+Modules: 21
+Questions: 168
+Answer distribution: {'D': 40, 'A': 42, 'B': 39, 'C': 47}
+Duplicate prompts: 0
+Open-text questions: 0
+Nested quizQuestions missing modules: []
+All modules have >=2 scenario questions: True
+Correct answer not always A: True

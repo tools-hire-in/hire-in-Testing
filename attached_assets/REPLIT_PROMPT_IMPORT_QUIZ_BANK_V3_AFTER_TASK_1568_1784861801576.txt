@@ -1,0 +1,21 @@
+Implement Tech Task #1568 first, then import the corrected Hire’in SOP Quiz Bank v3.
+
+Use `/mnt/data/hirein_sop_quiz_bank_v3_seed.json` as the canonical seed file.
+
+Important import rules:
+- Map training modules by `trainingId` and `sopCode`.
+- Import nested `trainingModules[].quizQuestions[]` and validate against flat `quizQuestions[]` count.
+- Preserve `question_type`, `cognitive_level`, `tags`, `auto_gradable`, `requires_human_review`, and `points`.
+- Preserve option key order A/B/C/D from the JSON.
+- Do not reshuffle on import; this seed already balances answer keys.
+- Use `question_type = scenario_single_choice` to render scenario styling but grade as single choice.
+- Require 80% pass for standard required modules and 85% + manager evidence for certification modules if configured.
+
+QA gates before production:
+- 21 modules imported.
+- 168 questions imported.
+- 8 questions per module.
+- 0 open-text questions.
+- No duplicate prompts.
+- Q5 distractor triples are unique across all 21 modules.
+- Each module has exactly two A, two B, two C, and two D correct answers.

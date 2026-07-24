@@ -1,0 +1,240 @@
+Placement Details
+This endpoint retrieves the complete placement details based on the placement ID provided as a parameter.
+
+
+Header Parameters
+Content-Type
+string
+Authorization
+string
+ResponseExpand all
+200
+Object
+Response Attributes
+id
+string
+job_id
+string
+placement_id
+string
+created_by
+string
+created
+string
+revenue_type
+string
+business_unit_id
+number
+is_confirmation
+number
+job_seeker_id
+string
+payment_details
+array
+Show child attributes
+
+overheads
+array
+Show child attributes
+
+client_details
+array
+Show child attributes
+
+end_client
+array
+Show child attributes
+
+supplier_details
+array
+Show child attributes
+
+work_location
+array
+Show child attributes
+
+placement_details
+array
+Show child attributes
+
+placement_status
+string
+400
+Object
+{ "message": "Invalid parameters or filters." }
+
+Response Attributes
+status
+number
+message
+string
+401
+Object
+{ "message": "Please provide the access token." }
+
+403
+Object
+{ "message": "Your company access is temporarily disabled." }
+
+404
+Object
+{ "message": "Data not found." }
+
+429
+Object
+{ "message": "Request limit exceeded. Please try again later." }
+
+Was this section helpful?
+Yes
+No
+
+Previous
+
+Placements
+
+Next
+
+Users
+
+GET
+
+/v2/getPlacementDetails/z5G7h3l6a1kMvyS65NP3cwGfK6jdYOJiCWBTTbN2FmY/
+
+Node.js
+
+
+var myHeaders = new Headers();
+myHeaders.append("Content-Type", "application/json");
+myHeaders.append("Authorization", "Bearer eyJ0eXAiU3NDcyNDYwLCJpY.S2JDSPBLMOvaFpz8pIkTAd94J3T-ju7kUA9YSoxunHA");
+
+var requestOptions = {
+  method: 'GET',
+  headers: myHeaders,
+  redirect: 'follow'
+};
+
+fetch("https://api.ceipal.com/v2/getPlacementDetails/z5G7h3l6a1kMvyS65NP3cwGfK6jdYOJiCWBTTbN2FmY/", requestOptions)
+  .then(response => response.text())
+  .then(result => console.log(result))
+  .catch(error => console.log('error', error));
+Response
+
+200
+400
+401
+403
+404
+429
+
+{
+  "id": "NXl6NkRacHVUTUlUSDBYMlF1VFlRZz09",
+  "job_id": "d2s0dGtHQVJSUmNjbjFXWGxuQlFhZz09",
+  "placement_id": "PLC-10725",
+  "created_by": "U0FHbnhwWjczNktmdmZtZ3hobTdjZz09",
+  "created": "2026-06-05 13:40:08",
+  "revenue_type": "Recurring(Hourly)",
+  "business_unit_id": 1,
+  "is_confirmation": 0,
+  "job_seeker_id": "VDU0YVl1Tms2c2NvUWUzaCsxSk1Idz09",
+  "payment_details": [
+    {
+      "bill_rate_mode": "Hourly",
+      "pay_rate_mode": "Hourly",
+      "buy_rate": 55,
+      "ot_bill_rate": 0,
+      "ot_pay_rate": 0,
+      "dt_pay_rate": 0,
+      "dt_bill_rate": 0,
+      "purchase_order": "",
+      "effectivetill_date": "",
+      "effective_date": "2026-06-05",
+      "client_bill_rate": 22,
+      "payment_terms": "",
+      "currency": "USD"
+    }
+  ],
+  "overheads": [
+    {
+      "expense_type": "VMS FEES",
+      "expense_mode": "percentage",
+      "created_at": "2026-06-05 13:40:09",
+      "created_by": "U0FHbnhwWjczNktmdmZtZ3hobTdjZz09",
+      "amount": 5.5,
+      "percentage": 10
+    },
+    {
+      "expense_type": "Cab Expense",
+      "expense_mode": "Fixed",
+      "created_at": "2026-06-05 13:40:09",
+      "created_by": "U0FHbnhwWjczNktmdmZtZ3hobTdjZz09",
+      "amount": 200,
+      "percentage": 0
+    }
+  ],
+  "client_details": [
+    {
+      "client_manager": "",
+      "client_email_id": "parth.l@ceipal.com",
+      "client_contactno": "",
+      "client_name": "parth test",
+      "address": "",
+      "country": "",
+      "state": "",
+      "city": ""
+    }
+  ],
+  "end_client": [
+    {
+      "end_client_name": "",
+      "end_client_address": "",
+      "end_client_country": "United States",
+      "end_client_state": "",
+      "end_client_city": "",
+      "end_client_zip_code": ""
+    }
+  ],
+  "supplier_details": [
+    {
+      "supplier_federal_id": "",
+      "supplier_name": "XYZ",
+      "supplier_contact_person": "",
+      "supplier_mobile_no": "",
+      "supplier_office_no": "",
+      "supplier_email": "",
+      "supplier_addr": "",
+      "supplier_country": "",
+      "supplier_state": "",
+      "supplier_city": "",
+      "supplier_postal_code": ""
+    }
+  ],
+  "work_location": [
+    {
+      "address": "",
+      "address2": "",
+      "email_id": "",
+      "country": "United States",
+      "state": "",
+      "city": "",
+      "postal_code": "",
+      "mobile_number": ""
+    }
+  ],
+  "placement_details": [
+    {
+      "estimated_start_date": "2026-06-05",
+      "job_start_date": "2026-06-05",
+      "job_scheduled_end_date": "",
+      "job_end_date": "",
+      "account_manager": "U0FHbnhwWjczNktmdmZtZ3hobTdjZz09",
+      "recruiter": "U0FHbnhwWjczNktmdmZtZ3hobTdjZz09",
+      "sales_manager": "",
+      "new_account_manager": "",
+      "primary_recruiter": "",
+      "secondary_sales_manager": ""
+    }
+  ],
+  "placement_status": "Active"
+}
+
+Show more

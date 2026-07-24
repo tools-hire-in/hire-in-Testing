@@ -1,0 +1,210 @@
+Job Posting Details
+Extract a single job with more details by passing the authentication token as a Bearer Token along with the job ID in the query parameters. The response will include the standard fields.
+
+Tip: Use the Custom API to retrieve additional fields beyond the standard response shown here. Check with your CEIPAL account manager for more details.
+
+ResponseExpand all
+200
+Object
+Response Attributes
+id
+string
+job_code
+string
+business_unit_id
+number
+position_title
+string
+address
+string
+assigned_recruiter
+string
+client
+string
+created
+string
+posted_by
+string
+duration
+string
+experience
+string
+min_experience
+string
+job_start_date
+string
+job_end_date
+string
+modified
+string
+work_authorization
+string
+number_of_positions
+number
+closing_date
+string
+remote_opportunities
+string
+public_job_desc
+string
+public_job_title
+string
+employment_type
+string
+pay_rates
+array
+Show child attributes
+
+primary_recruiter
+string
+hours
+string
+priority
+string
+department
+string
+currency
+string
+job_status
+string
+tax_terms
+string
+skills
+string
+country
+string
+posted
+string
+state
+string
+industry
+string
+apply_job
+string
+apply_job_without_registration
+string
+primary_city
+string
+primary_postal_code
+string
+primary_state
+string
+secondary_cities
+string
+secondary_postal_codes
+string
+secondary_states
+string
+requisition_description
+string
+400
+Object
+{ "message": "Invalid parameters or filters." }
+
+Response Attributes
+status
+number
+message
+string
+403
+Object
+{ "message": "Your company access is temporarily disabled." }
+
+404
+Object
+{ "message": "Data not found." }
+
+429
+Object
+{ "message": "Request limit exceeded. Please try again later." }
+
+401
+Object
+{ "message": "Please provide the access token." }
+
+Was this section helpful?
+Yes
+No
+
+Previous
+
+Job Postings
+
+Next
+
+Update Job Posting
+
+GET
+
+/v2/getJobPostingDetails/z5G7h3l6a1P3c_QX8xU7n/
+
+cURL
+
+
+curl --location 'https://api.ceipal.com/v2/getJobPostingDetails/z5G7h3l6a1P3c_QX8xU7n/' \
+Response
+
+200
+400
+403
+404
+429
+401
+
+{
+  "id": "dEtZc1FUdVRKSFJpUDNjalF4bURkUT09",
+  "job_code": "REQ374",
+  "business_unit_id": 1,
+  "position_title": "Care Taker",
+  "address": "",
+  "assigned_recruiter": "",
+  "client": "New Waves Technology",
+  "created": "2026-06-09 11:08:13",
+  "posted_by": "OVNMYUN6T2ZMNzZlOWVSS2ZINkgxQT09",
+  "duration": "",
+  "experience": "",
+  "min_experience": "",
+  "job_start_date": "2026-06-09",
+  "job_end_date": "",
+  "modified": "2026-06-09 11:48:06",
+  "work_authorization": "",
+  "number_of_positions": 1,
+  "closing_date": "2026-06-27T16:00:00Z",
+  "remote_opportunities": "No",
+  "public_job_desc": "<div>Care Taker - Old age home </div>\r\n\r\n<div> </div>\r\n\r\n<div>Pay rate - 15$/hr</div>\r\n\r\n<div> </div>\r\n\r\n<div> </div>",
+  "public_job_title": "",
+  "employment_type": "",
+  "pay_rates": [
+    {
+      "pay_rate_currency": "USD",
+      "pay_rate": "EUR",
+      "pay_rate_pay_frequency_type": "GLIDER",
+      "pay_rate_employment_type": "W2",
+      "min_pay_rate": "15",
+      "max_pay_rate": "20"
+    }
+  ],
+  "primary_recruiter": "",
+  "hours": "40",
+  "priority": "",
+  "department": "",
+  "currency": "USD",
+  "job_status": "Active",
+  "tax_terms": "",
+  "skills": "",
+  "country": "United States",
+  "posted": "Yesterday",
+  "state": "",
+  "industry": "",
+  "apply_job": "https://candidateportalcname.ceipal.com/login/6T4ua2CJtqf1vNx9zz19oL3EZd2tThPoop1gUcOAVh8/34cyKK-WtGZqmp8gR6Li5TcLpTXOy33bqR9ytkgy3kc",
+  "apply_job_without_registration": "https://candidateportalcname.ceipal.com/job-details/UYmK7b12WoaNI5U77vVKYIMejOltsrtIR73XVm5kYpA",
+  "primary_city": "",
+  "primary_postal_code": "",
+  "primary_state": "",
+  "secondary_cities": "",
+  "secondary_postal_codes": "",
+  "secondary_states": "",
+  "requisition_description": "<div>Care Taker - Old age home </div>\r\n\r\n<div> </div>\r\n\r\n<div>Pay rate - 15$/hr</div>\r\n\r\n<div> </div>\r\n\r\n<div> </div>"
+}
+
+Show more

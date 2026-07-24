@@ -1,0 +1,47 @@
+Yes — most SOPs should touch everyone, but not every SOP should be assigned to everyone at the same depth.
+
+Your instinct is right, but the training model should be:
+
+All employees get awareness of the operating standard. Role owners get full certification. Managers get coaching/audit responsibility.
+
+That prevents overload while still building one company-wide operating language.
+
+Your current playbook already says the SOPs should be launched in succession, role-based, and not more than two operational SOPs per week. It also says employees should acknowledge only after training and that live work samples should be used for certification. That is the right foundation.
+
+Training-design best practice also supports this: ATD’s ADDIE model starts with analysis before design, meaning we should map training to audience, role need, and performance outcome instead of assigning every course equally to everyone. SHRM also stresses that acknowledgments should show the employee understood the training, not just attended it.
+
+My recommendation
+
+Use three assignment levels in the app:
+
+Level	Meaning	Completion Type
+Awareness	Employee must understand the principle and expected behavior	Short module + acknowledgment
+Required	Employee performs this process in daily work	Full training + quiz
+Certification	Employee owns, audits, approves, or coaches this process	Full training + quiz + live work sample
+
+So yes, many SOPs can be ALL awareness, but only role-relevant SOPs should require deeper certification.
+
+Recommended SOP Training Assignment Matrix
+Legend
+Code	Meaning
+A	Awareness for all
+R	Required role training
+C	Certification / owner-level training
+N/A	Not assigned except optional reference
+Role Groups
+
+Use these groups in Replit:
+
+ALL — all employees, contractors, trainees, interns, consultants
+TA-Recruiter — sourcers, recruiters, senior recruiters
+TA-Lead-Manager — leads, delivery managers, account managers managing delivery
+Healthcare-Team — healthcare recruiters/leads/compliance support
+IT-Team — IT recruiters/delivery
+Engineering-Prof-Services-Team — engineering/professional services delivery
+Sales-AM — sales, account managers, MSP/VMS owners
+BD-Team — business development/proposals/client acquisition
+Marketing-Team — content, social, brand, campaign, content studio
+Ops-HR — operations, HR, onboarding, employee portal, service desk
+Finance-Team — billing, payroll, AR/AP, margin tracking
+Managers-All — anyone managing people/process
+CEO-SuperAdmin — final approver, policy owner, governance owner

@@ -1,0 +1,542 @@
+es — the architect review is correct. This is not a small training-content issue anymore. This is a training architecture issue.
+
+Your SOP playbook already says training should be role-based, not overwhelming, launched in waves, acknowledged only after training, and supported by live work samples where certification is needed. That means the app must understand training depth, not just training assignment.
+
+The correct model is:
+
+Awareness for everyone. Required for people doing the work. Certification for owners, managers, approvers, and auditors.
+
+This aligns with how proper instructional design works: the ADDIE design phase includes learning objectives, assessment instruments, exercises, content, and lesson planning, so the audience and expected behavior must drive the training structure. SHRM also warns that training acknowledgment should show understanding, not just attendance or checkbox completion.
+
+Honest verdict
+
+Do not seed the SOP training as a flat model.
+
+The current system must be updated first so every assignment carries:
+
+assignment_level = awareness | required | certification | optional_reference
+
+Without that, your A/R/C matrix is only a spreadsheet idea. The app will still treat everyone the same.
+
+Final architecture decision
+
+Create a new task before goal/check-in automation:
+
+Task #1567 — Hierarchical SOP Training Assignment Model
+
+Purpose:
+Extend SOP role assignment, wave activation, quiz rendering, goals, and check-ins so the system supports Awareness / Required / Certification training levels end-to-end.
+
+Dependency rule:
+Task #1568 for goals/check-ins must depend on #1567. It cannot correctly create goals or check-ins until assignment_level is available on each employee’s actual assignment.
+
+1. Training depth model
+
+Use these levels in the app:
+
+Level	Meaning	Quiz	Pass Score	Completion
+Awareness	Employee must understand the principle	5 questions	70%	Read/watch + quiz + acknowledgment
+Required	Employee performs this process in daily work	8 questions	80%	Full module + quiz
+Certification	Employee owns, audits, approves, or coaches this process	8 questions	85%	Full module + quiz + live evidence + manager signoff
+Optional Reference	Visible for reference only	No quiz	N/A	No completion required
+
+This is the right hierarchy. Kirkpatrick’s evaluation model also supports this direction because it separates reaction, learning, behavior, and results — meaning certification should not stop at quiz completion; it should include evidence of behavior on the job.
+
+2. Database changes needed
+2.1 Update sop_role_assignments
+
+Add machine-readable assignment level.
+
+ALTER TABLE sop_role_assignments
+ADD COLUMN assignment_level TEXT NOT NULL DEFAULT 'required';
+
+ALTER TABLE sop_role_assignments
+ADD COLUMN assignment_reason TEXT DEFAULT NULL;
+
+ALTER TABLE sop_role_assignments
+ADD COLUMN role_group_key TEXT DEFAULT NULL;
+
+ALTER TABLE sop_role_assignments
+ADD COLUMN department_key TEXT DEFAULT NULL;
+
+ALTER TABLE sop_role_assignments
+ADD COLUMN applies_to_all BOOLEAN NOT NULL DEFAULT FALSE;
+
+Recommended values:
+
+assignment_level:
+- awareness
+- required
+- certification
+- optional_reference
+
+assignment_reason:
+- company_standard
+- daily_workflow
+- manager_responsibility
+- compliance_sensitive
+- department_specific
+- system_access_required
+2.2 Update track_assignments
+
+The resolved employee assignment must carry the level forward. Do not only store this in the matrix.
+
+ALTER TABLE track_assignments
+ADD COLUMN assignment_level TEXT NOT NULL DEFAULT 'required';
+
+ALTER TABLE track_assignments
+ADD COLUMN assignment_reason TEXT DEFAULT NULL;
+
+ALTER TABLE track_assignments
+ADD COLUMN source_sop_role_assignment_id INTEGER DEFAULT NULL;
+
+ALTER TABLE track_assignments
+ADD COLUMN resolved_role_group TEXT DEFAULT NULL;
+
+ALTER TABLE track_assignments
+ADD COLUMN resolved_department TEXT DEFAULT NULL;
+
+ALTER TABLE track_assignments
+ADD COLUMN required_question_count INTEGER DEFAULT 8;
+
+ALTER TABLE track_assignments
+ADD COLUMN required_pass_score INTEGER DEFAULT 80;
+
+ALTER TABLE track_assignments
+ADD COLUMN evidence_required BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE track_assignments
+ADD COLUMN manager_signoff_required BOOLEAN NOT NULL DEFAULT FALSE;
+
+ALTER TABLE track_assignments
+ADD COLUMN manager_signoff_status TEXT DEFAULT NULL;
+2.3 Add evidence table for certification
+CREATE TABLE training_evidence_submissions (
+  id SERIAL PRIMARY KEY,
+  track_assignment_id INTEGER NOT NULL,
+  user_id INTEGER NOT NULL,
+  sop_code TEXT NOT NULL,
+  training_id TEXT NOT NULL,
+  evidence_type TEXT NOT NULL,
+  evidence_notes TEXT,
+  evidence_url TEXT,
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  reviewed_by INTEGER,
+  reviewed_at TIMESTAMP,
+  review_status TEXT DEFAULT 'pending',
+  review_notes TEXT
+);
+
+Evidence types:
+
+real_intake
+real_candidate_screen
+real_submission_qc
+real_packet_review
+real_manager_audit
+real_client_update
+real_ceipal_review
+real_training_coaching
+3. Role group resolver
+
+The app’s RBAC roles are too generic:
+
+super_admin, admin, manager, hr, operations, recruiter, employee
+
+Your training matrix needs business groups:
+
+ALL
+TA-Recruiter
+TA-Lead-Manager
+Healthcare-Team
+IT-Team
+Engineering-Prof-Services-Team
+Sales-AM
+BD-Team
+Marketing-Team
+Ops-HR
+Finance-Team
+Managers-All
+CEO-SuperAdmin
+
+So the assignment engine must resolve training groups using both:
+
+admin_users.role
++ admin_users.department
+Recommended resolver
+function resolveTrainingGroups(user) {
+  const groups = new Set<string>();
+
+  groups.add("ALL");
+
+  // RBAC-based groups
+  if (user.role === "super_admin") groups.add("CEO-SuperAdmin");
+  if (user.role === "manager") groups.add("Managers-All");
+  if (user.role === "recruiter") groups.add("TA-Recruiter");
+  if (user.role === "hr" || user.role === "operations") groups.add("Ops-HR");
+
+  // Department-based groups
+  const dept = normalize(user.department);
+
+  if (dept.includes("healthcare")) groups.add("Healthcare-Team");
+  if (dept.includes("it")) groups.add("IT-Team");
+  if (dept.includes("engineering") || dept.includes("professional")) {
+    groups.add("Engineering-Prof-Services-Team");
+  }
+  if (dept.includes("sales") || dept.includes("account")) groups.add("Sales-AM");
+  if (dept.includes("business development") || dept.includes("bd")) groups.add("BD-Team");
+  if (dept.includes("marketing") || dept.includes("content")) groups.add("Marketing-Team");
+  if (dept.includes("finance") || dept.includes("billing") || dept.includes("payroll")) {
+    groups.add("Finance-Team");
+  }
+  if (dept.includes("hr") || dept.includes("operations") || dept.includes("ops")) {
+    groups.add("Ops-HR");
+  }
+
+  return [...groups];
+}
+Heaviest assignment wins
+
+If a user matches multiple groups for the same SOP, assign the highest level.
+
+certification > required > awareness > optional_reference
+
+Example:
+
+A Healthcare Recruiter may match:
+
+ALL = awareness
+TA-Recruiter = required
+Healthcare-Team = certification
+
+Final assignment:
+
+certification
+4. Wave activation logic
+
+Current flat assignment logic should be replaced with level-aware wave activation.
+
+Correct wave activation flow
+1. Admin activates SOP wave.
+2. System finds SOPs in that wave.
+3. System finds active employees/users.
+4. For each user, system resolves training groups.
+5. For each SOP, system checks matching sop_role_assignments.
+6. System selects the heaviest matching assignment level.
+7. System creates track_assignment with level snapshot.
+8. System applies quiz/pass/evidence rules based on level.
+9. System creates level-aware goals and check-ins.
+10. System sends notifications.
+11. System audit logs assignment creation.
+Idempotency rule
+
+Do not create duplicate assignments.
+
+Use a uniqueness rule like:
+
+UNIQUE(user_id, sop_code, training_id, sop_version)
+
+If the wave is activated twice, the system should skip existing assignments or update only if the SOP version changed.
+
+5. Quiz player rules
+
+The quiz player must not use only the track’s global passing score. It must read the employee’s track_assignment.assignment_level.
+
+Quiz behavior by level
+Assignment Level	Question Count	Pass Score	Evidence
+Awareness	5	70%	No
+Required	8	80%	No
+Certification	8	85%	Yes
+Optional Reference	0	N/A	No
+Better than “first five”
+
+For awareness, I would not hardcode “first 5 forever.” Better design:
+
+Add this to quiz questions:
+
+ALTER TABLE section_quiz_questions
+ADD COLUMN include_for_awareness BOOLEAN NOT NULL DEFAULT FALSE;
+
+Then mark 5 questions per module as awareness-safe.
+
+Why: some modules may have a scenario question at Q6 or Q7 that is better for awareness. Let the seed control which 5 questions show.
+
+Minimum schema for quiz questions:
+
+ALTER TABLE section_quiz_questions
+ADD COLUMN question_type TEXT DEFAULT 'single_choice';
+
+ALTER TABLE section_quiz_questions
+ADD COLUMN cognitive_level TEXT DEFAULT 'understanding';
+
+ALTER TABLE section_quiz_questions
+ADD COLUMN tags JSONB DEFAULT '[]';
+
+ALTER TABLE section_quiz_questions
+ADD COLUMN auto_gradable BOOLEAN NOT NULL DEFAULT TRUE;
+
+ALTER TABLE section_quiz_questions
+ADD COLUMN points INTEGER NOT NULL DEFAULT 1;
+
+ALTER TABLE section_quiz_questions
+ADD COLUMN include_for_awareness BOOLEAN NOT NULL DEFAULT FALSE;
+
+This also supports your corrected quiz v3, which already has question_type, cognitive_level, tags, and auto-gradable quiz structure.
+
+6. Goal and check-in wiring
+
+This is the most important part.
+
+Task #1568 should not create the same goals for everyone. It must create goals based on the resolved assignment level.
+
+Goal creation by assignment level
+Level	Goal Type	Goal Example
+Awareness	Completion goal	Complete awareness training and acknowledgment by due date
+Required	Process adoption goal	Complete training, pass quiz, and apply SOP in assigned workflow
+Certification	Ownership/certification goal	Complete training, pass quiz, submit live evidence, receive manager signoff
+Check-in cadence
+Level	Check-ins
+Awareness	Day 7 only
+Required	Day 7 + Day 15
+Certification	Day 7 + Day 15 + Day 30 + Day 45
+Check-in templates
+Awareness
+Day 7:
+- Has the employee completed the awareness module?
+- Has the employee acknowledged the SOP?
+- Is any clarification needed?
+Required
+Day 7:
+- Has the employee started training?
+- Are there blockers?
+
+Day 15:
+- Has the employee passed the quiz?
+- Has the employee started applying the SOP in daily work?
+Certification
+Day 7:
+- Has the employee started training?
+- Does the employee understand owner/auditor responsibility?
+
+Day 15:
+- Has the employee passed the quiz at certification score?
+- Is live evidence assigned?
+
+Day 30:
+- Has live evidence been submitted?
+- Does the work sample meet the SOP standard?
+
+Day 45:
+- Has manager signoff been completed?
+- Is the employee certified or does retraining remain open?
+Manager roll-up priority
+
+Manager dashboards should sort by heaviest pending level first:
+
+1. Certification overdue
+2. Certification due soon
+3. Required overdue
+4. Required due soon
+5. Awareness overdue
+6. Awareness due soon
+
+This prevents a manager from seeing five minor awareness tasks as more important than one overdue certification.
+
+7. Matrix fixes I agree with
+
+The spot-checks are valid. I would update the matrix as follows:
+
+SOP	Current Issue	Final Recommendation
+FIN-001	TA Recruiters are N/A, but recruiters discuss pay expectations and sometimes impact margin	Move TA Recruiter to Awareness
+BD-001	TA Recruiters are N/A, but recruiters may support new client handoff and early delivery context	Move TA Recruiter to Awareness
+TPL-001	TA Recruiters and Healthcare are N/A, but they use templates/checklists for handoffs	Move TA Recruiter and Healthcare-Team to Awareness
+
+I would keep HC-001 / IT-001 / ENG-001 cross-vertical exclusions mostly as-is. Not everyone needs specialty depth.
+
+8. What to do with the existing SOP/training work
+
+Do not throw it away.
+
+Use it as content, but rebuild the assignment and activation layer.
+
+Keep
+SOP library
+Training content
+Corrected quiz bank v3
+Launch waves
+Role training idea
+Acknowledgment logic
+SOP-to-KPI model
+Replace / upgrade
+Flat role assignment
+Single quiz behavior for all users
+One pass score for all users
+Training goals not tied to level
+Check-ins not tied to level
+Department-blind assignment resolver
+Do not seed until
+assignment_level exists on sop_role_assignments
+assignment_level exists on track_assignments
+department + role resolver is implemented
+quiz player reads assignment_level
+goals/check-ins read assignment_level
+quiz schema supports v3 fields
+9. Replit implementation prompt
+
+Use this directly.
+
+Build hierarchical SOP training assignment support for Hire’in before seeding SOP trainings and quiz bank.
+
+This is an overhaul of the existing SOP training assignment model. The business design uses an A/R/C training depth model:
+- A = Awareness
+- R = Required
+- C = Certification
+- Optional Reference = view only
+
+Do not treat all SOP assignments equally. The system must carry assignment_level end-to-end from the SOP role matrix to each employee’s training assignment, quiz behavior, goal creation, check-in schedule, manager dashboard, and completion logic.
+
+Core requirement:
+Add assignment_level to sop_role_assignments and track_assignments. The employee’s track_assignment must preserve the resolved level at the time of wave activation.
+
+Assignment levels:
+awareness
+required
+certification
+optional_reference
+
+Level rules:
+Awareness:
+- 5 quiz questions
+- 70% pass score
+- read/watch + quiz + acknowledgment
+- Day 7 check-in only
+
+Required:
+- 8 quiz questions
+- 80% pass score
+- full module + quiz
+- Day 7 and Day 15 check-ins
+
+Certification:
+- 8 quiz questions
+- 85% pass score
+- full module + quiz + live evidence + manager signoff
+- Day 7, Day 15, Day 30, Day 45 check-ins
+
+Optional Reference:
+- visible only
+- no required quiz
+- no completion goal
+
+Do not use only admin_users.role for assignment resolution. The app roles are too generic. Resolve training groups using role + department.
+
+Supported training groups:
+ALL
+TA-Recruiter
+TA-Lead-Manager
+Healthcare-Team
+IT-Team
+Engineering-Prof-Services-Team
+Sales-AM
+BD-Team
+Marketing-Team
+Ops-HR
+Finance-Team
+Managers-All
+CEO-SuperAdmin
+
+Resolver logic:
+- ALL applies to every active user.
+- super_admin maps to CEO-SuperAdmin.
+- manager maps to Managers-All.
+- recruiter maps to TA-Recruiter.
+- hr and operations map to Ops-HR.
+- department containing Healthcare maps to Healthcare-Team.
+- department containing IT maps to IT-Team.
+- department containing Engineering or Professional Services maps to Engineering-Prof-Services-Team.
+- department containing Sales or Account maps to Sales-AM.
+- department containing Business Development or BD maps to BD-Team.
+- department containing Marketing or Content maps to Marketing-Team.
+- department containing Finance, Billing, Payroll, or AR/AP maps to Finance-Team.
+- department containing HR, Ops, or Operations maps to Ops-HR.
+
+If a user matches multiple groups for the same SOP, choose the heaviest assignment:
+certification > required > awareness > optional_reference.
+
+Update quiz schema:
+- question_type
+- cognitive_level
+- tags
+- auto_gradable
+- points
+- include_for_awareness
+
+The quiz player must read assignment_level from track_assignments:
+- awareness: show awareness question slice, 5 questions, 70% pass
+- required: show all 8 questions, 80% pass
+- certification: show all 8 questions, 85% pass and evidence required
+
+Add certification evidence:
+Create training_evidence_submissions table to allow employees/managers to submit and review live evidence such as real intake, real candidate screen, real submission QC, real packet review, real Ceipal audit, or manager coaching sample.
+
+Goal/check-in dependency:
+Task #1568 must depend on this task. Goals and check-ins must be created based on assignment_level, not just SOP or training ID.
+
+Goal creation rules:
+Awareness creates lightweight completion goal.
+Required creates process adoption goal.
+Certification creates certification goal with evidence and manager signoff.
+
+Check-in cadence:
+Awareness: Day 7
+Required: Day 7, Day 15
+Certification: Day 7, Day 15, Day 30, Day 45
+
+Manager dashboard:
+Sort pending items by heaviest level first:
+1. Certification overdue
+2. Certification due soon
+3. Required overdue
+4. Required due soon
+5. Awareness overdue
+6. Awareness due soon
+
+Matrix updates before seeding:
+- FIN-001: TA-Recruiter should be Awareness
+- BD-001: TA-Recruiter should be Awareness
+- TPL-001: TA-Recruiter and Healthcare-Team should be Awareness
+
+Acceptance criteria:
+1. sop_role_assignments stores assignment_level.
+2. track_assignments stores resolved assignment_level.
+3. Wave activation resolves assignment by role + department.
+4. Multiple matched groups resolve to the heaviest level.
+5. Quiz player changes question count and pass score by assignment_level.
+6. Awareness training can show a 5-question quiz.
+7. Required training shows 8 questions at 80%.
+8. Certification training shows 8 questions at 85%.
+9. Certification requires live evidence submission.
+10. Manager signoff is required for certification completion.
+11. Goals are created differently for awareness, required, and certification.
+12. Check-in cadence is different by assignment_level.
+13. Manager roll-up prioritizes certification gaps above required and awareness gaps.
+14. All actions are audit logged.
+15. No old flat SOP assignment model is used for new waves.
+16. Corrected quiz bank v3 is not seeded until this schema and engine update is complete.
+10. Final recommendation
+
+Yes — follow this architecture.
+
+Your SOP and training system should not be:
+
+SOP assigned → same quiz → same pass score → same acknowledgment
+
+It should be:
+
+SOP assigned → role/department resolves training depth → quiz adapts → goals/check-ins adapt → manager dashboard prioritizes by risk → acknowledgment/certification recorded correctly
+
+That is the right top 1% training operating model.
+
+The most important decision now:
+
+Do not seed the old flat training model. Build Task #1567 first, then let #1568 create level-aware goals and check-ins.

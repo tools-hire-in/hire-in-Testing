@@ -1,0 +1,45 @@
+Hirein SOP Quiz Bank v3 QA Report
+==================================
+
+Purpose: Fix v2 Q5 repeated distractor set, answer clustering, and remaining generic Q1 distractor pattern before app seeding.
+
+totalModules: 21
+totalQuestions: 168
+questionsPerModule: [8]
+autoGradableQuestions: 168
+openTextQuestions: 0
+duplicatePrompts: 0
+answerDistribution: {'A': 42, 'B': 42, 'C': 42, 'D': 42}
+maxCorrectLetterCountWithinAnyModule: 2
+modulesWithMoreThan3SameCorrectLetter: {}
+modulesNotBalancedTwoEach: {}
+q5UniqueDistractorTriples: 21
+q5RepeatedDistractorTexts: 0
+q5CorrectAnswerDistribution: {'A': 6, 'B': 5, 'C': 5, 'D': 5}
+schemaReadiness: {'jsonNestedQuizQuestions': True, 'flatQuizQuestions': True, 'csvExport': True, 'appSchemaBlockingTask': '#1568 add question_type, cognitive_level, tags, auto_gradable, points to section_quiz_questions'}
+
+Blocking app task:
+#1568 must add schema fields question_type, cognitive_level, tags, auto_gradable, and points before seeding the v3 JSON cleanly.
+
+Q5 verification:
+HIS-TRN-GOV-001 | HIS-SOP-GOV-001 | correct=A | wrong1=Confusing reviewer feedback with final approval authority for published SOP changes. | wrong2=Believing minor SOP edits do not need a version history when the intent is unchanged. | wrong3=Treating an “approved with comments” review as a reason to delay rollout indefinitely.
+HIS-TRN-REQ-001 | HIS-SOP-REQ-001 | correct=B | wrong1=Assuming the original JD is enough even when the recruiter pitch, must-haves, and disqualifiers are unclear. | wrong2=Using an AI-generated brief without human review because the role looks standard. | wrong3=Allowing two recruiters to work the same role from different interpretations of the requirement.
+HIS-TRN-TA-001 | HIS-SOP-TA-001 | correct=C | wrong1=Accepting a role for sourcing before confirming pay range, location, and must-have requirements. | wrong2=Treating rate exceptions as manager preference instead of a documented approval item. | wrong3=Using the kickoff call as the only record without updating the ATS or approved intake fields.
+HIS-TRN-TA-002 | HIS-SOP-TA-002 | correct=D | wrong1=Assuming a sourced profile belongs to the recruiter even if no valid contact or ownership record exists. | wrong2=Using private notes for candidate interest instead of updating the approved candidate record. | wrong3=Skipping duplicate search because the candidate used a different phone number or resume version.
+HIS-TRN-TA-003 | HIS-SOP-TA-003 | correct=A | wrong1=Believing a strong resume can replace documented screening, pay alignment, and candidate confirmation. | wrong2=Counting a candidate as submission-ready while required credential or work authorization fields are unclear. | wrong3=Assuming manager QC is only needed for weak candidates, not all high-priority submissions.
+HIS-TRN-TA-004 | HIS-SOP-TA-004 | correct=B | wrong1=Assuming an interview scheduled by phone is complete even when it is not confirmed in the system. | wrong2=Treating offer acceptance as final without documenting pay agreement, start date, and pending conditions. | wrong3=Ending candidate follow-up after offer acceptance instead of confirming start readiness and early retention.
+HIS-TRN-HC-001 | HIS-SOP-HC-001 | correct=C | wrong1=Assuming an active license alone proves the full credential packet is submission-ready. | wrong2=Treating missing BLS/ACLS or state-specific documents as onboarding issues rather than submission risks. | wrong3=Using candidate screenshots as proof without checking whether the program accepts that document format.
+HIS-TRN-IT-001 | HIS-SOP-IT-001 | correct=D | wrong1=Assuming keyword overlap means technical match even when recent hands-on experience is unclear. | wrong2=Ignoring work authorization or location constraints until after the technical interview. | wrong3=Treating a candidate’s preferred tool stack as equivalent to the client’s required production experience.
+HIS-TRN-ENG-001 | HIS-SOP-ENG-001 | correct=A | wrong1=Assuming an engineering/professional title match is enough without validating domain, project, and deliverable context. | wrong2=Using healthcare or IT screening templates without adapting them to the specialized vertical. | wrong3=Submitting professional services candidates without clarifying client-facing expectations or portfolio evidence.
+HIS-TRN-SALES-001 | HIS-SOP-SALES-001 | correct=B | wrong1=Assuming a verbal client update is enough when rate, submission, or escalation details changed. | wrong2=Sharing client exceptions directly with recruiters before margin or approval guardrails are documented. | wrong3=Treating MSP/VMS communication rules as optional for long-standing client relationships.
+HIS-TRN-BD-001 | HIS-SOP-BD-001 | correct=C | wrong1=Assuming a warm prospect is ready for delivery handoff before decision criteria and next steps are recorded. | wrong2=Skipping client onboarding notes because the BD owner can brief delivery verbally. | wrong3=Using a proposal template without tailoring proof points, service scope, and commercial assumptions.
+HIS-TRN-MKT-001 | HIS-SOP-MKT-001 | correct=D | wrong1=Assuming a post is safe because it supports Hire’in’s brand even when claims are not reviewed. | wrong2=Treating likes and impressions as success even if the content does not support hiring, candidate trust, or BD. | wrong3=Publishing role or client-related content without confirming approval, confidentiality, and audience fit.
+HIS-TRN-CX-001 | HIS-SOP-CX-001 | correct=A | wrong1=Assuming candidate care means being friendly, even when role details, next steps, and delays are unclear. | wrong2=Ignoring re-engagement notes for rejected candidates because they are not active submissions today. | wrong3=Treating no-response candidates as closed without documenting attempts, reason, and future fit.
+HIS-TRN-PLAT-001 | HIS-SOP-PLAT-001 | correct=B | wrong1=Calling ProKred a mandatory Hire’in internal form when it should be explained as a separate SaaS platform where applicable. | wrong2=Telling clients or candidates that AI makes final staffing decisions instead of supporting human review. | wrong3=Improvising privacy or ownership claims about KleriQ/ProKred instead of using approved positioning.
+HIS-TRN-LEGAL-001 | HIS-SOP-LEGAL-001 | correct=C | wrong1=Assuming a client request is acceptable because it came from the client, even when it may be discriminatory or non-job-related. | wrong2=Collecting immigration or work authorization documents before confirming business need and approved handling rules. | wrong3=Forwarding contract or NDA language for speed without verifying approval path and confidentiality.
+HIS-TRN-FIN-001 | HIS-SOP-FIN-001 | correct=D | wrong1=Assuming a start can be billed cleanly if rate, timesheet approval, and client terms are not fully documented. | wrong2=Treating margin exceptions as sales judgment rather than documented approval and finance visibility. | wrong3=Waiting until month end to reconcile contractor payroll or AR/AP issues that are already visible.
+HIS-TRN-OPS-001 | HIS-SOP-OPS-001 | correct=A | wrong1=Assuming manager approval is enough to share a login temporarily until formal access is created. | wrong2=Keeping exited or transferred users active because they might help with transition questions. | wrong3=Granting full admin access for convenience instead of matching access to role need.
+HIS-TRN-HR-001 | HIS-SOP-HR-001 | correct=B | wrong1=Asking employees to acknowledge SOPs before training or before they understand role expectations. | wrong2=Treating coaching notes as informal feedback that does not need to connect to goals or performance records. | wrong3=Using SOP non-compliance in performance decisions before rollout, training, and acknowledgment are documented.
+HIS-TRN-AUDIT-001 | HIS-SOP-AUDIT-001 | correct=C | wrong1=Closing audit findings because the manager discussed them verbally, without evidence of corrective action. | wrong2=Reviewing only submissions and starts while ignoring stale roles, missing notes, and overdue follow-ups. | wrong3=Treating the MBR as a reporting meeting instead of a decision and accountability checkpoint.
+HIS-TRN-TRAIN-001 | HIS-TRAIN-001 | correct=D | wrong1=Letting users acknowledge training without passing the quiz or completing required live evidence. | wrong2=Assigning full certification to all employees even when awareness training would be sufficient. | wrong3=Reusing old training materials after SOP changes without updating the linked module version.
+HIS-TRN-TPL-001 | HIS-TPL-001 | correct=A | wrong1=Treating completed checklists as private manager notes instead of attaching them to the approved workflow where required. | wrong2=Changing template fields locally because the manager’s team has a different style. | wrong3=Skipping templates for experienced employees even when the process requires consistent evidence.

@@ -1,0 +1,44 @@
+<html xmlns:v="urn:schemas-microsoft-com:vml" xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+                <head>
+                    <meta http-equiv=Content-Type content="text/html; charset=utf-8">
+                    <meta name=ProgId content=Word.Document>
+                    <meta name=Generator content="Microsoft Word 9">
+                    <meta name=Originator content="Microsoft Word 9">
+                        <!--[if !mso]>
+                        <style>
+                            v\:* {behavior:url(#default#VML);}
+                            o\:* {behavior:url(#default#VML);}
+                            w\:* {behavior:url(#default#VML);}
+                            .shape {behavior:url(#default#VML);}
+                        </style>
+                        <![endif]-->
+                        <title>title</title>
+                        <!--[if gte mso 9]><xml>
+                        <w:WordDocument>
+                         <w:View>Print</w:View>
+                         <w:DoNotHyphenateCaps/>
+                         <w:PunctuationKerning/>
+                         <w:DrawingGridHorizontalSpacing>9.35 pt</w:DrawingGridHorizontalSpacing>
+                         <w:DrawingGridVerticalSpacing>9.35 pt</w:DrawingGridVerticalSpacing>
+                        </w:WordDocument>
+                        </xml><![endif]-->
+                </head>
+                <body>
+                 <!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+            <html xmlns="http://www.w3.org/1999/xhtml">
+               <head>
+                   <meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+               </head>
+               <body id="body_id">
+                <style> 
+                    .container-data{font-size:12px; font-family: Helvetica, sans-serif;font-size:14px;line-height:1.6;} 
+                    .api-heading {font-size:20px; font-family: Helvetica, sans-serif;text-align:center;text-decoration:underline;}
+                </style>
+                <div class="container-data">
+                    <h1 class="api-heading">Custom Get List of Jobs Details</h1>
+                      <strong>API NAME : </strong> &nbsp;Get List of Jobs<br/><br/><strong>Authentication Url : </strong> &nbsp;<a href="https://api.ceipal.com/v1/createAuthtoken/">https://api.ceipal.com/v1/createAuthtoken/</a><br/><strong>Username : </strong> &nbsp;{email<strong>:</strong>simranjeet@hire-in.com}<br/><strong>Password : </strong> &nbsp;{password<strong>:</strong>****} (Get password details from Application)<br/><strong>Auth Key : </strong> &nbsp;{api_key<strong>:</strong>fc452735baade165298b7936858396fb4e2d67fc9b883c4c24ae485621f33e97}<br/><strong>Format : </strong> &nbsp;{json<strong>:</strong>1} &nbsp;(0 for xml format)<br/> Generate authtoken using this authentication and use this auth token to get the access for below API.<br/><br/><strong>Authenticaiton type : </strong> &nbsp;bearer token <br/><strong>token : </strong> &nbsp;Token generated from authentication <br/><strong>Method : </strong> &nbsp;GET<br/><strong>paging_length : </strong> &nbsp;20<br/><br/><strong>Endpoint URL : </strong> &nbsp;<a href="https://api.ceipal.com/getCustomJobPostingDetails/UGtpQkJSTEZ3Z0xBaDdsN1QwOXBIUT09/eb390c18720a69cb6fee138ad173ed65">https://api.ceipal.com/getCustomJobPostingDetails/UGtpQkJSTEZ3Z0xBaDdsN1QwOXBIUT09/eb390c18720a69cb6fee138ad173ed65</a><br/><br/><strong>JSON Format : </strong><br/>{<br />&nbsp;&nbsp;&nbsp;&nbsp; "job_code": "{job_code}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"job_title": "{job_title}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"client_bill_rate___salary": "{client_bill_rate___salary}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"pay_rate___salary": "{pay_rate___salary}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"job_start_date": "{job_start_date}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"job_end_date": "{job_end_date}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"respond_by": "{respond_by}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"remote_job": "{remote_job}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"expenses_paid": "{expenses_paid}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"country": "{country}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"states": "{states}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"city": "{city}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"zip_code": "{zip_code}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"job_status": "{job_status}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"job_type": "{job_type}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"required_hours_week": "{required_hours_week}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"client": "{client}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"client_manager": "{client_manager}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"end_client": "{end_client}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"client_job_id": "{client_job_id}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"required_documents_for_submission": "{required_documents_for_submission}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"turnaround_time": "{turnaround_time}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"priority": "{priority}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"client_category": "{client_category}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"duration": "{duration}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"additional_details": "{additional_details}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"area_code": "{area_code}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"work_authorization": "{work_authorization}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"ceipal_ref__": "{ceipal_ref__}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"interview_mode": "{interview_mode}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"application_form": "{application_form}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"clearance": "{clearance}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"address": "{address}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"industry": "{industry}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"degree": "{degree}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"experience": "{experience}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"evaluation_template": "{evaluation_template}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"primary_skills": "{primary_skills}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"secondary_skills": "{secondary_skills}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"languages": "{languages}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"number_of_positions": "{number_of_positions}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"maximum_allowed_submissions": "{maximum_allowed_submissions}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"tax_terms": "{tax_terms}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"sales_manager": "{sales_manager}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"department": "{department}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"recruitment_manager": "{recruitment_manager}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"account_manager": "{account_manager}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"assigned_to": "{assigned_to}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"primary_recruiter": "{primary_recruiter}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"comments": "{comments}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"additional_notifications": "{additional_notifications}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"career_portal_published_date": "{career_portal_published_date}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"job_description": "{job_description}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"post_job_on_career_portal": "{post_job_on_career_portal}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"display_contact_details_on_career_portal": "{display_contact_details_on_career_portal}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"placement_fee_percentage": "{placement_fee_percentage}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"placement_type": "{placement_type}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"tvop": "{tvop}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"domain": "{domain}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"project_type": "{project_type}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"post_on_referral_portal": "{post_on_referral_portal}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"display_referral_job_to": "{display_referral_job_to}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"referral_portal_validity": "{referral_portal_validity}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"referral_form": "{referral_form}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"location": "{location}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"notice_period": "{notice_period}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"referral_bonus": "{referral_bonus}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"job_category": "{job_category}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"public_job_description": "{public_job_description}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"employment_test_template": "{employment_test_template}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"employment_level": "{employment_level}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"secondary_sales_manager": "{secondary_sales_manager}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"secondary_recruitment_manager": "{secondary_recruitment_manager}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"itar": "{itar}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"team_lead": "{team_lead}",<br />&nbsp;&nbsp;&nbsp;&nbsp;"recruitment_lead": "{recruitment_lead}", <br />}
+                </div>
+            </body>
+        </html>
+                </body>
+            </html>
