@@ -16,7 +16,7 @@ import { db } from "./db";
 import { storage } from "./storage";
 import { integrationSettings } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
-import { syncCeipalJobs, getCeipalRecruiterMetrics, getCeipalTokenHealth, getUnmatchedCeipalUsers } from "./ceipalService";
+import { syncCeipalJobs, getCeipalRecruiterMetrics, getCeipalTokenHealth, getUnmatchedCeipalUsers, getCeipalV2AccessStatus, probeV2Access } from "./ceipalService";
 import {
   testZoomConnection,
   isZoomConfigured,
@@ -27,6 +27,16 @@ import {
 import { encryptVaultField, decryptVaultField } from "./utils/vaultCrypto";
 
 const INTEGRATION_ROLES = ["super_admin", "admin", "operations"];
+
+/** Tracks the most recent Ceipal API error across all calls in this process lifetime. */
+let lastCeipalError: { status: number; message: string; at: string } | null = null;
+
+/**
+ * Tracks the count of Ceipal recruiter emails that don't match any admin_users email
+ * (case-insensitive). Updated after every successful sync.
+ * null = never checked.
+ */
+let ceipalRecruiterUnmatchedCount: number | null = null;
 
 function requireIntegrationAccess(req: Request, res: Response): boolean {
   if (!req.session?.userId) {
@@ -169,6 +179,13 @@ export function registerIntegrationsRoutes(app: Express) {
         : [];
       statusMap.ceipal.unmatchedCeipalUsers = unmatchedCeipalUsers;
 
+      // Attach last Ceipal API error for diagnostics
+      statusMap.ceipal.ceipalLastError = lastCeipalError;
+      // Attach recruiter email matching result (updated after each sync)
+      statusMap.ceipal.recruiterUnmatchedCount = ceipalRecruiterUnmatchedCount;
+      // Attach v2 API access status (updated after test or first auth)
+      statusMap.ceipal.v2AccessVerified = getCeipalV2AccessStatus();
+
       res.json({ integrations: Object.values(statusMap) });
     } catch (err: any) {
       console.error("[integrations] status error:", err);
@@ -201,15 +218,26 @@ export function registerIntegrationsRoutes(app: Express) {
       });
 
       if (!authRes.ok) {
-        await upsertIntegrationStatus("ceipal", "error", {}, `Auth returned ${authRes.status}`);
+        let errMsg = `Auth returned ${authRes.status}`;
+        try {
+          const errBody = await authRes.json();
+          errMsg = errBody.message ?? errBody.error ?? errMsg;
+        } catch {
+          try { errMsg = await authRes.text() || errMsg; } catch {}
+        }
+        lastCeipalError = { status: authRes.status, message: errMsg, at: new Date().toISOString() };
+        await upsertIntegrationStatus("ceipal", "error", {}, `HTTP ${authRes.status}: ${errMsg}`);
         await storage.createAuditLog({
           actorId: req.session!.userId!,
           action: "integrations.ceipal.test",
-          changes: { result: "error", status: authRes.status },
+          changes: { result: "error", status: authRes.status, message: errMsg },
         });
-        return res.json({ ok: false, error: `Ceipal auth failed with status ${authRes.status}` });
+        return res.json({ ok: false, statusCode: authRes.status, message: errMsg, error: `Ceipal auth failed (${authRes.status}): ${errMsg}` });
       }
 
+      lastCeipalError = null;
+      // Probe v2 access in the background so checklist step 6 gets a real signal
+      probeV2Access().catch(() => {});
       await upsertIntegrationStatus("ceipal", "connected", { lastTestedAt: new Date().toISOString() });
       await storage.createAuditLog({
         actorId: req.session!.userId!,
@@ -218,6 +246,7 @@ export function registerIntegrationsRoutes(app: Express) {
       });
       res.json({ ok: true, message: "Ceipal connection verified successfully" });
     } catch (err: any) {
+      lastCeipalError = { status: 0, message: err.message, at: new Date().toISOString() };
       await upsertIntegrationStatus("ceipal", "error", {}, err.message);
       await storage.createAuditLog({
         actorId: req.session!.userId!,
@@ -232,6 +261,7 @@ export function registerIntegrationsRoutes(app: Express) {
   async function handleCeipalSync(req: Request, res: Response) {
     try {
       const result = await syncCeipalJobs();
+      lastCeipalError = null;
       await upsertIntegrationStatus("ceipal", "connected", {
         lastSyncAt: new Date().toISOString(),
         lastSyncCreated: result.created,
@@ -244,8 +274,17 @@ export function registerIntegrationsRoutes(app: Express) {
         action: "integrations.ceipal.sync",
         changes: result,
       });
+
+      // After a successful sync, compute how many Ceipal recruiter emails don't match
+      // any admin_users email (case-insensitive). This powers checklist step 5.
+      computeRecruiterUnmatchedCount().catch(() => {});
+
       res.json({ ok: true, message: `Sync complete: ${result.created} new, ${result.updated} updated, ${result.deactivated} deactivated`, ...result });
     } catch (err: any) {
+      // Capture the error with its HTTP status if embedded in the message
+      const statusMatch = err.message?.match(/:\s*(\d{3})/);
+      const httpStatus = statusMatch ? parseInt(statusMatch[1], 10) : 0;
+      lastCeipalError = { status: httpStatus, message: err.message, at: new Date().toISOString() };
       await upsertIntegrationStatus("ceipal", "error", {}, err.message);
       await storage.createAuditLog({
         actorId: req.session!.userId!,
@@ -253,6 +292,42 @@ export function registerIntegrationsRoutes(app: Express) {
         changes: { error: err.message },
       });
       res.status(500).json({ error: err.message });
+    }
+  }
+
+  /**
+   * Compare the emails of recently active Ceipal recruiters (via the metrics call)
+   * with admin_users records. Updates the module-scope ceipalRecruiterUnmatchedCount.
+   * Runs silently after a successful sync — never throws.
+   */
+  async function computeRecruiterUnmatchedCount(): Promise<void> {
+    try {
+      const metrics = await getCeipalRecruiterMetrics("week");
+      if (!metrics?.metrics?.length) {
+        ceipalRecruiterUnmatchedCount = 0;
+        return;
+      }
+      const recruiterEmails = metrics.metrics
+        .map((m: any) => (m.email || "").toLowerCase())
+        .filter(Boolean);
+      if (recruiterEmails.length === 0) {
+        ceipalRecruiterUnmatchedCount = 0;
+        return;
+      }
+      // Fetch admin_users emails from DB
+      const dbResult = await db.execute(
+        sql`SELECT LOWER(email) as email FROM admin_users WHERE is_active = true AND deleted_at IS NULL`
+      );
+      const adminEmails = new Set<string>(
+        ((dbResult?.rows ?? dbResult ?? []) as Array<{ email: string }>)
+          .map(r => r.email || "")
+          .filter(Boolean)
+      );
+      const unmatched = recruiterEmails.filter(e => !adminEmails.has(e));
+      ceipalRecruiterUnmatchedCount = unmatched.length;
+      console.log(`[integrations] Ceipal recruiter match check: ${unmatched.length} unmatched of ${recruiterEmails.length}`);
+    } catch (err) {
+      console.warn("[integrations] computeRecruiterUnmatchedCount failed:", err);
     }
   }
 

@@ -122,18 +122,51 @@ async function getZoomToken(): Promise<string> {
   return zoomToken!;
 }
 
-export async function testZoomConnection(): Promise<{ ok: boolean; scopes?: string; error?: string }> {
+export async function testZoomConnection(): Promise<{
+  ok: boolean;
+  scopes?: string;
+  error?: string;
+  statusCode?: number;
+  errorCode?: number | string;
+  message?: string;
+}> {
   try {
     const token = await getZoomToken();
     const res = await fetch("https://api.zoom.us/v2/users/me", {
       headers: { Authorization: `Bearer ${token}` },
     });
     if (!res.ok) {
-      return { ok: false, error: `Zoom API returned ${res.status}` };
+      let errorCode: number | string | undefined;
+      let message: string | undefined;
+      try {
+        const body = await res.json();
+        errorCode = body.code;
+        message = body.message;
+      } catch {
+        message = await res.text().catch(() => undefined);
+      }
+      return {
+        ok: false,
+        statusCode: res.status,
+        errorCode,
+        message,
+        error: message
+          ? `Zoom API ${res.status}: ${message}`
+          : `Zoom API returned ${res.status}`,
+      };
     }
     const data = await res.json();
     return { ok: true, scopes: data.account_id ? "account_credentials" : undefined };
   } catch (err: any) {
+    const oauthMatch = err.message?.match(/Zoom OAuth failed: (\d+) — (.*)/);
+    if (oauthMatch) {
+      return {
+        ok: false,
+        statusCode: parseInt(oauthMatch[1], 10),
+        message: oauthMatch[2],
+        error: err.message,
+      };
+    }
     return { ok: false, error: err.message };
   }
 }

@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Link } from "wouter";
 import {
   CheckCircle, XCircle, AlertCircle, RefreshCw, ExternalLink,
   ChevronDown, ChevronRight, Plug, Users, BarChart2, Eye,
+  Check, Circle, AlertTriangle, Wifi, WifiOff,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { V2PageHeader } from "@/components/admin/V2PageHeader";
@@ -24,10 +24,17 @@ import {
 import {
   Sheet, SheetContent, SheetHeader, SheetTitle,
 } from "@/components/ui/sheet";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 
 type IntegrationStatus = "connected" | "error" | "unconfigured";
+
+interface CeipalLastError {
+  status: number;
+  message: string;
+  at: string;
+}
 
 interface IntegrationInfo {
   key: string;
@@ -36,6 +43,11 @@ interface IntegrationInfo {
   lastError?: string;
   meta?: Record<string, any>;
   envConfigured?: boolean;
+  ceipalLastError?: CeipalLastError | null;
+  /** Number of Ceipal recruiter emails that don't match any admin_users email. null = never checked. */
+  recruiterUnmatchedCount?: number | null;
+  /** Whether the Ceipal v2 API endpoint is accessible. null = never checked. */
+  v2AccessVerified?: boolean | null;
   tokenHealth?: {
     lastAuthAt: string | null;
     tokenExpiresAt: string | null;
@@ -81,21 +93,42 @@ const ZOOM_LINKS = [
   { label: "Zoom API Reference", url: "https://developers.zoom.us/docs/api/" },
 ];
 
-const CEIPAL_SETUP_STEPS = [
-  "Log in to Ceipal as an administrator.",
-  "Go to Settings → API Access and locate your API Key.",
-  "Note the email and password of the Ceipal admin account used for sync.",
-  "Ask your platform super admin to set the CEIPAL_EMAIL, CEIPAL_PASSWORD, and CEIPAL_API_KEY environment variables in the app settings.",
-  "Return here and click Test Connection to verify the credentials are working.",
+const CEIPAL_TROUBLESHOOTING = [
+  {
+    title: "Token Expired",
+    fix: "Click Test Connection to refresh the authentication token. Tokens expire after a set period.",
+  },
+  {
+    title: "Email mismatch",
+    fix: "Ensure the Ceipal recruiter email exactly matches the HR portal email (case-insensitive). Any difference will prevent submissions from being attributed correctly.",
+  },
+  {
+    title: "API 404 on submissions",
+    fix: "Your Ceipal plan may not include API access. Contact Ceipal support to confirm API access is enabled for your account.",
+  },
+  {
+    title: "Jobs not syncing",
+    fix: "Check the business unit filter in Ceipal's API settings. Jobs outside the configured business unit will not be imported.",
+  },
+  {
+    title: "v2 endpoints returning 401",
+    fix: "The v2 API requires an upgraded Ceipal plan. Contact your Ceipal account manager to enable v2 API access.",
+  },
 ];
 
-const ZOOM_SETUP_STEPS = [
-  "Sign in to your Zoom account as an admin.",
-  "Go to Zoom Marketplace (marketplace.zoom.us) and click 'Develop' → 'Build App'.",
-  "Select 'Server-to-Server OAuth' as the app type.",
-  "Enable the required scopes: phone:read:admin, phone:read:call_log:admin, meeting:read:admin.",
-  "Copy your Account ID, Client ID, and Client Secret from the app credentials page.",
-  "Paste them into the fields below and click Test Connection.",
+const ZOOM_TROUBLESHOOTING = [
+  {
+    title: "Invalid credentials",
+    fix: "Verify your Account ID, Client ID, and Client Secret match exactly what is shown in the Server-to-Server OAuth app on Zoom Marketplace.",
+  },
+  {
+    title: "Missing scopes",
+    fix: "Your Zoom app must have these scopes enabled: phone:read:admin, phone:read:call_log:admin, meeting:read:admin. Check the scopes tab in your app on Zoom Marketplace.",
+  },
+  {
+    title: "Test returns 401",
+    fix: "Regenerate your Client Secret in Zoom Marketplace (your app → Credentials tab → Client Secret → Regenerate), then re-enter the new secret here.",
+  },
 ];
 
 function StatusDot({ status }: { status: IntegrationStatus }) {
@@ -130,21 +163,55 @@ function HelpfulLinks({ links }: { links: { label: string; url: string }[] }) {
   );
 }
 
-function SetupGuide({ steps, defaultOpen }: { steps: string[]; defaultOpen: boolean }) {
+interface ChecklistStep {
+  label: string;
+  detail?: string;
+  detected: boolean | "unknown";
+}
+
+function SetupChecklist({ steps, defaultOpen }: { steps: ChecklistStep[]; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
+  const doneCount = steps.filter(s => s.detected === true).length;
+  const total = steps.length;
+
   return (
     <Collapsible open={open} onOpenChange={setOpen}>
       <CollapsibleTrigger asChild>
-        <button className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mt-3" data-testid="button-setup-guide-toggle">
-          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
-          How to set this up
+        <button
+          className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mt-3 w-full"
+          data-testid="button-setup-checklist-toggle"
+        >
+          {open ? <ChevronDown className="h-3.5 w-3.5 shrink-0" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0" />}
+          <span>Admin Setup Checklist</span>
+          <span className="ml-auto text-xs tabular-nums">
+            {doneCount}/{total} done
+          </span>
         </button>
       </CollapsibleTrigger>
       <CollapsibleContent>
-        <ol className="mt-2 space-y-1.5 pl-4 border-l-2 border-muted">
+        <ol className="mt-3 space-y-2.5">
           {steps.map((step, i) => (
-            <li key={i} className="text-sm text-muted-foreground">
-              <span className="font-medium text-foreground">{i + 1}.</span> {step}
+            <li key={i} className="flex items-start gap-2.5">
+              <span className="mt-0.5 shrink-0">
+                {step.detected === true ? (
+                  <Check className="h-4 w-4 text-green-600" />
+                ) : step.detected === "unknown" ? (
+                  <Circle className="h-4 w-4 text-muted-foreground/50" />
+                ) : (
+                  <Circle className="h-4 w-4 text-orange-400" />
+                )}
+              </span>
+              <div>
+                <p className={`text-sm leading-snug ${step.detected === true ? "text-muted-foreground line-through decoration-green-600/50" : "text-foreground"}`}>
+                  <span className="font-medium not-italic no-underline" style={{ textDecoration: "none" }}>
+                    Step {i + 1}:
+                  </span>{" "}
+                  <span style={{ textDecoration: step.detected === true ? "line-through" : "none" }}>{step.label}</span>
+                </p>
+                {step.detail && (
+                  <p className="text-xs text-muted-foreground mt-0.5">{step.detail}</p>
+                )}
+              </div>
             </li>
           ))}
         </ol>
@@ -153,9 +220,98 @@ function SetupGuide({ steps, defaultOpen }: { steps: string[]; defaultOpen: bool
   );
 }
 
+function TroubleshootingSection({ items }: { items: { title: string; fix: string }[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button
+          className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mt-1"
+          data-testid="button-troubleshooting-toggle"
+        >
+          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          Common Issues
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-2 space-y-2.5 border rounded-lg p-3 bg-muted/20">
+          {items.map((item, i) => (
+            <div key={i}>
+              <p className="text-sm font-medium flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5 text-orange-500 shrink-0" />
+                {item.title}
+              </p>
+              <p className="text-xs text-muted-foreground mt-0.5 pl-5">{item.fix}</p>
+            </div>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 function CeipalCard({ info }: { info: IntegrationInfo | undefined }) {
   const { toast } = useToast();
   const status = info?.status ?? "unconfigured";
+  const meta = info?.meta as Record<string, any> | undefined;
+  const tokenValid = info?.tokenHealth?.tokenValid ?? false;
+  const lastSyncCreated = meta?.lastSyncCreated ?? 0;
+
+  const recruiterUnmatchedCount = info?.recruiterUnmatchedCount;
+  const v2AccessVerified = info?.v2AccessVerified;
+
+  // Step 5: null = never synced (unknown); 0 = all matched (done); >0 = mismatches (not done)
+  const step5Detected: boolean | "unknown" =
+    recruiterUnmatchedCount === null || recruiterUnmatchedCount === undefined
+      ? "unknown"
+      : recruiterUnmatchedCount === 0;
+
+  // Step 6: null = never probed (unknown); true = verified; false = not accessible
+  const step6Detected: boolean | "unknown" =
+    v2AccessVerified === null || v2AccessVerified === undefined
+      ? "unknown"
+      : v2AccessVerified === true;
+
+  const checklistSteps: ChecklistStep[] = [
+    {
+      label: "Log in to Ceipal as an administrator → go to Settings → API Access → copy your API Key.",
+      detected: info?.envConfigured ? true : false,
+    },
+    {
+      label: "Set CEIPAL_EMAIL, CEIPAL_PASSWORD, and CEIPAL_API_KEY in the Replit Secrets panel.",
+      detail: "Ask your platform super admin if you do not have access to Secrets.",
+      detected: info?.envConfigured ? true : false,
+    },
+    {
+      label: "Click Test Connection below — the status badge should turn green.",
+      detected: tokenValid,
+    },
+    {
+      label: "Click Sync Now — jobs should be imported from Ceipal.",
+      detail: lastSyncCreated > 0 ? `${lastSyncCreated} jobs created in last sync.` : "No jobs created yet in any sync.",
+      detected: lastSyncCreated > 0,
+    },
+    {
+      label: "Verify recruiter emails in Ceipal match the HR portal emails exactly.",
+      detail:
+        recruiterUnmatchedCount === null || recruiterUnmatchedCount === undefined
+          ? "Run Sync Now to check — unmatched emails mean submissions won't be attributed correctly."
+          : recruiterUnmatchedCount === 0
+          ? "All recruiter emails match HR portal users."
+          : `${recruiterUnmatchedCount} Ceipal recruiter email(s) don't match any HR portal user — check for typos or missing accounts.`,
+      detected: step5Detected,
+    },
+    {
+      label: "Ask your Ceipal account manager to enable v2 API access for advanced features.",
+      detail:
+        v2AccessVerified === null || v2AccessVerified === undefined
+          ? "Click Test Connection to probe v2 access. Required for enhanced submission reporting."
+          : v2AccessVerified
+          ? "v2 API access confirmed."
+          : "v2 API returned 401 — contact your Ceipal account manager to upgrade your plan.",
+      detected: step6Detected,
+    },
+  ];
 
   const testMutation = useMutation({
     mutationFn: async () => {
@@ -190,7 +346,7 @@ function CeipalCard({ info }: { info: IntegrationInfo | undefined }) {
     onError: () => toast({ title: "Sync failed", variant: "destructive" }),
   });
 
-  const meta = info?.meta as Record<string, any> | undefined;
+  const ceipalLastError = info?.ceipalLastError;
 
   return (
     <Card data-testid="card-ceipal-integration">
@@ -232,7 +388,7 @@ function CeipalCard({ info }: { info: IntegrationInfo | undefined }) {
             </div>
           </div>
         )}
-        {/* Ceipal token / connection health */}
+
         {info?.tokenHealth && (
           <div className="grid grid-cols-3 gap-3 p-3 bg-muted/20 rounded-lg border text-sm">
             <div>
@@ -276,13 +432,31 @@ function CeipalCard({ info }: { info: IntegrationInfo | undefined }) {
           </div>
         )}
 
-        {info?.lastError && status === "error" && (
+        {/* Last API error detail */}
+        {ceipalLastError && (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2" data-testid="ceipal-last-error">
+            <XCircle className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-red-700">
+                Last API Error
+                {ceipalLastError.status > 0 && (
+                  <span className="ml-1.5 font-mono text-red-600">HTTP {ceipalLastError.status}</span>
+                )}
+              </p>
+              <p className="text-xs text-red-700 mt-0.5 break-words">{ceipalLastError.message}</p>
+              <p className="text-[10px] text-red-500 mt-0.5">{new Date(ceipalLastError.at).toLocaleString()}</p>
+            </div>
+          </div>
+        )}
+
+        {info?.lastError && !ceipalLastError && status === "error" && (
           <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">Error: {info.lastError}</p>
         )}
 
         <div className="text-xs text-muted-foreground bg-muted/30 rounded px-3 py-2">
           Credentials are configured via environment variables (CEIPAL_EMAIL, CEIPAL_PASSWORD, CEIPAL_API_KEY) —
-          not stored in-app for security. Status: {info?.envConfigured ? (
+          not stored in-app for security. Status:{" "}
+          {info?.envConfigured ? (
             <span className="text-green-700 font-medium">Env vars detected</span>
           ) : (
             <span className="text-orange-700 font-medium">Not set</span>
@@ -311,7 +485,9 @@ function CeipalCard({ info }: { info: IntegrationInfo | undefined }) {
           </Button>
         </div>
 
-        <SetupGuide steps={CEIPAL_SETUP_STEPS} defaultOpen={status === "unconfigured"} />
+        <SetupChecklist steps={checklistSteps} defaultOpen={status === "unconfigured"} />
+
+        <TroubleshootingSection items={CEIPAL_TROUBLESHOOTING} />
 
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">Helpful Links</p>
@@ -322,11 +498,24 @@ function CeipalCard({ info }: { info: IntegrationInfo | undefined }) {
   );
 }
 
-function ZoomCard({ info }: { info: IntegrationInfo | undefined }) {
+function ZoomCard({
+  info,
+  onConfigureClick,
+  configureRef,
+}: {
+  info: IntegrationInfo | undefined;
+  onConfigureClick?: () => void;
+  configureRef?: React.RefObject<HTMLDivElement>;
+}) {
   const { toast } = useToast();
   const status = info?.status ?? "unconfigured";
   const [form, setForm] = useState({ accountId: "", clientId: "", clientSecret: "" });
   const [showForm, setShowForm] = useState(false);
+  const [testErrorDetail, setTestErrorDetail] = useState<{
+    statusCode?: number;
+    errorCode?: number | string;
+    message?: string;
+  } | null>(null);
   const meta = info?.meta as Record<string, any> | undefined;
 
   const connectMutation = useMutation({
@@ -339,8 +528,14 @@ function ZoomCard({ info }: { info: IntegrationInfo | undefined }) {
       if (data.ok) {
         toast({ title: "Zoom connected successfully" });
         setShowForm(false);
+        setTestErrorDetail(null);
         setForm({ accountId: "", clientId: "", clientSecret: "" });
       } else {
+        setTestErrorDetail({
+          statusCode: data.statusCode,
+          errorCode: data.errorCode,
+          message: data.message,
+        });
         toast({ title: "Zoom connection failed", description: data.error, variant: "destructive" });
       }
     },
@@ -355,8 +550,14 @@ function ZoomCard({ info }: { info: IntegrationInfo | undefined }) {
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/integrations/status"] });
       if (data.ok) {
+        setTestErrorDetail(null);
         toast({ title: "Zoom connection verified" });
       } else {
+        setTestErrorDetail({
+          statusCode: data.statusCode,
+          errorCode: data.errorCode,
+          message: data.message,
+        });
         toast({ title: "Zoom test failed", description: data.error, variant: "destructive" });
       }
     },
@@ -364,7 +565,7 @@ function ZoomCard({ info }: { info: IntegrationInfo | undefined }) {
   });
 
   return (
-    <Card data-testid="card-zoom-integration">
+    <Card data-testid="card-zoom-integration" ref={configureRef}>
       <CardHeader className="pb-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
@@ -411,6 +612,27 @@ function ZoomCard({ info }: { info: IntegrationInfo | undefined }) {
 
         {info?.lastError && status === "error" && (
           <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">Error: {info.lastError}</p>
+        )}
+
+        {/* Zoom test / connect error detail */}
+        {testErrorDetail && (
+          <div className="flex items-start gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2" data-testid="zoom-test-error-detail">
+            <XCircle className="h-3.5 w-3.5 text-red-600 shrink-0 mt-0.5" />
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-red-700">
+                Connection Error
+                {testErrorDetail.statusCode && (
+                  <span className="ml-1.5 font-mono text-red-600">HTTP {testErrorDetail.statusCode}</span>
+                )}
+                {testErrorDetail.errorCode != null && (
+                  <span className="ml-1.5 font-mono text-red-500">code {testErrorDetail.errorCode}</span>
+                )}
+              </p>
+              {testErrorDetail.message && (
+                <p className="text-xs text-red-700 mt-0.5 break-words">{testErrorDetail.message}</p>
+              )}
+            </div>
+          </div>
         )}
 
         <div className="flex gap-2 flex-wrap">
@@ -481,12 +703,23 @@ function ZoomCard({ info }: { info: IntegrationInfo | undefined }) {
               >
                 {connectMutation.isPending ? "Saving & Testing…" : "Save & Test Connection"}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => setShowForm(false)}>Cancel</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setShowForm(false); setTestErrorDetail(null); }}>Cancel</Button>
             </div>
           </div>
         )}
 
-        <SetupGuide steps={ZOOM_SETUP_STEPS} defaultOpen={status === "unconfigured"} />
+        <SetupChecklist
+          steps={[
+            { label: "Sign in to Zoom as an admin and go to Zoom Marketplace (marketplace.zoom.us).", detected: status === "connected" },
+            { label: "Click Develop → Build App → choose Server-to-Server OAuth.", detected: status === "connected" },
+            { label: "Enable required scopes: phone:read:admin, phone:read:call_log:admin, meeting:read:admin.", detected: status === "connected" },
+            { label: "Copy your Account ID, Client ID, and Client Secret from the app credentials page.", detected: status === "connected" },
+            { label: "Enter credentials below and click Save & Test Connection.", detected: status === "connected" },
+          ]}
+          defaultOpen={status === "unconfigured"}
+        />
+
+        <TroubleshootingSection items={ZOOM_TROUBLESHOOTING} />
 
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">Helpful Links</p>
@@ -620,7 +853,13 @@ function RecruiterDrawer({
   );
 }
 
-function RecruiterPerformanceTab() {
+function RecruiterPerformanceTab({
+  zoomStatus,
+  onConfigureZoom,
+}: {
+  zoomStatus: IntegrationStatus;
+  onConfigureZoom: () => void;
+}) {
   const [period, setPeriod] = useState<"week" | "month" | "custom">("week");
   const [customFrom, setCustomFrom] = useState<string>(() => {
     const d = new Date(); d.setDate(d.getDate() - 14);
@@ -661,6 +900,28 @@ function RecruiterPerformanceTab() {
 
   return (
     <div className="space-y-4">
+      {/* Zoom not connected banner — shown only when Zoom is not connected */}
+      {zoomStatus !== "connected" && (
+        <Alert className="border-orange-200 bg-orange-50" data-testid="alert-zoom-not-connected">
+          <WifiOff className="h-4 w-4 text-orange-600" />
+          <AlertDescription className="flex items-center justify-between gap-3 flex-wrap">
+            <span className="text-orange-800 text-sm">
+              <strong>Zoom not connected</strong> — call and meeting data is unavailable.
+            </span>
+            <Button
+              size="sm"
+              variant="outline"
+              className="border-orange-300 text-orange-700 hover:bg-orange-100 shrink-0"
+              onClick={onConfigureZoom}
+              data-testid="button-configure-zoom-from-metrics"
+            >
+              <Wifi className="h-3.5 w-3.5 mr-1.5" />
+              Configure Zoom →
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <p className="text-sm text-muted-foreground">
@@ -818,6 +1079,7 @@ function RecruiterPerformanceTab() {
 
 export default function Integrations() {
   const { enabled: newLook } = useNewLook();
+  const [activeTab, setActiveTab] = useState("connections");
   const { data, isLoading } = useQuery<{ integrations: IntegrationInfo[] }>({
     queryKey: ["/api/integrations/status"],
   });
@@ -825,6 +1087,7 @@ export default function Integrations() {
   const integrations = data?.integrations ?? [];
   const ceipalInfo = integrations.find(i => i.key === "ceipal");
   const zoomInfo = integrations.find(i => i.key === "zoom");
+  const zoomStatus = zoomInfo?.status ?? "unconfigured";
 
   return (
     <AdminLayout>
@@ -837,15 +1100,15 @@ export default function Integrations() {
             subtitle="Manage external connections — Ceipal ATS and Zoom — and view recruiter performance."
           />
         ) : (
-        <div>
-          <h1 className="text-2xl font-bold">Integrations Hub</h1>
-          <p className="text-muted-foreground text-sm mt-1">
-            Manage external connections — Ceipal ATS and Zoom — and view recruiter performance.
-          </p>
-        </div>
+          <div>
+            <h1 className="text-2xl font-bold">Integrations Hub</h1>
+            <p className="text-muted-foreground text-sm mt-1">
+              Manage external connections — Ceipal ATS and Zoom — and view recruiter performance.
+            </p>
+          </div>
         )}
 
-        <Tabs defaultValue="connections">
+        <Tabs value={activeTab} onValueChange={setActiveTab}>
           <TabsList>
             <TabsTrigger value="connections" data-testid="tab-connections">Connections</TabsTrigger>
             <TabsTrigger value="performance" data-testid="tab-performance">Recruiter Performance</TabsTrigger>
@@ -860,13 +1123,19 @@ export default function Integrations() {
             ) : (
               <div className="grid md:grid-cols-2 gap-6">
                 <CeipalCard info={ceipalInfo} />
-                <ZoomCard info={zoomInfo} />
+                <ZoomCard
+                  info={zoomInfo}
+                  onConfigureClick={() => setActiveTab("connections")}
+                />
               </div>
             )}
           </TabsContent>
 
           <TabsContent value="performance" className="mt-6">
-            <RecruiterPerformanceTab />
+            <RecruiterPerformanceTab
+              zoomStatus={zoomStatus}
+              onConfigureZoom={() => setActiveTab("connections")}
+            />
           </TabsContent>
         </Tabs>
       </div>

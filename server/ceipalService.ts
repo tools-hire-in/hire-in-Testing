@@ -21,6 +21,14 @@ let lastAuthAt: number = 0;
 let isSyncing = false;
 let v2CompatChecked = false;
 
+/** null = not yet probed; true = v2 accessible; false = v2 returns 401 */
+let v2AccessStatus: boolean | null = null;
+
+/** Returns the last known Ceipal v2 access status. null = never checked. */
+export function getCeipalV2AccessStatus(): boolean | null {
+  return v2AccessStatus;
+}
+
 /** Return health metadata for the Ceipal token cache — used by the status route. */
 export function getCeipalTokenHealth(): {
   lastAuthAt: string | null;
@@ -83,6 +91,7 @@ export async function fetchWithTokenRetry(
  *  If v1 tokens are rejected by a v2 endpoint, switches activeAuthUrl to
  *  the v2 auth URL and invalidates the cached token so the next call
  *  re-authenticates via the v2 endpoint automatically.
+ *  Also updates the module-scope v2AccessStatus for diagnostic reporting.
  */
 async function checkV2Compat(token: string): Promise<void> {
   try {
@@ -94,11 +103,33 @@ async function checkV2Compat(token: string): Promise<void> {
       activeAuthUrl = CEIPAL_AUTH_URL_V2;
       cachedToken = null;
       tokenExpiresAt = 0;
+      v2AccessStatus = false;
     } else {
       console.log(`[ceipal] v2 compat check: status ${res.status} — v1 tokens are compatible with v2 endpoints`);
+      v2AccessStatus = true;
     }
   } catch (err: any) {
     console.warn("[ceipal] v2 compat check failed (network):", err.message);
+    // Leave v2AccessStatus as null (unknown) on network error
+  }
+}
+
+/**
+ * Explicitly probe v2 API access and update v2AccessStatus.
+ * Called from the integrations test endpoint so admins can get fresh v2 status
+ * without waiting for the next full authentication cycle.
+ * Returns true if v2 is accessible, false if not, null on network error.
+ */
+export async function probeV2Access(): Promise<boolean | null> {
+  try {
+    const token = await authenticate();
+    const res = await fetch("https://api.ceipal.com/v2/getUsers/?page=1&page_size=1", {
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    });
+    v2AccessStatus = res.status !== 401;
+    return v2AccessStatus;
+  } catch {
+    return null;
   }
 }
 
