@@ -44,7 +44,10 @@ export const KNOWN_FLAGS = [
   "studio_v2_enabled",
   "enforce_probation_leave_gate",
   "attendance_deficit_pool_enabled",
+  "onboarding_flow_enabled",
+  "onboarding_enforce_always",
   "zoom_comms_sync_enabled",
+  "zoom_ai_insights_enabled",
 ] as const;
 
 export type KnownFlag = (typeof KNOWN_FLAGS)[number];

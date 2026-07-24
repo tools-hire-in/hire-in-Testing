@@ -30,6 +30,9 @@ const GovernanceHub = lazy(() => import("@/pages/admin/GovernanceHub"));
 const FeatureFlagsSection = lazy(() =>
   import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.FeatureFlagsSection })),
 );
+const ZoomCommsSyncSection = lazy(() =>
+  import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.ZoomCommsSyncSection })),
+);
 const AccessControlSection = lazy(() =>
   import("@/pages/admin/hr/HRSettings").then((m) => ({ default: m.AccessControlSection })),
 );
@@ -315,6 +318,7 @@ export default function ControlTower() {
           <Suspense fallback={<PanelFallback />}>
             <div className="space-y-6">
               <FeatureFlagsSection />
+              <ZoomCommsSyncSection />
               <TrainingSettingsSection />
               <CeipalComplianceSettingsSection />
             </div>

@@ -533,9 +533,17 @@ export async function syncAllUsersForDate(date: string): Promise<SyncSummary> {
 
   // ── AI Insights Engine ────────────────────────────────────────────────────
   // Run after digests are complete so the insights engine can read them.
+  // Gated by the zoom_ai_insights_enabled feature flag — data sync always runs,
+  // but the OpenAI step only fires when the flag is ON.
   try {
-    const { generateInsightsForDate } = await import("./zoomInsightsService");
-    await generateInsightsForDate(date);
+    const { getFeatureFlag } = await import("./featureFlags");
+    const aiEnabled = await getFeatureFlag("zoom_ai_insights_enabled");
+    if (aiEnabled) {
+      const { generateInsightsForDate } = await import("./zoomInsightsService");
+      await generateInsightsForDate(date);
+    } else {
+      console.log("[zoomService] syncAllUsersForDate — AI insights skipped (zoom_ai_insights_enabled is OFF)");
+    }
   } catch (err) {
     console.warn("[zoomService] syncAllUsersForDate — AI insights generation failed (non-fatal):", err);
   }
@@ -543,6 +551,27 @@ export async function syncAllUsersForDate(date: string): Promise<SyncSummary> {
   console.log(
     `[zoomService] syncAllUsersForDate complete — date=${date} users=${summary.usersProcessed} calls=${summary.callsStored} sessions=${summary.sessionsStored} digests=${summary.digestsGenerated} errors=${summary.errors.length}`,
   );
+
+  // ── Write last-sync summary to system_settings ────────────────────────────
+  // This allows the admin sync-status endpoint to surface the last run's results
+  // without an expensive DB aggregation query.
+  try {
+    const syncSummary = {
+      ranAt: new Date().toISOString(),
+      usersProcessed: summary.usersProcessed,
+      callsStored: summary.callsStored,
+      sessionsStored: summary.sessionsStored,
+      digestsGenerated: summary.digestsGenerated,
+      errors: summary.errors.slice(0, 10), // cap to avoid giant JSON
+    };
+    await db.execute(sql`
+      INSERT INTO system_settings (key, value)
+      VALUES ('zoom_last_sync_summary', ${JSON.stringify(syncSummary)}::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value = ${JSON.stringify(syncSummary)}::jsonb, updated_at = NOW()
+    `);
+  } catch (err) {
+    console.warn("[zoomService] syncAllUsersForDate — failed to write zoom_last_sync_summary:", err);
+  }
 
   return summary;
 }

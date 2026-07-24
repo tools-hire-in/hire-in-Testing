@@ -536,20 +536,161 @@ export function registerZoomCommsRoutes(app: Express): void {
     },
   );
 
+  // ── GET /api/admin/comms/sync-status ──────────────────────────────────────
+  // Returns the most recent sync summary written by the sync engine, plus the
+  // current zoom_sync_time_pst and zoom_sync_lookback_days settings.
+  app.get(
+    "/api/admin/comms/sync-status",
+    requireAuth,
+    requireSyncRole,
+    async (_req: Request, res: Response) => {
+      try {
+        const summaryRow = await db.execute(sql`
+          SELECT value FROM system_settings WHERE key = 'zoom_last_sync_summary' LIMIT 1
+        `);
+        const summaryRows = summaryRow?.rows ?? summaryRow ?? [];
+        const raw = Array.isArray(summaryRows) ? summaryRows[0] : undefined;
+        const summary = raw?.value
+          ? (typeof raw.value === "string" ? JSON.parse(raw.value) : raw.value)
+          : null;
+        res.json({ summary });
+      } catch (err: any) {
+        console.error("[zoomComms] GET /sync-status error:", err);
+        res.status(500).json({ error: "Failed to fetch sync status" });
+      }
+    },
+  );
+
+  // ── GET /api/admin/comms/sync-settings ────────────────────────────────────
+  // Returns zoom_sync_time_pst (default "18:00") and zoom_sync_lookback_days (default 7).
+  app.get(
+    "/api/admin/comms/sync-settings",
+    requireAuth,
+    requireSyncRole,
+    async (_req: Request, res: Response) => {
+      try {
+        const timeRow = await db.execute(sql`
+          SELECT value FROM system_settings WHERE key = 'zoom_sync_time_pst' LIMIT 1
+        `);
+        const lookbackRow = await db.execute(sql`
+          SELECT value FROM system_settings WHERE key = 'zoom_sync_lookback_days' LIMIT 1
+        `);
+        const timeRaw = (timeRow?.rows ?? timeRow ?? [])[0];
+        const lookbackRaw = (lookbackRow?.rows ?? lookbackRow ?? [])[0];
+
+        const syncTimePst = timeRaw?.value
+          ? (typeof timeRaw.value === "string" ? timeRaw.value.replace(/^"|"$/g, "") : String(timeRaw.value))
+          : "18:00";
+        const lookbackDays = lookbackRaw?.value
+          ? Number(typeof lookbackRaw.value === "string" ? lookbackRaw.value : lookbackRaw.value)
+          : 7;
+
+        res.json({ syncTimePst, lookbackDays });
+      } catch (err: any) {
+        console.error("[zoomComms] GET /sync-settings error:", err);
+        res.status(500).json({ error: "Failed to fetch sync settings" });
+      }
+    },
+  );
+
+  // ── PUT /api/admin/comms/sync-settings ────────────────────────────────────
+  // Persists zoom_sync_time_pst and/or zoom_sync_lookback_days to system_settings.
+  app.put(
+    "/api/admin/comms/sync-settings",
+    requireAuth,
+    requireSyncRole,
+    async (req: Request, res: Response) => {
+      try {
+        const { syncTimePst, lookbackDays } = req.body ?? {};
+
+        if (syncTimePst !== undefined) {
+          const timeStr = String(syncTimePst).trim();
+          if (!/^\d{2}:\d{2}$/.test(timeStr)) {
+            return res.status(400).json({ error: "syncTimePst must be HH:MM format" });
+          }
+          await db.execute(sql`
+            INSERT INTO system_settings (key, value)
+            VALUES ('zoom_sync_time_pst', ${JSON.stringify(timeStr)}::jsonb)
+            ON CONFLICT (key) DO UPDATE SET value = ${JSON.stringify(timeStr)}::jsonb, updated_at = NOW()
+          `);
+        }
+
+        if (lookbackDays !== undefined) {
+          const days = parseInt(String(lookbackDays), 10);
+          if (isNaN(days) || days < 1 || days > 30) {
+            return res.status(400).json({ error: "lookbackDays must be 1–30" });
+          }
+          await db.execute(sql`
+            INSERT INTO system_settings (key, value)
+            VALUES ('zoom_sync_lookback_days', ${days}::jsonb)
+            ON CONFLICT (key) DO UPDATE SET value = ${days}::jsonb, updated_at = NOW()
+          `);
+        }
+
+        res.json({ ok: true });
+      } catch (err: any) {
+        console.error("[zoomComms] PUT /sync-settings error:", err);
+        res.status(500).json({ error: "Failed to save sync settings" });
+      }
+    },
+  );
+
   // ── POST /api/admin/comms/sync ─────────────────────────────────────────────
-  // Trigger manual sync + insights generation for a date. Admin/HR/super_admin only.
+  // Trigger manual sync for a date range using zoom_sync_lookback_days.
+  // Syncs from (date - lookbackDays + 1) to date inclusive so the configured
+  // lookback window is honoured. Admin/HR/super_admin only.
   app.post(
     "/api/admin/comms/sync",
     requireAuth,
     requireSyncRole,
     async (req: Request, res: Response) => {
       const rawDate = req.body?.date;
-      const date = validateDate(rawDate) ?? new Date().toISOString().slice(0, 10);
+      const toDate = validateDate(rawDate) ?? new Date().toISOString().slice(0, 10);
 
       try {
-        const { triggerManualSync } = await import("./zoomService");
-        const summary = await triggerManualSync(date);
-        res.json({ ok: true, date, summary });
+        const { syncAllUsersForDate } = await import("./zoomService");
+
+        // Read lookback setting (default 7)
+        const lookbackRow = await db.execute(sql`
+          SELECT value FROM system_settings WHERE key = 'zoom_sync_lookback_days' LIMIT 1
+        `);
+        const lookbackRaw = (lookbackRow?.rows ?? lookbackRow ?? [])[0];
+        const rawLookback = lookbackRaw?.value;
+        const lookbackDays = rawLookback !== undefined && rawLookback !== null
+          ? Math.max(1, Math.min(30, Number(rawLookback)))
+          : 7;
+
+        // Build list of dates to sync (oldest first)
+        const datesToSync: string[] = [];
+        for (let i = lookbackDays - 1; i >= 0; i--) {
+          const d = new Date(toDate + "T12:00:00Z");
+          d.setUTCDate(d.getUTCDate() - i);
+          datesToSync.push(d.toISOString().slice(0, 10));
+        }
+
+        // Aggregate summaries across all dates
+        const aggregate = {
+          usersProcessed: 0,
+          callsStored: 0,
+          sessionsStored: 0,
+          digestsGenerated: 0,
+          errors: [] as string[],
+        };
+
+        for (const date of datesToSync) {
+          try {
+            const summary = await syncAllUsersForDate(date);
+            aggregate.usersProcessed = Math.max(aggregate.usersProcessed, summary.usersProcessed);
+            aggregate.callsStored += summary.callsStored;
+            aggregate.sessionsStored += summary.sessionsStored;
+            aggregate.digestsGenerated += summary.digestsGenerated;
+            aggregate.errors.push(...summary.errors);
+          } catch (err: any) {
+            aggregate.errors.push(`date=${date}: ${err.message}`);
+          }
+        }
+
+        res.json({ ok: true, dateRange: { from: datesToSync[0], to: toDate }, lookbackDays, summary: aggregate });
       } catch (err: any) {
         console.error("[zoomComms] POST /sync error:", err);
         res.status(500).json({ error: "Sync failed", detail: err.message });

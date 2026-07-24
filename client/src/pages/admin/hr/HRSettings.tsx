@@ -647,6 +647,11 @@ export function FeatureFlagsSection() {
       label: "Zoom Communications Daily Sync",
       description: "When ON, the nightly cron (6 PM PST) pulls call logs and SMS sessions from Zoom Phone for all matched team members, stores them in the database, and generates AI-anonymized digests. Turn OFF to pause data collection without losing existing records.",
     },
+    {
+      key: "zoom_ai_insights_enabled",
+      label: "Zoom AI Insights Engine",
+      description: "When ON, the AI analysis step runs after each data sync — generating per-recruiter coaching insights and a team-level digest from the anonymized call/SMS data. Data sync always runs regardless of this flag; only the OpenAI step is gated here. Turn OFF to reduce AI costs without stopping data collection.",
+    },
   ];
 
   return (
@@ -696,6 +701,193 @@ export function FeatureFlagsSection() {
             </div>
           );
         })}
+      </CardContent>
+    </Card>
+  );
+}
+
+interface ZoomSyncSummary {
+  ranAt: string;
+  usersProcessed: number;
+  callsStored: number;
+  sessionsStored: number;
+  digestsGenerated: number;
+  errors: string[];
+}
+
+interface ZoomSyncSettings {
+  syncTimePst: string;
+  lookbackDays: number;
+}
+
+export function ZoomCommsSyncSection() {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = ["super_admin", "admin"].includes(user?.role || "");
+
+  const { data: statusData, isLoading: statusLoading, refetch: refetchStatus } = useQuery<{ summary: ZoomSyncSummary | null }>({
+    queryKey: ["/api/admin/comms/sync-status"],
+    enabled: isAdmin,
+  });
+
+  const { data: settings, isLoading: settingsLoading } = useQuery<ZoomSyncSettings>({
+    queryKey: ["/api/admin/comms/sync-settings"],
+    enabled: isAdmin,
+  });
+
+  const [syncTime, setSyncTime] = useState("18:00");
+  const [lookbackDays, setLookbackDays] = useState("7");
+
+  useEffect(() => {
+    if (settings) {
+      setSyncTime(settings.syncTimePst ?? "18:00");
+      setLookbackDays(String(settings.lookbackDays ?? 7));
+    }
+  }, [settings]);
+
+  const saveSettingsMutation = useMutation({
+    mutationFn: async (data: Partial<ZoomSyncSettings>) => {
+      const res = await apiRequest("PUT", "/api/admin/comms/sync-settings", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/comms/sync-settings"] });
+      toast({ title: "Sync settings saved" });
+    },
+    onError: () => toast({ title: "Failed to save sync settings", variant: "destructive" }),
+  });
+
+  const runSyncMutation = useMutation({
+    mutationFn: async () => {
+      const today = new Date().toISOString().slice(0, 10);
+      const res = await apiRequest("POST", "/api/admin/comms/sync", { date: today });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      refetchStatus();
+      const s = data?.summary;
+      const range = data?.dateRange;
+      if (s) {
+        const rangeStr = range?.from && range.from !== range.to
+          ? ` (${range.from} → ${range.to})`
+          : "";
+        toast({
+          title: "Sync complete",
+          description: `${s.usersProcessed} users, ${s.callsStored} calls, ${s.sessionsStored} SMS sessions${rangeStr}`,
+        });
+      } else {
+        toast({ title: "Sync triggered", description: "Check sync status for results." });
+      }
+    },
+    onError: () => toast({ title: "Sync failed", variant: "destructive" }),
+  });
+
+  if (!isAdmin) return null;
+
+  const summary = statusData?.summary ?? null;
+
+  function formatTs(iso: string | undefined) {
+    if (!iso) return "—";
+    try {
+      return new Date(iso).toLocaleString("en-US", {
+        month: "short", day: "numeric", year: "numeric",
+        hour: "numeric", minute: "2-digit", hour12: true,
+        timeZoneName: "short",
+      });
+    } catch { return iso; }
+  }
+
+  return (
+    <Card data-testid="card-zoom-comms-sync">
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Settings className="h-4 w-4" />
+          Zoom Comms Sync
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-5">
+        {(settingsLoading || statusLoading) ? (
+          <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-8 rounded bg-muted animate-pulse" />)}</div>
+        ) : (
+          <>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium" htmlFor="zoom-sync-time">Daily sync time (PST)</label>
+                <input
+                  id="zoom-sync-time"
+                  type="time"
+                  className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50"
+                  value={syncTime}
+                  data-testid="input-zoom-sync-time"
+                  onChange={(e) => setSyncTime(e.target.value)}
+                  onBlur={() => saveSettingsMutation.mutate({ syncTimePst: syncTime })}
+                />
+                <p className="text-xs text-muted-foreground">Time in PST (America/Los_Angeles) when the nightly cron fires</p>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium" htmlFor="zoom-lookback">Lookback days</label>
+                <Input
+                  id="zoom-lookback"
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={lookbackDays}
+                  data-testid="input-zoom-lookback-days"
+                  onChange={(e) => setLookbackDays(e.target.value)}
+                  onBlur={() => {
+                    const d = parseInt(lookbackDays, 10);
+                    if (d >= 1 && d <= 30) saveSettingsMutation.mutate({ lookbackDays: d });
+                  }}
+                />
+                <p className="text-xs text-muted-foreground">How many past days to pull on first run (1–30)</p>
+              </div>
+            </div>
+
+            <div className="border rounded-md p-4 space-y-2 bg-muted/30">
+              <p className="text-sm font-medium">Last Sync Status</p>
+              {summary ? (
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Ran at</p>
+                    <p className="text-xs font-mono mt-0.5" data-testid="text-zoom-sync-ran-at">{formatTs(summary.ranAt)}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Users synced</p>
+                    <p className="text-2xl font-bold font-mono" data-testid="text-zoom-sync-users">{summary.usersProcessed}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">Calls stored</p>
+                    <p className="text-2xl font-bold font-mono" data-testid="text-zoom-sync-calls">{summary.callsStored}</p>
+                  </div>
+                  <div className="text-center">
+                    <p className="text-xs text-muted-foreground">SMS sessions</p>
+                    <p className="text-2xl font-bold font-mono" data-testid="text-zoom-sync-sessions">{summary.sessionsStored}</p>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground" data-testid="text-zoom-sync-never">No sync has run yet.</p>
+              )}
+              {summary && summary.errors.length > 0 && (
+                <div className="mt-2 rounded bg-destructive/10 border border-destructive/20 px-3 py-2 text-xs text-destructive space-y-0.5">
+                  <p className="font-medium">{summary.errors.length} error(s):</p>
+                  {summary.errors.slice(0, 5).map((e, i) => <p key={i}>{e}</p>)}
+                </div>
+              )}
+            </div>
+
+            <div className="flex justify-end">
+              <Button
+                onClick={() => runSyncMutation.mutate()}
+                disabled={runSyncMutation.isPending}
+                data-testid="button-run-zoom-sync"
+              >
+                {runSyncMutation.isPending ? (
+                  <span className="flex items-center gap-2"><Clock className="h-4 w-4 animate-spin" /> Syncing…</span>
+                ) : "Run sync now"}
+              </Button>
+            </div>
+          </>
+        )}
       </CardContent>
     </Card>
   );

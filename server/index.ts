@@ -3698,6 +3698,7 @@ async function runStartupTasks() {
         onboarding_flow_enabled: false,
         onboarding_enforce_always: false,
         zoom_comms_sync_enabled: false,
+        zoom_ai_insights_enabled: false,
       })}::jsonb)
       ON CONFLICT (key) DO UPDATE
         SET value = ${JSON.stringify({
@@ -3713,6 +3714,7 @@ async function runStartupTasks() {
           onboarding_flow_enabled: false,
           onboarding_enforce_always: false,
           zoom_comms_sync_enabled: false,
+          zoom_ai_insights_enabled: false,
         })}::jsonb || system_settings.value
     `);
     log("Feature flag defaults ensured");
