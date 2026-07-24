@@ -16,7 +16,7 @@ import { db } from "./db";
 import { storage } from "./storage";
 import { integrationSettings } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
-import { syncCeipalJobs, getCeipalRecruiterMetrics, getCeipalTokenHealth } from "./ceipalService";
+import { syncCeipalJobs, getCeipalRecruiterMetrics, getCeipalTokenHealth, getUnmatchedCeipalUsers } from "./ceipalService";
 import {
   testZoomConnection,
   isZoomConfigured,
@@ -162,6 +162,12 @@ export function registerIntegrationsRoutes(app: Express) {
       if (ceipalConfigured && statusMap.ceipal.status === "unconfigured") {
         statusMap.ceipal.status = "connected";
       }
+
+      // Compute unmatched Ceipal users (non-blocking — uses cached user list)
+      const unmatchedCeipalUsers = ceipalConfigured
+        ? await getUnmatchedCeipalUsers().catch(() => [] as string[])
+        : [];
+      statusMap.ceipal.unmatchedCeipalUsers = unmatchedCeipalUsers;
 
       res.json({ integrations: Object.values(statusMap) });
     } catch (err: any) {

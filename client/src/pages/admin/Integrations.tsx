@@ -41,6 +41,7 @@ interface IntegrationInfo {
     tokenExpiresAt: string | null;
     tokenValid: boolean;
   };
+  unmatchedCeipalUsers?: string[];
 }
 
 interface RecruiterMetric {
@@ -60,6 +61,11 @@ interface RecruiterMetric {
   smsSent: number;
   meetingsHosted: number;
   dailyBreakdown: Array<{ date: string; submissions: number; calls: number }>;
+  ceipalUserId?: string;
+  teamName?: string;
+  businessUnitId?: string;
+  ceipalRole?: string;
+  reportingTo?: string;
 }
 
 const CEIPAL_LINKS = [
@@ -250,6 +256,22 @@ function CeipalCard({ info }: { info: IntegrationInfo | undefined }) {
               <p className={`text-xs font-semibold ${info.tokenHealth.tokenValid ? "text-green-600" : "text-orange-600"}`}>
                 {info.tokenHealth.tokenValid ? "Valid" : "Expired / None"}
               </p>
+            </div>
+          </div>
+        )}
+
+        {/* Unmatched Ceipal users warning */}
+        {info?.unmatchedCeipalUsers && info.unmatchedCeipalUsers.length > 0 && (
+          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg" data-testid="banner-ceipal-unmatched">
+            <p className="text-xs font-semibold text-yellow-800 mb-1">
+              {info.unmatchedCeipalUsers.length} Ceipal {info.unmatchedCeipalUsers.length === 1 ? "user has" : "users have"} no matching local account — check email alignment
+            </p>
+            <div className="flex flex-wrap gap-1 mt-1.5">
+              {info.unmatchedCeipalUsers.map((email) => (
+                <span key={email} className="text-xs bg-yellow-100 text-yellow-800 px-1.5 py-0.5 rounded font-mono" data-testid={`badge-unmatched-${email}`}>
+                  {email}
+                </span>
+              ))}
             </div>
           </div>
         )}
@@ -514,6 +536,44 @@ function RecruiterDrawer({
               ))}
             </div>
           </div>
+
+          {(recruiter.teamName || recruiter.businessUnitId || recruiter.ceipalRole || recruiter.reportingTo) && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Ceipal Profile</p>
+              <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
+                {recruiter.teamName && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Team</span>
+                    <span className="font-medium" data-testid="text-ceipal-team">{recruiter.teamName}</span>
+                  </div>
+                )}
+                {recruiter.businessUnitId && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Business Unit</span>
+                    <span className="font-medium" data-testid="text-ceipal-bu">{recruiter.businessUnitId}</span>
+                  </div>
+                )}
+                {recruiter.ceipalRole && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Role in Ceipal</span>
+                    <span className="font-medium" data-testid="text-ceipal-role">{recruiter.ceipalRole}</span>
+                  </div>
+                )}
+                {recruiter.reportingTo && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Reporting To</span>
+                    <span className="font-medium" data-testid="text-ceipal-reporting">{recruiter.reportingTo}</span>
+                  </div>
+                )}
+                {recruiter.ceipalUserId && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Ceipal ID</span>
+                    <span className="text-xs font-mono text-muted-foreground" data-testid="text-ceipal-id">{recruiter.ceipalUserId}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {Object.keys(recruiter.channels).length > 0 && (
             <div>

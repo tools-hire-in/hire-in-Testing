@@ -173,6 +173,145 @@ async function authenticate(forceRefresh = false): Promise<string> {
   return cachedToken;
 }
 
+export interface CeipalUser {
+  id: string;
+  email_id: string;
+  display_name: string;
+  team_name: string;
+  business_unit_id: string;
+  role: string;
+  status: string;
+  reporting_to: string;
+}
+
+export type CeipalUserMap = Map<string, CeipalUser>;
+
+// ── Cached Ceipal user list (refreshed at most once per 30 min) ─────────────
+let cachedCeipalUsers: CeipalUser[] | null = null;
+let ceipalUsersCachedAt: number = 0;
+const CEIPAL_USERS_CACHE_TTL_MS = 30 * 60 * 1000;
+
+/** Fetch all Ceipal users via paginated GET /v2/getUsers/. Cached for 30 min. */
+export async function getCeipalUsers(forceRefresh = false): Promise<CeipalUser[]> {
+  const now = Date.now();
+  if (!forceRefresh && cachedCeipalUsers && now - ceipalUsersCachedAt < CEIPAL_USERS_CACHE_TTL_MS) {
+    return cachedCeipalUsers;
+  }
+
+  const PAGE_SIZE = 100;
+  const allUsers: CeipalUser[] = [];
+  let page = 1;
+
+  while (page <= MAX_PAGES) {
+    const url = `https://api.ceipal.com/v2/getUsers/?page=${page}&page_size=${PAGE_SIZE}`;
+    let res: Response;
+    try {
+      res = await fetchWithTokenRetry(url);
+    } catch (err: any) {
+      console.warn(`[ceipal] getCeipalUsers page ${page} fetch error:`, err.message);
+      break;
+    }
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        console.log(`[ceipal] getCeipalUsers: 404 on page ${page} — end of results`);
+        break;
+      }
+      console.warn(`[ceipal] getCeipalUsers: ${res.status} on page ${page}`);
+      break;
+    }
+
+    const data = await res.json();
+    const pageUsers: any[] = Array.isArray(data?.results) ? data.results
+      : Array.isArray(data?.data) ? data.data
+      : Array.isArray(data) ? data : [];
+
+    if (pageUsers.length === 0) break;
+
+    for (const u of pageUsers) {
+      allUsers.push({
+        id: String(u.id ?? u.user_id ?? ""),
+        email_id: (u.email_id || u.email || "").trim(),
+        display_name: u.display_name || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim(),
+        team_name: u.team_name || "",
+        business_unit_id: String(u.business_unit_id ?? u.business_unit ?? ""),
+        role: u.role || u.user_role || "",
+        status: u.status || "",
+        reporting_to: u.reporting_to || u.manager || "",
+      });
+    }
+
+    if (pageUsers.length < PAGE_SIZE) break;
+    page++;
+  }
+
+  console.log(`[ceipal] getCeipalUsers: fetched ${allUsers.length} users across ${page} page(s)`);
+  cachedCeipalUsers = allUsers;
+  ceipalUsersCachedAt = Date.now();
+  return allUsers;
+}
+
+/** Fetch a single Ceipal user by their Ceipal user ID. */
+export async function getCeipalUserDetails(userId: string): Promise<CeipalUser | null> {
+  try {
+    const url = `https://api.ceipal.com/v2/getUserDetails/${userId}/`;
+    const res = await fetchWithTokenRetry(url);
+    if (!res.ok) {
+      console.warn(`[ceipal] getCeipalUserDetails(${userId}): ${res.status}`);
+      return null;
+    }
+    const u = await res.json();
+    return {
+      id: String(u.id ?? u.user_id ?? userId),
+      email_id: (u.email_id || u.email || "").trim(),
+      display_name: u.display_name || u.name || `${u.first_name || ""} ${u.last_name || ""}`.trim(),
+      team_name: u.team_name || "",
+      business_unit_id: String(u.business_unit_id ?? u.business_unit ?? ""),
+      role: u.role || u.user_role || "",
+      status: u.status || "",
+      reporting_to: u.reporting_to || u.manager || "",
+    };
+  } catch (err: any) {
+    console.warn(`[ceipal] getCeipalUserDetails(${userId}) error:`, err.message);
+    return null;
+  }
+}
+
+/**
+ * Return emails of active Ceipal users that have no matching local admin_user.
+ * Uses the cached user list (TTL 30 min). Gracefully returns [] on any error.
+ */
+export async function getUnmatchedCeipalUsers(): Promise<string[]> {
+  const email = process.env.CEIPAL_EMAIL;
+  const password = process.env.CEIPAL_PASSWORD;
+  const apiKey = process.env.CEIPAL_API_KEY;
+  if (!email || !password || !apiKey) return [];
+
+  try {
+    const [ceipalUsers, localAdminRows] = await Promise.all([
+      getCeipalUsers(),
+      db.select({ email: adminUsers.email })
+        .from(adminUsers)
+        .where(isNull(adminUsers.deletedAt)),
+    ]);
+
+    const localEmailSet = new Set(
+      localAdminRows.map(u => (u.email ?? "").toLowerCase()).filter(Boolean)
+    );
+
+    const activeUsers = ceipalUsers.filter(u =>
+      (u.status || "").toLowerCase() === "active" || !u.status
+    );
+
+    return activeUsers
+      .filter(u => u.email_id && !localEmailSet.has(u.email_id.toLowerCase()))
+      .map(u => u.email_id);
+  } catch (err: any) {
+    console.warn("[ceipal] getUnmatchedCeipalUsers error:", err.message);
+    return [];
+  }
+}
+
 export interface CeipalJob {
   id: string;
   job_code: string;
@@ -493,6 +632,12 @@ export interface RecruiterMetric {
   smsSent: number;
   meetingsHosted: number;
   dailyBreakdown: Array<{ date: string; submissions: number; calls: number }>;
+  /** Ceipal profile fields (from getCeipalUsers enrichment) */
+  ceipalUserId?: string;
+  teamName?: string;
+  businessUnitId?: string;
+  ceipalRole?: string;
+  reportingTo?: string;
 }
 
 function parseSubmissions(data: any): any[] {
@@ -555,9 +700,9 @@ export async function getCeipalRecruiterMetrics(
       return parseSubmissions(await res.json());
     }
 
-    // Fetch rolling 30-day submissions, YTD submissions, and local admin_user
-    // emails in parallel.  Recruiter rows are filtered to known local users.
-    const [monthSubs, ytdSubs, periodSubs, localAdminRows] = await Promise.all([
+    // Fetch rolling 30-day submissions, YTD submissions, local admin_user
+    // emails, and Ceipal user list in parallel.
+    const [monthSubs, ytdSubs, periodSubs, localAdminRows, ceipalUserList] = await Promise.all([
       fetchSubmissions(monthFromStr, todayStr),
       fetchSubmissions(ytdFromStr, todayStr),
       // Only fetch separately for custom ranges; week/month overlap with monthSubs
@@ -567,7 +712,21 @@ export async function getCeipalRecruiterMetrics(
       db.select({ id: adminUsers.id, email: adminUsers.email, name: adminUsers.name })
         .from(adminUsers)
         .where(isNull(adminUsers.deletedAt)),
+      getCeipalUsers().catch((err: any) => {
+        console.warn("[ceipal] getCeipalUsers in metrics run failed (non-fatal):", err.message);
+        return [] as CeipalUser[];
+      }),
     ]);
+
+    // Build dual-indexed CeipalUserMap:
+    //   - ceipalUserById: keyed by Ceipal user ID (primary — most reliable)
+    //   - ceipalUserByEmail: keyed by email (secondary — fallback)
+    const ceipalUserById = new Map<string, CeipalUser>();
+    const ceipalUserByEmail = new Map<string, CeipalUser>();
+    for (const cu of ceipalUserList) {
+      if (cu.id) ceipalUserById.set(cu.id, cu);
+      if (cu.email_id) ceipalUserByEmail.set(cu.email_id.toLowerCase(), cu);
+    }
 
     // Build a set of lowercase local emails for fast lookups
     const localEmailSet = new Set(
@@ -576,11 +735,11 @@ export async function getCeipalRecruiterMetrics(
         .filter(Boolean)
     );
 
-    /** Returns true if rEmail belongs to a known local user (or if the set is
-     *  empty, which means the DB query failed — degrade gracefully). */
-    function isLocalRecruiter(rEmail: string): boolean {
+    /** Returns true if canonicalEmail belongs to a known local user (or if the
+     *  set is empty, which means the DB query failed — degrade gracefully). */
+    function isLocalRecruiter(canonicalEmail: string): boolean {
       if (localEmailSet.size === 0) return true; // graceful degrade
-      return localEmailSet.has(rEmail.toLowerCase());
+      return localEmailSet.has(canonicalEmail.toLowerCase());
     }
 
     // Build an email → display-name map from local users so recruiter names
@@ -620,18 +779,64 @@ export async function getCeipalRecruiterMetrics(
       return recruiterMap.get(rId)!;
     }
 
+    /**
+     * Resolve recruiter identity from a submission row.
+     * Primary: Ceipal user ID (from submission fields) → look up in ceipalUserById.
+     * Secondary: email from submission → look up in ceipalUserByEmail.
+     * Fallback: raw email / name fields from the submission row.
+     *
+     * Returns null if the recruiter cannot be matched to a known local user.
+     */
+    function resolveRecruiter(sub: any): {
+      rId: string;
+      rEmail: string;
+      rName: string;
+      ceipalUser: CeipalUser | undefined;
+    } | null {
+      // Extract raw fields from submission
+      const subCeipalId = String(
+        sub.submitted_by_id ?? sub.recruiter_id ?? sub.user_id ?? sub.created_by ?? ""
+      ).trim();
+      const rEmailRaw = (sub.submitted_by_email || sub.recruiter_email || "").trim();
+      const rNameRaw = sub.submitted_by || sub.recruiter_name || rEmailRaw;
+
+      // Resolve CeipalUser: prefer ID lookup, then email lookup
+      let ceipalUser: CeipalUser | undefined;
+      if (subCeipalId) {
+        ceipalUser = ceipalUserById.get(subCeipalId);
+      }
+      if (!ceipalUser && rEmailRaw) {
+        ceipalUser = ceipalUserByEmail.get(rEmailRaw.toLowerCase());
+      }
+
+      // Canonical email for local matching:
+      // If Ceipal gave us a user, trust Ceipal's email (handles mismatches).
+      const canonicalEmail = ceipalUser?.email_id || rEmailRaw;
+
+      // Filter: only include recruiters matching a known local admin account
+      if (!isLocalRecruiter(canonicalEmail)) return null;
+
+      // Recruiter key: Ceipal user ID when available (most stable), else email
+      const rId = ceipalUser?.id || canonicalEmail || rNameRaw;
+      if (!rId) return null;
+
+      // Display name: prefer local HR name → Ceipal display_name → raw sub name
+      const displayName =
+        (canonicalEmail && localNameMap.get(canonicalEmail.toLowerCase())) ||
+        ceipalUser?.display_name ||
+        rNameRaw;
+
+      return { rId, rEmail: canonicalEmail, rName: displayName, ceipalUser };
+    }
+
     // ── Process 30-day submissions → submissionsWeek + submissionsMonth ────────
     for (const sub of monthSubs) {
-      const rEmail = (sub.submitted_by_email || sub.recruiter_email || "").trim();
-      const rName = sub.submitted_by || sub.recruiter_name || rEmail;
-      const rId = rEmail || rName;
-      if (!rId) continue;
-      if (!isLocalRecruiter(rEmail)) continue; // filter to known local users
+      const resolved = resolveRecruiter(sub);
+      if (!resolved) continue;
+      const { rId, rEmail, rName } = resolved;
       if (recruiterId && rId !== recruiterId) continue;
 
-      // Prefer the name from local admin_users so it matches HR records
-      const displayName = (rEmail && localNameMap.get(rEmail.toLowerCase())) || rName;
-      const m = ensureRecruiter(rId, displayName, rEmail);
+      const m = ensureRecruiter(rId, rName, rEmail);
       m.submissionsMonth++;
 
       const subDate = new Date(sub.submission_date || sub.created_date || now);
@@ -647,15 +852,12 @@ export async function getCeipalRecruiterMetrics(
 
     // ── Process selected-period submissions → submissionsInPeriod + dailyBreakdown
     for (const sub of effectivePeriodSubs) {
-      const rEmail = (sub.submitted_by_email || sub.recruiter_email || "").trim();
-      const rName = sub.submitted_by || sub.recruiter_name || rEmail;
-      const rId = rEmail || rName;
-      if (!rId) continue;
-      if (!isLocalRecruiter(rEmail)) continue;
+      const resolved = resolveRecruiter(sub);
+      if (!resolved) continue;
+      const { rId, rEmail, rName } = resolved;
       if (recruiterId && rId !== recruiterId) continue;
 
-      const displayName = (rEmail && localNameMap.get(rEmail.toLowerCase())) || rName;
-      const m = ensureRecruiter(rId, displayName, rEmail);
+      const m = ensureRecruiter(rId, rName, rEmail);
       m.submissionsInPeriod++;
 
       const subDate = new Date(sub.submission_date || sub.created_date || now);
@@ -667,16 +869,13 @@ export async function getCeipalRecruiterMetrics(
 
     // ── Process YTD submissions → placementsYTD ───────────────────────────────
     for (const sub of ytdSubs) {
-      const rEmail = (sub.submitted_by_email || sub.recruiter_email || "").trim();
-      const rName = sub.submitted_by || sub.recruiter_name || rEmail;
-      const rId = rEmail || rName;
-      if (!rId) continue;
-      if (!isLocalRecruiter(rEmail)) continue;
+      const resolved = resolveRecruiter(sub);
+      if (!resolved) continue;
+      const { rId, rEmail, rName } = resolved;
       if (recruiterId && rId !== recruiterId) continue;
       if (!isPlacement(sub)) continue;
 
-      const displayName = (rEmail && localNameMap.get(rEmail.toLowerCase())) || rName;
-      const m = ensureRecruiter(rId, displayName, rEmail);
+      const m = ensureRecruiter(rId, rName, rEmail);
       m.placementsYTD++;
     }
 
@@ -686,6 +885,18 @@ export async function getCeipalRecruiterMetrics(
         if (cnt > maxCount) { maxCount = cnt; m.topChannel = ch; }
       }
       m.dailyBreakdown.sort((a, b) => a.date.localeCompare(b.date));
+
+      // Enrich with Ceipal profile data.
+      // If rId is a Ceipal user ID, look up directly; else try by email.
+      const cu = ceipalUserById.get(m.recruiterId)
+        || (m.email ? ceipalUserByEmail.get(m.email.toLowerCase()) : undefined);
+      if (cu) {
+        m.ceipalUserId = cu.id;
+        m.teamName = cu.team_name || undefined;
+        m.businessUnitId = cu.business_unit_id || undefined;
+        m.ceipalRole = cu.role || undefined;
+        m.reportingTo = cu.reporting_to || undefined;
+      }
     }
 
     // ── Zoom enrichment ────────────────────────────────────────────────────────
