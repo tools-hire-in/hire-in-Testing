@@ -642,6 +642,11 @@ export function FeatureFlagsSection() {
       label: "Onboarding Flow — Always Enforce (Never Snooze)",
       description: "When ON, users cannot snooze or dismiss the onboarding overlay until all steps for their track are completed. When OFF (default), users may snooze the overlay and continue with normal portal access. Only applies while onboarding_flow_enabled is also ON.",
     },
+    {
+      key: "zoom_comms_sync_enabled",
+      label: "Zoom Communications Daily Sync",
+      description: "When ON, the nightly cron (6 PM PST) pulls call logs and SMS sessions from Zoom Phone for all matched team members, stores them in the database, and generates AI-anonymized digests. Turn OFF to pause data collection without losing existing records.",
+    },
   ];
 
   return (

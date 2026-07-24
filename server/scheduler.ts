@@ -2183,6 +2183,30 @@ export function startScheduler() {
     }
   }, { timezone: "Asia/Kolkata" });
 
+  // ── Zoom Communications daily sync — 6 PM PST/PDT (America/Los_Angeles) ───
+  // Fires at 18:00 in the LA timezone so the sync date is always the correct
+  // business day regardless of daylight saving time.
+  // Gated by zoom_comms_sync_enabled feature flag. Skips silently when flag is off.
+  cron.schedule("0 18 * * *", async () => {
+    try {
+      const flags = await storage.getSystemSetting("feature_flags");
+      const featureFlags = (flags?.value as Record<string, boolean>) ?? {};
+      if (!featureFlags.zoom_comms_sync_enabled) return;
+
+      const { syncAllUsersForDate } = await import("./zoomService");
+      // Derive today's date in LA timezone — same timezone the cron fires in.
+      const la = getLaDateTime();
+      const syncDate = `${la.year}-${String(la.month).padStart(2, "0")}-${String(la.day).padStart(2, "0")}`;
+      console.log(`[scheduler] Zoom comms sync starting for date=${syncDate}`);
+      const summary = await syncAllUsersForDate(syncDate);
+      console.log(
+        `[scheduler] Zoom comms sync complete — users=${summary.usersProcessed} calls=${summary.callsStored} sessions=${summary.sessionsStored} digests=${summary.digestsGenerated} errors=${summary.errors.length}`,
+      );
+    } catch (err) {
+      console.error("[scheduler] Zoom comms sync cron failed:", err);
+    }
+  }, { timezone: "America/Los_Angeles" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -2205,4 +2229,5 @@ export function startScheduler() {
   console.log("  - SOP scheduled wave launches: daily 07:00 IST → fires approved wave_scheduled_launches where go_live_date <= today");
   console.log("  - Policy overdue manager digest: daily 09:00 IST → one email per manager listing direct reports with pending policy sign-off > 2 days overdue");
   console.log("  - Dev inbox weekly purge: Sundays 02:00 IST (non-production only) → removes dev_email_inbox rows older than 7 days");
+  console.log("  - Zoom comms daily sync: daily at 6 PM America/Los_Angeles → pulls call logs + SMS sessions + digests for that LA calendar day (gated by zoom_comms_sync_enabled flag)");
 }

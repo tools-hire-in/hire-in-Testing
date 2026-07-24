@@ -15006,7 +15006,7 @@ Canonical domain: ${BASE}
 
   app.patch("/api/system/feature-flags", requireAuth, requirePermission("system.featureFlags", "super_admin", "admin"), async (req: Request, res: Response) => {
     try {
-      const BOOLEAN_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance", "studio_v2_enabled", "enforce_probation_leave_gate", "attendance_deficit_pool_enabled", "onboarding_flow_enabled", "onboarding_enforce_always"];
+      const BOOLEAN_FLAGS = ["notifications_enabled", "document_reminder_email_enabled", "esign_docusign_flow", "new_look", "probation_framework_db", "process_governance", "studio_v2_enabled", "enforce_probation_leave_gate", "attendance_deficit_pool_enabled", "onboarding_flow_enabled", "onboarding_enforce_always", "zoom_comms_sync_enabled"];
       const GOVERNANCE_INT_KEYS = ["governance_sop_grace_days", "governance_sop_cadence_max_per_week", "governance_pip_checkin_days", "governance_growth_checkin_days", "governance_escalation_probation_first_hours", "governance_escalation_probation_second_hours", "governance_goal_coaching_threshold_days"];
       const GOVERNANCE_BOOL_STR_KEYS = ["governance_nudge_sweep_enabled"];
       const ALLOWED_FLAGS = [...BOOLEAN_FLAGS, ...GOVERNANCE_INT_KEYS, ...GOVERNANCE_BOOL_STR_KEYS];

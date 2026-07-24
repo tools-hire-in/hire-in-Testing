@@ -44,6 +44,7 @@ export const KNOWN_FLAGS = [
   "studio_v2_enabled",
   "enforce_probation_leave_gate",
   "attendance_deficit_pool_enabled",
+  "zoom_comms_sync_enabled",
 ] as const;
 
 export type KnownFlag = (typeof KNOWN_FLAGS)[number];
