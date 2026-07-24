@@ -2348,6 +2348,22 @@ export function startScheduler() {
     }
   }, { timezone: "America/Los_Angeles" });
 
+  // ── SOP Compliance Check-in Notifications (Task #1568) ─────────────────────
+  // Daily at 08:30 IST — fires sop_early_nudge / sop_deadline_reminder /
+  // sop_reinforcement for any check_in rows with scheduled_date = today.
+  // Each check-in is marked completed after firing so it never re-fires.
+  cron.schedule("30 8 * * *", async () => {
+    try {
+      const { fireSopCheckInNotifications } = await import("./sopGoalEngine");
+      const ist = getIstDateTime();
+      const todayStr = `${ist.year}-${String(ist.month).padStart(2, "0")}-${String(ist.day).padStart(2, "0")}`;
+      const result = await fireSopCheckInNotifications(todayStr);
+      console.log(`[scheduler] SOP check-in notifications: fired=${result.fired} errors=${result.errors}`);
+    } catch (err) {
+      console.error("[scheduler] SOP check-in notifications failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
   console.log("[scheduler] All cron jobs scheduled:");
   console.log("  - Salary report hold: last day of month at 6 PM CST → saves as pending_approval");
   console.log("  - Salary report reminder: 1st of month at 8 PM CST → emails super admins if still pending");
@@ -2371,4 +2387,5 @@ export function startScheduler() {
   console.log("  - Policy overdue manager digest: daily 09:00 IST → one email per manager listing direct reports with pending policy sign-off > 2 days overdue");
   console.log("  - Dev inbox weekly purge: Sundays 02:00 IST (non-production only) → removes dev_email_inbox rows older than 7 days");
   console.log("  - Zoom comms daily sync: every minute America/Los_Angeles → fires when current LA time matches zoom_sync_time_pst (default 18:00); data sync + digests for that LA calendar day (gated by zoom_comms_sync_enabled flag; AI step gated by zoom_ai_insights_enabled flag)");
+  console.log("  - SOP compliance check-in notifications: daily 08:30 IST → fires sop_early_nudge/sop_deadline_reminder/sop_reinforcement for due check-ins; marks them completed after firing");
 }

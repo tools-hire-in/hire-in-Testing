@@ -995,6 +995,16 @@ export const performanceGoals = pgTable("performance_goals", {
   suggestedProgressAt: timestamp("suggested_progress_at"),
   progressConfirmedAt: timestamp("progress_confirmed_at"),
   progressConfirmedBy: varchar("progress_confirmed_by").references((): any => adminUsers.id),
+  // ── SOP Compliance Goals (Task #1568) ────────────────────────────────────
+  // source: origin of this goal. 'sop_compliance' = auto-created from SOP wave
+  // assignment; null / 'manual' = hand-created.
+  source: varchar("source"),
+  // parentGoalId: nullable self-reference. Manager roll-up goals set this to null;
+  // individual employee compliance goals point to the manager's roll-up goal.
+  parentGoalId: varchar("parent_goal_id"),
+  // kpiTarget: for manager roll-up goals, the number of direct reports
+  // assigned to the wave. Incremented idempotently on re-run.
+  kpiTarget: integer("kpi_target"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
@@ -1034,6 +1044,9 @@ export const checkIns = pgTable("check_ins", {
   completedAt: timestamp("completed_at"),
   notifiedAt: timestamp("notified_at"),
   managerNotifiedAt: timestamp("manager_notified_at"),
+  // promptKey: for SOP compliance check-ins — identifies the schedule slot.
+  // Values: 'sop_early_nudge' (Day 7) | 'sop_deadline' (Day 15) | 'sop_reinforcement' (Day 30).
+  promptKey: varchar("prompt_key"),
   // Probation accountability (Task #633): per-day dedupe marker for the daily
   // manager overdue reminder, and a once-only marker for milestone (Day
   // 30/60/90) HR/Ops escalation when a formal review is 3+ days overdue.

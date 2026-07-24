@@ -167,6 +167,23 @@ async function ensurePerformanceTables() {
     console.error("performance_goals auto-progress columns migration error:", err);
   }
 
+  // ── SOP Compliance Goals columns (Task #1568) ────────────────────────────
+  try {
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS source VARCHAR`);
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS parent_goal_id VARCHAR`);
+    await db.execute(sql`ALTER TABLE performance_goals ADD COLUMN IF NOT EXISTS kpi_target INTEGER`);
+    await db.execute(sql`ALTER TABLE check_ins ADD COLUMN IF NOT EXISTS prompt_key VARCHAR`);
+    // Partial unique index prevents duplicate sop_compliance goals per employee/SOP
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS performance_goals_sop_compliance_uidx
+      ON performance_goals(employee_id, linked_sop_id)
+      WHERE source = 'sop_compliance' AND category = 'individual'
+    `);
+    log("Ensured SOP compliance goal columns on performance_goals and check_ins");
+  } catch (err) {
+    console.error("SOP compliance goal columns migration error:", err);
+  }
+
   try {
     const result = await db.execute(sql`
       SELECT table_name FROM information_schema.tables

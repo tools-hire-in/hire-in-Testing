@@ -122,7 +122,7 @@ import * as sopGov from "./sopGovernance";
 import { generateSalarySlipHtml, SLIP_MONTH_NAMES, type SalarySlipData } from "@shared/salarySlipHtml";
 import { IndiaStatutoryEngine, computeComponentsFromGross, applyWaterfall, endOfContributionPeriod, rupeesToPaise, paiseToRupees, type IndiaEmployeeConfig, type CoverageConfig, type ResolvedRate, type StructureRule, type WaterfallInput, type StateDeductionConfig } from "./payrollEngine";
 import { syncSopProgressForUser, impactedUserIdsForSop, backfillAllSopProgress, impactedUsersForSopWithLevel, LEVEL_PARAMS, resolveTrainingGroups } from "./sopAssignmentEngine";
-import { ensureSopComplianceGoal } from "./sopComplianceGoals";
+import { createSopComplianceGoal, getComplianceHealth } from "./sopGoalEngine";
 import * as sopRollout from "./sopRollout";
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
@@ -17999,6 +17999,25 @@ Canonical domain: ${BASE}
     }
   });
 
+  // ── SOP Compliance Health (Task #1568) ─────────────────────────────────────
+  // GET /api/sops/compliance-health
+  // Returns per-wave compliance counts for the caller's scope:
+  //   employee   → personal goals only
+  //   manager    → personal + directReportBreakdown
+  //   hr/admin   → org-wide with deptRollup
+  // Cached in a dedicated 5-minute in-memory cache (not inside governance_pulse).
+  app.get("/api/sops/compliance-health", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const role = req.session.role ?? "employee";
+      const data = await getComplianceHealth(userId, role);
+      res.json(data);
+    } catch (err) {
+      console.error("[sopComplianceHealth] error:", err);
+      res.status(500).json({ error: "Failed to compute compliance health" });
+    }
+  });
+
   // Governance dashboard summary — adoption, overdue reviews, training/ack gaps,
   // open findings, audit coverage. Optional filters: category, wave, role, department.
   app.get("/api/sops/compliance/summary", requireAuth, requirePermission("sops.view", "hr", "operations"), async (req: Request, res: Response) => {
@@ -19122,10 +19141,25 @@ Canonical domain: ${BASE}
           });
         } catch (e) { console.error("SOP training notify error:", e); }
       }
+<<<<<<< HEAD
 
       // Auto-create compliance goal + check-in schedule for this assignment
       await ensureSopComplianceGoal(userId, doc, dueDate, waveNumber).catch((e) =>
         console.error("[sopTraining] compliance goal create error:", e));
+=======
+      // Auto-create compliance goal and check-ins (non-fatal — must not roll back assignment)
+      try {
+        const goalResult = await createSopComplianceGoal(userId, doc, actorUserId);
+        if (goalResult.created && goalResult.goalId) {
+          await storage.createAuditLog({
+            actorId: actorUserId,
+            targetId: userId,
+            action: "sop_compliance_goal_created",
+            changes: { sopCode: doc.code, goalId: goalResult.goalId, linkedSopId: doc.id },
+          });
+        }
+      } catch (e) { console.error("[sopGoalEngine] createSopComplianceGoal error (non-fatal):", e); }
+>>>>>>> 14942613 (feat: SOP wave activation — auto-create compliance goals, check-ins & compliance health API)
     }
     return { assignedCount, skippedOutOfRollout, impacted: impactedWithLevel.length, tracksPublished };
   }

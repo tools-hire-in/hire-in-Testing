@@ -146,6 +146,13 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
     typePrefixes: ["sop_early_nudge", "sop_deadline_reminder", "sop_reinforcement"],
   },
   {
+    key: "sop_compliance_nudge",
+    label: "SOP compliance reminders",
+    description: "Scheduled SOP compliance check-in nudges at Day 7, Day 15, and Day 30 after assignment.",
+    category: "performance",
+    typePrefixes: ["sop_early_nudge", "sop_deadline_reminder", "sop_reinforcement"],
+  },
+  {
     key: "performance_plans",
     label: "Growth & probation plans",
     description: "Plan milestones, overdue reminders and escalations.",
