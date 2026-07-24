@@ -2,9 +2,9 @@ import type { Express, Request, Response } from "express";
 import { db } from "./db";
 import {
   learningTracks, trackSections, trackAssignments, trainingSopLinks,
-  roleTrainingRules, adminUsers, onboardingAuditEvents,
+  roleTrainingRules, adminUsers, onboardingAuditEvents, sectionQuizQuestions, sectionQuizOptions,
 } from "@shared/schema";
-import { eq, and, inArray, or, sql, isNotNull } from "drizzle-orm";
+import { eq, and, inArray, or, sql, isNotNull, ilike } from "drizzle-orm";
 import fs from "fs";
 import path from "path";
 
@@ -399,6 +399,279 @@ export function registerTrainingCatalogRoutes(app: Express) {
       } catch (error) {
         console.error("bulk-assign error:", error);
         res.status(500).json({ error: "Failed to bulk assign" });
+      }
+    }
+  );
+
+  // v3 Quiz Bank Seed Import — triggers the v3 training module + quiz question seeder
+  app.post("/api/training/seed-import-v3",
+    (req, res, next) => {
+      if (!req.session?.userId) return res.status(401).json({ error: "Unauthorized" });
+      if (!["super_admin", "admin"].includes(req.session.role!)) return res.status(403).json({ error: "Insufficient permissions" });
+      next();
+    },
+    async (req: Request, res: Response) => {
+      try {
+        const seedPath = path.join(process.cwd(), "attached_assets", "hirein_sop_quiz_bank_v3_seed_1784861801576.json");
+        if (!fs.existsSync(seedPath)) return res.status(404).json({ error: "v3 seed file not found" });
+
+        const raw = fs.readFileSync(seedPath, "utf-8");
+        const seedData = JSON.parse(raw);
+        const modules: any[] = seedData.trainingModules ?? [];
+
+        const HIGH_PASS_IDS = new Set(["HIS-TRN-HC-001", "HIS-TRN-LEGAL-001", "HIS-TRN-OPS-001"]);
+        const getPassingScore = (trainingId: string, moduleScore: number) =>
+          HIGH_PASS_IDS.has(trainingId) ? 90 : (moduleScore ?? 80);
+
+        let tracksUpserted = 0, sectionsCreated = 0, questionsCreated = 0, optionsCreated = 0;
+
+        for (const mod of modules) {
+          const trainingId: string = mod.trainingId;
+          const passingScore = getPassingScore(trainingId, mod.passingScore ?? 80);
+          const audience: string = mod.audience ?? "";
+          let targetRole = "";
+          if (audience.toLowerCase().includes("manager")) targetRole = "manager";
+          else if (audience.toLowerCase().includes("hr")) targetRole = "hr";
+
+          let trackId: string;
+          const [existing] = await db.select({ id: learningTracks.id })
+            .from(learningTracks)
+            .where(eq(learningTracks.trainingId, trainingId))
+            .limit(1);
+
+          if (existing) {
+            trackId = existing.id;
+            await db.execute(sql`
+              UPDATE learning_tracks SET title=${mod.title}, description=${mod.why ?? ""}, passing_score=${passingScore},
+              acknowledgment_required=${mod.acknowledgmentRequired ?? true}, version='3.0', status='published'
+              WHERE id=${trackId}
+            `);
+          } else {
+            const [ins] = await db.insert(learningTracks).values({
+              trainingId, title: mod.title, description: mod.why ?? "", targetRole,
+              version: "3.0", status: "published", isUniversal: targetRole === "", isPolicyTrack: false,
+            } as any).returning({ id: learningTracks.id });
+            trackId = ins.id;
+            await db.execute(sql`UPDATE learning_tracks SET passing_score=${passingScore}, acknowledgment_required=${mod.acknowledgmentRequired ?? true} WHERE id=${trackId}`);
+          }
+          tracksUpserted++;
+
+          // Create lesson sections (orderIndex 0–4)
+          const lessonBlocks: any[] = mod.lessonBlocks ?? [];
+          for (let i = 0; i < lessonBlocks.length; i++) {
+            const lb = lessonBlocks[i];
+            const body = [
+              lb.trainer_notes ? `**Trainer Notes**\n${lb.trainer_notes}` : "",
+              lb.learner_activity ? `**Activity**\n${lb.learner_activity}` : "",
+              lb.evidence ? `**Evidence**\n${lb.evidence}` : "",
+            ].filter(Boolean).join("\n\n");
+            const [existSec] = await db.select({ id: trackSections.id }).from(trackSections)
+              .where(and(eq(trackSections.trackId, trackId), eq(trackSections.orderIndex, i))).limit(1);
+            if (!existSec) {
+              const durationMin = parseInt(String(mod.duration ?? "45")) || 45;
+              await db.insert(trackSections).values({
+                trackId, title: lb.topic ?? `Lesson ${i + 1}`, body, orderIndex: i,
+                estimatedMinutes: Math.max(1, Math.ceil(durationMin / 6)), minDwellSeconds: 90,
+              } as any);
+              sectionsCreated++;
+            }
+          }
+
+          // Create assessment section (orderIndex = 5)
+          const [existAssess] = await db.select({ id: trackSections.id }).from(trackSections)
+            .where(and(eq(trackSections.trackId, trackId), eq(trackSections.orderIndex, 5))).limit(1);
+          let assessId: string;
+          if (existAssess) {
+            assessId = existAssess.id;
+          } else {
+            const [ass] = await db.insert(trackSections).values({
+              trackId, title: "Module Assessment", orderIndex: 5, minDwellSeconds: 0, estimatedMinutes: 10,
+              body: `Complete all ${mod.quizQuestions?.length ?? 8} questions. Required: ${passingScore}%.`,
+            } as any).returning({ id: trackSections.id });
+            assessId = ass.id;
+            sectionsCreated++;
+          }
+
+          // Seed quiz questions
+          const quizQuestions: any[] = mod.quizQuestions ?? [];
+          for (const q of quizQuestions) {
+            const [existQ] = await db.select({ id: sectionQuizQuestions.id }).from(sectionQuizQuestions)
+              .where(and(eq(sectionQuizQuestions.sectionId, assessId), sql`question_id = ${q.questionId}`)).limit(1);
+            if (existQ) continue;
+
+            const optionsJson = JSON.stringify((q.options ?? []).map((o: any, oi: number) => ({
+              key: o.key, text: o.text, isCorrect: o.isCorrect, orderIndex: oi,
+            })));
+            const [ins] = await db.insert(sectionQuizQuestions).values({
+              sectionId: assessId, questionText: q.prompt, explanation: q.rationale ?? "",
+            } as any).returning({ id: sectionQuizQuestions.id });
+            // Arrays must be JSON.stringify-ed before ::jsonb cast (Postgres pg driver would
+            // otherwise convert a JS array to a record literal that fails the cast)
+            const tagsJson2 = JSON.stringify(q.tags ?? []);
+            await db.execute(sql`
+              UPDATE section_quiz_questions SET
+                question_type=${q.question_type ?? "single_choice"}, cognitive_level=${q.cognitive_level ?? ""},
+                tags=${tagsJson2}::jsonb, auto_gradable=${q.auto_gradable ?? true}, points=${q.points ?? 1},
+                options=${optionsJson}::jsonb, correct_option=${q.correct_option ?? ""},
+                correct_answer_text=${q.correct_answer_text ?? ""}, requires_human_review=${q.requires_human_review ?? false},
+                quiz_version=${String(mod.quizVersion ?? "3.0")}, question_no=${q.questionNo}, question_id=${q.questionId}
+              WHERE id=${ins.id}
+            `);
+            questionsCreated++;
+
+            for (let oi = 0; oi < (q.options ?? []).length; oi++) {
+              const opt = q.options[oi];
+              await db.insert(sectionQuizOptions).values({
+                questionId: ins.id, optionText: opt.text, isCorrect: opt.isCorrect === true, orderIndex: oi,
+              } as any);
+              optionsCreated++;
+            }
+          }
+        }
+
+        // ── Post-import QA assertions ──────────────────────────────────────────
+        // Hard-fail if the DB does not reflect the expected v3 state after seeding
+        const [{ total_tracks }] = await db.execute(sql`
+          SELECT COUNT(*) AS total_tracks FROM learning_tracks WHERE training_id LIKE 'HIS-TRN-%'
+        `).then(r => r.rows as any[]);
+
+        // Per-module exact question count check (must be exactly 8 per module assessment)
+        const modulesNotEight = await db.execute(sql`
+          SELECT lt.training_id, COUNT(sqq.id) AS q_count
+          FROM learning_tracks lt
+          JOIN track_sections ts ON ts.track_id = lt.id AND ts.title = 'Module Assessment'
+          JOIN section_quiz_questions sqq ON sqq.section_id = ts.id
+          WHERE lt.training_id LIKE 'HIS-TRN-%'
+          GROUP BY lt.training_id
+          HAVING COUNT(sqq.id) != 8
+        `).then(r => r.rows as any[]);
+
+        const [{ total_questions }] = await db.execute(sql`
+          SELECT COUNT(*) AS total_questions FROM section_quiz_questions
+          WHERE section_id IN (
+            SELECT ts.id FROM track_sections ts
+            JOIN learning_tracks lt ON ts.track_id = lt.id
+            WHERE lt.training_id LIKE 'HIS-TRN-%' AND ts.title = 'Module Assessment'
+          )
+        `).then(r => r.rows as any[]);
+
+        const [{ hr_count }] = await db.execute(sql`
+          SELECT COUNT(*) AS hr_count FROM section_quiz_questions
+          WHERE section_id IN (
+            SELECT ts.id FROM track_sections ts
+            JOIN learning_tracks lt ON ts.track_id = lt.id
+            WHERE lt.training_id LIKE 'HIS-TRN-%' AND ts.title = 'Module Assessment'
+          ) AND requires_human_review = TRUE
+        `).then(r => r.rows as any[]);
+
+        const failures: string[] = [];
+        if (parseInt(total_tracks) < 21) failures.push(`Expected ≥21 HIS-TRN tracks, found ${total_tracks}`);
+        if (parseInt(total_questions) < 168) failures.push(`Expected ≥168 quiz questions, found ${total_questions}`);
+        if (parseInt(hr_count) > 0) failures.push(`Expected 0 requires_human_review questions, found ${hr_count}`);
+        if (modulesNotEight.length > 0) {
+          const detail = modulesNotEight.map((r: any) => `${r.training_id}(${r.q_count}q)`).join(", ");
+          failures.push(`Modules without exactly 8 questions: ${detail}`);
+        }
+
+        if (failures.length > 0) {
+          return res.status(500).json({
+            error: "v3 QA assertions failed — seed incomplete",
+            failures,
+            counts: { total_tracks, total_questions, hr_count }
+          });
+        }
+
+        res.json({
+          tracksUpserted, sectionsCreated, questionsCreated, optionsCreated,
+          qa: { total_tracks: parseInt(total_tracks), total_questions: parseInt(total_questions) }
+        });
+      } catch (err) {
+        console.error("seed-import-v3 error:", err);
+        res.status(500).json({ error: "v3 seed import failed", detail: String(err) });
+      }
+    }
+  );
+
+  // Quiz Question Browser — HR Admin view with cognitive_level + tag filters
+  app.get("/api/training/quiz-questions",
+    requireRole(ADMIN_HR_ROLES),
+    async (req: Request, res: Response) => {
+      try {
+        const { cognitiveLevel, tag, trackId, page = "1", pageSize = "50" } = req.query as Record<string, string>;
+        const limit = Math.min(parseInt(pageSize) || 50, 200);
+        const offset = (Math.max(parseInt(page) || 1, 1) - 1) * limit;
+
+        // Fetch all quiz questions with optional trackId filter via section lookup
+        let sectionIds: string[] | undefined;
+        if (trackId) {
+          const secs = await db.select({ id: trackSections.id }).from(trackSections)
+            .where(eq(trackSections.trackId, trackId));
+          sectionIds = secs.map(s => s.id);
+          if (sectionIds.length === 0) return res.json({ questions: [], total: 0 });
+        }
+
+        const rows = await db.select({
+          id: sectionQuizQuestions.id,
+          sectionId: sectionQuizQuestions.sectionId,
+          questionText: sectionQuizQuestions.questionText,
+          explanation: sectionQuizQuestions.explanation,
+          questionType: sql<string>`${sectionQuizQuestions}.question_type`.as("questionType"),
+          cognitiveLevel: sql<string>`${sectionQuizQuestions}.cognitive_level`.as("cognitiveLevel"),
+          tags: sql<string[]>`${sectionQuizQuestions}.tags`.as("tags"),
+          points: sql<number>`${sectionQuizQuestions}.points`.as("points"),
+          autoGradable: sql<boolean>`${sectionQuizQuestions}.auto_gradable`.as("autoGradable"),
+          questionNo: sql<number>`${sectionQuizQuestions}.question_no`.as("questionNo"),
+          questionId: sql<string>`${sectionQuizQuestions}.question_id`.as("questionId"),
+          quizVersion: sql<string>`${sectionQuizQuestions}.quiz_version`.as("quizVersion"),
+          correctOption: sql<string>`${sectionQuizQuestions}.correct_option`.as("correctOption"),
+        }).from(sectionQuizQuestions)
+          .where(
+            and(
+              sectionIds ? inArray(sectionQuizQuestions.sectionId, sectionIds) : undefined,
+              cognitiveLevel ? sql`${sectionQuizQuestions}.cognitive_level = ${cognitiveLevel}` : undefined,
+              tag ? sql`${sectionQuizQuestions}.tags::jsonb ? ${tag}` : undefined,
+            )
+          )
+          .orderBy(sectionQuizQuestions.sectionId, sql`${sectionQuizQuestions}.question_no`)
+          .limit(limit)
+          .offset(offset);
+
+        // Enrich with track info via section → track lookup
+        const uniqueSectionIds = [...new Set(rows.map(r => r.sectionId).filter(Boolean))];
+        let sectionTrackMap: Record<string, { sectionTitle: string; trackId: string; trackTitle: string }> = {};
+        if (uniqueSectionIds.length > 0) {
+          const secs = await db.select({
+            id: trackSections.id,
+            title: trackSections.title,
+            trackId: trackSections.trackId,
+          }).from(trackSections).where(inArray(trackSections.id, uniqueSectionIds as string[]));
+          const trackIds = [...new Set(secs.map(s => s.trackId).filter(Boolean))];
+          let trackTitles: Record<string, string> = {};
+          if (trackIds.length > 0) {
+            const trs = await db.select({ id: learningTracks.id, title: learningTracks.title })
+              .from(learningTracks).where(inArray(learningTracks.id, trackIds as string[]));
+            trs.forEach(t => { trackTitles[t.id] = t.title; });
+          }
+          secs.forEach(s => {
+            sectionTrackMap[s.id] = {
+              sectionTitle: s.title,
+              trackId: s.trackId,
+              trackTitle: trackTitles[s.trackId] ?? "",
+            };
+          });
+        }
+
+        const enriched = rows.map(q => ({
+          ...q,
+          sectionTitle: sectionTrackMap[q.sectionId!]?.sectionTitle ?? "",
+          trackId: sectionTrackMap[q.sectionId!]?.trackId ?? "",
+          trackTitle: sectionTrackMap[q.sectionId!]?.trackTitle ?? "",
+        }));
+
+        res.json({ questions: enriched, total: enriched.length, page: parseInt(page) || 1, pageSize: limit });
+      } catch (error) {
+        console.error("quiz-questions browse error:", error);
+        res.status(500).json({ error: "Failed to fetch quiz questions" });
       }
     }
   );

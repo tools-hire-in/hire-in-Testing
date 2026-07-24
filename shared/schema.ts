@@ -999,13 +999,6 @@ export const performanceGoals = pgTable("performance_goals", {
   suggestedProgressAt: timestamp("suggested_progress_at"),
   progressConfirmedAt: timestamp("progress_confirmed_at"),
   progressConfirmedBy: varchar("progress_confirmed_by").references((): any => adminUsers.id),
-  // ── SOP Compliance Goals (Task #1568) ────────────────────────────────────
-  // source: origin of this goal. 'sop_compliance' = auto-created from SOP wave
-  // assignment; null / 'manual' = hand-created.
-  source: varchar("source"),
-  // parentGoalId: nullable self-reference. Manager roll-up goals set this to null;
-  // individual employee compliance goals point to the manager's roll-up goal.
-  parentGoalId: varchar("parent_goal_id"),
   // kpiTarget: for manager roll-up goals, the number of direct reports
   // assigned to the wave. Incremented idempotently on re-run.
   kpiTarget: integer("kpi_target"),
@@ -1362,6 +1355,9 @@ export const learningTracks = pgTable("learning_tracks", {
   sopCategory: varchar("sop_category"),     // e.g. "Foundation", "Staffing / TA Delivery"
   trainingId: varchar("training_id"),       // external ID e.g. HIS-TRN-TA-001
   audience: varchar("audience"),            // free-text audience description from seed
+  // SOP v3 training module settings (nullable — safe defaults for existing rows)
+  passingScore: integer("passing_score").default(80),          // e.g. 80 or 90 for HC/Legal/OPS
+  acknowledgmentRequired: boolean("acknowledgment_required").default(true),
 });
 
 // Ordered sections inside a learning track
@@ -1385,6 +1381,20 @@ export const sectionQuizQuestions = pgTable("section_quiz_questions", {
   // A/R/C level filtering (Task #1576): awareness-level learners only see questions marked true
   includeForAwareness: boolean("include_for_awareness").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
+  // v3 Quiz Bank upgrade — new fields for auto-gradable MCQs and scenario rendering
+  questionType: text("question_type").notNull().default("single_choice"), // single_choice | scenario_single_choice
+  cognitiveLevel: text("cognitive_level"),                                // understanding | application | analysis | evaluation | scenario_application
+  tags: jsonb("tags").notNull().default(sql`'[]'::jsonb`),               // string[] topic tags for HR filtering
+  autoGradable: boolean("auto_gradable").notNull().default(true),
+  points: integer("points").notNull().default(1),
+  // options JSONB: [{key, text, isCorrect}] — stored for fast read; section_quiz_options rows kept for relational back-compat
+  options: jsonb("options").notNull().default(sql`'[]'::jsonb`),
+  correctOption: text("correct_option"),             // letter: A | B | C | D
+  correctAnswerText: text("correct_answer_text"),    // full text of correct option
+  requiresHumanReview: boolean("requires_human_review").notNull().default(false),
+  quizVersion: text("quiz_version"),                 // e.g. "v3.0"
+  questionNo: integer("question_no"),                // ordering within a module quiz (1-8)
+  questionId: text("question_id"),                   // canonical ID from seed e.g. HIS-TRN-GOV-001-Q01
 });
 
 // Answer options for quiz questions
@@ -5472,57 +5482,60 @@ export type KnowledgeHubRead = typeof knowledgeHubReads.$inferSelect;
 // Applied via direct SQL at startup (scripts/apply-zoom-comms-schema.ts).
 // Declared here so db:push does not try to delete them on schema drift check.
 export const zoomCallLogs = pgTable("zoom_call_logs", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  email: text("email").notNull(),
-  callId: text("call_id").notNull(),
-  direction: text("direction").notNull().default("outbound"),
-  duration: integer("duration").notNull().default(0),
-  callerNumber: text("caller_number"),
-  calleeNumber: text("callee_number"),
-  result: text("result").notNull().default("answered"),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  zoomCallId: varchar("zoom_call_id").unique(),
+  userId: varchar("user_id"),
+  zoomUserId: varchar("zoom_user_id"),
+  direction: varchar("direction"),
+  duration: integer("duration"),
+  callerNumber: varchar("caller_number"),
+  calleeNumber: varchar("callee_number"),
   startTime: timestamp("start_time"),
   endTime: timestamp("end_time"),
-  syncedDate: date("synced_date").notNull(),
+  status: varchar("status"),
+  rawData: jsonb("raw_data"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const zoomSmsSessions = pgTable("zoom_sms_sessions", {
-  id: text("id").primaryKey(),
-  userId: text("user_id").notNull(),
-  email: text("email").notNull(),
-  sessionId: text("session_id").notNull(),
-  participantNumber: text("participant_number"),
-  messageCount: integer("message_count").notNull().default(0),
-  lastMessageAt: timestamp("last_message_at"),
-  syncedDate: date("synced_date").notNull(),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  zoomSessionId: varchar("zoom_session_id").unique(),
+  userId: varchar("user_id"),
+  zoomUserId: varchar("zoom_user_id"),
+  peerNumber: varchar("peer_number"),
+  sessionStart: timestamp("session_start"),
+  sessionEnd: timestamp("session_end"),
+  messageCount: integer("message_count").default(0),
+  sanitizedThread: text("sanitized_thread"),
   createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
 });
 
 export const zoomSmsMessages = pgTable("zoom_sms_messages", {
-  id: text("id").primaryKey(),
-  sessionId: text("session_id").notNull(),
-  direction: text("direction").notNull().default("outbound"),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull(),
+  zoomMessageId: varchar("zoom_message_id").unique(),
   body: text("body"),
+  direction: varchar("direction"),
   sentAt: timestamp("sent_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const zoomSmsDigests = pgTable("zoom_sms_digests", {
-  id: text("id").primaryKey(),
-  sessionId: text("session_id").notNull(),
-  date: date("date").notNull(),
-  sanitizedDigest: text("sanitized_digest"),
-  sanitizedAt: timestamp("sanitized_at").defaultNow(),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull(),
+  date: varchar("date").notNull(),
+  digestText: text("digest_text"),
+  generatedAt: timestamp("generated_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
 export const zoomAiInsights = pgTable("zoom_ai_insights", {
-  id: text("id").primaryKey(),
-  date: date("date").notNull(),
-  scope: text("scope").notNull().default("user"),
-  scopeId: text("scope_id").notNull(),
-  content: jsonb("content"),
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  insightType: varchar("insight_type").notNull(),
+  subjectId: varchar("subject_id"),
+  subjectType: varchar("subject_type"),
+  content: jsonb("content").notNull(),
   generatedAt: timestamp("generated_at").defaultNow(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -5562,93 +5575,6 @@ export const devEmailInbox = pgTable("dev_email_inbox", {
 });
 
 export type DevEmailInboxEntry = typeof devEmailInbox.$inferSelect;
-
-// ==========================================
-// ZOOM COMMUNICATIONS TABLES
-// ==========================================
-// Applied via scripts/apply-zoom-comms-schema.ts (raw SQL) to avoid
-// drizzle-kit interactive prompts. All tables include createdAt defaults.
-
-export const zoomCallLogs = pgTable("zoom_call_logs", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  zoomCallId: varchar("zoom_call_id").unique(),
-  userId: varchar("user_id").references(() => adminUsers.id, { onDelete: "set null" }),
-  zoomUserId: varchar("zoom_user_id"),
-  direction: varchar("direction"),
-  duration: integer("duration"),
-  callerNumber: varchar("caller_number"),
-  calleeNumber: varchar("callee_number"),
-  startTime: timestamp("start_time"),
-  endTime: timestamp("end_time"),
-  status: varchar("status"),
-  rawData: jsonb("raw_data"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const insertZoomCallLogSchema = createInsertSchema(zoomCallLogs).omit({ id: true, createdAt: true });
-export type ZoomCallLog = typeof zoomCallLogs.$inferSelect;
-export type InsertZoomCallLog = z.infer<typeof insertZoomCallLogSchema>;
-
-export const zoomSmsSessions = pgTable("zoom_sms_sessions", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  zoomSessionId: varchar("zoom_session_id").unique(),
-  userId: varchar("user_id").references(() => adminUsers.id, { onDelete: "set null" }),
-  zoomUserId: varchar("zoom_user_id"),
-  peerNumber: varchar("peer_number"),
-  sessionStart: timestamp("session_start"),
-  sessionEnd: timestamp("session_end"),
-  messageCount: integer("message_count").default(0),
-  sanitizedThread: text("sanitized_thread"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-export const insertZoomSmsSessionSchema = createInsertSchema(zoomSmsSessions).omit({ id: true, createdAt: true, updatedAt: true });
-export type ZoomSmsSession = typeof zoomSmsSessions.$inferSelect;
-export type InsertZoomSmsSession = z.infer<typeof insertZoomSmsSessionSchema>;
-
-export const zoomSmsMessages = pgTable("zoom_sms_messages", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  sessionId: varchar("session_id").notNull().references(() => zoomSmsSessions.id, { onDelete: "cascade" }),
-  zoomMessageId: varchar("zoom_message_id").unique(),
-  body: text("body"),
-  direction: varchar("direction"),
-  sentAt: timestamp("sent_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const insertZoomSmsMessageSchema = createInsertSchema(zoomSmsMessages).omit({ id: true, createdAt: true });
-export type ZoomSmsMessage = typeof zoomSmsMessages.$inferSelect;
-export type InsertZoomSmsMessage = z.infer<typeof insertZoomSmsMessageSchema>;
-
-export const zoomSmsDigests = pgTable("zoom_sms_digests", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  sessionId: varchar("session_id").notNull().references(() => zoomSmsSessions.id, { onDelete: "cascade" }),
-  date: varchar("date").notNull(),
-  digestText: text("digest_text"),
-  generatedAt: timestamp("generated_at"),
-  createdAt: timestamp("created_at").defaultNow(),
-}, (table) => [
-  uniqueIndex("uq_zoom_sms_digests_session_date").on(table.sessionId, table.date),
-]);
-
-export const insertZoomSmsDigestSchema = createInsertSchema(zoomSmsDigests).omit({ id: true, createdAt: true });
-export type ZoomSmsDigest = typeof zoomSmsDigests.$inferSelect;
-export type InsertZoomSmsDigest = z.infer<typeof insertZoomSmsDigestSchema>;
-
-export const zoomAiInsights = pgTable("zoom_ai_insights", {
-  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  insightType: varchar("insight_type").notNull(),
-  subjectId: varchar("subject_id"),
-  subjectType: varchar("subject_type"),
-  content: jsonb("content").notNull(),
-  generatedAt: timestamp("generated_at").defaultNow(),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-
-export const insertZoomAiInsightSchema = createInsertSchema(zoomAiInsights).omit({ id: true, createdAt: true, generatedAt: true });
-export type ZoomAiInsight = typeof zoomAiInsights.$inferSelect;
-export type InsertZoomAiInsight = z.infer<typeof insertZoomAiInsightSchema>;
 
 // ==========================================
 // RECOGNITION CERTIFICATES

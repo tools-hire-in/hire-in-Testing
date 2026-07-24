@@ -4,6 +4,7 @@ import {
   ArrowLeft, BookOpen, Plus, ChevronRight, Trash2, Pencil, Users, Send,
   CheckCircle, Eye, EyeOff, GraduationCap, Clock, Loader2, X, Save, UserPlus, Sprout,
   AlertCircle, CalendarPlus, ShieldAlert, Check, XCircle, ExternalLink, WifiOff, Shield, ShieldOff,
+  FileQuestion, Filter,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -39,6 +40,7 @@ export default function TrainingManagement() {
   const [assignTrackId, setAssignTrackId] = useState<string | null>(null);
   const [seeding, setSeeding] = useState(false);
   const [sopCatalogImporting, setSopCatalogImporting] = useState(false);
+  const [v3Importing, setV3Importing] = useState(false);
   const [showBulkRoleModal, setShowBulkRoleModal] = useState(false);
   const [bulkRoleTrackId, setBulkRoleTrackId] = useState<string>("");
   const [bulkRoleSlug, setBulkRoleSlug] = useState<string>("");
@@ -47,6 +49,10 @@ export default function TrainingManagement() {
   const [showPreview, setShowPreview] = useState(false);
   const [showExtensions, setShowExtensions] = useState(false);
   const [showEndorsements, setShowEndorsements] = useState(false);
+  const [showQuizBank, setShowQuizBank] = useState(false);
+  const [quizBankLevel, setQuizBankLevel] = useState<string>("all");
+  const [quizBankTag, setQuizBankTag] = useState<string>("");
+  const [quizBankTrackId, setQuizBankTrackId] = useState<string>("all");
   const [extensionComment, setExtensionComment] = useState<Record<string, string>>({});
   const [endorseComment, setEndorseComment] = useState<Record<string, string>>({});
 
@@ -149,6 +155,24 @@ export default function TrainingManagement() {
       }
     },
     enabled: isEndorser,
+  });
+
+  const quizBankParams = new URLSearchParams();
+  if (quizBankLevel && quizBankLevel !== "all") quizBankParams.set("cognitiveLevel", quizBankLevel);
+  if (quizBankTag) quizBankParams.set("tag", quizBankTag);
+  if (quizBankTrackId && quizBankTrackId !== "all") quizBankParams.set("trackId", quizBankTrackId);
+
+  const { data: quizBankData, isLoading: quizBankLoading } = useQuery<{ questions: any[]; total: number }>({
+    queryKey: ["/api/training/quiz-questions", quizBankLevel, quizBankTag, quizBankTrackId],
+    queryFn: async () => {
+      try {
+        const res = await fetch(`/api/training/quiz-questions?${quizBankParams.toString()}`, { credentials: "include" });
+        if (!res.ok) return { questions: [], total: 0 };
+        return res.json();
+      } catch { return { questions: [], total: 0 }; }
+    },
+    enabled: showQuizBank,
+    staleTime: 30000,
   });
 
   const { data: catalogTracks = [] } = useQuery<any[]>({
@@ -408,6 +432,25 @@ export default function TrainingManagement() {
     }
   };
 
+  const handleV3Import = async () => {
+    setV3Importing(true);
+    try {
+      const res = await apiRequest("POST", "/api/training/seed-import-v3");
+      const data = await res.json();
+      queryClient.invalidateQueries({ queryKey: ["/api/onboarding/tracks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/training/quiz-questions"] });
+      const parts: string[] = [];
+      if (data.tracksUpserted) parts.push(`${data.tracksUpserted} track(s)`);
+      if (data.sectionsCreated) parts.push(`${data.sectionsCreated} section(s)`);
+      if (data.questionsCreated) parts.push(`${data.questionsCreated} question(s)`);
+      toast({ title: parts.length ? `v3 seed: ${parts.join(", ")} imported` : "v3 quiz bank already up to date" });
+    } catch {
+      toast({ title: "v3 import failed", variant: "destructive" });
+    } finally {
+      setV3Importing(false);
+    }
+  };
+
   const handleSeed = async () => {
     setSeeding(true);
     try {
@@ -543,6 +586,12 @@ export default function TrainingManagement() {
                 Import SOP Catalog
               </Button>
             )}
+            {["super_admin", "admin"].includes(user?.role || "") && (
+              <Button variant="outline" onClick={handleV3Import} disabled={v3Importing} data-testid="button-import-quiz-bank-v3">
+                {v3Importing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <FileQuestion className="h-4 w-4 mr-2" />}
+                Seed Quiz Bank v3
+              </Button>
+            )}
             {["super_admin", "admin", "hr"].includes(user?.role || "") && (
               <Button variant="outline" onClick={() => setShowBulkRoleModal(true)} data-testid="button-bulk-assign-by-role">
                 <Users className="h-4 w-4 mr-2" />
@@ -555,6 +604,16 @@ export default function TrainingManagement() {
                 Load SOP Content
               </Button>
             )}
+            {["super_admin", "admin", "hr"].includes(user?.role || "") && (
+              <Button
+                variant={showQuizBank ? "default" : "outline"}
+                onClick={() => setShowQuizBank(!showQuizBank)}
+                data-testid="button-toggle-quiz-bank"
+              >
+                <FileQuestion className="h-4 w-4 mr-2" />
+                Quiz Bank
+              </Button>
+            )}
             {canAdmin && (
               <Button onClick={() => setShowTrackForm(true)} data-testid="button-new-track">
                 <Plus className="h-4 w-4 mr-2" />
@@ -563,6 +622,126 @@ export default function TrainingManagement() {
             )}
           </div>
         </div>
+
+        {showQuizBank && ["super_admin", "admin", "hr"].includes(user?.role || "") && (
+          <Card data-testid="panel-quiz-bank">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center gap-2">
+                <FileQuestion className="h-5 w-5 text-blue-600" />
+                Quiz Bank Browser
+                {quizBankData && (
+                  <span className="text-xs font-normal text-muted-foreground ml-1">({quizBankData.total} questions)</span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex flex-wrap gap-3 items-end">
+                <div className="space-y-1 min-w-[160px]">
+                  <Label className="text-xs flex items-center gap-1"><Filter className="h-3 w-3" />Cognitive Level</Label>
+                  <Select value={quizBankLevel} onValueChange={setQuizBankLevel}>
+                    <SelectTrigger className="h-8 text-sm" data-testid="select-quiz-cognitive-level">
+                      <SelectValue placeholder="All levels" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Levels</SelectItem>
+                      <SelectItem value="understanding">Understanding</SelectItem>
+                      <SelectItem value="application">Application</SelectItem>
+                      <SelectItem value="analysis">Analysis</SelectItem>
+                      <SelectItem value="evaluation">Evaluation</SelectItem>
+                      <SelectItem value="scenario_application">Scenario Application</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1 min-w-[160px]">
+                  <Label className="text-xs flex items-center gap-1"><Filter className="h-3 w-3" />Tag</Label>
+                  <Input
+                    className="h-8 text-sm"
+                    placeholder="e.g. compliance"
+                    value={quizBankTag}
+                    onChange={e => setQuizBankTag(e.target.value)}
+                    data-testid="input-quiz-tag-filter"
+                  />
+                </div>
+                <div className="space-y-1 min-w-[200px]">
+                  <Label className="text-xs flex items-center gap-1"><Filter className="h-3 w-3" />Training Module</Label>
+                  <Select value={quizBankTrackId} onValueChange={setQuizBankTrackId}>
+                    <SelectTrigger className="h-8 text-sm" data-testid="select-quiz-track-filter">
+                      <SelectValue placeholder="All modules" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Modules</SelectItem>
+                      {tracks.map((t: any) => (
+                        <SelectItem key={t.id} value={t.id}>{t.title}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 self-end"
+                  onClick={() => { setQuizBankLevel("all"); setQuizBankTag(""); setQuizBankTrackId("all"); }}
+                  data-testid="button-clear-quiz-filters"
+                >
+                  Clear Filters
+                </Button>
+              </div>
+
+              {quizBankLoading && (
+                <div className="flex items-center gap-2 text-muted-foreground text-sm py-4">
+                  <Loader2 className="h-4 w-4 animate-spin" /> Loading questions...
+                </div>
+              )}
+              {!quizBankLoading && quizBankData && quizBankData.questions.length === 0 && (
+                <p className="text-sm text-muted-foreground py-4 text-center">No questions match the current filters.</p>
+              )}
+              {!quizBankLoading && quizBankData && quizBankData.questions.length > 0 && (
+                <div className="divide-y border rounded-md overflow-hidden max-h-[480px] overflow-y-auto">
+                  {quizBankData.questions.map((q: any, idx: number) => (
+                    <div key={q.id} className="px-4 py-3 hover:bg-muted/40 transition-colors" data-testid={`quiz-bank-question-${q.id ?? idx}`}>
+                      <div className="flex items-start gap-3">
+                        <span className="text-xs font-semibold text-muted-foreground shrink-0 mt-0.5 w-8">
+                          {q.questionNo != null ? `Q${q.questionNo}` : `#${idx + 1}`}
+                        </span>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                            {q.questionType === "scenario_single_choice" && (
+                              <span className="text-xs font-semibold px-1.5 py-0.5 rounded bg-[#1F3A6E]/10 text-[#1F3A6E]">Case</span>
+                            )}
+                            {q.cognitiveLevel && (
+                              <span className="text-xs font-medium px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">{q.cognitiveLevel}</span>
+                            )}
+                            {q.quizVersion && (
+                              <span className="text-xs text-muted-foreground">v{q.quizVersion}</span>
+                            )}
+                            {Array.isArray(q.tags) && q.tags.map((tag: string) => (
+                              <span key={tag} className="text-xs px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground">{tag}</span>
+                            ))}
+                          </div>
+                          <p className="text-sm font-medium text-foreground leading-snug line-clamp-2">{q.questionText}</p>
+                          {q.trackTitle && (
+                            <p className="text-xs text-muted-foreground mt-1 truncate">
+                              <span className="font-medium text-foreground/70">{q.trackTitle}</span>
+                              {q.sectionTitle && ` › ${q.sectionTitle}`}
+                            </p>
+                          )}
+                          {q.correctOption && (
+                            <p className="text-xs text-green-700 mt-1">✓ Correct: {q.correctOption}</p>
+                          )}
+                        </div>
+                        <div className="shrink-0 text-right">
+                          {q.points != null && q.points !== 1 && (
+                            <span className="text-xs text-muted-foreground">{q.points}pt</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {showEndorsements && isEndorser && (
           <Card data-testid="panel-endorsements">

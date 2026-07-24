@@ -3524,6 +3524,27 @@ async function runStartupTasks() {
   // prevents "column does not exist" on first boot.
   await ensureSopArcSchema();
 
+  // SOP Training v3 schema upgrade: new columns on section_quiz_questions + learning_tracks
+  try {
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS question_type TEXT NOT NULL DEFAULT 'single_choice'`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS cognitive_level TEXT`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS tags JSONB NOT NULL DEFAULT '[]'::jsonb`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS auto_gradable BOOLEAN NOT NULL DEFAULT TRUE`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS points INTEGER NOT NULL DEFAULT 1`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS options JSONB NOT NULL DEFAULT '[]'::jsonb`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS correct_option TEXT`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS correct_answer_text TEXT`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS requires_human_review BOOLEAN NOT NULL DEFAULT FALSE`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS quiz_version TEXT`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS question_no INTEGER`);
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS question_id TEXT`);
+    await db.execute(sql`ALTER TABLE learning_tracks ADD COLUMN IF NOT EXISTS passing_score INTEGER DEFAULT 80`);
+    await db.execute(sql`ALTER TABLE learning_tracks ADD COLUMN IF NOT EXISTS acknowledgment_required BOOLEAN DEFAULT TRUE`);
+    log("SOP Training v3 schema columns ensured on section_quiz_questions and learning_tracks");
+  } catch (err) {
+    console.error("SOP Training v3 schema migration error:", err);
+  }
+
   try {
     const [firstAdmin] = await db.select({ id: adminUsers.id })
       .from(adminUsers)

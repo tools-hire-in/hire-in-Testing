@@ -310,7 +310,7 @@ export async function syncDailyLogsForUser(
       callsUpserted++;
     }
   } catch (err) {
-    console.warn(\`[zoomService] call log sync failed for \${email}:\`, err);
+    console.warn(`[zoomService] call log sync failed for ${email}:`, err);
   }
 
   // ── SMS sessions ───────────────────────────────────────────────────────────
@@ -358,7 +358,7 @@ export async function syncDailyLogsForUser(
       await generateDigest(sanitized, String(session.session_id), date, db, sql);
     }
   } catch (err) {
-    console.warn(\`[zoomService] SMS sync failed for \${email}:\`, err);
+    console.warn(`[zoomService] SMS sync failed for ${email}:`, err);
   }
 
   return { callsUpserted, sessionsUpserted };
@@ -374,7 +374,7 @@ export async function syncAllUsersForDate(
   sql: any,
   runAi: boolean = true,
 ): Promise<{ usersProcessed: number; totalCalls: number; totalSessions: number }> {
-  console.log(\`[zoomService] Starting daily sync for \${date}\`);
+  console.log(`[zoomService] Starting daily sync for ${date}`);
 
   // Update sync meta to 'running'
   await db.execute(sql`
@@ -414,9 +414,9 @@ export async function syncAllUsersForDate(
         usersProcessed++;
         totalCalls += callsUpserted;
         totalSessions += sessionsUpserted;
-        console.log(\`[zoomService] Synced \${zUser.email}: \${callsUpserted} calls, \${sessionsUpserted} SMS sessions\`);
+        console.log(`[zoomService] Synced ${zUser.email}: ${callsUpserted} calls, ${sessionsUpserted} SMS sessions`);
       } catch (err) {
-        console.warn(\`[zoomService] Sync failed for \${zUser.email}:\`, err);
+        console.warn(`[zoomService] Sync failed for ${zUser.email}:`, err);
       }
     }
 
@@ -428,7 +428,7 @@ export async function syncAllUsersForDate(
       WHERE id = 'singleton'
     `).catch(() => {});
 
-    console.log(\`[zoomService] Sync complete: \${usersProcessed} users, \${totalCalls} calls, \${totalSessions} sessions\`);
+    console.log(`[zoomService] Sync complete: ${usersProcessed} users, ${totalCalls} calls, ${totalSessions} sessions`);
 
     // Trigger AI insights pass
     if (runAi) {
@@ -505,7 +505,7 @@ export async function runAiInsightsForDate(
       `)) as any;
       const rolling = (Array.isArray(rollingRows?.rows) ? rollingRows.rows : rollingRows ?? [])[0];
       const rollingPatternSummary = rolling
-        ? \`30-day: \${rolling.call_count} total calls, avg \${rolling.avg_duration}s duration, \${rolling.missed_count} missed.\`
+        ? `30-day: ${rolling.call_count} total calls, avg ${rolling.avg_duration}s duration, ${rolling.missed_count} missed.`
         : "No rolling history yet.";
 
       const insight = await generateRecruiterInsight({
@@ -522,7 +522,7 @@ export async function runAiInsightsForDate(
       }
       recruiterSummaries.push({ email: zUser.email, insight });
     } catch (err) {
-      console.warn(\`[zoomService] AI insights failed for \${zUser.email}:\`, err);
+      console.warn(`[zoomService] AI insights failed for ${zUser.email}:`, err);
       recruiterSummaries.push({ email: zUser.email, insight: null });
     }
   }
@@ -572,3 +572,4 @@ export async function runAiInsightsForDate(
 export async function triggerManualSync(date?: string): Promise<SyncSummary> {
   const targetDate = date ?? new Date().toISOString().slice(0, 10);
   return syncAllUsersForDate(targetDate);
+}

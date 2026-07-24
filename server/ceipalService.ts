@@ -1004,6 +1004,8 @@ export async function getCeipalPlacementDetails(placementId: string): Promise<Ce
     console.warn(`[ceipal] getCeipalPlacementDetails(${placementId}) error:`, err.message);
     return null;
   }
+}
+
 /**
  * Known interview stage names from Ceipal ATS.
  * Used instead of loose "includes('interview')" to avoid false positives
@@ -1644,115 +1646,6 @@ export async function getCeipalRecruiterMetrics(
   } catch (err: any) {
     console.warn("[ceipal] getCeipalRecruiterMetrics error:", err.message);
     return { metrics: [], zoomAvailable: false, ceipalAvailable: false };
-  }
-}
-
-// ── Ceipal v2 API helpers ─────────────────────────────────────────────────────
-// These functions call Ceipal's v2 REST endpoints using the shared token cache
-// and the fetchWithTokenRetry helper for automatic 401 recovery.
-
-/** Fetch interview details from Ceipal v2. */
-export async function getCeipalInterviewDetails(interviewId: string): Promise<{
-  id: string;
-  candidateName?: string;
-  recruiterEmail?: string;
-  interviewDate?: string;
-  type?: string;
-  status?: string;
-} | null> {
-  try {
-    const url = `https://api.ceipal.com/v2/getInterviewDetails/${interviewId}/`;
-    const res = await fetchWithTokenRetry(url);
-    if (!res.ok) {
-      console.warn(`[ceipal-v2] getInterviewDetails ${interviewId} → ${res.status}`);
-      return null;
-    }
-    const data = await res.json();
-    return {
-      id: String(data.id ?? interviewId),
-      candidateName: data.candidate_name ?? undefined,
-      recruiterEmail: data.recruiter_email ?? undefined,
-      interviewDate: data.interview_date ?? data.scheduled_date ?? undefined,
-      type: data.interview_type ?? data.type ?? undefined,
-      status: data.status ?? undefined,
-    };
-  } catch (err: any) {
-    console.warn(`[ceipal-v2] getInterviewDetails error: ${err.message}`);
-    return null;
-  }
-}
-
-/** Fetch placement details (bill rate, pay rate, start/end dates) from Ceipal v2. */
-export async function getCeipalPlacementDetails(placementId: string): Promise<{
-  id: string;
-  candidateName?: string;
-  recruiterEmail?: string;
-  billRate?: number;
-  payRate?: number;
-  startDate?: string;
-  endDate?: string;
-  clientName?: string;
-} | null> {
-  try {
-    const url = `https://api.ceipal.com/v2/getPlacementDetails/${placementId}/`;
-    const res = await fetchWithTokenRetry(url);
-    if (!res.ok) {
-      console.warn(`[ceipal-v2] getPlacementDetails ${placementId} → ${res.status}`);
-      return null;
-    }
-    const data = await res.json();
-    return {
-      id: String(data.id ?? placementId),
-      candidateName: data.candidate_name ?? undefined,
-      recruiterEmail: data.recruiter_email ?? undefined,
-      billRate: data.bill_rate != null ? Number(data.bill_rate) : undefined,
-      payRate: data.pay_rate != null ? Number(data.pay_rate) : undefined,
-      startDate: data.start_date ?? undefined,
-      endDate: data.end_date ?? undefined,
-      clientName: data.client_name ?? data.client ?? undefined,
-    };
-  } catch (err: any) {
-    console.warn(`[ceipal-v2] getPlacementDetails error: ${err.message}`);
-    return null;
-  }
-}
-
-/** Fetch job posting details from Ceipal v2. */
-export async function getCeipalJobPostingDetails(jobId: string): Promise<{
-  id: string;
-  title?: string;
-  clientName?: string;
-  billRate?: number;
-  payRate?: number;
-  status?: string;
-  openings?: number;
-  industry?: string;
-  primaryRecruiter?: string;
-  assignedRecruiter?: string;
-} | null> {
-  try {
-    const url = `https://api.ceipal.com/v2/getJobPostingDetails/${jobId}/`;
-    const res = await fetchWithTokenRetry(url);
-    if (!res.ok) {
-      console.warn(`[ceipal-v2] getJobPostingDetails ${jobId} → ${res.status}`);
-      return null;
-    }
-    const data = await res.json();
-    return {
-      id: String(data.id ?? jobId),
-      title: data.title ?? data.job_title ?? undefined,
-      clientName: data.client_name ?? data.client ?? undefined,
-      billRate: data.bill_rate != null ? Number(data.bill_rate) : undefined,
-      payRate: data.pay_rate != null ? Number(data.pay_rate) : undefined,
-      status: data.status ?? undefined,
-      openings: data.openings ?? data.number_of_openings ?? undefined,
-      industry: data.industry ?? data.vertical ?? undefined,
-      primaryRecruiter: data.primary_recruiter ?? data.recruiter_name ?? undefined,
-      assignedRecruiter: data.assigned_recruiter ?? data.assigned_to ?? undefined,
-    };
-  } catch (err: any) {
-    console.warn(`[ceipal-v2] getJobPostingDetails error: ${err.message}`);
-    return null;
   }
 }
 

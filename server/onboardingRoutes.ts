@@ -234,16 +234,23 @@ export function registerOnboardingRoutes(app: Express) {
         .orderBy(trackSections.orderIndex);
 
       // Include quiz questions + options for each section
+      // Multi-question support: if a section has >1 question, return quiz.questions[] array
+      // For backward compat: single-question sections still return quiz as a flat object
       const enriched = await Promise.all(sections.map(async (section) => {
-        const [question] = await db.select().from(sectionQuizQuestions)
-          .where(eq(sectionQuizQuestions.sectionId, section.id));
-        if (question) {
+        const questions = await db.select().from(sectionQuizQuestions)
+          .where(eq(sectionQuizQuestions.sectionId, section.id))
+          .orderBy(sectionQuizQuestions.questionNo);
+        if (questions.length === 0) return { ...section, quiz: null };
+        const questionsWithOptions = await Promise.all(questions.map(async (q) => {
           const options = await db.select().from(sectionQuizOptions)
-            .where(eq(sectionQuizOptions.questionId, question.id))
+            .where(eq(sectionQuizOptions.questionId, q.id))
             .orderBy(sectionQuizOptions.orderIndex);
-          return { ...section, quiz: { ...question, options } };
+          return { ...q, options };
+        }));
+        if (questionsWithOptions.length === 1) {
+          return { ...section, quiz: questionsWithOptions[0] };
         }
-        return { ...section, quiz: null };
+        return { ...section, quiz: { questions: questionsWithOptions, isMulti: true } };
       }));
 
       res.json(enriched);
@@ -494,19 +501,26 @@ export function registerOnboardingRoutes(app: Express) {
       const sectionsWithProgress = await Promise.all(sections.map(async (section) => {
         const progress = progressRows.find(p => p.sectionId === section.id) || null;
         const ack = ackRows.find(a => a.sectionId === section.id) || null;
-        const [question] = await db.select().from(sectionQuizQuestions)
-          .where(eq(sectionQuizQuestions.sectionId, section.id));
-        if (question) {
-          // For awareness-level, only show quiz if flagged include_for_awareness=true
-          if (isAwarenessLevel && !(question as any).includeForAwareness) {
-            return { ...section, quiz: null, progress, acknowledgement: ack };
-          }
-          const options = await db.select().from(sectionQuizOptions)
-            .where(eq(sectionQuizOptions.questionId, question.id))
-            .orderBy(sectionQuizOptions.orderIndex);
-          return { ...section, quiz: { ...question, options }, progress, acknowledgement: ack };
+        const allQuestions = await db.select().from(sectionQuizQuestions)
+          .where(eq(sectionQuizQuestions.sectionId, section.id))
+          .orderBy(sectionQuizQuestions.questionNo);
+        if (allQuestions.length === 0) {
+          return { ...section, quiz: null, progress, acknowledgement: ack };
         }
-        return { ...section, quiz: null, progress, acknowledgement: ack };
+        // For awareness-level single-question sections, skip unless flagged
+        if (isAwarenessLevel && allQuestions.length === 1 && !(allQuestions[0] as any).includeForAwareness) {
+          return { ...section, quiz: null, progress, acknowledgement: ack };
+        }
+        const questionsWithOptions = await Promise.all(allQuestions.map(async (q) => {
+          const options = await db.select().from(sectionQuizOptions)
+            .where(eq(sectionQuizOptions.questionId, q.id))
+            .orderBy(sectionQuizOptions.orderIndex);
+          return { ...q, options };
+        }));
+        if (questionsWithOptions.length === 1) {
+          return { ...section, quiz: questionsWithOptions[0], progress, acknowledgement: ack };
+        }
+        return { ...section, quiz: { questions: questionsWithOptions, isMulti: true }, progress, acknowledgement: ack };
       }));
 
       const [track] = await db.select().from(learningTracks)
@@ -622,6 +636,83 @@ export function registerOnboardingRoutes(app: Express) {
       });
     } catch (error) {
       console.error(error);
+      res.status(500).json({ error: "Failed to submit quiz" });
+    }
+  });
+
+  // Batch quiz submission — for multi-question sections (v3 quiz bank)
+  // Accepts all answers at once; computes score against the section's passing_score threshold.
+  app.post("/api/onboarding/progress/:assignmentId/:sectionId/quiz-batch", async (req: Request, res: Response) => {
+    if (!requireOnboardingAccess(req, res)) return;
+    try {
+      const { assignmentId, sectionId } = req.params as { assignmentId: string; sectionId: string };
+      const userId = req.session.userId!;
+      const { answers } = req.body as { answers: { questionId: string; optionId: string }[] };
+
+      if (!Array.isArray(answers) || answers.length === 0) {
+        return res.status(400).json({ error: "answers array is required" });
+      }
+
+      // Fetch all questions for the section
+      const questions = await db.select().from(sectionQuizQuestions)
+        .where(eq(sectionQuizQuestions.sectionId, sectionId))
+        .orderBy(sectionQuizQuestions.questionNo);
+      if (questions.length === 0) return res.status(404).json({ error: "No quiz questions for this section" });
+
+      // Fetch passing score from assignment → track
+      const [assignment] = await db.select().from(trackAssignments).where(eq(trackAssignments.id, assignmentId));
+      if (!assignment) return res.status(404).json({ error: "Assignment not found" });
+      const [track] = await db.select({ passingScore: learningTracks.passingScore })
+        .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
+      // Track-level passing_score takes priority; assignment.requiredPassScore is only a fallback
+      // (it defaults to 80 on the assignment row and would mask per-module 90% thresholds otherwise)
+      const requiredPassScore = track?.passingScore ?? (assignment as any).requiredPassScore ?? 80;
+
+      // Grade each answer
+      const results = await Promise.all(questions.map(async (q) => {
+        const answer = answers.find(a => a.questionId === q.id);
+        if (!answer) return { questionId: q.id, questionNo: (q as any).questionNo, prompt: q.questionText, isCorrect: false, explanation: q.explanation, correctOptionId: null, correctOption: (q as any).correctOption, selectedOptionId: null };
+        const options = await db.select().from(sectionQuizOptions)
+          .where(eq(sectionQuizOptions.questionId, q.id));
+        const selected = options.find(o => o.id === answer.optionId);
+        const correct = options.find(o => o.isCorrect);
+        const isCorrect = selected?.isCorrect === true;
+        return {
+          questionId: q.id,
+          questionNo: (q as any).questionNo,
+          prompt: q.questionText,
+          questionType: (q as any).questionType,
+          isCorrect,
+          explanation: q.explanation,
+          correctOptionId: correct?.id ?? null,
+          correctOption: (q as any).correctOption,
+          correctAnswerText: (q as any).correctAnswerText,
+          selectedOptionId: answer.optionId,
+          selectedText: selected?.optionText ?? null,
+        };
+      }));
+
+      const correctCount = results.filter(r => r.isCorrect).length;
+      const totalQuestions = questions.length;
+      const scorePercent = Math.round((correctCount / totalQuestions) * 100);
+      const passed = scorePercent >= requiredPassScore;
+
+      // Update section progress: increment attempts, store pass/fail
+      const existingAttempts = await db.select({ quizAttempts: sectionProgress.quizAttempts })
+        .from(sectionProgress)
+        .where(and(eq(sectionProgress.assignmentId, assignmentId), eq(sectionProgress.sectionId, sectionId)));
+      const prevAttempts = existingAttempts[0]?.quizAttempts ?? 0;
+      await db.update(sectionProgress)
+        .set({ quizAttempts: prevAttempts + 1, quizPassed: passed })
+        .where(and(eq(sectionProgress.assignmentId, assignmentId), eq(sectionProgress.sectionId, sectionId)));
+
+      await appendAuditEvent(userId, "quiz_batch_answered", {
+        assignmentId, sectionId, correctCount, totalQuestions, scorePercent, passed, attempt: prevAttempts + 1,
+      });
+
+      res.json({ passed, scorePercent, correctCount, totalQuestions, requiredPassScore, results });
+    } catch (error) {
+      console.error("quiz-batch error:", error);
       res.status(500).json({ error: "Failed to submit quiz" });
     }
   });
@@ -763,10 +854,13 @@ export function registerOnboardingRoutes(app: Express) {
         return res.status(400).json({ error: "Not all sections acknowledged", remaining: sections.length - acks.length });
       }
 
-      // Level-aware quiz enforcement: verify required_question_count and required_pass_score
-      // from the assignment snapshot (applied to quizzed sections in this track)
+      // Level-aware quiz enforcement: verify required_question_count and required_pass_score.
+      // Track-level passing_score takes priority over the assignment default (80) so that
+      // per-module elevated thresholds (e.g. 90% for HC/Legal/OPS) are correctly enforced.
+      const [completionTrack] = await db.select({ passingScore: learningTracks.passingScore })
+        .from(learningTracks).where(eq(learningTracks.id, assignment.trackId));
       const requiredQuestionCount = (assignment as any).requiredQuestionCount ?? 8;
-      const requiredPassScore = (assignment as any).requiredPassScore ?? 80;
+      const requiredPassScore = completionTrack?.passingScore ?? (assignment as any).requiredPassScore ?? 80;
       if (requiredQuestionCount > 0) {
         const allProgress = await db.select().from(sectionProgress)
           .where(eq(sectionProgress.assignmentId, assignmentId));

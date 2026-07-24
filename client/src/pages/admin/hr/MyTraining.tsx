@@ -89,6 +89,86 @@ function DwellTimer({
   );
 }
 
+function ScenarioBanner({ prompt }: { prompt: string }) {
+  return (
+    <div data-testid="quiz-scenario-question" className="rounded-md overflow-hidden border border-[#1F3A6E]/30 mb-3">
+      <div className="bg-[#1F3A6E] px-3 py-1.5 flex items-center gap-2">
+        <FileQuestion className="h-3.5 w-3.5 text-white shrink-0" />
+        <span className="text-xs font-bold text-white uppercase tracking-wider">Case Scenario</span>
+      </div>
+      <div className="bg-[#1F3A6E]/5 px-4 py-3">
+        <p className="text-sm text-foreground leading-relaxed">{prompt}</p>
+      </div>
+    </div>
+  );
+}
+
+function SingleQuestionCard({
+  q,
+  index,
+  total,
+  selected,
+  onSelect,
+  revealed,
+}: {
+  q: any; index: number; total: number;
+  selected: string | null;
+  onSelect: (optId: string) => void;
+  revealed: boolean;
+}) {
+  const isScenario = q.questionType === "scenario_single_choice";
+  return (
+    <div
+      className="border rounded-lg p-4 space-y-3 bg-white"
+      data-testid={isScenario ? "quiz-scenario-question" : "quiz-standard-question"}
+    >
+      <div className="flex items-start gap-2">
+        <span className="text-xs font-semibold text-muted-foreground shrink-0 mt-0.5">Q{index + 1}/{total}</span>
+        {isScenario && (
+          <span className="text-xs font-semibold text-[#1F3A6E] bg-[#1F3A6E]/10 px-2 py-0.5 rounded shrink-0">Case</span>
+        )}
+      </div>
+      {isScenario ? (
+        <ScenarioBanner prompt={q.questionText} />
+      ) : (
+        <p className="text-sm font-medium text-foreground">{q.questionText}</p>
+      )}
+      <div className="space-y-2">
+        {q.options.map((opt: any) => {
+          const isChosen = selected === opt.id;
+          const isCorrectReveal = revealed && opt.isCorrect;
+          const isWrongReveal = revealed && isChosen && !opt.isCorrect;
+          return (
+            <label
+              key={opt.id}
+              className={`flex items-start gap-3 p-2.5 rounded-md border cursor-pointer transition-colors text-sm
+                ${isCorrectReveal ? "bg-green-50 border-green-400 text-green-800" : ""}
+                ${isWrongReveal ? "bg-red-50 border-red-400 text-red-800" : ""}
+                ${!revealed && isChosen ? "bg-blue-50 border-blue-400" : ""}
+                ${!revealed && !isChosen ? "hover:bg-muted/60 border-border" : ""}
+              `}
+            >
+              <input
+                type="radio"
+                name={`quiz-multi-${q.id}`}
+                value={opt.id}
+                checked={isChosen}
+                onChange={() => !revealed && onSelect(opt.id)}
+                disabled={revealed}
+                className="mt-0.5 shrink-0"
+              />
+              <span className="flex-1">
+                <span className="font-mono text-xs text-muted-foreground mr-1.5">{opt.orderIndex !== undefined ? String.fromCharCode(65 + opt.orderIndex) : ""}.</span>
+                {opt.optionText}
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function QuizBlock({
   quiz,
   assignmentId,
@@ -101,9 +181,114 @@ function QuizBlock({
   onPassed: () => void;
 }) {
   const { toast } = useToast();
+
+  // ── Multi-question mode (v3 Quiz Bank) ─────────────────────────────────────
+  const isMulti = quiz?.isMulti === true && Array.isArray(quiz?.questions);
+
+  const [selections, setSelections] = useState<Record<string, string>>({}); // questionId → optionId
+  const [batchResult, setBatchResult] = useState<any | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  // ── Single-question mode (legacy) ──────────────────────────────────────────
   const [selected, setSelected] = useState<string | null>(null);
   const [result, setResult] = useState<any | null>(null);
-  const [submitting, setSubmitting] = useState(false);
+
+  if (isMulti) {
+    const questions: any[] = quiz.questions;
+    const allAnswered = questions.every(q => selections[q.id]);
+    const answeredCount = Object.keys(selections).length;
+
+    const handleBatchSubmit = async () => {
+      if (!allAnswered) return;
+      setSubmitting(true);
+      try {
+        const answers = questions.map(q => ({ questionId: q.id, optionId: selections[q.id] }));
+        const res = await apiRequest("POST", `/api/onboarding/progress/${assignmentId}/${sectionId}/quiz-batch`, { answers });
+        const data = await res.json();
+        setBatchResult(data);
+        if (data.passed) onPassed();
+      } catch {
+        toast({ title: "Failed to submit quiz", variant: "destructive" });
+      } finally {
+        setSubmitting(false);
+      }
+    };
+
+    const handleRetake = () => {
+      setSelections({});
+      setBatchResult(null);
+    };
+
+    return (
+      <div className="space-y-4">
+        <div className="flex items-center justify-between">
+          <p className="font-semibold text-sm flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-blue-600" />
+            Module Assessment — {questions.length} Questions
+          </p>
+          {!batchResult && (
+            <span className="text-xs text-muted-foreground">{answeredCount}/{questions.length} answered</span>
+          )}
+        </div>
+
+        {batchResult && (
+          <div className={`rounded-lg p-4 border ${batchResult.passed ? "bg-green-50 border-green-300 text-green-900" : "bg-red-50 border-red-300 text-red-900"}`}>
+            <p className="font-bold text-base mb-1">
+              {batchResult.passed ? "✓ Quiz Passed!" : "✗ Quiz Not Passed"}
+            </p>
+            <p className="text-sm">
+              Score: <strong>{batchResult.scorePercent}%</strong> ({batchResult.correctCount}/{batchResult.totalQuestions} correct)
+              — Required: {batchResult.requiredPassScore}%
+            </p>
+          </div>
+        )}
+
+        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+          {questions.map((q: any, idx: number) => {
+            const qResult = batchResult?.results?.find((r: any) => r.questionId === q.id);
+            return (
+              <div key={q.id} className="space-y-1">
+                <SingleQuestionCard
+                  q={q}
+                  index={idx}
+                  total={questions.length}
+                  selected={selections[q.id] ?? null}
+                  onSelect={(optId) => setSelections(prev => ({ ...prev, [q.id]: optId }))}
+                  revealed={!!batchResult}
+                />
+                {batchResult && qResult && (
+                  <div className={`text-xs px-3 py-2 rounded ${qResult.isCorrect ? "bg-green-50 text-green-800" : "bg-amber-50 text-amber-800"}`}>
+                    {qResult.isCorrect ? "✓ Correct" : `✗ Correct answer: ${qResult.correctOption}`}
+                    {qResult.explanation && <span className="ml-2 text-muted-foreground">— {qResult.explanation}</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {!batchResult && (
+          <Button
+            onClick={handleBatchSubmit}
+            disabled={!allAnswered || submitting}
+            className="w-full"
+            data-testid="button-submit-quiz"
+          >
+            {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : null}
+            Submit All {questions.length} Answers
+          </Button>
+        )}
+        {batchResult && !batchResult.passed && (
+          <Button size="sm" variant="outline" onClick={handleRetake} className="w-full" data-testid="button-retake-quiz">
+            Retake Quiz
+          </Button>
+        )}
+      </div>
+    );
+  }
+
+  // ── Single-question legacy mode ─────────────────────────────────────────────
+  const isScenario = quiz.questionType === "scenario_single_choice";
 
   const handleSubmit = async () => {
     if (!selected) return;
@@ -123,12 +308,20 @@ function QuizBlock({
   const canRetry = result && !result.passed && result.attempts < 3;
 
   return (
-    <div className="border rounded-lg p-4 space-y-4 bg-muted/30">
+    <div
+      className="border rounded-lg p-4 space-y-4 bg-muted/30"
+      data-testid={isScenario ? "quiz-scenario-question" : "quiz-standard-question"}
+    >
       <p className="font-semibold text-sm flex items-center gap-2">
         <AlertCircle className="h-4 w-4 text-blue-600" />
         Comprehension Check
       </p>
-      <p className="text-sm font-medium">{quiz.questionText}</p>
+
+      {isScenario ? (
+        <ScenarioBanner prompt={quiz.questionText} />
+      ) : (
+        <p className="text-sm font-medium">{quiz.questionText}</p>
+      )}
 
       <div className="space-y-2">
         {quiz.options.map((opt: any) => {
