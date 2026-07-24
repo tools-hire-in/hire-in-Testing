@@ -498,6 +498,15 @@ export async function syncAllUsersForDate(date: string): Promise<SyncSummary> {
     }
   }
 
+  // ── AI Insights Engine ────────────────────────────────────────────────────
+  // Run after digests are complete so the insights engine can read them.
+  try {
+    const { generateInsightsForDate } = await import("./zoomInsightsService");
+    await generateInsightsForDate(date);
+  } catch (err) {
+    console.warn("[zoomService] syncAllUsersForDate — AI insights generation failed (non-fatal):", err);
+  }
+
   console.log(
     `[zoomService] syncAllUsersForDate complete — date=${date} users=${summary.usersProcessed} calls=${summary.callsStored} sessions=${summary.sessionsStored} digests=${summary.digestsGenerated} errors=${summary.errors.length}`,
   );
