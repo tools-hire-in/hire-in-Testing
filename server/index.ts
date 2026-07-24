@@ -4297,6 +4297,8 @@ async function runStartupTasks() {
     await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS exception_comment TEXT`);
     await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS exception_resolved_by VARCHAR REFERENCES admin_users(id)`);
     await db.execute(sql`ALTER TABLE attendance ADD COLUMN IF NOT EXISTS exception_resolved_at TIMESTAMP`);
+    await db.execute(sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS primary_recruiter VARCHAR`);
+    await db.execute(sql`ALTER TABLE jobs ADD COLUMN IF NOT EXISTS assigned_recruiter VARCHAR`);
     await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_att_exception_status ON attendance(exception_status) WHERE exception_status IS NOT NULL`);
     // Escalation dedup log — one row per (employee, month, tier); not tied to a single attendance record
     await db.execute(sql`

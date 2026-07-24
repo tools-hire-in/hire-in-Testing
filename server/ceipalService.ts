@@ -21,6 +21,22 @@ let lastAuthAt: number = 0;
 let isSyncing = false;
 let v2CompatChecked = false;
 
+// ── Last API error tracker — read by integrationsRoutes.ts status endpoint ──
+let lastCeipalApiError: { message: string; timestamp: string } | null = null;
+
+function recordCeipalApiError(msg: string): void {
+  lastCeipalApiError = { message: msg, timestamp: new Date().toISOString() };
+  console.warn("[ceipal] API error recorded:", msg);
+}
+
+export function getLastCeipalApiError(): { message: string; timestamp: string } | null {
+  return lastCeipalApiError;
+}
+
+export function clearLastCeipalApiError(): void {
+  lastCeipalApiError = null;
+}
+
 /** null = not yet probed; true = v2 accessible; false = v2 returns 401 */
 let v2AccessStatus: boolean | null = null;
 
@@ -158,6 +174,7 @@ async function authenticate(forceRefresh = false): Promise<string> {
         const parsed = parseTokenResponse(await refreshRes.text());
         if (parsed.access_token) {
           cachedToken = parsed.access_token;
+          // 5-min pre-expiry buffer: treat token as expired at 50 min, not 55 min
           tokenExpiresAt = now + 50 * 60 * 1000;
           lastAuthAt = now;
           return cachedToken;
@@ -183,7 +200,9 @@ async function authenticate(forceRefresh = false): Promise<string> {
   });
 
   if (!res.ok) {
-    throw new Error(`Ceipal authentication failed: ${res.status}`);
+    const errMsg = `Ceipal authentication failed: ${res.status}`;
+    recordCeipalApiError(errMsg);
+    throw new Error(errMsg);
   }
 
   const parsed = parseTokenResponse(await res.text());
@@ -193,6 +212,7 @@ async function authenticate(forceRefresh = false): Promise<string> {
   }
 
   cachedToken = parsed.access_token;
+  // 5-min pre-expiry buffer: treat token as expired at 50 min, not 55 min
   tokenExpiresAt = now + 50 * 60 * 1000;
   lastAuthAt = now;
 
@@ -451,6 +471,10 @@ async function enrichJobsWithDetails(jobs: CeipalJob[], concurrency = 5): Promis
   return enriched;
 }
 
+// Default to the v1 jobs endpoint if CEIPAL_JOBS_ENDPOINT is not configured.
+// Step 4 of the Admin Setup Guide: optionally override to v2 getJobPosts endpoint.
+const DEFAULT_CEIPAL_JOBS_ENDPOINT = "https://api.ceipal.com/v1/getJobPosts/";
+
 export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
   // Allow manual override via env var; default to v2 paginated endpoint
   const overrideEndpoint = process.env.CEIPAL_JOBS_ENDPOINT;
@@ -491,7 +515,9 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
         break;
       }
       const errText = await res.text();
-      throw new Error(`Ceipal jobs fetch failed: ${res.status} - ${errText}`);
+      const errMsg = `Ceipal jobs fetch failed: ${res.status} - ${errText.slice(0, 300)}`;
+      recordCeipalApiError(errMsg);
+      throw new Error(errMsg);
     }
 
     const data = await res.json();
@@ -640,6 +666,8 @@ function mapCeipalJobToLocal(ceipalJob: CeipalJob) {
     ceipalPrimaryRecruiter: ceipalJob.primary_recruiter || null,
     remoteOpportunities: ceipalJob.remote_opportunities || ceipalJob.remote_job || null,
     closingDate: closingDate,
+    primaryRecruiter: null as string | null,
+    assignedRecruiter: null as string | null,
   };
 }
 
@@ -660,6 +688,23 @@ export async function syncCeipalJobs(): Promise<{ created: number; updated: numb
       if (!cJob.job_code) continue;
       seenJobCodes.add(cJob.job_code);
       const mapped = mapCeipalJobToLocal(cJob);
+
+      // Enrich with v2 job posting details (richer pay/bill rates, client, industry, recruiters).
+      // Best-effort: if v2 endpoint unavailable the base v1 data is used unchanged.
+      const jobDetailId = cJob.id || cJob.job_code;
+      if (jobDetailId) {
+        const v2Details = await getCeipalJobPostingDetails(String(jobDetailId));
+        if (v2Details) {
+          // v2 data wins over v1 list data when present, since it's the authoritative record
+          if (v2Details.billRate != null) mapped.billRate = String(v2Details.billRate);
+          if (v2Details.payRate != null) mapped.payRate = String(v2Details.payRate);
+          if (v2Details.clientName) mapped.facility = v2Details.clientName;
+          if (v2Details.title) mapped.title = v2Details.title;
+          if (v2Details.industry) mapped.specialty = v2Details.industry;
+          if (v2Details.primaryRecruiter) mapped.primaryRecruiter = v2Details.primaryRecruiter;
+          if (v2Details.assignedRecruiter) mapped.assignedRecruiter = v2Details.assignedRecruiter;
+        }
+      }
 
       const existing = await db.select()
         .from(jobs)
@@ -793,7 +838,6 @@ export interface RecruiterMetric {
   smsSent: number;
   meetingsHosted: number;
   dailyBreakdown: Array<{ date: string; submissions: number; calls: number }>;
-  /** Ceipal profile fields (from getCeipalUsers enrichment) */
   ceipalUserId?: string;
   teamName?: string;
   businessUnitId?: string;
@@ -803,6 +847,14 @@ export interface RecruiterMetric {
   latestInterview?: CeipalInterviewDetail;
   /** Latest placement detail for this recruiter (from v2 getPlacements) */
   latestPlacement?: CeipalPlacementDetail;
+  /** v2 enrichment — team/BU from getCeipalUserDetails (nullable if unavailable) */
+  team?: string;
+  businessUnit?: string;
+  /** v2 enrichment — bill/pay rates from placement details */
+  billRates?: number[];
+  payRates?: number[];
+  /** v2 enrichment — interview mode and outcome from getCeipalInterviewDetails */
+  interviewDetails?: Array<{ mode?: string; outcome?: string }>;
 }
 
 function parsePagedResults(data: any): any[] {
@@ -811,7 +863,6 @@ function parsePagedResults(data: any): any[] {
     : Array.isArray(data) ? data : [];
 }
 
-/** @deprecated use parsePagedResults */
 function parseSubmissions(data: any): any[] {
   return parsePagedResults(data);
 }
@@ -953,6 +1004,43 @@ export async function getCeipalPlacementDetails(placementId: string): Promise<Ce
     console.warn(`[ceipal] getCeipalPlacementDetails(${placementId}) error:`, err.message);
     return null;
   }
+/**
+ * Known interview stage names from Ceipal ATS.
+ * Used instead of loose "includes('interview')" to avoid false positives
+ * (e.g. "interview rejected", "post-interview declined").
+ */
+const INTERVIEW_STAGES = new Set([
+  "interview scheduled", "interview", "phone screen", "phone interview",
+  "technical interview", "technical screen", "onsite interview", "in-person interview",
+  "video interview", "first interview", "second interview", "third interview",
+  "final interview", "scheduled",
+]);
+
+function isInterviewStage(stage: string): boolean {
+  const s = stage.toLowerCase().trim();
+  if (INTERVIEW_STAGES.has(s)) return true;
+  // Loose match but exclude obvious non-interview stages
+  if (s.includes("interview") && !s.includes("reject") && !s.includes("declin") && !s.includes("no show") && !s.includes("withdr")) return true;
+  return false;
+}
+
+/**
+ * Known placement/hire stage names from Ceipal ATS.
+ * More precise than the previous loose contains("start") check.
+ */
+const PLACEMENT_STAGES = new Set([
+  "placed", "placement", "active placement", "started", "offer accepted",
+  "offer extended", "hired", "background check passed", "onboarding", "day 1",
+  "start date confirmed",
+]);
+
+function isPlacement(sub: any): boolean {
+  const stage = (sub.stage || sub.status || "").toLowerCase().trim();
+  if (PLACEMENT_STAGES.has(stage)) return true;
+  if (stage.includes("placement") || stage.includes("placed")) return true;
+  // "start" only when unambiguous (avoid matching "restart", "started screening", etc.)
+  if (stage === "start" || stage === "started") return true;
+  return false;
 }
 
 export async function getCeipalRecruiterMetrics(
@@ -1024,7 +1112,7 @@ export async function getCeipalRecruiterMetrics(
         console.warn("[ceipal] v2 ytd placements failed (non-fatal):", err.message);
         return [] as CeipalPlacementDetail[];
       }),
-      db.select({ id: adminUsers.id, email: adminUsers.email, name: adminUsers.name })
+      db.select({ id: adminUsers.id, email: adminUsers.email, firstName: adminUsers.firstName, lastName: adminUsers.lastName })
         .from(adminUsers)
         .where(isNull(adminUsers.deletedAt)),
       getCeipalUsers().catch((err: any) => {
@@ -1057,18 +1145,29 @@ export async function getCeipalRecruiterMetrics(
       return localEmailSet.has(canonicalEmail.toLowerCase());
     }
 
-    // Build an email → display-name map from local users so recruiter names
-    // shown in the dashboard match the internal HR system, not raw Ceipal strings.
+    // email → display-name map from local users so recruiter names shown match.
     const localNameMap = new Map<string, string>(
       localAdminRows
         .filter(u => u.email)
-        .map(u => [(u.email!).toLowerCase(), u.name ?? ""])
+        .map(u => [(u.email!).toLowerCase(), `${u.firstName} ${u.lastName}`.trim()])
     );
 
     // For week/month periods the period window is a subset of monthSubs
     const effectivePeriodSubs: any[] = periodSubs ?? monthSubs;
 
     const recruiterMap = new Map<string, RecruiterMetric>();
+
+    // Maps for v2 enrichment — populated during submission loops
+    // email.lower() → Ceipal numeric user ID (from sub.recruiter_id / sub.submitted_by_id)
+    const recruiterCeipalId = new Map<string, string>();
+    // email.lower() → set of placement IDs for placed submissions (v2 lookup)
+    const recruiterPlacementIds = new Map<string, Set<string>>();
+    // email.lower() → fallback count for placed subs with no placement_id in payload
+    const recruiterPlacementsFallback = new Map<string, number>();
+    // email.lower() → set of interview IDs for interview-stage submissions (v2 lookup)
+    const recruiterInterviewIds = new Map<string, Set<string>>();
+    // email.lower() → fallback count for interview-stage subs with no interview_id in payload
+    const recruiterInterviewsFallback = new Map<string, number>();
 
     function ensureRecruiter(rId: string, rName: string, rEmail: string): RecruiterMetric {
       if (!recruiterMap.has(rId)) {
@@ -1156,6 +1255,42 @@ export async function getCeipalRecruiterMetrics(
 
       const subDate = new Date(sub.submission_date || sub.created_date || now);
       if (subDate >= weekAgo) m.submissionsWeek++;
+
+      const stage = (sub.stage || sub.status || "").toLowerCase();
+      // Interview counting: prefer real v2 interview IDs over stage-name guessing.
+      // Collect IDs here; v2 enrichment block below resolves the count.
+      if (isInterviewStage(stage)) {
+        const interviewId = sub.interview_id || sub.interview_code;
+        if (rEmail && interviewId) {
+          const emailKey = rEmail.toLowerCase();
+          if (!recruiterInterviewIds.has(emailKey)) recruiterInterviewIds.set(emailKey, new Set());
+          recruiterInterviewIds.get(emailKey)!.add(String(interviewId));
+        } else {
+          // No v2 interview ID in the payload — use stage detection as fallback
+          const emailKey = rEmail.toLowerCase();
+          recruiterInterviewsFallback.set(emailKey, (recruiterInterviewsFallback.get(emailKey) ?? 0) + 1);
+        }
+      }
+      // Placement counting: prefer real v2 placement IDs over stage-name guessing.
+      // Collect IDs here; v2 enrichment block below resolves the count + bill/pay rates.
+      if (isPlacement(sub)) {
+        const placementId = sub.placement_id || sub.placement_code;
+        if (rEmail && placementId) {
+          const emailKey = rEmail.toLowerCase();
+          if (!recruiterPlacementIds.has(emailKey)) recruiterPlacementIds.set(emailKey, new Set());
+          recruiterPlacementIds.get(emailKey)!.add(String(placementId));
+        } else {
+          // No v2 placement ID in the payload — use stage detection as fallback
+          const emailKey = rEmail.toLowerCase();
+          recruiterPlacementsFallback.set(emailKey, (recruiterPlacementsFallback.get(emailKey) ?? 0) + 1);
+        }
+      }
+
+      // Collect Ceipal user ID for v2 enrichment
+      const ceipalUserId = sub.recruiter_id || sub.submitted_by_id;
+      if (rEmail && ceipalUserId && !recruiterCeipalId.has(rEmail.toLowerCase())) {
+        recruiterCeipalId.set(rEmail.toLowerCase(), String(ceipalUserId));
+      }
 
       const channel = sub.source || sub.sourcing_channel || sub.job_board || "Other";
       m.channels[channel] = (m.channels[channel] || 0) + 1;
@@ -1355,6 +1490,90 @@ export async function getCeipalRecruiterMetrics(
       }
     }
 
+    // ── Ceipal v2 enrichment — team/BU + interviews + placement bill/pay rates ──
+    // Best-effort: uses v2 helpers added in this release. If the Ceipal account
+    // does not expose v2 endpoints the helpers return null and metrics are unchanged.
+    if (recruiterMap.size > 0) {
+      await Promise.allSettled([
+        // 1. Enrich each recruiter with team and business unit (from v2 user details)
+        ...Array.from(recruiterMap.values()).map(async (m) => {
+          const ceipalId = recruiterCeipalId.get((m.email || "").toLowerCase());
+          if (!ceipalId) return;
+          const details = await getCeipalUserDetails(ceipalId);
+          if (!details) return;
+          if (details.team) m.team = details.team;
+          if (details.businessUnit) m.businessUnit = details.businessUnit;
+        }),
+
+        // 2. Resolve interview counts using real v2 interview records.
+        //    For each recruiter that has actual interview IDs collected from submissions,
+        //    fetch the v2 detail and count only confirmed records. Submissions with an
+        //    interview-stage label but no interview_id fall back to stage-detection count.
+        ...Array.from(recruiterInterviewIds.entries()).map(async ([emailKey, ids]) => {
+          const m = Array.from(recruiterMap.values()).find(r => (r.email || "").toLowerCase() === emailKey);
+          if (!m) return;
+          const interviewResults = await Promise.allSettled(
+            Array.from(ids).slice(0, 20).map(iid => getCeipalInterviewDetails(iid))
+          );
+          const confirmed: Array<{ mode?: string; outcome?: string }> = [];
+          for (const r of interviewResults) {
+            if (r.status === "fulfilled" && r.value) {
+              confirmed.push({ mode: r.value.type, outcome: r.value.status });
+            }
+          }
+          // Real v2 count replaces the stage-guess count; add fallback for subs with no ID
+          const fallback = recruiterInterviewsFallback.get(emailKey) ?? 0;
+          m.interviews = confirmed.length + fallback;
+          if (confirmed.length > 0) m.interviewDetails = confirmed;
+        }),
+
+        // 3. Apply fallback interview counts for recruiters with NO v2 interview IDs at all
+        //    (entire account may not expose interview_id in submission payloads).
+        ...Array.from(recruiterInterviewsFallback.entries())
+          .filter(([emailKey]) => !recruiterInterviewIds.has(emailKey))
+          .map(([emailKey, count]) => {
+            const m = Array.from(recruiterMap.values()).find(r => (r.email || "").toLowerCase() === emailKey);
+            if (m) m.interviews = count;
+          }),
+
+        // 4. Resolve placement counts using real v2 placement records.
+        //    For each recruiter with actual placement IDs, fetch v2 detail for confirmation.
+        //    Submissions with a placed-stage label but no placement_id fall back to stage-detection count.
+        ...Array.from(recruiterPlacementIds.entries()).map(async ([emailKey, ids]) => {
+          const m = Array.from(recruiterMap.values()).find(r => (r.email || "").toLowerCase() === emailKey);
+          if (!m) return;
+          const placementResults = await Promise.allSettled(
+            Array.from(ids).slice(0, 10).map(pid => getCeipalPlacementDetails(pid))
+          );
+          const billRates: number[] = [];
+          const payRates: number[] = [];
+          let confirmedCount = 0;
+          for (const r of placementResults) {
+            if (r.status === "fulfilled" && r.value) {
+              confirmedCount++;
+              if (r.value.billRate != null) billRates.push(r.value.billRate);
+              if (r.value.payRate != null) payRates.push(r.value.payRate);
+            }
+          }
+          // Real v2 count replaces the stage-guess count; add fallback for subs with no ID
+          const fallback = recruiterPlacementsFallback.get(emailKey) ?? 0;
+          m.placements = confirmedCount + fallback;
+          if (billRates.length > 0) m.billRates = billRates;
+          if (payRates.length > 0) m.payRates = payRates;
+        }),
+
+        // 5. Apply fallback placement counts for recruiters with NO v2 placement IDs at all
+        //    (entire account may not expose placement_id in submission payloads).
+        ...Array.from(recruiterPlacementsFallback.entries())
+          .filter(([emailKey]) => !recruiterPlacementIds.has(emailKey))
+          .map(([emailKey, count]) => {
+            const m = Array.from(recruiterMap.values()).find(r => (r.email || "").toLowerCase() === emailKey);
+            if (m) m.placements = count;
+          }),
+      ]);
+    }
+    // ── end Ceipal v2 enrichment ───────────────────────────────────────────────
+
     // ── Zoom enrichment ────────────────────────────────────────────────────────
     // Zoom activity always uses fixed week (7d) + rolling-30 ranges so the
     // metrics are comparable regardless of the selected Ceipal period.
@@ -1425,6 +1644,115 @@ export async function getCeipalRecruiterMetrics(
   } catch (err: any) {
     console.warn("[ceipal] getCeipalRecruiterMetrics error:", err.message);
     return { metrics: [], zoomAvailable: false, ceipalAvailable: false };
+  }
+}
+
+// ── Ceipal v2 API helpers ─────────────────────────────────────────────────────
+// These functions call Ceipal's v2 REST endpoints using the shared token cache
+// and the fetchWithTokenRetry helper for automatic 401 recovery.
+
+/** Fetch interview details from Ceipal v2. */
+export async function getCeipalInterviewDetails(interviewId: string): Promise<{
+  id: string;
+  candidateName?: string;
+  recruiterEmail?: string;
+  interviewDate?: string;
+  type?: string;
+  status?: string;
+} | null> {
+  try {
+    const url = `https://api.ceipal.com/v2/getInterviewDetails/${interviewId}/`;
+    const res = await fetchWithTokenRetry(url);
+    if (!res.ok) {
+      console.warn(`[ceipal-v2] getInterviewDetails ${interviewId} → ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    return {
+      id: String(data.id ?? interviewId),
+      candidateName: data.candidate_name ?? undefined,
+      recruiterEmail: data.recruiter_email ?? undefined,
+      interviewDate: data.interview_date ?? data.scheduled_date ?? undefined,
+      type: data.interview_type ?? data.type ?? undefined,
+      status: data.status ?? undefined,
+    };
+  } catch (err: any) {
+    console.warn(`[ceipal-v2] getInterviewDetails error: ${err.message}`);
+    return null;
+  }
+}
+
+/** Fetch placement details (bill rate, pay rate, start/end dates) from Ceipal v2. */
+export async function getCeipalPlacementDetails(placementId: string): Promise<{
+  id: string;
+  candidateName?: string;
+  recruiterEmail?: string;
+  billRate?: number;
+  payRate?: number;
+  startDate?: string;
+  endDate?: string;
+  clientName?: string;
+} | null> {
+  try {
+    const url = `https://api.ceipal.com/v2/getPlacementDetails/${placementId}/`;
+    const res = await fetchWithTokenRetry(url);
+    if (!res.ok) {
+      console.warn(`[ceipal-v2] getPlacementDetails ${placementId} → ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    return {
+      id: String(data.id ?? placementId),
+      candidateName: data.candidate_name ?? undefined,
+      recruiterEmail: data.recruiter_email ?? undefined,
+      billRate: data.bill_rate != null ? Number(data.bill_rate) : undefined,
+      payRate: data.pay_rate != null ? Number(data.pay_rate) : undefined,
+      startDate: data.start_date ?? undefined,
+      endDate: data.end_date ?? undefined,
+      clientName: data.client_name ?? data.client ?? undefined,
+    };
+  } catch (err: any) {
+    console.warn(`[ceipal-v2] getPlacementDetails error: ${err.message}`);
+    return null;
+  }
+}
+
+/** Fetch job posting details from Ceipal v2. */
+export async function getCeipalJobPostingDetails(jobId: string): Promise<{
+  id: string;
+  title?: string;
+  clientName?: string;
+  billRate?: number;
+  payRate?: number;
+  status?: string;
+  openings?: number;
+  industry?: string;
+  primaryRecruiter?: string;
+  assignedRecruiter?: string;
+} | null> {
+  try {
+    const url = `https://api.ceipal.com/v2/getJobPostingDetails/${jobId}/`;
+    const res = await fetchWithTokenRetry(url);
+    if (!res.ok) {
+      console.warn(`[ceipal-v2] getJobPostingDetails ${jobId} → ${res.status}`);
+      return null;
+    }
+    const data = await res.json();
+    return {
+      id: String(data.id ?? jobId),
+      title: data.title ?? data.job_title ?? undefined,
+      clientName: data.client_name ?? data.client ?? undefined,
+      billRate: data.bill_rate != null ? Number(data.bill_rate) : undefined,
+      payRate: data.pay_rate != null ? Number(data.pay_rate) : undefined,
+      status: data.status ?? undefined,
+      openings: data.openings ?? data.number_of_openings ?? undefined,
+      industry: data.industry ?? data.vertical ?? undefined,
+      primaryRecruiter: data.primary_recruiter ?? data.recruiter_name ?? undefined,
+      assignedRecruiter: data.assigned_recruiter ?? data.assigned_to ?? undefined,
+    };
+  } catch (err: any) {
+    console.warn(`[ceipal-v2] getJobPostingDetails error: ${err.message}`);
+    return null;
   }
 }
 

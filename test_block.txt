@@ -1,0 +1,13 @@
+<<<<<<< HEAD
+      const lastApiErr = getLastCeipalApiError();
+      const apiStatus = ceipalConfigured ? (lastApiErr ? "error" : undefined) : "unconfigured";
+      const apiError = lastApiErr?.message;
+
+      if (["hr", "admin", "super_admin"].includes(userRole)) {
+        const result = await getOrgCeipalCompliance();
+        return res.json({ 
+          ...result, 
+          apiStatus: apiStatus || "ok",
+          apiError: apiError || result.apiError
+        });
+=======

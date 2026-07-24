@@ -102,6 +102,11 @@ interface RecruiterMetric {
   businessUnitId?: string;
   ceipalRole?: string;
   reportingTo?: string;
+  team?: string;
+  businessUnit?: string;
+  billRates?: number[];
+  payRates?: number[];
+  interviewDetails?: CeipalInterviewDetail[];
   latestInterview?: CeipalInterviewDetail;
   latestPlacement?: CeipalPlacementDetail;
 }
@@ -119,10 +124,22 @@ const ZOOM_LINKS = [
   { label: "Zoom API Reference", url: "https://developers.zoom.us/docs/api/" },
 ];
 
+const CEIPAL_SETUP_STEPS = [
+  "Log in to your Ceipal account as an administrator.",
+  "Navigate to Admin → API Settings and generate or copy your API Key.",
+  "Note your Ceipal login email and password (same as your portal login).",
+  "Ask your platform super admin to set these three secrets in app settings: CEIPAL_EMAIL, CEIPAL_PASSWORD, CEIPAL_API_KEY.",
+  "(Optional) Set CEIPAL_JOBS_ENDPOINT to the job-posts URL provided by Ceipal (e.g. https://api.ceipal.com/v1/getJobPosts/ or the v2 equivalent your account manager provides).",
+  "Return here and click Test Connection — the token status should turn green.",
+  "Click Sync Now to import jobs and check the sync stats card for counts.",
+  "For recruiter metrics to work, ensure every recruiter's email in Ceipal exactly matches their email in People & HR → Users.",
+  "For interview/placement data, ensure recruiter submissions in Ceipal are updated to the correct stage before the daily sync runs (12:30 AM IST).",
+];
+
 const CEIPAL_TROUBLESHOOTING = [
   {
     title: "Token Expired",
-    fix: "Click Test Connection to refresh the authentication token. Tokens expire after a set period.",
+    fix: "Click Test Connection to refresh the authentication token. Tokens are cached for 50 minutes.",
   },
   {
     title: "Email mismatch",
@@ -140,6 +157,10 @@ const CEIPAL_TROUBLESHOOTING = [
     title: "v2 endpoints returning 401",
     fix: "The v2 API requires an upgraded Ceipal plan. Contact your Ceipal account manager to enable v2 API access.",
   },
+  {
+    title: "My Team tab blank",
+    fix: "This usually means the token expired; Test Connection fixes it instantly.",
+  }
 ];
 
 const ZOOM_TROUBLESHOOTING = [
@@ -196,6 +217,71 @@ interface ChecklistStep {
 }
 
 function SetupChecklist({ steps, defaultOpen }: { steps: ChecklistStep[]; defaultOpen: boolean }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors" data-testid="button-checklist-toggle">
+          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          Setup Checklist
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <div className="mt-2 space-y-2.5 pl-4 border-l-2 border-primary/20">
+          {steps.map((step, i) => (
+            <div key={i} className="flex gap-2">
+              <div className="mt-0.5">
+                {step.detected === true ? (
+                  <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                ) : step.detected === false ? (
+                  <Circle className="h-3.5 w-3.5 text-muted-foreground/30" />
+                ) : (
+                  <HelpCircle className="h-3.5 w-3.5 text-amber-500" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <p className="text-sm font-medium leading-none">{step.label}</p>
+                {step.detail && <p className="text-xs text-muted-foreground mt-1 leading-relaxed">{step.detail}</p>}
+              </div>
+            </div>
+          ))}
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function TroubleshootingGuide({ items }: { items: any[] }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <Collapsible open={open} onOpenChange={setOpen}>
+      <CollapsibleTrigger asChild>
+        <button className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors mt-1" data-testid="button-troubleshooting-toggle">
+          {open ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+          Troubleshooting
+        </button>
+      </CollapsibleTrigger>
+      <CollapsibleContent>
+        <ul className="mt-2 space-y-1.5 pl-4 border-l-2 border-amber-200">
+          {items.map((item, i) => (
+            <li key={i} className="text-sm text-muted-foreground list-none ml-1">
+              {typeof item === 'string' ? (
+                <span className="list-disc list-outside">{item}</span>
+              ) : (
+                <div className="mb-2">
+                  <p className="font-semibold text-amber-900 dark:text-amber-200">{item.title}</p>
+                  <p className="text-xs">{item.fix}</p>
+                </div>
+              )}
+            </li>
+          ))}
+        </ul>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
+function SetupGuide({ steps, defaultOpen }: { steps: string[]; defaultOpen: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const doneCount = steps.filter(s => s.detected === true).length;
   const total = steps.length;
@@ -475,8 +561,10 @@ function CeipalCard({ info }: { info: IntegrationInfo | undefined }) {
           </div>
         )}
 
-        {info?.lastError && !ceipalLastError && status === "error" && (
-          <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">Error: {info.lastError}</p>
+        {info?.lastError && !ceipalLastError && (
+          <p className={`text-xs rounded px-3 py-2 ${status === "error" ? "text-red-700 bg-red-50 dark:bg-red-950/20" : "text-amber-700 bg-amber-50 dark:bg-amber-950/20"}`}>
+            {status === "error" ? "Error" : "Last API issue"}: {info.lastError}
+          </p>
         )}
 
         <div className="text-xs text-muted-foreground bg-muted/30 rounded px-3 py-2">
@@ -514,6 +602,8 @@ function CeipalCard({ info }: { info: IntegrationInfo | undefined }) {
         <SetupChecklist steps={checklistSteps} defaultOpen={status === "unconfigured"} />
 
         <TroubleshootingSection items={CEIPAL_TROUBLESHOOTING} />
+
+        <TroubleshootingGuide items={CEIPAL_TROUBLESHOOTING} />
 
         <div>
           <p className="text-xs font-medium text-muted-foreground mb-1">Helpful Links</p>
@@ -636,8 +726,10 @@ function ZoomCard({
           </div>
         )}
 
-        {info?.lastError && status === "error" && (
-          <p className="text-xs text-red-600 bg-red-50 rounded px-3 py-2">Error: {info.lastError}</p>
+        {info?.lastError && (
+          <p className={`text-xs rounded px-3 py-2 ${status === "error" ? "text-red-700 bg-red-50 dark:bg-red-950/20" : "text-amber-700 bg-amber-50 dark:bg-amber-950/20"}`}>
+            {status === "error" ? "Error" : "Last API issue"}: {info.lastError}
+          </p>
         )}
 
         {/* Zoom test / connect error detail */}
@@ -775,6 +867,16 @@ function RecruiterDrawer({
         </SheetHeader>
 
         <div className="mt-6 space-y-6">
+          {(recruiter.team || recruiter.businessUnit) && (
+            <div className="flex gap-3 flex-wrap">
+              {recruiter.team && (
+                <Badge variant="secondary" className="text-xs">Team: {recruiter.team}</Badge>
+              )}
+              {recruiter.businessUnit && (
+                <Badge variant="secondary" className="text-xs">BU: {recruiter.businessUnit}</Badge>
+              )}
+            </div>
+          )}
           <div>
             <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Activity Summary</p>
             <div className="grid grid-cols-2 gap-3">
@@ -795,6 +897,29 @@ function RecruiterDrawer({
               ))}
             </div>
           </div>
+          {(recruiter.billRates?.length || recruiter.payRates?.length) && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">Placement Rates (from Ceipal v2)</p>
+              <div className="grid grid-cols-2 gap-3">
+                {recruiter.billRates && recruiter.billRates.length > 0 && (
+                  <div className="p-3 bg-muted/40 rounded-lg">
+                    <p className="text-xs text-muted-foreground">Avg Bill Rate</p>
+                    <p className="text-xl font-bold">
+                      ${Math.round(recruiter.billRates.reduce((a, b) => a + b, 0) / recruiter.billRates.length)}/hr
+                    </p>
+                  </div>
+                )}
+                {recruiter.payRates && recruiter.payRates.length > 0 && (
+                  <div className="p-3 bg-muted/40 rounded-lg">
+                    <p className="text-xs text-muted-foreground">Avg Pay Rate</p>
+                    <p className="text-xl font-bold">
+                      ${Math.round(recruiter.payRates.reduce((a, b) => a + b, 0) / recruiter.payRates.length)}/hr
+                    </p>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {recruiter.latestInterview && (
             <div>
@@ -822,6 +947,30 @@ function RecruiterDrawer({
             </div>
           )}
 
+          {recruiter.interviewDetails && recruiter.interviewDetails.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Interview Details</p>
+              <div className="space-y-3">
+                {recruiter.interviewDetails.map((interview, idx) => (
+                  <div key={idx} className="space-y-2 p-3 bg-muted/30 rounded-lg text-xs">
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Date:</span>
+                      <span className="font-medium">{interview.interviewDate}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Mode:</span>
+                      <span className="font-medium">{interview.interviewMode || "N/A"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-muted-foreground">Outcome:</span>
+                      <span className="font-medium capitalize">{interview.interviewOutcome || "Pending"}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {recruiter.latestPlacement && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Latest Placement</p>
@@ -836,6 +985,12 @@ function RecruiterDrawer({
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Client Bill Rate</span>
                     <span className="font-medium" data-testid="text-placement-bill-rate">{recruiter.latestPlacement.clientBillRate}</span>
+                  </div>
+                )}
+                {(recruiter.latestPlacement.payRate || recruiter.payRates) && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Pay Rate</span>
+                    <span className="font-medium" data-testid="text-placement-pay-rate">{recruiter.latestPlacement.payRate || recruiter.payRates}</span>
                   </div>
                 )}
                 {recruiter.latestPlacement.payRateMode && (
@@ -854,20 +1009,20 @@ function RecruiterDrawer({
             </div>
           )}
 
-          {(recruiter.teamName || recruiter.businessUnitId || recruiter.ceipalRole || recruiter.reportingTo) && (
+          {(recruiter.team || recruiter.businessUnit || recruiter.teamName || recruiter.businessUnitId || recruiter.ceipalRole || recruiter.reportingTo) && (
             <div>
               <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Ceipal Profile</p>
               <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
-                {recruiter.teamName && (
+                {(recruiter.team || recruiter.teamName) && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Team</span>
-                    <span className="font-medium" data-testid="text-ceipal-team">{recruiter.teamName}</span>
+                    <span className="font-medium" data-testid="text-ceipal-team">{recruiter.team || recruiter.teamName}</span>
                   </div>
                 )}
-                {recruiter.businessUnitId && (
+                {(recruiter.businessUnit || recruiter.businessUnitId) && (
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-muted-foreground">Business Unit</span>
-                    <span className="font-medium" data-testid="text-ceipal-bu">{recruiter.businessUnitId}</span>
+                    <span className="font-medium" data-testid="text-ceipal-bu">{recruiter.businessUnit || recruiter.businessUnitId}</span>
                   </div>
                 )}
                 {recruiter.ceipalRole && (
@@ -888,6 +1043,26 @@ function RecruiterDrawer({
                     <span className="text-xs font-mono text-muted-foreground" data-testid="text-ceipal-id">{recruiter.ceipalUserId}</span>
                   </div>
                 )}
+              </div>
+            </div>
+          )}
+          {recruiter.interviewDetails && recruiter.interviewDetails.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2">
+                Interview Details <span className="font-normal text-muted-foreground">(from Ceipal v2)</span>
+              </p>
+              <div className="space-y-1.5">
+                {recruiter.interviewDetails.map((iv, idx) => (
+                  <div key={idx} className="flex items-center gap-2 text-sm">
+                    {iv.mode && <Badge variant="outline" className="text-xs">{iv.mode}</Badge>}
+                    {iv.outcome && (
+                      <span className={`text-xs ${iv.outcome.toLowerCase().includes("pass") || iv.outcome.toLowerCase().includes("selected") ? "text-green-600" : iv.outcome.toLowerCase().includes("fail") || iv.outcome.toLowerCase().includes("reject") ? "text-red-600" : "text-muted-foreground"}`}>
+                        {iv.outcome}
+                      </span>
+                    )}
+                    {!iv.mode && !iv.outcome && <span className="text-xs text-muted-foreground">Interview #{idx + 1}</span>}
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -1151,6 +1326,21 @@ function RecruiterPerformanceTab({
               ))}
             </TableBody>
           </Table>
+        </div>
+      )}
+
+      {!zoomAvailable && sorted.length > 0 && (
+        <div className="flex items-start gap-3 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/20 px-4 py-3 text-sm">
+          <AlertCircle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <div>
+            <span className="font-medium text-amber-800 dark:text-amber-300">Add Zoom for richer metrics.</span>
+            {" "}
+            <span className="text-amber-700 dark:text-amber-400">Connecting Zoom Phone unlocks call counts, call minutes, SMS activity, and meetings per recruiter.</span>
+            {" "}
+            <Link href="/admin/integrations" className="font-medium underline underline-offset-2 text-amber-800 dark:text-amber-300 hover:no-underline" data-testid="link-configure-zoom">
+              Configure in Connections →
+            </Link>
+          </div>
         </div>
       )}
 

@@ -1,0 +1,26 @@
+<<<<<<< HEAD
+      const lastApiErr = getLastCeipalApiError();
+      const apiStatus = ceipalConfigured ? (lastApiErr ? "error" : undefined) : "unconfigured";
+      const apiError = lastApiErr?.message;
+
+      if (["hr", "admin", "super_admin"].includes(userRole)) {
+        const result = await getOrgCeipalCompliance();
+        return res.json({ 
+          ...result, 
+          apiStatus: apiStatus || "ok",
+          apiError: apiError || result.apiError
+        });
+=======
+      const { getLastCeipalApiError } = await import("./ceipalService");
+      const lastApiErr = getLastCeipalApiError();
+      // "unconfigured" when env vars missing; "error" when API was reachable but returned an error
+      const apiStatus: string | undefined = !ceipalConfigured ? "unconfigured"
+        : lastApiErr ? "error"
+        : undefined;
+
+      const apiError = lastApiErr ?? undefined;
+
+      if (["hr", "admin", "super_admin"].includes(userRole)) {
+        const result = await getOrgCeipalCompliance();
+        return res.json({ ...result, apiStatus, apiError });
+>>>>>>> 6af2561b (Ceipal v2 API migration, token refresh fixes & integration setup guide improvements)

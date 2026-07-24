@@ -16,7 +16,7 @@ import { db } from "./db";
 import { storage } from "./storage";
 import { integrationSettings } from "@shared/schema";
 import { eq, sql } from "drizzle-orm";
-import { syncCeipalJobs, getCeipalRecruiterMetrics, getCeipalTokenHealth, getUnmatchedCeipalUsers, getCeipalV2AccessStatus, probeV2Access } from "./ceipalService";
+import { syncCeipalJobs, getCeipalRecruiterMetrics, getCeipalTokenHealth, getUnmatchedCeipalUsers, getCeipalV2AccessStatus, probeV2Access, getLastCeipalApiError, clearLastCeipalApiError } from "./ceipalService";
 import {
   testZoomConnection,
   isZoomConfigured,
@@ -186,6 +186,12 @@ export function registerIntegrationsRoutes(app: Express) {
       // Attach v2 API access status (updated after test or first auth)
       statusMap.ceipal.v2AccessVerified = getCeipalV2AccessStatus();
 
+      // Surface last recorded API error for display on the Ceipal card
+      const lastApiErr = getLastCeipalApiError();
+      if (lastApiErr && !statusMap.ceipal.lastError) {
+        statusMap.ceipal.lastError = `${lastApiErr.message} (at ${new Date(lastApiErr.timestamp).toLocaleString()})`;
+      }
+
       res.json({ integrations: Object.values(statusMap) });
     } catch (err: any) {
       console.error("[integrations] status error:", err);
@@ -262,6 +268,7 @@ export function registerIntegrationsRoutes(app: Express) {
     try {
       const result = await syncCeipalJobs();
       lastCeipalError = null;
+      clearLastCeipalApiError();
       await upsertIntegrationStatus("ceipal", "connected", {
         lastSyncAt: new Date().toISOString(),
         lastSyncCreated: result.created,

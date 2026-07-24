@@ -122,6 +122,10 @@ export const jobs = pgTable("jobs", {
   source: varchar("source").notNull().default("manual"),
   ceipalJobCode: varchar("ceipal_job_code"),
   ceipalJobId: varchar("ceipal_job_id"),
+  /** v2 enrichment: primary recruiter name from Ceipal v2/getJobPostingDetails */
+  primaryRecruiter: varchar("primary_recruiter"),
+  /** v2 enrichment: assigned/secondary recruiter name from Ceipal v2/getJobPostingDetails */
+  assignedRecruiter: varchar("assigned_recruiter"),
   // AI-generated social captions stored per-job so they can be reused without regenerating.
   // Shape: { linkedin: string, instagram: string, facebook: string, generatedAt: string }
   socialCaptions: jsonb("social_captions"),

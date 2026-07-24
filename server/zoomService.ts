@@ -138,10 +138,13 @@ export async function testZoomConnection(): Promise<{
     if (!res.ok) {
       let errorCode: number | string | undefined;
       let message: string | undefined;
+      let detail = `Zoom API returned ${res.status}`;
       try {
         const body = await res.json();
         errorCode = body.code;
         message = body.message;
+        if (body?.message) detail = `Zoom API ${res.status}: ${body.message}`;
+        if (body?.code) errorCode = String(body.code);
       } catch {
         message = await res.text().catch(() => undefined);
       }
@@ -150,8 +153,8 @@ export async function testZoomConnection(): Promise<{
         statusCode: res.status,
         errorCode,
         message,
-        error: message
-          ? `Zoom API ${res.status}: ${message}`
+        error: message || detail
+          ? (message ? `Zoom API ${res.status}: ${message}` : detail)
           : `Zoom API returned ${res.status}`,
       };
     }

@@ -5580,21 +5580,29 @@ function CeipalTeamComplianceView() {
   const avgRate = data?.summary?.avgRate ?? data?.avgRate ?? 0;
   const belowThreshold = data?.summary?.belowThreshold ?? data?.belowThreshold ?? 0;
 
-  if (apiStatus === "error" || apiStatus === "unconfigured") {
+  if (apiStatus === "unconfigured" || apiStatus === "error") {
     return (
-      <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex items-start gap-3" data-testid="banner-ceipal-api-unavailable">
-        <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-red-800">
-            Ceipal API unavailable — {apiError ?? (apiStatus === "unconfigured" ? "credentials not configured" : "unknown error")}
-          </p>
-          <p className="text-xs text-red-700 mt-1">
-            <a href="/admin/integrations" className="underline hover:no-underline font-medium">
-              Fix credentials in Integrations →
-            </a>
-          </p>
-        </div>
-      </div>
+      <Card className="border-orange-200 bg-orange-50 dark:bg-orange-950/20" data-testid="banner-ceipal-api-unavailable">
+        <CardContent className="py-6 flex flex-col items-center gap-3 text-center">
+          <AlertTriangle className="h-8 w-8 text-orange-500" />
+          <div>
+            <p className="font-medium text-orange-800 dark:text-orange-300">
+              {apiStatus === "unconfigured" ? "Ceipal not configured" : "Ceipal API unavailable"}
+            </p>
+            <p className="text-sm text-orange-700 dark:text-orange-400 mt-1">
+              {apiStatus === "unconfigured"
+                ? "Set CEIPAL_EMAIL, CEIPAL_PASSWORD, and CEIPAL_API_KEY to enable recruiter compliance tracking."
+                : (apiError ?? "The Ceipal API returned an error. Compliance data cannot be loaded.")}
+            </p>
+          </div>
+          <a
+            href="/admin/integrations"
+            className="inline-flex items-center gap-1.5 text-sm font-medium text-orange-700 dark:text-orange-300 underline underline-offset-2 hover:no-underline"
+          >
+            Go to Integrations Hub →
+          </a>
+        </CardContent>
+      </Card>
     );
   }
 

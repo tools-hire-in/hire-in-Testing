@@ -1,0 +1,1000 @@
+  // GET /api/payroll/headcount
+  app.get("/api/payroll/headcount", requireAuth, requirePayrollRead, async (req: Request, res: Response) => {
+    try {
+      const rows = await db.execute(sql`
+        SELECT total_count, period, recorded_at FROM headcount_history
+        WHERE jurisdiction = 'IN' ORDER BY recorded_at DESC LIMIT 24
+      `);
+      const current = Number((rows.rows[0] as any)?.total_count ?? 0);
+      res.json({ current, history: rows.rows });
+    } catch (error) {
+      console.error("GET /api/payroll/headcount:", error);
+      res.status(500).json({ error: "Failed to fetch headcount" });
+    }
+  });
+
+  // POST /api/payroll/headcount
+  app.post("/api/payroll/headcount", requireAuth, requirePayrollWrite, async (req: Request, res: Response) => {
+    try {
+      const { count, period } = req.body;
+      if (!count || !period) return res.status(400).json({ error: "count and period are required" });
+      const periodDate = String(period).endsWith("-01") ? period : `${period}-01`;
+      await db.execute(sql`
+        INSERT INTO headcount_history (id, jurisdiction, total_count, period, recorded_at, recorded_by)
+        VALUES (gen_random_uuid(), 'IN', ${Number(count)}, ${periodDate}::date, NOW(), ${(req.session as any)?.userId ?? null})
+        ON CONFLICT (period) DO UPDATE SET total_count = EXCLUDED.total_count, recorded_at = NOW(), recorded_by = EXCLUDED.recorded_by
+      `);
+      res.json({ success: true, period: periodDate, count: Number(count) });
+    } catch (error) {
+      console.error("POST /api/payroll/headcount:", error);
+      res.status(500).json({ error: "Failed to record headcount" });
+    }
+  });
+
+  // GET /api/payroll/employees/:id/flags
+  app.get("/api/payroll/employees/:id/flags", requireAuth, requirePermission("payroll.employee.flags", "super_admin", "admin", "hr", "executive"), async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const rows = await db.execute(sql`
+        SELECT salary_structure_id, pf_exempt, pt_state, esi_applicable, esi_disability, esi_daily_wage_exempt
+        FROM admin_users WHERE id = ${id} LIMIT 1
+      `);
+      if (!rows.rows.length) return res.status(404).json({ error: "Employee not found" });
+      const r = rows.rows[0] as any;
+      res.json({
+        salaryStructureId: r.salary_structure_id ?? null,
+        pfExempt: r.pf_exempt ?? false,
+        ptState: r.pt_state ?? null,
+        esiApplicable: r.esi_applicable ?? true,
+        esiDisability: r.esi_disability ?? false,
+        esiDailyWageExempt: r.esi_daily_wage_exempt ?? false,
+      });
+    } catch (error) {
+      console.error("GET /api/payroll/employees/:id/flags:", error);
+      res.status(500).json({ error: "Failed to fetch payroll flags" });
+    }
+  });
+
+  // PATCH /api/payroll/employees/:id/payroll-flags
+  app.patch("/api/payroll/employees/:id/payroll-flags", requireAuth, requirePermission("payroll.employee.flags", "super_admin", "admin", "hr", "executive"), async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const { salaryStructureId, pfExempt, esiApplicable, esiDisability, esiDailyWageExempt, ptState, note } = req.body;
+      if (!note?.trim()) return res.status(400).json({ error: "Reason is required" });
+
+      // Build individual parameterized updates
+      if (salaryStructureId !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET salary_structure_id = ${salaryStructureId || null} WHERE id = ${id}`);
+      }
+      if (pfExempt !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET pf_exempt = ${pfExempt} WHERE id = ${id}`);
+      }
+      if (esiApplicable !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET esi_applicable = ${esiApplicable} WHERE id = ${id}`);
+      }
+      if (esiDisability !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET esi_disability = ${esiDisability} WHERE id = ${id}`);
+      }
+      if (esiDailyWageExempt !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET esi_daily_wage_exempt = ${esiDailyWageExempt} WHERE id = ${id}`);
+      }
+      if (ptState !== undefined) {
+        await db.execute(sql`UPDATE admin_users SET pt_state = ${ptState || null} WHERE id = ${id}`);
+      }
+      await db.execute(sql`UPDATE admin_users SET updated_at = NOW() WHERE id = ${id}`);
+
+      // If structure assigned, record history
+      if (salaryStructureId !== undefined) {
+        try {
+          await db.insert(salaryStructureHistory).values({
+            userId: id,
+            structureId: salaryStructureId || null,
+            effectiveFrom: new Date().toISOString().slice(0, 10),
+            assignedBy: (req.session as any)?.userId,
+          });
+        } catch (_e) { /* non-critical */ }
+      }
+
+      // Audit log
+      try {
+        await db.execute(sql`
+          INSERT INTO audit_logs (id, user_id, action, target_id, details, created_at)
+          VALUES (gen_random_uuid(), ${(req.session as any)?.userId}, 'payroll_flags_updated', ${id},
+                  ${JSON.stringify({ note, fields: Object.keys(req.body).filter(k => k !== "note") })}::jsonb, NOW())
+        `);
+      } catch (_e) { /* non-critical */ }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error("PATCH /api/payroll/employees/:id/payroll-flags:", error);
+      res.status(500).json({ error: "Failed to update payroll flags" });
+    }
+  });
+
+  // ============================================================================
+  // Studio BD Agent
+  // Chat + template generation visible to super_admin / admin / operations / manager.
+  // Tables: bd_conversations, bd_messages (applied via scripts/apply-bd-agent-tables.ts)
+  // ============================================================================
+
+  const requireBdAgent = requirePermission("studio.bd_agent", "super_admin", "admin", "operations", "manager");
+
+  /** Resolve brand voice context string from a projectId (returns empty string if no project or config). */
+  const resolveBdBrandVoice = async (projectId?: string): Promise<string> => {
+    if (!projectId) return "";
+    try {
+      const bvParams = await resolveBrandVoiceParams(projectId);
+      const lines = Object.entries(bvParams)
+        .filter(([, v]) => v && String(v).trim())
+        .map(([k, v]) => `${k}: ${v}`);
+      return lines.join("\n");
+    } catch {
+      return "";
+    }
+  };
+
+  // GET /api/studio/bd/projects — list Studio projects accessible to BD roles
+  app.get("/api/studio/bd/projects", requireAuth, requireBdAgent, async (_req: Request, res: Response) => {
+    try {
+      const projects = await storage.getStudioProjects();
+      res.json(projects.map((p: any) => ({ id: p.id, name: p.name })));
+    } catch (err) {
+      console.error("[BD] list projects:", err);
+      res.status(500).json({ error: "Failed to list projects" });
+    }
+  });
+
+  // GET /api/studio/bd/conversations — list caller's conversations (newest first)
+  app.get("/api/studio/bd/conversations", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const rows = await db
+        .select()
+        .from(bdConversations)
+        .where(eq(bdConversations.userId, userId))
+        .orderBy(desc(bdConversations.updatedAt))
+        .limit(50);
+      res.json(rows);
+    } catch (err) {
+      console.error("[BD] list conversations:", err);
+      res.status(500).json({ error: "Failed to list conversations" });
+    }
+  });
+
+  // POST /api/studio/bd/conversations — create a new conversation
+  app.post("/api/studio/bd/conversations", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const title = typeof req.body?.title === "string" && req.body.title.trim()
+        ? req.body.title.trim().slice(0, 200)
+        : "New conversation";
+      const validDomains = ["healthcare", "it", "engineering", "professional_services", "general", "cross_domain"];
+      const domain = validDomains.includes(req.body?.domain) ? req.body.domain : "general";
+      const [conv] = await db
+        .insert(bdConversations)
+        .values({ userId, title, domain })
+        .returning();
+      res.json(conv);
+    } catch (err) {
+      console.error("[BD] create conversation:", err);
+      res.status(500).json({ error: "Failed to create conversation" });
+    }
+  });
+
+  // PATCH /api/studio/bd/conversations/:id/domain — update domain on an existing conversation
+  app.patch("/api/studio/bd/conversations/:id/domain", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const [conv] = await db
+        .select({ id: bdConversations.id, userId: bdConversations.userId })
+        .from(bdConversations)
+        .where(eq(bdConversations.id, req.params.id))
+        .limit(1);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+      if (conv.userId !== userId) return res.status(403).json({ error: "Not your conversation" });
+      const validDomains = ["healthcare", "it", "engineering", "professional_services", "general", "cross_domain"];
+      if (!validDomains.includes(req.body?.domain)) return res.status(400).json({ error: "Invalid domain" });
+      await db.execute(sql`UPDATE bd_conversations SET domain=${req.body.domain}, updated_at=NOW() WHERE id=${req.params.id}`);
+      res.json({ success: true, domain: req.body.domain });
+    } catch (err) {
+      console.error("[BD] update domain:", err);
+      res.status(500).json({ error: "Failed to update domain" });
+    }
+  });
+
+  // DELETE /api/studio/bd/conversations/:id — delete a conversation + cascade messages
+  app.delete("/api/studio/bd/conversations/:id", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const [conv] = await db
+        .select({ id: bdConversations.id, userId: bdConversations.userId })
+        .from(bdConversations)
+        .where(eq(bdConversations.id, req.params.id))
+        .limit(1);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+      if (conv.userId !== userId) return res.status(403).json({ error: "Not your conversation" });
+      await db.delete(bdConversations).where(eq(bdConversations.id, req.params.id));
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[BD] delete conversation:", err);
+      res.status(500).json({ error: "Failed to delete conversation" });
+    }
+  });
+
+  // GET /api/studio/bd/conversations/:id/messages — get messages for a conversation
+  app.get("/api/studio/bd/conversations/:id/messages", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const [conv] = await db
+        .select({ id: bdConversations.id, userId: bdConversations.userId })
+        .from(bdConversations)
+        .where(eq(bdConversations.id, req.params.id))
+        .limit(1);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+      if (conv.userId !== userId) return res.status(403).json({ error: "Not your conversation" });
+      const msgs = await db
+        .select()
+        .from(bdMessages)
+        .where(eq(bdMessages.conversationId, req.params.id))
+        .orderBy(asc(bdMessages.createdAt));
+      res.json(msgs);
+    } catch (err) {
+      console.error("[BD] get messages:", err);
+      res.status(500).json({ error: "Failed to get messages" });
+    }
+  });
+
+  // POST /api/studio/bd/conversations/:id/messages — send a message + get AI reply
+  app.post("/api/studio/bd/conversations/:id/messages", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      if (!isAiConfigured()) {
+        return res.status(503).json({ error: "AI is not configured on this environment." });
+      }
+      const userId = (req.session as any)?.userId;
+      const [conv] = await db
+        .select()
+        .from(bdConversations)
+        .where(eq(bdConversations.id, req.params.id))
+        .limit(1);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+      if (conv.userId !== userId) return res.status(403).json({ error: "Not your conversation" });
+
+      const userContent = typeof req.body?.content === "string" ? req.body.content.trim() : "";
+      if (!userContent) return res.status(400).json({ error: "content is required" });
+      if (userContent.length > 4000) return res.status(400).json({ error: "Message too long (max 4000 chars)" });
+      const bvContext = await resolveBdBrandVoice(req.body?.projectId);
+
+      // Persist user message
+      await db.insert(bdMessages).values({
+        conversationId: conv.id,
+        role: "user",
+        content: userContent,
+      });
+
+      // Auto-title the conversation from first user message
+      if (conv.title === "New conversation") {
+        const autoTitle = userContent.slice(0, 80) + (userContent.length > 80 ? "…" : "");
+        await db.execute(sql`UPDATE bd_conversations SET title=${autoTitle}, updated_at=NOW() WHERE id=${conv.id}`);
+      } else {
+        await db.execute(sql`UPDATE bd_conversations SET updated_at=NOW() WHERE id=${conv.id}`);
+      }
+
+      // Load last 20 messages for context window (keep token use bounded)
+      const history = await db
+        .select({ role: bdMessages.role, content: bdMessages.content })
+        .from(bdMessages)
+        .where(eq(bdMessages.conversationId, conv.id))
+        .orderBy(desc(bdMessages.createdAt))
+        .limit(20);
+      const contextMessages = history.reverse() as { role: "user" | "assistant"; content: string }[];
+
+      const convDomain = (conv as any).domain ?? "general";
+      const relatedBlock = await buildRelatedContentBlock(normalizeDomain(convDomain)).catch(() => "");
+      const result = await runBdAgentChat(contextMessages, {
+        brandVoiceContext: bvContext || undefined,
+        domain: convDomain,
+        relatedContentBlock: relatedBlock || undefined,
+      });
+
+      // Persist assistant reply
+      const [assistantMsg] = await db
+        .insert(bdMessages)
+        .values({ conversationId: conv.id, role: "assistant", content: result.reply })
+        .returning();
+
+      // Audit log (non-blocking)
+      storage.createStudioGeneration({
+        kind: "bd_chat",
+        contentType: "bd_chat",
+        generatedByUserId: userId,
+        modelName: result.model,
+        inputJson: { conversationId: conv.id, messageLength: userContent.length, mode: result.mode },
+        outputJson: { replyLength: result.reply.length },
+        tokenEstimate: result.tokenEstimate,
+        status: "draft",
+      } as any).catch(() => {});
+
+      res.json({ message: assistantMsg, model: result.model, mode: result.mode });
+    } catch (err: any) {
+      if (err instanceof AiGenerationError) {
+        return res.status(502).json({ error: err.message, code: err.code, retryable: err.retryable });
+      }
+      console.error("[BD] send message:", err);
+      res.status(500).json({ error: err?.message || "Failed to send message" });
+    }
+  });
+
+  // POST /api/studio/bd/generate/:contentType — generate a BD template with optional brand voice
+  app.post("/api/studio/bd/generate/:contentType", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      if (!isAiConfigured()) {
+        return res.status(503).json({ error: "AI is not configured on this environment." });
+      }
+      const userId = (req.session as any)?.userId;
+      const { contentType } = req.params;
+      const validTypes = ["bd_proposal_outline", "bd_rate_card_talking_points", "bd_call_prep_brief", "bd_follow_up_sequence"];
+      if (!validTypes.includes(contentType)) {
+        return res.status(400).json({ error: "Invalid BD content type" });
+      }
+      // Load template from DB (seeded via studioPromptSeed)
+      const template = await storage.getActiveStudioPromptTemplate(contentType, null as any);
+      if (!template) {
+        return res.status(500).json({ error: `Prompt template for ${contentType} not found — run server to seed templates` });
+      }
+      // Resolve brand voice if caller provided a projectId
+      const bvContext = await resolveBdBrandVoice(req.body?.projectId);
+      const { projectId: _pid, ...templateParams } = req.body || {};
+      const result = await generateBdTemplate(template, templateParams, bvContext || undefined);
+      // Audit log (non-blocking)
+      storage.createStudioGeneration({
+        kind: "bd_template",
+        contentType,
+        promptTemplateId: template.id,
+        promptVersion: template.version,
+        generatedByUserId: userId,
+        modelName: result.model,
+        inputJson: templateParams,
+        outputJson: result.output,
+        tokenEstimate: result.tokenEstimate,
+        status: "draft",
+      } as any).catch(() => {});
+      res.json({ output: result.output, contentType: result.contentType, model: result.model });
+    } catch (err: any) {
+      if (err instanceof AiGenerationError) {
+        return res.status(502).json({ error: err.message, code: err.code, retryable: err.retryable });
+      }
+      console.error("[BD] generate template:", err);
+      res.status(500).json({ error: err?.message || "Failed to generate BD template" });
+    }
+  });
+
+  // BD Pitch Deck Library routes
+  registerBdDecksRoutes(app);
+  registerAgentFeedbackRoutes(app);
+
+  // POST /api/studio/bd/save-as-idea — save BD output as a Studio content idea
+  app.post("/api/studio/bd/save-as-idea", requireAuth, requireBdAgent, async (req: Request, res: Response) => {
+    try {
+      const userId = (req.session as any)?.userId;
+      const { title, content, contentType, projectId, detectedDomain, buyerStage, painPointTheme, icpHint, sourceConversationId } = req.body || {};
+      if (!title?.trim()) return res.status(400).json({ error: "title is required" });
+      if (!content?.trim()) return res.status(400).json({ error: "content is required" });
+      if (!projectId?.trim()) return res.status(400).json({ error: "projectId is required" });
+      const bdIntelMetadata = (detectedDomain || buyerStage || painPointTheme || icpHint || sourceConversationId)
+        ? { detectedDomain: detectedDomain ?? null, buyerStage: buyerStage ?? null, painPointTheme: painPointTheme ?? null, icpHint: icpHint ?? null, sourceConversationId: sourceConversationId ?? null }
+        : null;
+      const created = await storage.createStudioContentIdea({
+        projectId,
+        topic: String(title).trim().slice(0, 200),
+        contentType: contentType || "other",
+        channels: [] as any,
+        origin: "bd_agent",
+        status: "idea",
+        brief: String(content).slice(0, 5000),
+        createdByUserId: userId,
+        bdIntelMetadata,
+      } as any);
+      res.status(201).json(created);
+    } catch (err: any) {
+      console.error("[BD] save-as-idea:", err);
+      res.status(500).json({ error: err?.message || "Failed to save as content idea" });
+    }
+  });
+
+  // ── Brand Asset Package ZIP ──────────────────────────────────────────────────
+  // GET /api/brand/assets.zip — bundles the static brand files from
+  // client/public/brand/ into a ZIP for one-click download. No auth required
+  // (the files are already publicly served). No new files are generated.
+  app.get("/api/brand/assets.zip", async (_req: Request, res: Response) => {
+    const { resolve } = await import("path");
+    const fs = await import("fs");
+    const archiver = (await import("archiver")).default;
+
+    const brandDir = resolve(process.cwd(), "client/public/brand");
+    const files = ["hirein-logo.svg", "hirein-logo-mark.svg", "hirein-logo-original.jpg"];
+
+    res.setHeader("Content-Type", "application/zip");
+    res.setHeader("Content-Disposition", 'attachment; filename="hirein-brand-assets.zip"');
+
+    const archive = archiver("zip", { zlib: { level: 6 } });
+    archive.on("error", (err) => {
+      console.error("[brand-zip]", err);
+      if (!res.headersSent) res.status(500).json({ error: "Failed to create ZIP" });
+    });
+    archive.pipe(res);
+
+    for (const file of files) {
+      const filePath = resolve(brandDir, file);
+      if (fs.existsSync(filePath)) {
+        archive.file(filePath, { name: file });
+      }
+    }
+    await archive.finalize();
+  });
+
+  // ── Ceipal Update Compliance Routes ─────────────────────────────────────────
+  // POST /api/ceipal/update-log — record Ceipal-eligible user's punch-out response
+  app.post("/api/ceipal/update-log", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const ceipalUser = await storage.getAdminUser(userId);
+      if (!(ceipalUser as any)?.ceipalUpdatePromptEnabled) {
+        return res.status(403).json({ error: "Ceipal update checkpoint is not enabled for you" });
+      }
+
+      const { status, deferredReason, commitmentTime } = req.body;
+      const validStatuses = ["confirmed", "confirmed_unverified", "deferred", "skipped"];
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ error: "Invalid status. Must be: confirmed | confirmed_unverified | deferred | skipped" });
+      }
+
+      const { recordCeipalUpdateLog } = await import("./ceipalCompliance");
+      const today = new Date().toISOString().split("T")[0];
+
+      await recordCeipalUpdateLog({
+        userId,
+        logDate: today,
+        status,
+        deferredReason: deferredReason || null,
+        commitmentTime: commitmentTime ? new Date(commitmentTime) : null,
+      });
+
+      res.json({ success: true, date: today, status });
+    } catch (err: any) {
+      console.error("[ceipal-log] POST /api/ceipal/update-log:", err);
+      res.status(500).json({ error: "Failed to record Ceipal update log" });
+    }
+  });
+
+  // GET /api/ceipal/verify-today-update — background verification (Ceipal-eligible user calls this after saying "yes")
+  app.get("/api/ceipal/verify-today-update", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const currentUser = await storage.getAdminUser(userId);
+      if (!(currentUser as any)?.ceipalUpdatePromptEnabled) {
+        return res.status(403).json({ error: "Ceipal update checkpoint is not enabled for you" });
+      }
+      if (!currentUser?.email) {
+        return res.status(400).json({ error: "User email not found" });
+      }
+
+      const { verifyTodayCeipalUpdate, recordCeipalUpdateLog } = await import("./ceipalCompliance");
+      const result = await verifyTodayCeipalUpdate(currentUser.email);
+
+      const today = new Date().toISOString().split("T")[0];
+      await recordCeipalUpdateLog({
+        userId,
+        logDate: today,
+        status: result.status,
+        verifiedCount: result.submissionsCount,
+        jobsCount: result.jobsCount,
+        verifiedAt: new Date(),
+      });
+
+      // If 0 evidence found, silently flag for manager (data point, not notification)
+      // This is a silent flag; no notification is sent here — checkCeipalUpdateCompliance handles escalation
+      res.json({
+        available: result.available,
+        submissionsCount: result.submissionsCount,
+        jobsCount: result.jobsCount,
+        status: result.status,
+      });
+    } catch (err: any) {
+      console.error("[ceipal-verify] GET /api/ceipal/verify-today-update:", err);
+      res.status(500).json({ error: "Failed to verify Ceipal update" });
+    }
+  });
+
+  // GET /api/ceipal/my-update-log — recruiter's own compliance history
+  app.get("/api/ceipal/my-update-log", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const { month } = req.query; // optional YYYY-MM
+
+      const now = new Date();
+      const fromDate = month
+        ? `${month}-01`
+        : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-01`;
+      const toDate = now.toISOString().split("T")[0];
+
+      const rows = await db.execute(sql`
+        SELECT log_date::text AS date, status, deferred_reason, commitment_time,
+               verified_count, jobs_count, verified_at, manager_flagged_at
+        FROM ceipal_update_logs
+        WHERE user_id = ${userId}
+          AND log_date >= ${fromDate}::date
+          AND log_date <= ${toDate}::date
+        ORDER BY log_date DESC
+        LIMIT 31
+      `);
+
+      const goodStatuses = new Set(["confirmed", "confirmed_unverified"]);
+      const missedStatuses = new Set(["deferred", "skipped", "confirmed_no_evidence"]);
+      const logs = rows.rows as any[];
+      const confirmedDays = logs.filter(l => goodStatuses.has(l.status)).length;
+      const missedDays = logs.filter(l => missedStatuses.has(l.status)).length;
+      const workingDays = logs.length;
+      const rate = workingDays === 0 ? 0 : Math.round((confirmedDays / workingDays) * 100);
+
+      res.json({
+        logs,
+        summary: { workingDays, confirmedDays, missedDays, rate, month: month || fromDate.slice(0, 7) },
+      });
+    } catch (err: any) {
+      console.error("[ceipal-log] GET /api/ceipal/my-update-log:", err);
+      res.status(500).json({ error: "Failed to fetch Ceipal update log" });
+    }
+  });
+
+  // GET /api/ceipal/team-compliance — manager's team view
+  app.get("/api/ceipal/team-compliance", requireAuth, async (req: Request, res: Response) => {
+    const userId = req.session.userId!;
+    const userRole = req.session.role!;
+    const { month } = req.query;
+
+    const allowedRoles = ["manager", "hr", "admin", "super_admin", "operations"];
+    if (!allowedRoles.includes(userRole)) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    // Check credential configuration up front so the frontend can distinguish
+    // "no data because API is down" from "no data because no recruiters"
+    const ceipalConfigured = !!(
+      process.env.CEIPAL_EMAIL &&
+      process.env.CEIPAL_PASSWORD &&
+      process.env.CEIPAL_API_KEY
+    );
+    if (!ceipalConfigured) {
+      return res.json({
+        members: [],
+        apiStatus: "unconfigured",
+        apiError: "Ceipal credentials not configured. Set CEIPAL_EMAIL, CEIPAL_PASSWORD, and CEIPAL_API_KEY.",
+      });
+    }
+
+    try {
+      const { getTeamCeipalCompliance, getOrgCeipalCompliance } = await import("./ceipalCompliance");
+
+      // Surface API availability status so the frontend can show a banner instead of "no recruiters"
+      const ceipalConfigured = !!(
+        process.env.CEIPAL_EMAIL && process.env.CEIPAL_PASSWORD && process.env.CEIPAL_API_KEY
+      );
+<<<<<<< HEAD
+      const lastApiErr = getLastCeipalApiError();
+      const apiStatus = ceipalConfigured ? (lastApiErr ? "error" : undefined) : "unconfigured";
+      const apiError = lastApiErr?.message;
+
+      if (["hr", "admin", "super_admin"].includes(userRole)) {
+        const result = await getOrgCeipalCompliance();
+        return res.json({ 
+          ...result, 
+          apiStatus: apiStatus || "ok",
+          apiError: apiError || result.apiError
+        });
+=======
+      const { getLastCeipalApiError } = await import("./ceipalService");
+      const lastApiErr = getLastCeipalApiError();
+      // "unconfigured" when env vars missing; "error" when API was reachable but returned an error
+      const apiStatus: string | undefined = !ceipalConfigured ? "unconfigured"
+        : lastApiErr ? "error"
+        : undefined;
+
+      const apiError = lastApiErr ?? undefined;
+
+      if (["hr", "admin", "super_admin"].includes(userRole)) {
+        const result = await getOrgCeipalCompliance();
+        return res.json({ ...result, apiStatus, apiError });
+>>>>>>> 6af2561b (Ceipal v2 API migration, token refresh fixes & integration setup guide improvements)
+      }
+
+      // Manager: their direct reports
+      const result = await getTeamCeipalCompliance(userId, month as string | undefined);
+      const avgRate = result.length === 0 ? 0
+        : Math.round(result.reduce((s, m) => s + m.rate, 0) / result.length);
+      const exempted = result.filter(m => !m.promptEnabled).length;
+      const belowThreshold = result.filter(m => m.rate < 70 && m.promptEnabled).length;
+
+      res.json({
+        members: result,
+        summary: {
+          total: result.length,
+          avgRate,
+          belowThreshold,
+          exempted,
+        },
+<<<<<<< HEAD
+        apiStatus: apiStatus || "ok",
+        apiError
+=======
+        apiStatus,
+        apiError,
+>>>>>>> 6af2561b (Ceipal v2 API migration, token refresh fixes & integration setup guide improvements)
+      });
+    } catch (err: any) {
+      console.error("[ceipal-compliance] GET /api/ceipal/team-compliance:", err);
+      // Return 200 so the frontend query client can read apiStatus from the body
+      // (the query client throws on non-2xx before the caller can inspect the payload)
+      // and ensure the response is structured so the frontend can show the error banner.
+      res.json({
+        members: [],
+        summary: { total: 0, avgRate: 0, belowThreshold: 0, exempted: 0 },
+        apiStatus: "error",
+        apiError: err.message ?? "Failed to fetch team Ceipal compliance data",
+      });
+    }
+  });
+
+  // GET /api/ceipal/today-status — check if recruiter has already answered today
+  app.get("/api/ceipal/today-status", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const today = new Date().toISOString().split("T")[0];
+
+      const row = await db.execute(sql`
+        SELECT status, deferred_reason, commitment_time, verified_count, jobs_count
+        FROM ceipal_update_logs
+        WHERE user_id = ${userId} AND log_date = ${today}::date
+        LIMIT 1
+      `);
+
+      // Count consecutive skips from most-recent logs (for skip-lock enforcement on frontend)
+      const recentLogs = await db.execute(sql`
+        SELECT status FROM ceipal_update_logs
+        WHERE user_id = ${userId}
+        ORDER BY log_date DESC
+        LIMIT 10
+      `);
+      let consecutiveSkips = 0;
+      for (const r of recentLogs.rows as any[]) {
+        if (r.status === "skipped") consecutiveSkips++;
+        else break;
+      }
+
+      const currentUser = await storage.getAdminUser(userId);
+      const prompted = (row.rows as any[])[0] || null;
+      res.json({
+        hasAnsweredToday: !!prompted,
+        status: prompted?.status || null,
+        promptEnabled: currentUser ? Boolean((currentUser as any).ceipalUpdatePromptEnabled ?? true) : true,
+        consecutiveSkips,
+      });
+    } catch (err: any) {
+      res.status(500).json({ error: "Failed to check today status" });
+    }
+  });
+
+  // PATCH /api/hr/users/:id/ceipal-exempt — HR/admin toggle for Ceipal exemption
+  app.patch("/api/hr/users/:id/ceipal-exempt", requirePermission("admin.users", "hr", "admin", "super_admin"), async (req: Request, res: Response) => {
+    try {
+      const targetId = req.params.id;
+      const actorId = req.session.userId!;
+      const { enabled, reason } = req.body;
+
+      if (typeof enabled !== "boolean") {
+        return res.status(400).json({ error: "enabled (boolean) is required" });
+      }
+      if (!enabled && !reason?.trim()) {
+        return res.status(400).json({ error: "reason is required when disabling the Ceipal checkpoint" });
+      }
+
+      await db.execute(sql`
+        UPDATE admin_users SET ceipal_update_prompt_enabled = ${enabled}, updated_at = NOW()
+        WHERE id = ${targetId}
+      `);
+
+      // Log to audit trail
+      await db.execute(sql`
+        INSERT INTO audit_logs (actor_id, target_id, action, changes)
+        VALUES (${actorId}, ${targetId}, 'ceipal_exempt_toggle',
+          ${JSON.stringify({ enabled, reason: reason || null })}::jsonb)
+      `);
+
+      res.json({ success: true, enabled });
+    } catch (err: any) {
+      console.error("[ceipal-exempt] PATCH:", err);
+      res.status(500).json({ error: "Failed to update Ceipal exemption" });
+    }
+  });
+
+  // ── Knowledge Hub & Help Hub Routes ──────────────────────────────────────────
+
+  const DOCS_DIR = path.join(process.cwd(), "docs");
+
+  const VALID_USER_ROLES = ["super_admin", "admin", "hr", "finance", "operations", "manager", "recruiter", "employee", "executive"] as const;
+  type UserRole = typeof VALID_USER_ROLES[number];
+
+  interface DocEntry {
+    id: string;
+    category: string;
+    title: string;
+    path: string;
+    content: string;
+  }
+
+  function readDocsDirectory(): DocEntry[] {
+    const results: DocEntry[] = [];
+    function walk(dir: string, baseCategory?: string) {
+      let entries: string[];
+      try {
+        entries = fs.readdirSync(dir);
+      } catch {
+        return;
+      }
+      for (const entry of entries) {
+        const fullPath = path.join(dir, entry);
+        let stat: import("fs").Stats;
+        try { stat = fs.statSync(fullPath); } catch { continue; }
+        if (stat.isDirectory()) {
+          const category = baseCategory ?? entry;
+          walk(fullPath, category);
+        } else if (entry.endsWith(".md")) {
+          const relPath = path.relative(DOCS_DIR, fullPath).replace(/\\/g, "/");
+          const category = baseCategory ?? relPath.split("/")[0];
+          const nameWithoutExt = entry.replace(/\.md$/, "");
+          const title = nameWithoutExt
+            .replace(/[-_]/g, " ")
+            .replace(/\b\w/g, (c) => c.toUpperCase());
+          let content = "";
+          try { content = fs.readFileSync(fullPath, "utf-8"); } catch { content = ""; }
+          const id = relPath.replace(/[^a-zA-Z0-9]/g, "-");
+          results.push({ id, category, title, path: relPath, content });
+        }
+      }
+    }
+    walk(DOCS_DIR);
+    return results;
+  }
+
+  const KNOWLEDGE_HUB_SETTING_KEY = "knowledge_hub_doc_roles";
+
+  const DEFAULT_DOC_ROLES: Record<string, UserRole[]> = {
+    "training/employee-onboarding-track-source.md": ["employee", "manager", "hr", "admin", "super_admin"],
+    "training/manager-onboarding-track-source.md": ["manager", "hr", "admin", "super_admin"],
+    "training/hr-admin-onboarding-track-source.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-feature-flags.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-hr-letters.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-leave-balance.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-offer-letters.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-payroll-run.md": ["hr", "admin", "super_admin"],
+    "training/hr-admin-guide-sop-wave.md": ["hr", "admin", "super_admin"],
+    "training/manager-guide-attendance-correction.md": ["manager", "hr", "admin", "super_admin"],
+    "training/manager-guide-employee-plans.md": ["manager", "hr", "admin", "super_admin"],
+    "training/manager-guide-leave-approval.md": ["manager", "hr", "admin", "super_admin"],
+    "training/manager-guide-my-team-nav.md": ["manager", "hr", "admin", "super_admin"],
+    "training/manager-guide-offer-letters.md": ["manager", "hr", "admin", "super_admin"],
+    "training/executive-guide-dashboards.md": ["executive", "finance", "admin", "super_admin"],
+    "training/executive-onboarding-track-source.md": ["executive", "finance", "admin", "super_admin"],
+    "training/candidate-onboarding-track-source.md": ["recruiter", "hr", "admin", "super_admin"],
+    "training/developer-onboarding-track-source.md": ["admin", "super_admin"],
+    "training/rayo-academy-blueprint.md": ["admin", "super_admin"],
+    "training/EXISTING_GUIDES_INDEX.md": ["admin", "super_admin"],
+    "training/TRAINING_GAP_MAP.md": ["admin", "super_admin"],
+    "training/TRAINING_GAP_MAP_V2.md": ["admin", "super_admin"],
+    "guides/HR-OPS-TEAM-AI-GUIDE.md": ["hr", "operations", "manager", "admin", "super_admin"],
+    "guides/BD-TEAM-AI-GUIDE.md": ["recruiter", "operations", "admin", "super_admin"],
+    "guides/CONTENT-TEAM-AI-GUIDE.md": ["recruiter", "operations", "admin", "super_admin"],
+    "workflows/BUSINESS_RULES_CATALOGUE.md": ["manager", "hr", "operations", "admin", "super_admin"],
+  };
+  async function getOrSeedKnowledgeHubRoles(): Promise<Record<string, UserRole[]>> {
+    const docs = readDocsDirectory();
+    const setting = await storage.getSystemSetting(KNOWLEDGE_HUB_SETTING_KEY);
+    if (setting) {
+      const roleMap = setting.value as Record<string, UserRole[]>;
+      // Merge any new docs added after initial seed — they default to super_admin only
+      let changed = false;
+      for (const doc of docs) {
+        if (!(doc.path in roleMap)) {
+          roleMap[doc.path] = DEFAULT_DOC_ROLES[doc.path] ?? ["super_admin"];
+          changed = true;
+        }
+      }
+      if (changed) {
+        await storage.upsertSystemSetting(KNOWLEDGE_HUB_SETTING_KEY, roleMap, "system");
+      }
+      return roleMap;
+    }
+    const roleMap: Record<string, UserRole[]> = {};
+    for (const doc of docs) {
+      roleMap[doc.path] = DEFAULT_DOC_ROLES[doc.path] ?? ["super_admin"];
+    }
+    await storage.upsertSystemSetting(KNOWLEDGE_HUB_SETTING_KEY, roleMap, "system");
+    return roleMap;
+  }
+
+  // GET /api/admin/knowledge/docs — doc list filtered by caller role (super_admin gets all + assignedRoles)
+  app.get("/api/admin/knowledge/docs", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const isSuperAdmin = req.session.role === "super_admin";
+      const userRole = req.session.role as string;
+      const docs = readDocsDirectory();
+      const roleMap = await getOrSeedKnowledgeHubRoles();
+      if (isSuperAdmin) {
+        const enriched = docs.map((doc) => ({
+          ...doc,
+          assignedRoles: roleMap[doc.path] ?? ["super_admin"],
+        }));
+        return res.json(enriched);
+      }
+      // Non-super_admin: only return docs assigned to their role
+      const filtered = docs
+        .filter((doc) => (roleMap[doc.path] ?? ["super_admin"]).includes(userRole as UserRole))
+        .map((doc) => ({ ...doc, assignedRoles: roleMap[doc.path] ?? ["super_admin"] }));
+      res.json(filtered);
+    } catch (err: any) {
+      console.error("[knowledge-hub] GET /api/admin/knowledge/docs:", err);
+      res.status(500).json({ error: "Failed to read knowledge docs" });
+    }
+  });
+
+  // POST /api/admin/knowledge/visibility — update role assignments for a doc (super_admin only)
+  app.post("/api/admin/knowledge/visibility", requireAuth, async (req: Request, res: Response) => {
+    if (req.session.role !== "super_admin") {
+      return res.status(403).json({ error: "Super admin access required" });
+    }
+    try {
+      const { docPath, roles } = req.body;
+      if (!docPath || typeof docPath !== "string") {
+        return res.status(400).json({ error: "docPath is required" });
+      }
+      if (!Array.isArray(roles) || roles.length === 0) {
+        return res.status(400).json({ error: "roles must be a non-empty array" });
+      }
+      const invalidRoles = roles.filter((r: string) => !VALID_USER_ROLES.includes(r as UserRole));
+      if (invalidRoles.length > 0) {
+        return res.status(400).json({ error: `Invalid roles: ${invalidRoles.join(", ")}` });
+      }
+      const docs = readDocsDirectory();
+      const docExists = docs.some((d) => d.path === docPath);
+      if (!docExists) {
+        return res.status(404).json({ error: "Doc not found" });
+      }
+      const roleMap = await getOrSeedKnowledgeHubRoles();
+      roleMap[docPath] = roles as UserRole[];
+      await storage.upsertSystemSetting(KNOWLEDGE_HUB_SETTING_KEY, roleMap, req.session.userId!);
+      res.json({ success: true, docPath, assignedRoles: roles });
+    } catch (err: any) {
+      console.error("[knowledge-hub] POST /api/admin/knowledge/visibility:", err);
+      res.status(500).json({ error: "Failed to update doc visibility" });
+    }
+  });
+
+  // POST /api/admin/knowledge/read — mark a doc as read for the current user (idempotent upsert)
+  app.post("/api/admin/knowledge/read", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+      const { doc_path } = req.body as { doc_path?: string };
+      if (!doc_path || typeof doc_path !== "string" || !doc_path.trim()) {
+        return res.status(400).json({ error: "doc_path is required" });
+      }
+      await db.execute(sql`
+        INSERT INTO knowledge_hub_reads (user_id, doc_path, read_at)
+        VALUES (${userId}, ${doc_path.trim()}, NOW())
+        ON CONFLICT (user_id, doc_path) DO UPDATE SET read_at = NOW()
+      `);
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[knowledge-hub] POST /api/admin/knowledge/read:", err);
+      res.status(500).json({ error: "Failed to record read" });
+    }
+  });
+
+  // GET /api/admin/knowledge/reads — returns { readPaths, readCounts? } for current user.
+  // readPaths: string[] of doc_path values the current user has read.
+  // readCounts: Record<string, number> (doc_path → distinct user count) — included for
+  //   super_admin and hr roles so they can see "Read by N users" per doc.
+  app.get("/api/admin/knowledge/reads", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId;
+      const role = req.session.role as string;
+      if (!userId) return res.status(401).json({ error: "Not authenticated" });
+
+      const userRows = await db.execute(sql`
+        SELECT doc_path FROM knowledge_hub_reads WHERE user_id = ${userId}
+      `);
+      const readPaths = (userRows.rows as Array<{ doc_path: string }>).map((r) => r.doc_path);
+
+      const canSeeReadCounts = role === "super_admin" || role === "hr";
+      if (!canSeeReadCounts) {
+        return res.json({ readPaths });
+      }
+
+      const countRows = await db.execute(sql`
+        SELECT doc_path, COUNT(DISTINCT user_id)::int AS user_count
+        FROM knowledge_hub_reads
+        GROUP BY doc_path
+      `);
+      const readCounts: Record<string, number> = {};
+      for (const row of countRows.rows as Array<{ doc_path: string; user_count: number }>) {
+        readCounts[row.doc_path] = row.user_count;
+      }
+      res.json({ readPaths, readCounts });
+    } catch (err: any) {
+      console.error("[knowledge-hub] GET /api/admin/knowledge/reads:", err);
+      res.status(500).json({ error: "Failed to fetch reads" });
+    }
+  });
+
+  // GET /api/admin/knowledge/read-counts — super_admin/hr: per-doc distinct user read counts
+  // (kept for backward compat; reads endpoint now returns this too for these roles)
+  app.get("/api/admin/knowledge/read-counts", requireAuth, async (req: Request, res: Response) => {
+    const role = req.session.role as string;
+    if (role !== "super_admin" && role !== "hr") {
+      return res.status(403).json({ error: "Access restricted" });
+    }
+    try {
+      const rows = await db.execute(sql`
+        SELECT doc_path, COUNT(DISTINCT user_id)::int AS user_count
+        FROM knowledge_hub_reads
+        GROUP BY doc_path
+      `);
+      const readCounts: Record<string, number> = {};
+      for (const row of rows.rows as Array<{ doc_path: string; user_count: number }>) {
+        readCounts[row.doc_path] = row.user_count;
+      }
+      res.json(readCounts);
+    } catch (err: any) {
+      console.error("[knowledge-hub] GET /api/admin/knowledge/read-counts:", err);
+      res.status(500).json({ error: "Failed to fetch read counts" });
+    }
+  });
+
+  // GET /api/admin/help/docs — filtered doc list for the requesting user's role
+  app.get("/api/admin/help/docs", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userRole = req.session.role as string;
+      const roleMap = await getOrSeedKnowledgeHubRoles();
+      const allowedPaths = Object.entries(roleMap)
+        .filter(([, roles]) => roles.includes(userRole as UserRole))
+        .map(([p]) => p);
+      if (allowedPaths.length === 0) {
+        return res.json([]);
+      }
+      const allDocs = readDocsDirectory();
+      const filtered = allDocs
+        .filter((doc) => allowedPaths.includes(doc.path))
+        .map((doc) => ({
+          ...doc,
+          assignedRoles: roleMap[doc.path] ?? ["super_admin"],
+        }));
+      res.json(filtered);
+    } catch (err: any) {
+      console.error("[knowledge-hub] GET /api/admin/help/docs:", err);
+      res.status(500).json({ error: "Failed to read help docs" });    }
+  });
+
+  // ── Global Express error handler ─────────────────────────────────────────────
+  // Must be the last middleware registered (4-argument signature).
+  // Catches any error passed via next(err) or thrown in async route handlers
+  // wrapped by Express 5 / express-async-errors. Returns a safe JSON body
+  // with no stack trace exposed to the client.
+  app.use((err: any, req: Request, res: Response, next: NextFunction) => {
+    console.error("[global-error-handler]", err);
+    if (res.headersSent) {
+      return next(err);
+    }
+    res.status(500).json({ error: "Internal server error" });
+  });
+
+  return httpServer;
+}

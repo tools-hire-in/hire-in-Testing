@@ -125,7 +125,7 @@ import { syncSopProgressForUser, impactedUserIdsForSop, backfillAllSopProgress, 
 import { createSopComplianceGoal, getComplianceHealth } from "./sopGoalEngine";
 import * as sopRollout from "./sopRollout";
 import fs from "fs";
-import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
+import { syncCeipalJobs, pushApplicantToCeipal, getLastCeipalApiError } from "./ceipalService";
 import { generateOfferLetterDocx, type OfferLetterData } from "./offerLetter";
 import { POLICY_ANNEXURES } from "./annexureContent";
 import { generateAddendumDocx, generateClauseDocx, type AddendumData } from "./offerLetterAddendum";
@@ -31405,9 +31405,26 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     try {
       const { getTeamCeipalCompliance, getOrgCeipalCompliance } = await import("./ceipalCompliance");
 
+      // Surface API availability status so the frontend can show a banner instead of "no recruiters"
+      const ceipalConfigured = !!(
+        process.env.CEIPAL_EMAIL && process.env.CEIPAL_PASSWORD && process.env.CEIPAL_API_KEY
+      );
+      const { getLastCeipalApiError } = await import("./ceipalService");
+      const lastApiErr = getLastCeipalApiError();
+      // "unconfigured" when env vars missing; "error" when API was reachable but returned an error
+      const apiStatus: string | undefined = !ceipalConfigured ? "unconfigured"
+        : lastApiErr ? "error"
+        : "ok";
+
+      const apiError = lastApiErr ?? undefined;
+
       if (["hr", "admin", "super_admin"].includes(userRole)) {
         const result = await getOrgCeipalCompliance();
-        return res.json({ ...result, apiStatus: "ok" });
+        return res.json({ 
+          ...result, 
+          apiStatus,
+          apiError: apiError || result.apiError
+        });
       }
 
       // Manager: their direct reports
@@ -31425,17 +31442,19 @@ Return JSON with keys: linkedin, instagram, facebook.`;
           belowThreshold,
           exempted,
         },
-        apiStatus: "ok",
+        apiStatus,
+        apiError,
       });
     } catch (err: any) {
       console.error("[ceipal-compliance] GET /api/ceipal/team-compliance:", err);
       // Return 200 so the frontend query client can read apiStatus from the body
       // (the query client throws on non-2xx before the caller can inspect the payload)
+      // and ensure the response is structured so the frontend can show the error banner.
       res.json({
-        error: "Failed to fetch team Ceipal compliance",
         members: [],
+        summary: { total: 0, avgRate: 0, belowThreshold: 0, exempted: 0 },
         apiStatus: "error",
-        apiError: err.message ?? "Unknown error",
+        apiError: err.message ?? "Failed to fetch team Ceipal compliance data",
       });
     }
   });

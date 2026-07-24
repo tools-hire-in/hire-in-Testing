@@ -1,0 +1,7 @@
+<<<<<<< HEAD
+        apiStatus: apiStatus || "ok",
+        apiError
+=======
+        apiStatus,
+        apiError,
+>>>>>>> 6af2561b (Ceipal v2 API migration, token refresh fixes & integration setup guide improvements)
