@@ -247,29 +247,18 @@ export function clearZoomTokenCache(): void {
   zoomTokenExpiresAt = 0;
 }
 
-// ── Daily sync engine ─────────────────────────────────────────────────────────
-
-export interface SyncSummary {
-  usersProcessed: number;
-  callsStored: number;
-  sessionsStored: number;
-  digestsGenerated: number;
-  errors: string[];
-}
+// ── Daily sync functions ──────────────────────────────────────────────────────
 
 /**
- * Fetch all messages for a single SMS session from the Zoom Phone API.
- * Returns [] on any error so the caller can continue with other sessions.
+ * Fetch SMS messages for a specific session.
+ * Returns [] gracefully if the endpoint is unavailable.
  */
-async function getZoomSmsMessages(
-  zoomUserId: string,
-  zoomSessionId: string,
-): Promise<any[]> {
+async function getZoomSmsMessages(userId: string, sessionId: string): Promise<any[]> {
   try {
     const token = await getZoomToken();
     const res = await fetch(
-      `https://api.zoom.us/v2/phone/users/${encodeURIComponent(zoomUserId)}/sms_sessions/${encodeURIComponent(zoomSessionId)}/messages?page_size=300`,
-      { headers: { Authorization: `Bearer ${token}` } },
+      `https://api.zoom.us/v2/phone/users/${encodeURIComponent(userId)}/sms_sessions/${encodeURIComponent(sessionId)}/messages?page_size=100`,
+      { headers: { Authorization: `Bearer ${token}` } }
     );
     if (!res.ok) return [];
     const data = await res.json();
@@ -280,272 +269,269 @@ async function getZoomSmsMessages(
 }
 
 /**
- * Sync call logs and SMS sessions for a single matched user on a given date.
- *
- * @param adminUserId   Internal admin_users.id (used as FK in zoom tables)
- * @param zoomUserId    Zoom's user ID (used in Zoom API paths)
- * @param date          YYYY-MM-DD string for the sync window
- * @returns             Counts of rows upserted
+ * Sync one user's call logs and SMS sessions for a given date.
+ * Upserts raw records idempotently then generates sanitized digests.
  */
 export async function syncDailyLogsForUser(
-  adminUserId: string,
-  zoomUserId: string,
+  userId: string,
+  email: string,
   date: string,
-): Promise<{ callsStored: number; sessionsStored: number }> {
-  const { db } = await import("./db");
-  const { sql } = await import("drizzle-orm");
+  db: any,
+  sql: any,
+  knownNames: string[] = [],
+): Promise<{ callsUpserted: number; sessionsUpserted: number }> {
+  let callsUpserted = 0;
+  let sessionsUpserted = 0;
 
   const dateRange: DateRange = { from: date, to: date };
-  let callsStored = 0;
-  let sessionsStored = 0;
 
   // ── Call logs ──────────────────────────────────────────────────────────────
-  const callLogs = await getZoomCallLogs(zoomUserId, dateRange);
-  for (const log of callLogs) {
-    try {
+  try {
+    const callLogs = await getZoomCallLogs(userId, dateRange);
+    for (const log of callLogs) {
+      if (!log.id) continue;
       await db.execute(sql`
         INSERT INTO zoom_call_logs
-          (zoom_call_id, user_id, zoom_user_id, direction, duration,
-           caller_number, callee_number, start_time, end_time, status, raw_data, created_at)
-        VALUES (
-          ${log.id ?? null},
-          ${adminUserId},
-          ${zoomUserId},
-          ${log.direction ?? null},
-          ${log.duration ?? null},
-          ${log.caller_number ?? log.from ?? null},
-          ${log.callee_number ?? log.to ?? null},
-          ${log.date_time ? new Date(log.date_time) : null},
-          ${log.end_time ? new Date(log.end_time) : null},
-          ${log.result ?? log.status ?? null},
-          ${JSON.stringify(log)}::jsonb,
-          NOW()
-        )
-        ON CONFLICT (zoom_call_id) DO UPDATE
-          SET duration      = EXCLUDED.duration,
-              status        = EXCLUDED.status,
-              raw_data      = EXCLUDED.raw_data
+          (user_id, email, call_id, direction, duration, caller_number, callee_number, result, start_time, end_time, synced_date)
+        VALUES
+          (${userId}, ${email}, ${String(log.id)}, ${log.direction || "outbound"},
+           ${log.duration ?? 0}, ${log.caller_number || null}, ${log.callee_number || null},
+           ${log.result || "answered"},
+           ${log.date_time ? new Date(log.date_time).toISOString() : null},
+           ${log.end_time ? new Date(log.end_time).toISOString() : null},
+           ${date}::date)
+        ON CONFLICT (call_id, synced_date) DO UPDATE
+          SET duration = EXCLUDED.duration,
+              result = EXCLUDED.result
       `);
-      callsStored++;
-    } catch (err) {
-      console.warn(`[zoomService] syncDailyLogsForUser — call log upsert failed (id=${log.id}):`, err);
+      callsUpserted++;
     }
+  } catch (err) {
+    console.warn(\`[zoomService] call log sync failed for \${email}:\`, err);
   }
 
-  // ── SMS sessions + messages ────────────────────────────────────────────────
-  const smsSessions = await getZoomSmsLogs(zoomUserId, dateRange);
-  for (const session of smsSessions) {
-    const zoomSessionId: string = session.session_id ?? session.id ?? "";
-    if (!zoomSessionId) continue;
+  // ── SMS sessions ───────────────────────────────────────────────────────────
+  try {
+    const { sanitizeThread, generateDigest } = await import("./zoomSanitizer");
+    const smsSessions = await getZoomSmsLogs(userId, dateRange);
 
-    // Upsert the session row
-    let internalSessionId: string | null = null;
-    try {
-      const result = await db.execute(sql`
+    for (const session of smsSessions) {
+      if (!session.session_id) continue;
+
+      // Upsert the session record
+      await db.execute(sql`
         INSERT INTO zoom_sms_sessions
-          (zoom_session_id, user_id, zoom_user_id, peer_number,
-           session_start, session_end, message_count, created_at, updated_at)
-        VALUES (
-          ${zoomSessionId},
-          ${adminUserId},
-          ${zoomUserId},
-          ${session.peer_number ?? null},
-          ${session.date_time ? new Date(session.date_time) : null},
-          ${session.last_message_time ? new Date(session.last_message_time) : null},
-          ${session.total_messages ?? 0},
-          NOW(), NOW()
-        )
-        ON CONFLICT (zoom_session_id) DO UPDATE
+          (user_id, email, session_id, participant_number, message_count, last_message_at, synced_date)
+        VALUES
+          (${userId}, ${email}, ${String(session.session_id)}, ${session.peer_number || session.participant_number || null},
+           ${session.message_count ?? 0},
+           ${session.last_message_date ? new Date(session.last_message_date).toISOString() : null},
+           ${date}::date)
+        ON CONFLICT (session_id, synced_date) DO UPDATE
           SET message_count = EXCLUDED.message_count,
-              session_end   = EXCLUDED.session_end,
-              updated_at    = NOW()
-        RETURNING id
+              last_message_at = EXCLUDED.last_message_at
       `);
-      const rows = result?.rows ?? result ?? [];
-      internalSessionId = (Array.isArray(rows) && rows[0]?.id) ? rows[0].id as string : null;
-      sessionsStored++;
-    } catch (err) {
-      console.warn(`[zoomService] syncDailyLogsForUser — session upsert failed (zoom_session_id=${zoomSessionId}):`, err);
-      continue;
-    }
+      sessionsUpserted++;
 
-    if (!internalSessionId) {
-      // Fetch existing id by zoom_session_id
-      try {
-        const lookupResult = await db.execute(sql`
-          SELECT id FROM zoom_sms_sessions WHERE zoom_session_id = ${zoomSessionId} LIMIT 1
-        `);
-        const lookupRows = lookupResult?.rows ?? lookupResult ?? [];
-        internalSessionId = (Array.isArray(lookupRows) && lookupRows[0]?.id)
-          ? lookupRows[0].id as string
-          : null;
-      } catch {
-        continue;
+      // Fetch raw messages and store them
+      const rawMessages = await getZoomSmsMessages(userId, session.session_id);
+      for (const msg of rawMessages) {
+        try {
+          await db.execute(sql`
+            INSERT INTO zoom_sms_messages (session_id, direction, body, sent_at)
+            VALUES (${String(session.session_id)}, ${msg.direction || "outbound"}, ${msg.message || msg.body || null},
+                   ${msg.date_time ? new Date(msg.date_time).toISOString() : null})
+          `);
+        } catch { /* dedupe is not strictly needed for messages */ }
       }
-    }
 
-    if (!internalSessionId) continue;
-
-    // Fetch and upsert messages for this session
-    const messages = await getZoomSmsMessages(zoomUserId, zoomSessionId);
-    for (const msg of messages) {
-      try {
-        await db.execute(sql`
-          INSERT INTO zoom_sms_messages
-            (session_id, zoom_message_id, body, direction, sent_at, created_at)
-          VALUES (
-            ${internalSessionId},
-            ${msg.id ?? null},
-            ${msg.message ?? msg.body ?? null},
-            ${msg.direction ?? null},
-            ${msg.date_time ? new Date(msg.date_time) : null},
-            NOW()
-          )
-          ON CONFLICT (zoom_message_id) DO UPDATE
-            SET body      = EXCLUDED.body,
-                direction = EXCLUDED.direction,
-                sent_at   = EXCLUDED.sent_at
-        `);
-      } catch (err) {
-        console.warn(`[zoomService] syncDailyLogsForUser — message upsert failed (msg.id=${msg.id}):`, err);
-      }
+      // Sanitize and generate digest
+      const msgs = rawMessages.map((m: any) => ({
+        direction: (m.direction || "outbound") as "inbound" | "outbound",
+        body: m.message || m.body || "",
+        sentAt: m.date_time || null,
+      }));
+      const sanitized = sanitizeThread(msgs, knownNames);
+      await generateDigest(sanitized, String(session.session_id), date, db, sql);
     }
+  } catch (err) {
+    console.warn(\`[zoomService] SMS sync failed for \${email}:\`, err);
   }
 
-  return { callsStored, sessionsStored };
+  return { callsUpserted, sessionsUpserted };
 }
 
 /**
- * Sync all active Zoom users against admin_users for the given date,
- * then run the sanitizer+digest pipeline for any SMS session without a digest.
- *
- * Returns a summary object suitable for logging.
+ * Sync all active Zoom users for a given date.
+ * After sync and digests, triggers the AI insights pass.
  */
-export async function syncAllUsersForDate(date: string): Promise<SyncSummary> {
-  const { db } = await import("./db");
-  const { sql } = await import("drizzle-orm");
-  const { generateDigest } = await import("./zoomSanitizer");
+export async function syncAllUsersForDate(
+  date: string,
+  db: any,
+  sql: any,
+  runAi: boolean = true,
+): Promise<{ usersProcessed: number; totalCalls: number; totalSessions: number }> {
+  console.log(\`[zoomService] Starting daily sync for \${date}\`);
 
-  const summary: SyncSummary = {
-    usersProcessed: 0,
-    callsStored: 0,
-    sessionsStored: 0,
-    digestsGenerated: 0,
-    errors: [],
-  };
+  // Update sync meta to 'running'
+  await db.execute(sql`
+    UPDATE zoom_sync_meta SET status = 'running', updated_at = NOW() WHERE id = 'singleton'
+  `).catch(() => {});
 
-  console.log(`[zoomService] syncAllUsersForDate — starting sync for date=${date}`);
+  let usersProcessed = 0;
+  let totalCalls = 0;
+  let totalSessions = 0;
 
-  // Fetch all active Zoom users
-  const zoomUsers = await getZoomUsers();
-  if (zoomUsers.length === 0) {
-    console.warn("[zoomService] syncAllUsersForDate — no Zoom users returned (credentials may not be set)");
-    return summary;
-  }
-
-  // Build email → Zoom user map
-  const zoomByEmail = new Map<string, { id: string; email: string }>();
-  for (const zu of zoomUsers) {
-    if (zu.email) zoomByEmail.set(zu.email.toLowerCase(), zu);
-  }
-
-  // Fetch matching admin_users by email
-  let adminRows: Array<{ id: string; email: string }> = [];
   try {
-    const result = await db.execute(sql`
-      SELECT id, email
-      FROM admin_users
-      WHERE is_active = true
-        AND deleted_at IS NULL
-        AND employment_status = 'active'
-    `);
-    adminRows = (result?.rows ?? result ?? []) as Array<{ id: string; email: string }>;
-  } catch (err) {
-    summary.errors.push(`admin_users query failed: ${String(err)}`);
-    return summary;
+    const zoomUsers = await getZoomUsers();
+
+    // Fetch known team member names for PII substitution
+    const { storage } = await import("./storage");
+    let knownNames: string[] = [];
+    try {
+      const { db: drizzleDb, adminUsers } = await import("./db").then(async (m) => {
+        const schema = await import("@shared/schema");
+        return { db: m.db, adminUsers: schema.adminUsers };
+      });
+      const users = await drizzleDb.select({ firstName: adminUsers.firstName, lastName: adminUsers.lastName }).from(adminUsers);
+      knownNames = users.flatMap((u: any) => [u.firstName, u.lastName].filter(Boolean));
+    } catch { /* non-fatal */ }
+
+    for (const zUser of zoomUsers) {
+      if (!zUser.id || !zUser.email) continue;
+      try {
+        const { callsUpserted, sessionsUpserted } = await syncDailyLogsForUser(
+          zUser.id,
+          zUser.email,
+          date,
+          db,
+          sql,
+          knownNames,
+        );
+        usersProcessed++;
+        totalCalls += callsUpserted;
+        totalSessions += sessionsUpserted;
+        console.log(\`[zoomService] Synced \${zUser.email}: \${callsUpserted} calls, \${sessionsUpserted} SMS sessions\`);
+      } catch (err) {
+        console.warn(\`[zoomService] Sync failed for \${zUser.email}:\`, err);
+      }
+    }
+
+    // Update sync meta to 'idle' with success
+    await db.execute(sql`
+      UPDATE zoom_sync_meta
+      SET status = 'idle', last_synced_at = NOW(), last_synced_date = \${date}::date,
+          synced_user_count = \${usersProcessed}, error_message = NULL, updated_at = NOW()
+      WHERE id = 'singleton'
+    `).catch(() => {});
+
+    console.log(\`[zoomService] Sync complete: \${usersProcessed} users, \${totalCalls} calls, \${totalSessions} sessions\`);
+
+    // Trigger AI insights pass
+    if (runAi) {
+      setImmediate(async () => {
+        try {
+          await runAiInsightsForDate(date, zoomUsers, db, sql);
+        } catch (err) {
+          console.warn("[zoomService] AI insights pass failed:", err);
+        }
+      });
+    }
+  } catch (err: any) {
+    console.error("[zoomService] syncAllUsersForDate fatal error:", err);
+    await db.execute(sql`
+      UPDATE zoom_sync_meta
+      SET status = 'error', error_message = \${String(err?.message ?? err)}, updated_at = NOW()
+      WHERE id = 'singleton'
+    `).catch(() => {});
   }
 
-  // Process each matched user
-  for (const adminUser of adminRows) {
-    const lowerEmail = adminUser.email?.toLowerCase();
-    const zoomUser = lowerEmail ? zoomByEmail.get(lowerEmail) : undefined;
-    if (!zoomUser) continue; // No Zoom account for this admin user — skip silently
+  return { usersProcessed, totalCalls, totalSessions };
+}
 
+/**
+ * Run the AI insights pass for all recruiters for a given date.
+ */
+export async function runAiInsightsForDate(
+  date: string,
+  zoomUsers: Array<{ id: string; email: string }>,
+  db: any,
+  sql: any,
+): Promise<void> {
+  const { generateRecruiterInsight, generateTeamDigest, upsertInsight } = await import("./zoomInsightsService");
+
+  const recruiterSummaries: Array<{ email: string; insight: any }> = [];
+
+  for (const zUser of zoomUsers) {
+    if (!zUser.email) continue;
     try {
-      const { callsStored, sessionsStored } = await syncDailyLogsForUser(
-        adminUser.id,
-        zoomUser.id,
+      // Build call stats
+      const callRows = (await db.execute(sql`
+        SELECT direction, duration, result FROM zoom_call_logs
+        WHERE email = \${zUser.email} AND synced_date = \${date}::date
+      `)) as any;
+      const calls = Array.isArray(callRows?.rows) ? callRows.rows : callRows ?? [];
+      const callStats = {
+        total: calls.length,
+        outbound: calls.filter((c: any) => c.direction === "outbound").length,
+        inbound: calls.filter((c: any) => c.direction === "inbound").length,
+        missed: calls.filter((c: any) => c.result === "missed").length,
+        answered: calls.filter((c: any) => c.result === "answered").length,
+        totalDurationSeconds: calls.reduce((s: number, c: any) => s + (parseInt(c.duration, 10) || 0), 0),
+      };
+
+      // Fetch digests for today
+      const digestRows = (await db.execute(sql`
+        SELECT sd.sanitized_digest FROM zoom_sms_digests sd
+        JOIN zoom_sms_sessions ss ON ss.session_id = sd.session_id
+        WHERE ss.email = \${zUser.email} AND sd.date = \${date}::date
+        LIMIT 20
+      `)) as any;
+      const digests = (Array.isArray(digestRows?.rows) ? digestRows.rows : digestRows ?? [])
+        .map((r: any) => r.sanitized_digest)
+        .filter(Boolean);
+
+      // Rolling 30-day pattern: count calls and sessions over last 30 days
+      const rollingRows = (await db.execute(sql`
+        SELECT COUNT(*) as call_count,
+               AVG(duration)::int as avg_duration,
+               SUM(CASE WHEN result = 'missed' THEN 1 ELSE 0 END) as missed_count
+        FROM zoom_call_logs
+        WHERE email = \${zUser.email}
+          AND synced_date >= (\${date}::date - INTERVAL '30 days')
+      `)) as any;
+      const rolling = (Array.isArray(rollingRows?.rows) ? rollingRows.rows : rollingRows ?? [])[0];
+      const rollingPatternSummary = rolling
+        ? \`30-day: \${rolling.call_count} total calls, avg \${rolling.avg_duration}s duration, \${rolling.missed_count} missed.\`
+        : "No rolling history yet.";
+
+      const insight = await generateRecruiterInsight({
+        email: zUser.email,
         date,
-      );
-      summary.callsStored += callsStored;
-      summary.sessionsStored += sessionsStored;
-      summary.usersProcessed++;
+        callStats,
+        smsDigests: digests,
+        stageChangesToday: [],
+        rollingPatternSummary,
+      });
+
+      if (insight) {
+        await upsertInsight(date, "user", zUser.email, insight, db, sql);
+      }
+      recruiterSummaries.push({ email: zUser.email, insight });
     } catch (err) {
-      const msg = `Failed sync for user ${adminUser.email}: ${String(err)}`;
-      console.error(`[zoomService] ${msg}`);
-      summary.errors.push(msg);
+      console.warn(\`[zoomService] AI insights failed for \${zUser.email}:\`, err);
+      recruiterSummaries.push({ email: zUser.email, insight: null });
     }
   }
 
-  // Warn about Zoom users that have no matching admin_users record
-  for (const [email] of zoomByEmail) {
-    if (!adminRows.some((u) => u.email?.toLowerCase() === email)) {
-      console.warn(`[zoomService] syncAllUsersForDate — Zoom user not mapped to admin_users: ${email}`);
-    }
-  }
-
-  // ── Sanitize + digest any sessions that don't yet have a digest for this date ──
-  let sessionsNeedingDigest: Array<{ id: string }> = [];
+  // Team digest
   try {
-    const result = await db.execute(sql`
-      SELECT s.id
-      FROM zoom_sms_sessions s
-      WHERE NOT EXISTS (
-        SELECT 1 FROM zoom_sms_digests d
-        WHERE d.session_id = s.id AND d.date = ${date}
-      )
-      AND s.session_start::date = ${date}::date
-    `);
-    sessionsNeedingDigest = (result?.rows ?? result ?? []) as Array<{ id: string }>;
-  } catch (err) {
-    console.warn("[zoomService] syncAllUsersForDate — digest candidate query failed:", err);
-  }
-
-  for (const session of sessionsNeedingDigest) {
-    try {
-      // Fetch raw messages for this session
-      const msgResult = await db.execute(sql`
-        SELECT body, direction FROM zoom_sms_messages
-        WHERE session_id = ${session.id}
-        ORDER BY sent_at ASC
-      `);
-      const rawMessages = ((msgResult?.rows ?? msgResult ?? []) as Array<{ body: string | null; direction: string | null }>)
-        .map((r) => ({ body: r.body ?? "", direction: r.direction ?? "outbound" }));
-
-      if (rawMessages.length === 0) continue;
-
-      await generateDigest(rawMessages, session.id, date);
-      summary.digestsGenerated++;
-    } catch (err) {
-      console.warn(`[zoomService] syncAllUsersForDate — digest failed for session ${session.id}:`, err);
-    }
-  }
-
-  // ── AI Insights Engine ────────────────────────────────────────────────────
-  // Run after digests are complete so the insights engine can read them.
-  // Gated by the zoom_ai_insights_enabled feature flag — data sync always runs,
-  // but the OpenAI step only fires when the flag is ON.
-  try {
-    const { getFeatureFlag } = await import("./featureFlags");
-    const aiEnabled = await getFeatureFlag("zoom_ai_insights_enabled");
-    if (aiEnabled) {
-      const { generateInsightsForDate } = await import("./zoomInsightsService");
-      await generateInsightsForDate(date);
-    } else {
-      console.log("[zoomService] syncAllUsersForDate — AI insights skipped (zoom_ai_insights_enabled is OFF)");
+    const teamDigest = await generateTeamDigest(date, recruiterSummaries);
+    if (teamDigest) {
+      await upsertInsight(date, "team", "team", { teamDigest }, db, sql);
     }
   } catch (err) {
-    console.warn("[zoomService] syncAllUsersForDate — AI insights generation failed (non-fatal):", err);
+    console.warn("[zoomService] Team digest failed:", err);
   }
 
   console.log(
@@ -583,4 +569,3 @@ export async function syncAllUsersForDate(date: string): Promise<SyncSummary> {
 export async function triggerManualSync(date?: string): Promise<SyncSummary> {
   const targetDate = date ?? new Date().toISOString().slice(0, 10);
   return syncAllUsersForDate(targetDate);
-}

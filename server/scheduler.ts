@@ -366,6 +366,11 @@ export function startScheduler() {
     schedule: "Daily 7 AM IST",
     handler: handleGovernanceSyncSweep,
   });
+  JOB_REGISTRY.set("zoom_comms_sync", {
+    name: "zoom_comms_sync",
+    label: "Zoom Daily Comms Sync",
+    schedule: "Daily 02:00 UTC (6 PM PST)",
+  });
 
   // Salary report: last day of month at 6 PM CST — generate and hold for approval
   cron.schedule("0 18 28-31 * *", async () => {
@@ -2301,52 +2306,33 @@ export function startScheduler() {
     }
   }, { timezone: "Asia/Kolkata" });
 
-  // ── Zoom Communications daily sync — configurable time (PST/PDT) ──────────
-  // Fires every minute in LA timezone. Inside the handler we read the admin-
-  // configured zoom_sync_time_pst setting (default "18:00") and skip unless the
-  // current LA hour:minute matches — this lets HR change the sync time from the
-  // admin panel without requiring a server restart.
-  // Gated by zoom_comms_sync_enabled feature flag. Skips silently when flag is off.
-  cron.schedule("* * * * *", async () => {
+  // ── Zoom daily comms sync — 02:00 UTC = 6 PM PST ─────────────────────────
+  // Controlled by zoom_comms_sync_enabled feature flag.
+  // AI insights pass runs immediately after sync if zoom_comms_ai_enabled is also ON.
+  cron.schedule("0 2 * * *", async () => {
+    const _entry = JOB_REGISTRY.get("zoom_comms_sync");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
     try {
-      const flags = await storage.getSystemSetting("feature_flags");
-      const featureFlags = (flags?.value as Record<string, boolean>) ?? {};
-      if (!featureFlags.zoom_comms_sync_enabled) return;
-
-      // Read configured sync time from settings (default 18:00 PST)
-      const timeSetting = await storage.getSystemSetting("zoom_sync_time_pst");
-      const rawTime = (timeSetting?.value as string) ?? "18:00";
-      const cleaned = String(rawTime).replace(/^"|"$/g, ""); // strip JSON string quotes if any
-      const [configHourStr, configMinStr] = cleaned.split(":");
-      const configHour = parseInt(configHourStr ?? "18", 10);
-      const configMin = parseInt(configMinStr ?? "0", 10);
-
-      // Get current LA hour and minute
-      const now = new Date();
-      const laParts = new Intl.DateTimeFormat("en-US", {
-        timeZone: "America/Los_Angeles",
-        hour: "numeric",
-        minute: "numeric",
-        hour12: false,
-      }).formatToParts(now);
-      const currentHour = parseInt(laParts.find((p) => p.type === "hour")?.value ?? "0", 10);
-      const currentMin = parseInt(laParts.find((p) => p.type === "minute")?.value ?? "0", 10);
-
-      if (currentHour !== configHour || currentMin !== configMin) return;
-
-      const { syncAllUsersForDate } = await import("./zoomService");
-      // Derive today's date in LA timezone — same timezone the cron fires in.
-      const la = getLaDateTime();
-      const syncDate = `${la.year}-${String(la.month).padStart(2, "0")}-${String(la.day).padStart(2, "0")}`;
-      console.log(`[scheduler] Zoom comms sync starting for date=${syncDate} (configured time: ${cleaned})`);
-      const summary = await syncAllUsersForDate(syncDate);
-      console.log(
-        `[scheduler] Zoom comms sync complete — users=${summary.usersProcessed} calls=${summary.callsStored} sessions=${summary.sessionsStored} digests=${summary.digestsGenerated} errors=${summary.errors.length}`,
-      );
+      const { getFeatureFlag } = await import("./featureFlags");
+      const syncEnabled = await getFeatureFlag("zoom_comms_sync_enabled");
+      if (!syncEnabled) {
+        console.log("[scheduler] Zoom comms sync skipped (zoom_comms_sync_enabled=false)");
+        return;
+      }
+      const { isZoomConfigured, syncAllUsersForDate } = await import("./zoomService");
+      if (!isZoomConfigured()) {
+        console.log("[scheduler] Zoom comms sync skipped (Zoom not configured)");
+        return;
+      }
+      const aiEnabled = await getFeatureFlag("zoom_comms_ai_enabled");
+      // Sync yesterday (the just-completed day) in UTC
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().split("T")[0];
+      const { sql: drizzleSql } = await import("drizzle-orm");
+      await syncAllUsersForDate(yesterday, db, drizzleSql, aiEnabled);
     } catch (err) {
-      console.error("[scheduler] Zoom comms sync cron failed:", err);
+      console.error("[scheduler] Zoom comms sync error:", err);
     }
-  }, { timezone: "America/Los_Angeles" });
+  }, { timezone: "UTC" });
 
   // ── SOP Compliance Check-in Notifications (Task #1568) ─────────────────────
   // Daily at 08:30 IST — fires sop_early_nudge / sop_deadline_reminder /
@@ -2386,6 +2372,6 @@ export function startScheduler() {
   console.log("  - SOP scheduled wave launches: daily 07:00 IST → fires approved wave_scheduled_launches where go_live_date <= today");
   console.log("  - Policy overdue manager digest: daily 09:00 IST → one email per manager listing direct reports with pending policy sign-off > 2 days overdue");
   console.log("  - Dev inbox weekly purge: Sundays 02:00 IST (non-production only) → removes dev_email_inbox rows older than 7 days");
-  console.log("  - Zoom comms daily sync: every minute America/Los_Angeles → fires when current LA time matches zoom_sync_time_pst (default 18:00); data sync + digests for that LA calendar day (gated by zoom_comms_sync_enabled flag; AI step gated by zoom_ai_insights_enabled flag)");
+  console.log("  - Zoom daily comms sync: daily 02:00 UTC (6 PM PST) → syncs call logs + SMS sessions + generates sanitized digests + AI insights (gated by zoom_comms_sync_enabled flag)");
   console.log("  - SOP compliance check-in notifications: daily 08:30 IST → fires sop_early_nudge/sop_deadline_reminder/sop_reinforcement for due check-ins; marks them completed after firing");
 }

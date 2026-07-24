@@ -644,8 +644,13 @@ export function FeatureFlagsSection() {
     },
     {
       key: "zoom_comms_sync_enabled",
-      label: "Zoom Communications Daily Sync",
-      description: "When ON, the nightly cron (6 PM PST) pulls call logs and SMS sessions from Zoom Phone for all matched team members, stores them in the database, and generates AI-anonymized digests. Turn OFF to pause data collection without losing existing records.",
+      label: "Zoom Daily Comms Sync",
+      description: "When ON, a nightly job (02:00 UTC / 6 PM PST) pulls call logs and SMS sessions from Zoom Phone for all active users, stores anonymised digests, and makes the data available in Comms Analytics. Requires Zoom credentials to be configured in Integrations. When OFF, no Zoom data is pulled.",
+    },
+    {
+      key: "zoom_comms_ai_enabled",
+      label: "Zoom Comms — AI Coaching Insights",
+      description: "When ON (and Zoom sync is also ON), the nightly sync runs an AI pass over each recruiter's anonymised call and SMS data to generate responsiveness scores, cold-candidate alerts, conversation patterns, and actionable coaching goals visible to managers in Comms Analytics. When OFF, raw stats are still synced but no AI analysis is generated.",
     },
     {
       key: "zoom_ai_insights_enabled",

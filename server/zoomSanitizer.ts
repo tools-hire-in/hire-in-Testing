@@ -1,272 +1,168 @@
 /**
- * Zoom SMS PII/PHI Sanitization Pipeline
+ * Zoom Comms Sanitization Pipeline
  *
- * Sits between raw SMS message bodies and any AI processing.
- * Ensures candidate names, phone numbers, compensation figures,
- * and other sensitive data are NEVER sent to OpenAI — only anonymized digests are.
+ * Pure-function module with no external dependencies on server state.
+ * Provides:
+ *   - NER regex layer for PII substitution
+ *   - Name substitution using known team member list
+ *   - Digest generator that summarises an anonymised thread via OpenAI
  *
- * Key guarantee: generateDigest() always calls buildNameList() internally before
- * sending any text to the AI model, so no unsanitized names can reach OpenAI even
- * if the caller omits the name list.
- *
- * Exports:
- *   sanitizeThread(messages, nameList) — pure, no external deps; unit-testable
- *   generateDigest(messages, sessionId, date) — full pipeline: sanitize then digest
- *   buildNameList()  — loads name tokens from admin_users + applications
+ * IMPORTANT: Raw SMS bodies are NEVER passed to analytics — only sanitized digests.
  */
 
-import { db } from "./db";
-import { sql } from "drizzle-orm";
-
-// ── PII regex substitution passes ────────────────────────────────────────────
-
-const PHONE_RE =
-  /(\+?1[\s.-]?)?\(?\d{3}\)?[\s.-]?\d{3}[\s.-]?\d{4}/g;
-
-const EMAIL_RE =
-  /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g;
-
-const COMPENSATION_RE =
-  /\$\s?\d[\d,]*(\.\d{1,2})?(\s?(k|K|per\s?hour|\/hr|\/year|annually|salary|compensation))?|\b\d[\d,]*\s*(dollars?|USD|per\s?hour|\/hr)\b/g;
-
-const SSN_RE =
-  /\b\d{3}[-\s]?\d{2}[-\s]?\d{4}\b/g;
-
-const ID_RE =
-  /\b[A-Z]{1,2}\d{6,9}\b/g;
-
-const DOB_RE =
-  /\b(0?[1-9]|1[0-2])[\/\-](0?[1-9]|[12]\d|3[01])[\/\-](\d{2}|\d{4})\b|\b(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[a-z]*\.?\s+\d{1,2},?\s+\d{4}\b/gi;
-
-// ── Name token types ──────────────────────────────────────────────────────────
-
-export interface NameEntry {
-  tokens: string[];
-  label: "[CANDIDATE]" | "[RECRUITER]" | "[PERSON]";
+export interface SmsMessage {
+  direction: "inbound" | "outbound";
+  body: string;
+  sentAt?: Date | string | null;
 }
 
-/**
- * Build a combined name list from two sources:
- *   1. admin_users (active, non-deleted) — recruiters → [RECRUITER], others → [PERSON]
- *   2. applications (candidate names) — → [CANDIDATE]
- *
- * The caller can optionally pass extra entries to supplement (e.g. from the Zoom
- * sync engine which knows the peer's identity before querying the DB).
- */
-export async function buildNameList(extra: NameEntry[] = []): Promise<NameEntry[]> {
-  const entries: NameEntry[] = [...extra];
+// ── PII substitution patterns ─────────────────────────────────────────────────
 
-  try {
-    const staffResult = await db.execute(sql`
-      SELECT first_name, last_name, role
-      FROM admin_users
-      WHERE is_active = true
-        AND deleted_at IS NULL
-        AND (first_name IS NOT NULL OR last_name IS NOT NULL)
-    `);
-    const staffRows = (staffResult?.rows ?? staffResult ?? []) as Array<{
-      first_name: string | null;
-      last_name: string | null;
-      role: string | null;
-    }>;
-
-    for (const r of staffRows) {
-      const tokens = [r.first_name, r.last_name]
-        .filter((t): t is string => !!t && t.trim().length > 1)
-        .map((t) => t.trim());
-      if (tokens.length === 0) continue;
-      const label: NameEntry["label"] =
-        r.role === "recruiter" ? "[RECRUITER]" : "[PERSON]";
-      entries.push({ tokens, label });
-    }
-  } catch (err) {
-    console.warn("[zoomSanitizer] buildNameList — admin_users query failed:", err);
-  }
-
-  try {
-    const candResult = await db.execute(sql`
-      SELECT candidate_name
-      FROM applications
-      WHERE candidate_name IS NOT NULL
-        AND length(trim(candidate_name)) > 1
-      LIMIT 5000
-    `);
-    const candRows = (candResult?.rows ?? candResult ?? []) as Array<{
-      candidate_name: string | null;
-    }>;
-
-    for (const r of candRows) {
-      const fullName = r.candidate_name?.trim() ?? "";
-      if (!fullName) continue;
-      const tokens = fullName
-        .split(/\s+/)
-        .filter((t) => t.length > 1);
-      if (tokens.length === 0) continue;
-      entries.push({ tokens, label: "[CANDIDATE]" });
-    }
-  } catch (err) {
-    console.warn("[zoomSanitizer] buildNameList — applications query failed:", err);
-  }
-
-  return entries;
-}
+const PII_PATTERNS: Array<{ pattern: RegExp; replacement: string }> = [
+  // SSN / ID numbers: e.g. 123-45-6789 or 123456789
+  { pattern: /\b\d{3}[-.\s]?\d{2}[-.\s]?\d{4}\b/g, replacement: "[ID]" },
+  // Phone numbers: various formats
+  {
+    pattern: /(\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g,
+    replacement: "[PHONE]",
+  },
+  // Email addresses
+  { pattern: /[a-zA-Z0-9._%+\-]+@[a-zA-Z0-9.\-]+\.[a-zA-Z]{2,}/g, replacement: "[EMAIL]" },
+  // Dollar amounts and salary figures
+  {
+    pattern: /\$\s?\d{1,3}(?:[,\s]?\d{3})*(?:\.\d{2})?(?:\s?(?:k|K|thousand|million|\/hr|\/hour|\/year|per\s+hour|per\s+year|per\s+annum|pa|annually))?/g,
+    replacement: "[COMPENSATION]",
+  },
+  // Salary mentioned as a number with k/K
+  { pattern: /\b\d{2,3}[kK]\b/g, replacement: "[COMPENSATION]" },
+  // Date of birth patterns
+  {
+    pattern: /\b(?:dob|date of birth|born on|born)[\s:]+\d{1,2}[\/\-]\d{1,2}[\/\-]\d{2,4}\b/gi,
+    replacement: "[DOB]",
+  },
+  { pattern: /\b\d{1,2}[\/\-]\d{1,2}[\/\-]\d{4}\b/g, replacement: "[DATE]" },
+];
 
 /**
- * Build a case-insensitive token→label lookup regex from the name list.
- * Longer tokens take priority (sorted by descending length before alternation).
- * Returns null when the list is empty (no name substitution performed).
+ * Substitutes known PII tokens in a single message body.
+ * Runs regex passes sequentially so earlier patterns don't interfere with later ones.
  */
-function buildNameRegex(
-  nameList: NameEntry[],
-): { re: RegExp; map: Map<string, string> } | null {
-  if (nameList.length === 0) return null;
+export function sanitizeBody(text: string, knownNames: string[] = []): string {
+  if (!text) return "";
 
-  const map = new Map<string, string>();
-  for (const entry of nameList) {
-    for (const token of entry.tokens) {
-      const key = token.toLowerCase();
-      if (!map.has(key)) {
-        map.set(key, entry.label);
+  let result = text;
+
+  // Apply PII regex patterns first
+  for (const { pattern, replacement } of PII_PATTERNS) {
+    result = result.replace(pattern, replacement);
+  }
+
+  // Name substitution: known recruiter/team names → [RECRUITER] or [PERSON]
+  // Candidate names (unknown proper nouns in recruiting context) → [CANDIDATE]
+  if (knownNames.length > 0) {
+    for (const name of knownNames) {
+      if (!name || name.length < 2) continue;
+      const parts = name.trim().split(/\s+/);
+      for (const part of parts) {
+        if (part.length < 2) continue;
+        const escaped = part.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        const re = new RegExp(`\\b${escaped}\\b`, "gi");
+        result = result.replace(re, "[RECRUITER]");
       }
     }
   }
 
-  const escaped = Array.from(map.keys())
-    .sort((a, b) => b.length - a.length)
-    .map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  // Heuristic: capitalised two-word sequences that survived PII passes → [CANDIDATE]
+  // e.g. "John Smith", "Sarah O'Brien"
+  result = result.replace(/\b([A-Z][a-z]{1,20})\s+([A-Z][a-z]{1,20})\b/g, "[CANDIDATE]");
 
-  if (escaped.length === 0) return null;
-
-  return { re: new RegExp(`\\b(${escaped.join("|")})\\b`, "gi"), map };
-}
-
-// ── Core sanitize function (pure) ─────────────────────────────────────────────
-
-export interface RawMessage {
-  body: string;
-  direction: string;
+  return result;
 }
 
 /**
- * Sanitize a thread of messages into a single anonymized string.
- *
- * Pure function — no external dependencies. Safe to unit-test directly.
- * Applies PII regex passes first, then name-token substitution.
- *
- * @param messages  Raw SMS messages (body + direction)
- * @param nameList  Pre-loaded name entries from buildNameList(); pass [] for regex-only mode
- * @returns         Anonymized thread text, one message per line prefixed [IN] / [OUT]
+ * Sanitize a full thread (array of messages) and return a single anonymised text block.
  */
-export function sanitizeThread(
-  messages: RawMessage[],
-  nameList: NameEntry[] = [],
-): string {
-  const nameRegexResult = buildNameRegex(nameList);
-
-  const sanitized = messages.map((msg) => {
-    let text = msg.body ?? "";
-
-    text = text.replace(PHONE_RE, "[PHONE]");
-    text = text.replace(EMAIL_RE, "[EMAIL]");
-    text = text.replace(COMPENSATION_RE, "[COMPENSATION]");
-    text = text.replace(SSN_RE, "[ID]");
-    text = text.replace(ID_RE, "[ID]");
-    text = text.replace(DOB_RE, "[DOB]");
-
-    if (nameRegexResult) {
-      const { re, map } = nameRegexResult;
-      text = text.replace(re, (match) => {
-        return map.get(match.toLowerCase()) ?? "[PERSON]";
-      });
-    }
-
-    const prefix = msg.direction === "inbound" ? "IN" : "OUT";
-    return `[${prefix}]: ${text}`;
-  });
-
-  return sanitized.join("\n");
+export function sanitizeThread(messages: SmsMessage[], knownNames: string[] = []): string {
+  return messages
+    .map((m) => {
+      const dir = m.direction === "inbound" ? "CANDIDATE" : "RECRUITER";
+      const body = sanitizeBody(m.body || "", knownNames);
+      return `[${dir}]: ${body}`;
+    })
+    .join("\n");
 }
 
-// ── Digest generator (full pipeline) ─────────────────────────────────────────
-
-const DIGEST_SYSTEM_PROMPT =
-  "Summarize the intent and tone of this conversation in 2–3 sentences. " +
-  "Do not invent details. Include no names or numbers.";
-
 /**
- * Full sanitize-then-digest pipeline.
- *
- * Always calls buildNameList() internally so candidate/recruiter/person names
- * are GUARANTEED to be substituted before any text reaches OpenAI — even if the
- * caller provides no pre-built name list.
- *
- * Stores the result in zoom_sms_digests (upsert on session_id + date).
- * Never throws — errors are logged and skipped so a digest failure never
- * blocks the sync engine.
- *
- * @param messages   Raw SMS messages to sanitize and summarize
- * @param sessionId  zoom_sms_sessions.id (internal UUID)
- * @param date       YYYY-MM-DD string for the digest partition key
- * @param extraNames Optional caller-supplied name entries to merge into the name list
+ * Generate a sanitised digest for a session and store it.
+ * Uses OpenAI (via Replit AI Integrations) with a strict prompt.
+ * The digest (not raw messages) is what is used for AI analytics.
  */
 export async function generateDigest(
-  messages: RawMessage[],
+  sanitizedText: string,
   sessionId: string,
   date: string,
-  extraNames: NameEntry[] = [],
-): Promise<void> {
-  let nameList: NameEntry[] = [];
-  try {
-    nameList = await buildNameList(extraNames);
-  } catch (err) {
-    console.warn("[zoomSanitizer] buildNameList threw unexpectedly — proceeding with regex-only sanitization:", err);
+  db: any,
+  sql: any,
+): Promise<string> {
+  if (!sanitizedText || sanitizedText.trim().length < 10) {
+    const fallback = "Conversation too short to summarise.";
+    await upsertDigest(sessionId, date, fallback, db, sql);
+    return fallback;
   }
 
-  const sanitizedText = sanitizeThread(messages, nameList);
-
-  let digestText: string | null = null;
-
   try {
-    const apiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
-    const baseURL = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
-
-    if (!apiKey) {
-      console.warn("[zoomSanitizer] AI_INTEGRATIONS_OPENAI_API_KEY not set — skipping digest");
-      return;
-    }
-
     const OpenAI = (await import("openai")).default;
-    const client = new OpenAI({ apiKey, ...(baseURL ? { baseURL } : {}) });
+    const client = new OpenAI({
+      apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+    });
 
     const completion = await client.chat.completions.create({
-      model: "gpt-4o-mini",
-      max_tokens: 256,
+      model: "gpt-5-mini",
+      max_completion_tokens: 200,
       messages: [
-        { role: "system", content: DIGEST_SYSTEM_PROMPT },
-        { role: "user", content: sanitizedText },
+        {
+          role: "system",
+          content:
+            "You are a privacy-safe conversation summariser for a staffing firm. " +
+            "Summarise the intent and tone of this anonymised recruiter-candidate SMS thread " +
+            "in 2-3 sentences. Do NOT invent details. Do NOT include any names, phone numbers, " +
+            "emails, or dollar amounts. Use only what is stated. Stay factual and brief.",
+        },
+        {
+          role: "user",
+          content: sanitizedText.slice(0, 4000),
+        },
       ],
     });
 
-    digestText = completion.choices?.[0]?.message?.content?.trim() ?? null;
-  } catch (err) {
-    console.warn("[zoomSanitizer] OpenAI digest generation failed, skipping:", err);
-    return;
+    const digest = completion.choices?.[0]?.message?.content?.trim() ?? "Summary unavailable.";
+    await upsertDigest(sessionId, date, digest, db, sql);
+    return digest;
+  } catch (err: any) {
+    console.warn("[zoomSanitizer] Digest generation failed:", err?.message ?? err);
+    const fallback = "Digest generation temporarily unavailable.";
+    await upsertDigest(sessionId, date, fallback, db, sql);
+    return fallback;
   }
+}
 
-  if (!digestText) {
-    console.warn("[zoomSanitizer] Empty digest returned by OpenAI for session", sessionId);
-    return;
-  }
-
+async function upsertDigest(
+  sessionId: string,
+  date: string,
+  digest: string,
+  db: any,
+  sql: any,
+): Promise<void> {
   try {
     await db.execute(sql`
-      INSERT INTO zoom_sms_digests (session_id, date, digest_text, generated_at, created_at)
-      VALUES (${sessionId}, ${date}, ${digestText}, NOW(), NOW())
-      ON CONFLICT (session_id, date)
-      DO UPDATE SET digest_text = EXCLUDED.digest_text, generated_at = NOW()
+      INSERT INTO zoom_sms_digests (session_id, date, sanitized_digest, sanitized_at)
+      VALUES (${sessionId}, ${date}::date, ${digest}, NOW())
+      ON CONFLICT (session_id, date) DO UPDATE
+        SET sanitized_digest = EXCLUDED.sanitized_digest,
+            sanitized_at = NOW()
     `);
-    console.log(`[zoomSanitizer] Digest stored for session=${sessionId} date=${date}`);
   } catch (err) {
-    console.warn("[zoomSanitizer] Failed to store digest in DB:", err);
+    console.warn("[zoomSanitizer] Digest upsert failed:", err);
   }
 }

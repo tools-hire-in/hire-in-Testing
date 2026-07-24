@@ -402,6 +402,7 @@ function PublicRouter() {
       <Route path="/admin/hr/training">{() => <Redirect to="/admin/growth?tab=training-mgmt" />}</Route>
       <Route path="/admin/hr/training-progress">{() => <Suspense fallback={<AdminFallback />}><TrainingProgress /></Suspense>}</Route>
       <Route path="/admin/hr/reports">{() => <Suspense fallback={<AdminFallback />}><ReportsCompliance /></Suspense>}</Route>
+      <Route path="/admin/hr/comms-analytics">{() => <Suspense fallback={<AdminFallback />}><CommsAnalytics /></Suspense>}</Route>
       <Route path="/admin/users">{() => <Suspense fallback={<AdminFallback />}><AdminUsers /></Suspense>}</Route>
       <Route path="/admin/policy-gate">{() => <Suspense fallback={<AdminFallback />}><PolicyGate /></Suspense>}</Route>
       <Route path="/admin/hr/documents/policy/:signingId">{() => <Suspense fallback={<AdminFallback />}><PolicySigningPage /></Suspense>}</Route>
@@ -636,6 +637,7 @@ function EmployeeRouter() {
       <Route path="/admin/hr/training">{() => <Redirect to="/admin/growth?tab=training-mgmt" />}</Route>
       <Route path="/admin/hr/training-progress">{() => <Suspense fallback={<AdminFallback />}><TrainingProgress /></Suspense>}</Route>
       <Route path="/admin/hr/reports">{() => <Suspense fallback={<AdminFallback />}><ReportsCompliance /></Suspense>}</Route>
+      <Route path="/admin/hr/comms-analytics">{() => <Suspense fallback={<AdminFallback />}><CommsAnalytics /></Suspense>}</Route>
       <Route path="/admin/users">{() => <Suspense fallback={<AdminFallback />}><AdminUsers /></Suspense>}</Route>
       <Route path="/admin/policy-gate">{() => <Suspense fallback={<AdminFallback />}><PolicyGate /></Suspense>}</Route>
       <Route path="/admin/hr/documents/policy/:signingId">{() => <Suspense fallback={<AdminFallback />}><PolicySigningPage /></Suspense>}</Route>

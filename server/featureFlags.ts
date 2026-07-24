@@ -47,7 +47,7 @@ export const KNOWN_FLAGS = [
   "onboarding_flow_enabled",
   "onboarding_enforce_always",
   "zoom_comms_sync_enabled",
-  "zoom_ai_insights_enabled",
+  "zoom_comms_ai_enabled",
 ] as const;
 
 export type KnownFlag = (typeof KNOWN_FLAGS)[number];

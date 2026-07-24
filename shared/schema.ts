@@ -5464,6 +5464,82 @@ export const knowledgeHubReads = pgTable("knowledge_hub_reads", {
 
 export type KnowledgeHubRead = typeof knowledgeHubReads.$inferSelect;
 
+// ─── Zoom Comms Sync & AI Analytics ──────────────────────────────────────────
+// Applied via direct SQL at startup (scripts/apply-zoom-comms-schema.ts).
+// Declared here so db:push does not try to delete them on schema drift check.
+export const zoomCallLogs = pgTable("zoom_call_logs", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  email: text("email").notNull(),
+  callId: text("call_id").notNull(),
+  direction: text("direction").notNull().default("outbound"),
+  duration: integer("duration").notNull().default(0),
+  callerNumber: text("caller_number"),
+  calleeNumber: text("callee_number"),
+  result: text("result").notNull().default("answered"),
+  startTime: timestamp("start_time"),
+  endTime: timestamp("end_time"),
+  syncedDate: date("synced_date").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const zoomSmsSessions = pgTable("zoom_sms_sessions", {
+  id: text("id").primaryKey(),
+  userId: text("user_id").notNull(),
+  email: text("email").notNull(),
+  sessionId: text("session_id").notNull(),
+  participantNumber: text("participant_number"),
+  messageCount: integer("message_count").notNull().default(0),
+  lastMessageAt: timestamp("last_message_at"),
+  syncedDate: date("synced_date").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const zoomSmsMessages = pgTable("zoom_sms_messages", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  direction: text("direction").notNull().default("outbound"),
+  body: text("body"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const zoomSmsDigests = pgTable("zoom_sms_digests", {
+  id: text("id").primaryKey(),
+  sessionId: text("session_id").notNull(),
+  date: date("date").notNull(),
+  sanitizedDigest: text("sanitized_digest"),
+  sanitizedAt: timestamp("sanitized_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const zoomAiInsights = pgTable("zoom_ai_insights", {
+  id: text("id").primaryKey(),
+  date: date("date").notNull(),
+  scope: text("scope").notNull().default("user"),
+  scopeId: text("scope_id").notNull(),
+  content: jsonb("content"),
+  generatedAt: timestamp("generated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const zoomSyncMeta = pgTable("zoom_sync_meta", {
+  id: text("id").primaryKey(),
+  lastSyncedAt: timestamp("last_synced_at"),
+  lastSyncedDate: date("last_synced_date"),
+  syncedUserCount: integer("synced_user_count").default(0),
+  status: text("status").notNull().default("idle"),
+  errorMessage: text("error_message"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type ZoomCallLog = typeof zoomCallLogs.$inferSelect;
+export type ZoomSmsSession = typeof zoomSmsSessions.$inferSelect;
+export type ZoomSmsDigest = typeof zoomSmsDigests.$inferSelect;
+export type ZoomAiInsight = typeof zoomAiInsights.$inferSelect;
+export type ZoomSyncMeta = typeof zoomSyncMeta.$inferSelect;
+
 // ─── Dev Email Inbox ──────────────────────────────────────────────────────────
 // Captures every outgoing email in non-production environments instead of
 // calling SendGrid.  Never written to in production.
