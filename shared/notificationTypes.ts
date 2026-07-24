@@ -131,9 +131,19 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   {
     key: "performance_sop",
     label: "SOPs",
-    description: "SOP review assignments, audit findings and training.",
+    description: "SOP review assignments, audit findings, and training assignments.",
     category: "performance",
-    typePrefixes: ["sop_"],
+    // sop_training_assigned / sop_finding_assigned / sop_review_* / sop_audit_* / sop_access_*
+    typePrefixes: ["sop_training", "sop_finding", "sop_review", "sop_audit", "sop_access"],
+  },
+  {
+    key: "sop_compliance_checkins",
+    label: "SOP compliance check-ins",
+    description: "Scheduled SOP compliance reminders (Day 7 early nudge, Day 15 deadline alert, Day 30 reinforcement) for employees and managers.",
+    category: "performance",
+    // Employee: sop_early_nudge (Day 7), sop_deadline_reminder (Day 15), sop_reinforcement (Day 30)
+    // Manager:  sop_deadline_reminder_manager, sop_reinforcement_manager (Days 15 & 30 only)
+    typePrefixes: ["sop_early_nudge", "sop_deadline_reminder", "sop_reinforcement"],
   },
   {
     key: "performance_plans",

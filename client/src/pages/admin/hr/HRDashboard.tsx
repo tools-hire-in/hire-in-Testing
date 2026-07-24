@@ -37,6 +37,7 @@ import { BreakWidget } from "@/components/admin/BreakWidget";
 import { usePendingRegularizationCount } from "@/hooks/use-pending-regularizations";
 import PendingSopAuditsCard from "@/components/admin/sops/PendingSopAuditsCard";
 import GovernanceObligationsCard from "@/components/admin/governance/GovernanceObligationsCard";
+import { SopComplianceWidgetEmployee, SopComplianceWidgetManager } from "@/components/admin/SopComplianceWidget";
 
 interface DashboardStats {
   todayStatus: "not_punched" | "punched_in" | "completed";
@@ -473,8 +474,14 @@ export default function HRDashboard() {
         {/* Pending SOP Audits — managers/audit-owners only (gated server-side) */}
         {isManagerRole && <PendingSopAuditsCard enabled={isManagerRole} />}
 
+        {/* SOP Compliance Health — manager/HR view with team data (new_look only) */}
+        {isManagerRole && newLook && <SopComplianceWidgetManager />}
+
         {/* Governance Obligations — visible to all employees with active controls */}
         <GovernanceObligationsCard />
+
+        {/* SOP Compliance Health — employee personal view (new_look only) */}
+        {isEmployeeOnly && newLook && <SopComplianceWidgetEmployee />}
 
         {/* My Shift card — employee only */}
         {isEmployeeOnly && myShift && (

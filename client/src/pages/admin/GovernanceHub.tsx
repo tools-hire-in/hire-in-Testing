@@ -25,6 +25,8 @@ import {
   Lock,
   RefreshCw,
 } from "lucide-react";
+import { SopComplianceOrgPanel } from "@/components/admin/SopComplianceWidget";
+import { useNewLook } from "@/hooks/use-new-look";
 import type { GovernancePulse, ManagerPlanBreakdown, ManagerCheckinCompliance } from "@/types/governance";
 
 // ── Pulse type imports (inline since we can't import from server) ──────────────
@@ -669,6 +671,7 @@ function SopRolloutPanel({ readonly }: { readonly: boolean }) {
 // ── Main GovernanceHub ────────────────────────────────────────────────────────
 
 export default function GovernanceHub({ readonly = false }: { readonly?: boolean }) {
+  const { enabled: newLook } = useNewLook();
   const { data: pulse, isLoading } = useQuery<GovernancePulse>({
     queryKey: ["/api/governance/pulse"],
     refetchInterval: 5 * 60 * 1000,
@@ -705,6 +708,9 @@ export default function GovernanceHub({ readonly = false }: { readonly?: boolean
           </div>
         )}
       </div>
+
+      {/* SOP Compliance Health — org-wide panel for HR/admin (new_look only) */}
+      {newLook && <SopComplianceOrgPanel />}
 
       {/* SOP Rollout Panel */}
       <SopRolloutPanel readonly={readonly} />

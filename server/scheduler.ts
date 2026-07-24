@@ -1388,6 +1388,124 @@ export function startScheduler() {
       }
 
       console.log(`[scheduler] Contextual plan check-in reminders sent: ${dayBeforeRows.length} check-ins`);
+
+      // ── SOP compliance goal check-in notifications ───────────────────────────
+      // Process check-ins attached to SOP compliance goals (goal_id IS NOT NULL,
+      // employee_notes LIKE 'sop_%'). Fires on the scheduled date (today).
+      const sopCheckInRows = (await db.execute(sql`
+        SELECT ci.id, ci.employee_id, ci.manager_id, ci.goal_id,
+               ci.employee_notes AS prompt_key,
+               ci.manager_notes  AS manager_context,
+               ci.scheduled_date,
+               COALESCE(emp.first_name || ' ' || emp.last_name, emp.email) AS employee_name,
+               COALESCE(mgr.first_name || ' ' || mgr.last_name, 'Your Manager') AS manager_name,
+               pg.title AS goal_title
+        FROM check_ins ci
+        JOIN performance_goals pg ON pg.id = ci.goal_id
+        JOIN admin_users emp ON emp.id = ci.employee_id
+        LEFT JOIN admin_users mgr ON mgr.id = ci.manager_id
+        WHERE ci.scheduled_date = ${todayStr}
+          AND ci.status = 'scheduled'
+          AND ci.goal_id IS NOT NULL
+          AND ci.plan_id IS NULL
+          AND ci.employee_notes LIKE 'sop_%'
+          AND ci.notified_at IS NULL
+          AND emp.deleted_at IS NULL
+      `)).rows as any[];
+
+      for (const ci of sopCheckInRows) {
+        try {
+          const promptKey: string = ci.prompt_key ?? "sop_early_nudge";
+          const goalTitle: string = ci.goal_title ?? "SOP Compliance Goal";
+
+          // Employee notification
+          const empMessages: Record<string, { title: string; message: string }> = {
+            sop_early_nudge:       { title: "SOP check-in: early reminder",      message: `Your SOP goal "${goalTitle}" has an upcoming deadline. Take a moment to review your progress.` },
+            sop_deadline_reminder: { title: "SOP check-in: deadline approaching", message: `You're at the mid-point of your SOP goal "${goalTitle}". Ensure you acknowledge all required SOPs before the deadline.` },
+            sop_reinforcement:     { title: "SOP check-in: reinforcement nudge",  message: `Reinforcement reminder for SOP goal "${goalTitle}". Completing this keeps your compliance record in good standing.` },
+          };
+          const empMsg = empMessages[promptKey] ?? empMessages["sop_early_nudge"];
+
+          await notifyUser({
+            userId: ci.employee_id,
+            type: promptKey,
+            title: empMsg.title,
+            message: empMsg.message,
+            metadata: { goalId: ci.goal_id, sopCheckIn: true },
+            email: {
+              subject: empMsg.title,
+              html: `<p>Hi ${ci.employee_name},</p><p>${empMsg.message}</p>`,
+              configType: "sop_compliance_checkins",
+              sourceJob: "scheduler_sop_checkin",
+            },
+          });
+
+          // Manager notification for Day-15 (sop_deadline_reminder) and Day-30 (sop_reinforcement)
+          if (ci.manager_id && ci.manager_context) {
+            let managerCtx: { type?: string; sopCode?: string; managerId?: string } = {};
+            try { managerCtx = JSON.parse(ci.manager_context); } catch { /* ignore */ }
+            const managerType = managerCtx.type ?? `${promptKey}_manager`;
+
+            // Compute live teamCompliance % at send time for actionable inline context
+            let teamCompliancePct = 0;
+            let teamCompliance = "N/A";
+            try {
+              const mgrId = managerCtx.managerId ?? ci.manager_id;
+              const drRows = (await db.execute(sql`
+                SELECT u.id FROM admin_users u
+                WHERE u.manager_id = ${mgrId} AND u.deleted_at IS NULL AND u.is_active = true
+              `)).rows as { id: string }[];
+              if (drRows.length > 0) {
+                const drIds = drRows.map((r) => r.id);
+                const ackCount = (await db.execute(sql`
+                  SELECT COUNT(DISTINCT p.user_id) AS cnt
+                  FROM sop_employee_progress p
+                  WHERE p.user_id = ANY(${drIds})
+                    AND p.acknowledged_at IS NOT NULL
+                `)).rows[0] as { cnt: string };
+                teamCompliancePct = Math.round((parseInt(ackCount.cnt ?? "0") / drRows.length) * 100);
+                teamCompliance = `${teamCompliancePct}%`;
+              }
+            } catch { /* non-fatal — continue without live % */ }
+
+            const mgrMessages: Record<string, { title: string; message: string }> = {
+              sop_deadline_reminder_manager: {
+                title: `Team SOP deadline alert — ${ci.employee_name}`,
+                message: `${ci.employee_name}'s SOP "${goalTitle}" is at the mid-point deadline. Team compliance: ${teamCompliance}. Review team progress in My Team.`,
+              },
+              sop_reinforcement_manager: {
+                title: `Team SOP reinforcement — ${ci.employee_name}`,
+                message: `Reinforcement check: ${ci.employee_name} has a pending SOP goal "${goalTitle}". Team compliance: ${teamCompliance}. Follow up if acknowledgement is still outstanding.`,
+              },
+            };
+            const mgrMsg = mgrMessages[managerType] ?? {
+              title: `SOP compliance alert for ${ci.employee_name}`,
+              message: `${ci.employee_name} has a pending SOP compliance goal: "${goalTitle}". Team compliance: ${teamCompliance}.`,
+            };
+
+            await notifyUser({
+              userId: ci.manager_id,
+              type: managerType,
+              title: mgrMsg.title,
+              message: mgrMsg.message,
+              metadata: { goalId: ci.goal_id, employeeId: ci.employee_id, sopCode: managerCtx.sopCode ?? null, teamCompliancePct, sopCheckIn: true },
+              email: {
+                subject: mgrMsg.title,
+                html: `<p>Hi ${ci.manager_name},</p><p>${mgrMsg.message}</p>`,
+                configType: "sop_compliance_checkins",
+                sourceJob: "scheduler_sop_checkin",
+              },
+            });
+            await db.execute(sql`UPDATE check_ins SET manager_notified_at = NOW() WHERE id = ${ci.id} AND manager_notified_at IS NULL`);
+          }
+
+          await db.execute(sql`UPDATE check_ins SET notified_at = NOW() WHERE id = ${ci.id}`);
+        } catch (sopErr) {
+          console.error(`[scheduler] SOP check-in notification failed for check-in ${ci.id}:`, sopErr);
+          // notified_at intentionally NOT set — will retry on next scheduler run
+        }
+      }
+      console.log(`[scheduler] SOP compliance check-in reminders sent: ${sopCheckInRows.length} check-ins`);
     } catch (err) {
       console.error("[scheduler] Plan check-in reminder job failed:", err);
     }

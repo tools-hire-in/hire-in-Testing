@@ -122,6 +122,7 @@ import * as sopGov from "./sopGovernance";
 import { generateSalarySlipHtml, SLIP_MONTH_NAMES, type SalarySlipData } from "@shared/salarySlipHtml";
 import { IndiaStatutoryEngine, computeComponentsFromGross, applyWaterfall, endOfContributionPeriod, rupeesToPaise, paiseToRupees, type IndiaEmployeeConfig, type CoverageConfig, type ResolvedRate, type StructureRule, type WaterfallInput, type StateDeductionConfig } from "./payrollEngine";
 import { syncSopProgressForUser, impactedUserIdsForSop, backfillAllSopProgress, impactedUsersForSopWithLevel, LEVEL_PARAMS, resolveTrainingGroups } from "./sopAssignmentEngine";
+import { ensureSopComplianceGoal } from "./sopComplianceGoals";
 import * as sopRollout from "./sopRollout";
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
@@ -162,7 +163,7 @@ import { registerCeoRoutes } from "./ceoRoutes";
 import { registerObservationRoutes } from "./observationRoutes";
 import { registerSalaryStructureRoutes, seedDefaultSalaryStructure, getPtCustomSlabs } from "./salaryStructureRoutes";
 import { computeComponentsFromGross, computeIndiaStatutory, type StructureRule } from "./salaryEngine";
-import { salaryStructures, salaryStructureRules, trainingSopLinks, roleTrainingRules, systemSettings, rolloutWaves } from "@shared/schema";
+import { salaryStructures, salaryStructureRules, trainingSopLinks, roleTrainingRules, systemSettings, rolloutWaves, waveSops } from "@shared/schema";
 import { tokenLookupLimiter, verifyLetterLimiter } from "./rateLimits";
 import type { SlipComponents } from "@shared/salaryEngineTypes";
 
@@ -17544,6 +17545,393 @@ Canonical domain: ${BASE}
     }
   });
 
+  // ── SOP Compliance Health in-memory cache ─────────────────────────────────────
+  // Kept OUTSIDE the governance_pulse cache (see memory note: governance-pulse-cache.md).
+  // Keyed by userId so each viewer gets their own slice.
+  const _complianceHealthCache = new Map<string, { data: unknown; expiresAt: number }>();
+  const COMPLIANCE_HEALTH_TTL_MS = 5 * 60 * 1000;
+
+  // ── SOP Compliance Health endpoint ────────────────────────────────────────────
+  // Returns per-wave compliance counts for the current user (employee) or for
+  // their direct reports (manager/HR). HR/admin also get an org-wide dept rollup.
+  // Server-side 5-min cache per userId; kept outside governance_pulse cache.
+  app.get("/api/sops/compliance-health", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const sessionUserId = req.session.userId!;
+      const role = req.session.role!;
+
+      // Optional ?userId= allows HR/admin to query compliance health for a specific user.
+      // Only super_admin, admin, and hr are permitted to query for other users.
+      const requestedUserId = req.query.userId as string | undefined;
+      const isPrivilegedRole = ["super_admin", "admin", "hr"].includes(role);
+      if (requestedUserId && requestedUserId !== sessionUserId && !isPrivilegedRole) {
+        return res.status(403).json({ error: "Insufficient permissions to query another user's compliance health" });
+      }
+      const userId = (requestedUserId && isPrivilegedRole) ? requestedUserId : sessionUserId;
+
+      // Serve from server-side cache if fresh
+      const cacheKey = `${userId}:${role}`;
+      const cached = _complianceHealthCache.get(cacheKey);
+      if (cached && cached.expiresAt > Date.now()) {
+        return res.json(cached.data);
+      }
+      const isManagerRole = ["super_admin", "admin", "hr", "manager", "operations"].includes(role);
+
+      // Load all active waves
+      const allWaves = await db
+        .select({ waveNumber: rolloutWaves.waveNumber, name: rolloutWaves.name, status: rolloutWaves.status, activatedAt: rolloutWaves.activatedAt })
+        .from(rolloutWaves)
+        .where(eq(rolloutWaves.status, "active"));
+
+      if (allWaves.length === 0) {
+        return res.json({ waves: [], viewerRole: role });
+      }
+
+      // Load wave→SOP memberships for active waves
+      const waveNums = allWaves.map((w) => w.waveNumber);
+      const waveSopRows = await db
+        .select({ waveNumber: waveSops.waveNumber, sopMasterId: waveSops.sopMasterId, operationalAt: waveSops.operationalAt })
+        .from(waveSops)
+        .where(inArray(waveSops.waveNumber, waveNums));
+
+      // Load all employees and their department
+      const allUsers = await storage.getAdminUsers();
+      const activeUsers = allUsers.filter((u) => u.isActive !== false && u.deletedAt == null);
+      const deptById = new Map(activeUsers.map((u) => [u.id, u.departmentId]));
+      const deptNameById = new Map<string, string>();
+      try {
+        const deptRows = await storage.getDepartments?.() ?? [];
+        for (const d of deptRows) deptNameById.set(d.id, d.name);
+      } catch { /* non-fatal */ }
+
+      // Pre-load SOP code + title by sopMasterId for granular attention context
+      const allSopMasterIds = [...new Set(waveSopRows.map((r) => r.sopMasterId))];
+      const sopMetaByMaster = new Map<string, { code: string; title: string }>();
+      for (const masterId of allSopMasterIds) {
+        const [doc] = await db
+          .select({ code: sopDocuments.code, title: sopDocuments.title })
+          .from(sopDocuments)
+          .where(and(eq(sopDocuments.sopMasterId, masterId), eq(sopDocuments.isCurrent, true)))
+          .limit(1);
+        if (doc) sopMetaByMaster.set(masterId, { code: doc.code, title: doc.title ?? doc.code });
+      }
+
+      // For manager view: collect direct report IDs
+      let directReportIds: Set<string> | null = null;
+      if (isManagerRole && role !== "super_admin" && role !== "admin" && role !== "hr") {
+        directReportIds = new Set(activeUsers.filter((u) => u.managerId === userId).map((u) => u.id));
+      }
+
+      // Load all sop_employee_progress rows for relevant users
+      const { sopEmployeeProgress: sepTable } = await import("@shared/schema");
+      const progressRows = await db.select().from(sepTable);
+      const progressByUserMaster = new Map<string, typeof progressRows[0]>();
+      for (const p of progressRows) {
+        progressByUserMaster.set(`${p.userId}:${p.sopMasterId}`, p);
+      }
+
+      // Pre-load SOP → learningTrackId mapping (authoritative assignment channel).
+      // track_assignments rows are created in the rollout-gated path of assignSopTraining,
+      // so they correctly exclude impacted-but-not-yet-in-rollout users. For SOPs that
+      // don't have a linked learning track we fall back to sop_employee_progress presence.
+      const sopTrackIdMap = new Map<string, string>(); // sopMasterId → learningTrackId
+      for (const masterId of allSopMasterIds) {
+        const [trackRow] = await db
+          .select({ learningTrackId: sopDocuments.learningTrackId })
+          .from(sopDocuments)
+          .where(and(eq(sopDocuments.sopMasterId, masterId), eq(sopDocuments.isCurrent, true)))
+          .limit(1);
+        if (trackRow?.learningTrackId) sopTrackIdMap.set(masterId, trackRow.learningTrackId);
+      }
+
+      // Pre-load track_assignments: trackId → Set<userId>
+      const allTrackIds = [...new Set(sopTrackIdMap.values())];
+      const trackAssignedByTrack = new Map<string, Set<string>>();
+      if (allTrackIds.length > 0) {
+        const { trackAssignments: taTable } = await import("@shared/schema");
+        const taRows = await db
+          .select({ trackId: taTable.trackId, userId: taTable.userId })
+          .from(taTable)
+          .where(inArray(taTable.trackId, allTrackIds));
+        for (const row of taRows) {
+          if (!trackAssignedByTrack.has(row.trackId)) trackAssignedByTrack.set(row.trackId, new Set());
+          trackAssignedByTrack.get(row.trackId)!.add(row.userId);
+        }
+      }
+
+      /**
+       * Returns true if the given user is assigned to the SOP.
+       * Primary: track_assignments for SOPs with a linked learning track (rollout-gated).
+       * Fallback: sop_employee_progress for SOPs without a track (non-training SOPs).
+       */
+      const isUserAssignedToSop = (uid: string, sopMasterId: string): boolean => {
+        const trackId = sopTrackIdMap.get(sopMasterId);
+        if (trackId) {
+          return trackAssignedByTrack.get(trackId)?.has(uid) ?? false;
+        }
+        // No linked track — use progress row presence as fallback assignment evidence
+        return progressByUserMaster.has(`${uid}:${sopMasterId}`);
+      };
+
+      const now = new Date();
+
+      // For the current user's own goals (employee view)
+      const myGoals = await db
+        .select({ id: performanceGoals.id, linkedSopId: performanceGoals.linkedSopId })
+        .from(performanceGoals)
+        .where(
+          and(
+            eq(performanceGoals.employeeId, userId),
+            sql`${performanceGoals.source} = 'sop_compliance'`,
+          ),
+        );
+      const myGoalBySopId = new Map(myGoals.map((g) => [g.linkedSopId ?? "", g.id]));
+
+      // Helper: compute status for a user+sopMasterId+wave
+      const computeStatus = (
+        empId: string,
+        sopMasterId: string,
+        operationalAt: Date | null,
+      ): "on_track" | "lagging" | "overdue" | "not_started" => {
+        const progress = progressByUserMaster.get(`${empId}:${sopMasterId}`);
+        if (!progress) return "not_started";
+        if (progress.acknowledgedAt) return "on_track";
+
+        // Determine deadline: deadlineAt override or operationalAt + 15 days
+        let deadlineDate: Date | null = null;
+        if (progress.deadlineAt) {
+          deadlineDate = new Date(progress.deadlineAt);
+        } else if (operationalAt) {
+          deadlineDate = new Date(operationalAt.getTime() + 15 * 24 * 60 * 60 * 1000);
+        }
+
+        if (deadlineDate && deadlineDate < now) return "overdue";
+        if (progress.trainingCompletedAt || progress.timerStartedAt) return "lagging";
+        return "not_started";
+      };
+
+      const waves: {
+        waveNumber: number;
+        waveName: string;
+        dueDate: string | null;
+        onTrack: number;
+        lagging: number;
+        overdue: number;
+        notStarted: number;
+        total: number;
+        myGoalId: string | null;
+        directReportBreakdown?: { userId: string; name: string; status: string; goalId: string | null; daysRemaining: number | null; worstSopCode: string | null; worstSopTitle: string | null }[];
+      }[] = [];
+
+      // Collect all progress rows keyed by wave for the org-wide dept rollup
+      const orgWideByWave = new Map<number, { userId: string; status: string; deptId: string | null }[]>();
+
+      for (const wave of allWaves) {
+        const sopMasterIdsForWave = waveSopRows
+          .filter((r) => r.waveNumber === wave.waveNumber)
+          .map((r) => ({ sopMasterId: r.sopMasterId, operationalAt: r.operationalAt }));
+
+        if (sopMasterIdsForWave.length === 0) continue;
+
+        // Latest operationalAt across operational SOPs in this wave (for dueDate display)
+        const latestOpAt = sopMasterIdsForWave
+          .map((s) => s.operationalAt)
+          .filter(Boolean)
+          .sort((a, b) => (b as Date).getTime() - (a as Date).getTime())[0] ?? null;
+        const dueDateForWave = latestOpAt
+          ? new Date((latestOpAt as Date).getTime() + 15 * 24 * 60 * 60 * 1000).toISOString().split("T")[0]
+          : null;
+        const daysRemainingForWave = dueDateForWave
+          ? Math.ceil((new Date(dueDateForWave).getTime() - now.getTime()) / (24 * 60 * 60 * 1000))
+          : null;
+
+        // ── Employee-scoped path: SOP-by-SOP personal status ──────────────────
+        // An employee sees their own training/acknowledgement status across each
+        // SOP in the wave (total = # SOPs assigned, not # users).
+        // This path also resolves the viewer's own compliance goal ID.
+        let onTrack = 0, lagging = 0, overdue = 0, notStarted = 0;
+        let myGoalId: string | null = null;
+        let assignedSopCountForEmployee = 0; // tracks employee-path denominator
+        const perUser: { userId: string; name: string; status: string; goalId: string | null; daysRemaining: number | null; worstSopCode: string | null; worstSopTitle: string | null }[] = [];
+        const waveOrgEntries: { userId: string; status: string; deptId: string | null }[] = [];
+
+        if (!isManagerRole) {
+          // Personal view: scope to SOPs the user is actually assigned to.
+          // Uses track_assignments as the authoritative assignment source (rollout-gated),
+          // with sop_employee_progress as fallback for SOPs without a learning track.
+          const assignedSopsForUser = sopMasterIdsForWave.filter(({ sopMasterId }) =>
+            isUserAssignedToSop(userId, sopMasterId)
+          );
+          if (assignedSopsForUser.length === 0) continue; // skip unassigned wave
+          assignedSopCountForEmployee = assignedSopsForUser.length;
+
+          for (const { sopMasterId, operationalAt } of assignedSopsForUser) {
+            const st = computeStatus(userId, sopMasterId, operationalAt as Date | null);
+            if (st === "on_track") onTrack++;
+            else if (st === "lagging") lagging++;
+            else if (st === "overdue") overdue++;
+            else notStarted++;
+          }
+
+          // Resolve the viewer's compliance goal for this wave (first SOP match)
+          for (const { sopMasterId } of assignedSopsForUser) {
+            const [sopDoc] = await db
+              .select({ id: sopDocuments.id })
+              .from(sopDocuments)
+              .where(and(eq(sopDocuments.sopMasterId, sopMasterId), eq(sopDocuments.isCurrent, true)))
+              .limit(1);
+            if (sopDoc && myGoalBySopId.has(sopDoc.id)) {
+              myGoalId = myGoalBySopId.get(sopDoc.id) ?? null;
+              break;
+            }
+          }
+        } else {
+          // ── Manager/HR/Admin path: user-by-user team status ─────────────────
+          // Scope to users assigned to at least one SOP in this wave. Assignment is
+          // determined via track_assignments (rollout-gated) for SOPs with a learning
+          // track, or sop_employee_progress (fallback) for SOPs without one.
+          const assignedUserIdsForWave = new Set<string>();
+          for (const u of activeUsers) {
+            if (sopMasterIdsForWave.some(({ sopMasterId }) => isUserAssignedToSop(u.id, sopMasterId))) {
+              assignedUserIdsForWave.add(u.id);
+            }
+          }
+
+          let targetUsers = activeUsers.filter((u) => assignedUserIdsForWave.has(u.id));
+          if (directReportIds) {
+            // Manager: restrict further to direct reports only (auth-scoped)
+            targetUsers = targetUsers.filter((u) => directReportIds!.has(u.id));
+          }
+
+          for (const user of targetUsers) {
+            // Only evaluate SOPs this user is actually assigned to (via track_assignments).
+            // Skipping unassigned SOPs prevents counting them as 'not_started'.
+            const userAssignedSops = sopMasterIdsForWave.filter(({ sopMasterId }) =>
+              isUserAssignedToSop(user.id, sopMasterId)
+            );
+            if (userAssignedSops.length === 0) continue; // not assigned to any SOP in this wave
+
+            // Worst-case status + specific SOP that caused it (for attention list)
+            let worstStatus: "on_track" | "lagging" | "overdue" | "not_started" = "on_track";
+            let worstSopMasterId: string | null = null;
+            for (const { sopMasterId, operationalAt } of userAssignedSops) {
+              const st = computeStatus(user.id, sopMasterId, operationalAt as Date | null);
+              if (st === "overdue") { worstStatus = "overdue"; worstSopMasterId = sopMasterId; break; }
+              if (st === "lagging" && worstStatus !== "overdue") { worstStatus = "lagging"; worstSopMasterId = sopMasterId; }
+              if (st === "not_started" && worstStatus === "on_track") { worstStatus = "not_started"; if (!worstSopMasterId) worstSopMasterId = sopMasterId; }
+            }
+            const worstSopMeta = worstSopMasterId ? (sopMetaByMaster.get(worstSopMasterId) ?? null) : null;
+
+            if (worstStatus === "on_track") onTrack++;
+            else if (worstStatus === "lagging") lagging++;
+            else if (worstStatus === "overdue") overdue++;
+            else notStarted++;
+
+            // Resolve this user's compliance goal (first SOP with a goal row)
+            let goalId: string | null = null;
+            for (const { sopMasterId } of sopMasterIdsForWave) {
+              const [sopDoc] = await db
+                .select({ id: sopDocuments.id })
+                .from(sopDocuments)
+                .where(and(eq(sopDocuments.sopMasterId, sopMasterId), eq(sopDocuments.isCurrent, true)))
+                .limit(1);
+              if (sopDoc) {
+                const [g] = await db
+                  .select({ id: performanceGoals.id })
+                  .from(performanceGoals)
+                  .where(
+                    and(
+                      eq(performanceGoals.employeeId, user.id),
+                      eq(performanceGoals.linkedSopId, sopDoc.id),
+                      sql`${performanceGoals.source} = 'sop_compliance'`,
+                    ),
+                  )
+                  .limit(1);
+                if (g) { goalId = g.id; break; }
+              }
+            }
+
+            // Viewer's own goal link (when they happen to be in targetUsers)
+            if (user.id === userId && goalId) myGoalId = goalId;
+
+            perUser.push({
+              userId: user.id,
+              name: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim() || user.email,
+              status: worstStatus,
+              goalId,
+              daysRemaining: daysRemainingForWave,
+              worstSopCode: worstSopMeta?.code ?? null,
+              worstSopTitle: worstSopMeta?.title ?? null,
+            });
+            waveOrgEntries.push({ userId: user.id, status: worstStatus, deptId: deptById.get(user.id) ?? null });
+          }
+        }
+
+        orgWideByWave.set(wave.waveNumber, waveOrgEntries);
+
+        // total: for employees = # SOPs assigned to this user in the wave (not full wave count)
+        //        for managers/HR/admin = # assigned users in the target population
+        const waveTotal = isManagerRole ? perUser.length : assignedSopCountForEmployee;
+
+        waves.push({
+          waveNumber: wave.waveNumber,
+          waveName: wave.name,
+          dueDate: dueDateForWave,
+          onTrack,
+          lagging,
+          overdue,
+          notStarted,
+          total: waveTotal,
+          myGoalId,
+          ...(isManagerRole ? { directReportBreakdown: perUser } : {}),
+        });
+      }
+
+      // Org-wide dept breakdown for HR/admin
+      let orgWide: { byDepartment: { department: string | null; onTrack: number; lagging: number; overdue: number; total: number }[] } | undefined;
+      if (role === "super_admin" || role === "admin" || role === "hr") {
+        // Aggregate across all waves
+        const deptStats = new Map<string, { department: string | null; onTrack: number; lagging: number; overdue: number; total: Set<string> }>();
+
+        for (const [, entries] of orgWideByWave) {
+          for (const entry of entries) {
+            const deptKey = entry.deptId ?? "__none__";
+            if (!deptStats.has(deptKey)) {
+              const deptName = entry.deptId ? (deptNameById.get(entry.deptId) ?? null) : null;
+              deptStats.set(deptKey, { department: deptName, onTrack: 0, lagging: 0, overdue: 0, total: new Set() });
+            }
+            const s = deptStats.get(deptKey)!;
+            s.total.add(entry.userId);
+            if (entry.status === "on_track") s.onTrack++;
+            else if (entry.status === "lagging") s.lagging++;
+            else if (entry.status === "overdue") s.overdue++;
+          }
+        }
+
+        orgWide = {
+          byDepartment: Array.from(deptStats.values()).map((d) => ({
+            department: d.department,
+            onTrack: d.onTrack,
+            lagging: d.lagging,
+            overdue: d.overdue,
+            total: d.total.size,
+          })).sort((a, b) => b.total - a.total),
+        };
+      }
+
+      // hasActiveSopGoals: for employees = they appear in at least one returned wave
+      // (waves already filtered to assigned-only in the employee path).
+      const hasActiveSopGoals = waves.length > 0;
+      const payload = { waves, viewerRole: role, hasActiveSopGoals, ...(orgWide ? { orgWide } : {}) };
+      // Store in server-side cache
+      _complianceHealthCache.set(cacheKey, { data: payload, expiresAt: Date.now() + COMPLIANCE_HEALTH_TTL_MS });
+      res.json(payload);
+    } catch (error) {
+      console.error("SOP compliance health error:", error);
+      res.status(500).json({ error: "Failed to compute compliance health" });
+    }
+  });
+
   // Filterable findings tracker — all findings across SOPs. Lives under /compliance/*
   // (2+ segments) so it can never be shadowed by the single-segment GET /api/sops/:id.
   // Filters: status, sopMasterId, ownerId, overdue.
@@ -18653,6 +19041,18 @@ Canonical domain: ${BASE}
     let skippedOutOfRollout = 0;
     const dueDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
 
+    // Look up which wave this SOP belongs to (for compliance goal labelling)
+    let waveNumber: number | null = null;
+    try {
+      const { waveSops: _waveSops } = await import("@shared/schema");
+      const [waveRow] = await db
+        .select({ waveNumber: _waveSops.waveNumber })
+        .from(_waveSops)
+        .where(eq(_waveSops.sopMasterId, doc.sopMasterId))
+        .limit(1);
+      waveNumber = waveRow?.waveNumber ?? null;
+    } catch { /* non-fatal */ }
+
     for (const { userId, level, roleGroup, assignmentId, department } of impactedWithLevel) {
       if (!inRollout(userId)) { skippedOutOfRollout += 1; continue; }
       // Idempotency: skip if already assigned for this SOP (via sopCode + trackId + userId)
@@ -18677,6 +19077,9 @@ Canonical domain: ${BASE}
             })
             .where(eq(trackAssignments.id, existing.id));
         }
+        // Ensure compliance goal exists even for pre-existing assignments (idempotent)
+        await ensureSopComplianceGoal(userId, doc, dueDate, waveNumber).catch((e) =>
+          console.error("[sopTraining] compliance goal ensure error (existing):", e));
         continue;
       }
 
@@ -18719,6 +19122,10 @@ Canonical domain: ${BASE}
           });
         } catch (e) { console.error("SOP training notify error:", e); }
       }
+
+      // Auto-create compliance goal + check-in schedule for this assignment
+      await ensureSopComplianceGoal(userId, doc, dueDate, waveNumber).catch((e) =>
+        console.error("[sopTraining] compliance goal create error:", e));
     }
     return { assignedCount, skippedOutOfRollout, impacted: impactedWithLevel.length, tracksPublished };
   }

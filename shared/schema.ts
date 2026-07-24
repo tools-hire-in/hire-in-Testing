@@ -920,7 +920,7 @@ export const insertHrLetterSchema = createInsertSchema(hrLetters).omit({
 // ==========================================
 
 export const performanceGoalStatusEnum = pgEnum("performance_goal_status", ["not_started", "in_progress", "completed", "cancelled"]);
-export const performanceGoalCategoryEnum = pgEnum("performance_goal_category", ["individual", "team", "company", "development"]);
+export const performanceGoalCategoryEnum = pgEnum("performance_goal_category", ["individual", "team", "company", "development", "compliance", "operational"]);
 export const checkInStatusEnum = pgEnum("check_in_status", ["scheduled", "completed", "cancelled"]);
 export const reviewCycleTypeEnum = pgEnum("review_cycle_type", ["annual", "semi_annual", "quarterly"]);
 export const reviewCycleStatusEnum = pgEnum("review_cycle_status", ["draft", "active", "in_review", "closed"]);
@@ -976,6 +976,12 @@ export const performanceGoals = pgTable("performance_goals", {
   goalProgressSource: varchar("goal_progress_source").default("manual"),
   // goalProgressUpdatedAt: timestamp of the last progress write (auto or manual).
   goalProgressUpdatedAt: timestamp("goal_progress_updated_at"),
+  // source: set to 'sop_compliance' for both employee SOP wave goals and manager
+  // roll-up goals. Roll-up goals are distinguished from employee goals via
+  // sourceRef='wave_N_mgr'. Null = manually created.
+  source: varchar("source", { length: 64 }),
+  // parentGoalId: for manager roll-up goals that aggregate direct report compliance.
+  parentGoalId: varchar("parent_goal_id"),
   // escalationFlag: set by sync engine when progress regresses > 15 points.
   escalationFlag: boolean("escalation_flag").default(false),
   // ── Goodhart Guard (Task #1107) ────────────────────────────────────────────
