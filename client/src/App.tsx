@@ -141,6 +141,7 @@ const NotificationSettings = lazy(() => import("@/pages/admin/NotificationSettin
 const NotificationBlasts = lazy(() => import("@/pages/admin/NotificationBlasts"));
 const HelpHub = lazy(() => import("@/pages/admin/HelpHub"));
 const OnboardingFlow = lazy(() => import("@/pages/admin/OnboardingFlow"));
+const CommsAnalytics = lazy(() => import("@/pages/admin/hr/CommsAnalytics"));
 
 const HR_TAB_MAP: Record<string, string> = {
   attendance: "time-card",
@@ -159,6 +160,7 @@ const HR_TAB_MAP: Record<string, string> = {
 };
 
 const EXEC_ROLES = ["executive", "super_admin"] as const;
+const COMMS_ROLES = ["super_admin", "admin", "hr", "manager"] as const;
 
 function RequireRoles({ roles, children }: { roles: readonly string[]; children: React.ReactNode }) {
   const { user, isLoading } = useAuth();
@@ -334,6 +336,7 @@ function PublicRouter() {
       {/* Consolidated tab pages (primary nav) */}
       <Route path="/admin/profile">{() => <Suspense fallback={<AdminFallback />}><MyProfile /></Suspense>}</Route>
       <Route path="/admin/growth">{() => <Suspense fallback={<AdminFallback />}><MyGrowth /></Suspense>}</Route>
+      <Route path="/admin/hr/my-team/comms">{() => <RequireRoles roles={COMMS_ROLES}><Suspense fallback={<AdminFallback />}><CommsAnalytics /></Suspense></RequireRoles>}</Route>
       <Route path="/admin/hr/my-team">{() => <Suspense fallback={<AdminFallback />}><MyTeamTabs /></Suspense>}</Route>
       <Route path="/admin/hr/people">{() => <Suspense fallback={<AdminFallback />}><PeopleHR /></Suspense>}</Route>
 
@@ -566,6 +569,7 @@ function EmployeeRouter() {
       {/* Consolidated tab pages (primary nav) */}
       <Route path="/admin/profile">{() => <Suspense fallback={<AdminFallback />}><MyProfile /></Suspense>}</Route>
       <Route path="/admin/growth">{() => <Suspense fallback={<AdminFallback />}><MyGrowth /></Suspense>}</Route>
+      <Route path="/admin/hr/my-team/comms">{() => <RequireRoles roles={COMMS_ROLES}><Suspense fallback={<AdminFallback />}><CommsAnalytics /></Suspense></RequireRoles>}</Route>
       <Route path="/admin/hr/my-team">{() => <Suspense fallback={<AdminFallback />}><MyTeamTabs /></Suspense>}</Route>
       <Route path="/admin/hr/people">{() => <Suspense fallback={<AdminFallback />}><PeopleHR /></Suspense>}</Route>
 

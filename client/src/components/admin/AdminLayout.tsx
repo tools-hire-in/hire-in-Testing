@@ -62,6 +62,7 @@ import {
   Compass,
   BarChart2,
   Telescope,
+  Phone,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -584,6 +585,22 @@ function TeamSection({
                       </Link>
                     );
                   })}
+
+                  {/* Comms Analytics — manager/hr/admin/super_admin only (not operations) */}
+                  {hasTeamAccess && ["super_admin", "admin", "hr", "manager"].includes(role) && (
+                    <Link
+                      href="/admin/hr/my-team/comms"
+                      className={`flex items-center gap-2 w-full px-2 py-1 rounded-md text-xs transition-colors ${
+                        location === "/admin/hr/my-team/comms"
+                          ? "bg-accent text-foreground font-medium"
+                          : "text-muted-foreground hover:text-foreground hover:bg-accent/60"
+                      } ${isComplianceLocked ? "opacity-40 pointer-events-none" : ""}`}
+                      data-testid="nav-myteam-sub-comms"
+                    >
+                      <Phone className="h-3.5 w-3.5 shrink-0" />
+                      <span className="flex-1">Comms Analytics</span>
+                    </Link>
+                  )}
 
                   {/* Permanent Command Card link — manager-track roles only */}
                   {hasTeamAccess && (
