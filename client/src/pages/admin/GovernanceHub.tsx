@@ -23,6 +23,7 @@ import {
   Zap,
   CheckCircle2,
   Lock,
+  RefreshCw,
 } from "lucide-react";
 import type { GovernancePulse, ManagerPlanBreakdown, ManagerCheckinCompliance } from "@/types/governance";
 
@@ -412,6 +413,29 @@ function WaveCard({
     onError: (e: any) => toast({ title: "Activation failed", description: e?.message, variant: "destructive" }),
   });
 
+  const reassignMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/sops/rollout/waves/${wave.waveNumber}/reassign`, {});
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Assignment failed");
+      }
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const parts: string[] = [];
+      if (data.progressRowsCreated > 0) parts.push(`${data.progressRowsCreated} progress rows created`);
+      if (data.trainingsAssigned > 0) parts.push(`${data.trainingsAssigned} training(s) assigned`);
+      if (data.tracksPublished > 0) parts.push(`${data.tracksPublished} track(s) published`);
+      toast({
+        title: "Assignment re-run complete",
+        description: parts.length > 0 ? parts.join(", ") : "No new assignments needed — everything is up to date.",
+      });
+      queryClient.invalidateQueries({ queryKey: ["/api/sops/waves"] });
+    },
+    onError: (e: any) => toast({ title: "Re-run failed", description: e?.message, variant: "destructive" }),
+  });
+
   const activateSopMut = useMutation({
     mutationFn: async (code: string) => {
       const res = await apiRequest("POST", `/api/sops/waves/${wave.waveNumber}/sops/${code}/activate`, {});
@@ -424,7 +448,9 @@ function WaveCard({
     onError: (e: any) => toast({ title: "Activation failed", description: e?.message, variant: "destructive" }),
   });
 
+  const isHrOrAdmin = user?.role === "super_admin" || user?.role === "admin" || user?.role === "hr";
   const canActivateWave = isSuperAdmin && !readonly && wave.status === "planned" && !cadenceBlocked;
+  const canReassign = isHrOrAdmin && !readonly && wave.status === "active";
   const ackPct = wave.sops.length > 0 ? Math.round((wave.operationalCount / wave.sops.length) * 100) : 0;
 
   return (
@@ -469,6 +495,20 @@ function WaveCard({
               >
                 {activateMut.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <Play className="h-3 w-3 mr-1" />}
                 Activate Wave
+              </Button>
+            )}
+            {canReassign && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs"
+                onClick={() => reassignMut.mutate()}
+                disabled={reassignMut.isPending}
+                title="Re-sync progress rows and re-assign training for all impacted employees"
+                data-testid={`button-reassign-wave-${wave.waveNumber}`}
+              >
+                {reassignMut.isPending ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                Re-run Assignment
               </Button>
             )}
           </div>

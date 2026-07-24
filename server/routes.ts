@@ -160,7 +160,7 @@ import { registerCeoRoutes } from "./ceoRoutes";
 import { registerObservationRoutes } from "./observationRoutes";
 import { registerSalaryStructureRoutes, seedDefaultSalaryStructure, getPtCustomSlabs } from "./salaryStructureRoutes";
 import { computeComponentsFromGross, computeIndiaStatutory, type StructureRule } from "./salaryEngine";
-import { salaryStructures, salaryStructureRules, trainingSopLinks, roleTrainingRules, systemSettings } from "@shared/schema";
+import { salaryStructures, salaryStructureRules, trainingSopLinks, roleTrainingRules, systemSettings, rolloutWaves } from "@shared/schema";
 import { tokenLookupLimiter, verifyLetterLimiter } from "./rateLimits";
 import type { SlipComponents } from "@shared/salaryEngineTypes";
 
@@ -15257,11 +15257,14 @@ Canonical domain: ${BASE}
         .filter((id): id is string => !!id);
 
       // Fetch current SOP docs and their role assignments
+      // NOTE: ANY(${arr}::varchar[]) does not work with Drizzle's sql template — the
+      // driver sends a JS array as an opaque scalar causing pg error 42809. Use
+      // sql.join() with IN (...) instead (same fix applied in rollout-preview endpoint).
       const sopDocs = masterIds.length > 0
         ? (await db.execute(sql`
             SELECT sd.id, sd.sop_master_id, sd.code, sd.title, sd.learning_track_id, sd.lifecycle_status
             FROM sop_documents sd
-            WHERE sd.sop_master_id = ANY(${masterIds}::varchar[])
+            WHERE sd.sop_master_id IN (${sql.join(masterIds.map(id => sql`${id}`), sql`, `)})
               AND sd.is_current = true
           `)).rows as any[]
         : [];
@@ -15273,7 +15276,7 @@ Canonical domain: ${BASE}
         ? (await db.execute(sql`
             SELECT sra.sop_master_id, sra.role
             FROM sop_role_assignments sra
-            WHERE sra.sop_master_id = ANY(${masterIds}::varchar[])
+            WHERE sra.sop_master_id IN (${sql.join(masterIds.map(id => sql`${id}`), sql`, `)})
           `)).rows as any[]
         : [];
 
@@ -15296,7 +15299,7 @@ Canonical domain: ${BASE}
             FROM admin_users au
             LEFT JOIN departments d ON d.id = au.department_id
             WHERE au.is_active = true AND au.deleted_at IS NULL
-              AND au.role = ANY(${allTargetRoles}::varchar[])
+              AND au.role IN (${sql.join(allTargetRoles.map(r => sql`${r}`), sql`, `)})
             ORDER BY au.first_name, au.last_name
           `)).rows as any[]
         : [];
@@ -15307,8 +15310,8 @@ Canonical domain: ${BASE}
         ? (await db.execute(sql`
             SELECT sep.user_id, sep.sop_master_id, sep.acknowledged_at
             FROM sop_employee_progress sep
-            WHERE sep.user_id = ANY(${employeeIds}::varchar[])
-              AND sep.sop_master_id = ANY(${masterIds}::varchar[])
+            WHERE sep.user_id IN (${sql.join(employeeIds.map(id => sql`${id}`), sql`, `)})
+              AND sep.sop_master_id IN (${sql.join(masterIds.map(id => sql`${id}`), sql`, `)})
           `)).rows as any[]
         : [];
 
@@ -15394,7 +15397,7 @@ Canonical domain: ${BASE}
         ? (await db.execute(sql`
             SELECT lt.id, lt.title, lt.estimated_minutes, lt.due_date
             FROM learning_tracks lt
-            WHERE lt.id = ANY(${trackIds}::varchar[])
+            WHERE lt.id IN (${sql.join(trackIds.map(id => sql`${id}`), sql`, `)})
           `)).rows as any[]
         : [];
 
@@ -15403,8 +15406,8 @@ Canonical domain: ${BASE}
         ? (await db.execute(sql`
             SELECT ta.track_id, COUNT(*) AS completed_count
             FROM track_assignments ta
-            WHERE ta.track_id = ANY(${trackIds}::varchar[])
-              AND ta.user_id = ANY(${employeeIds}::varchar[])
+            WHERE ta.track_id IN (${sql.join(trackIds.map(id => sql`${id}`), sql`, `)})
+              AND ta.user_id IN (${sql.join(employeeIds.map(id => sql`${id}`), sql`, `)})
               AND ta.status = 'completed'
             GROUP BY ta.track_id
           `)).rows as any[]
@@ -15441,7 +15444,7 @@ Canonical domain: ${BASE}
                    pgt.linked_sop_id, pgt.roles
             FROM plan_goal_templates pgt
             JOIN sop_documents sd ON sd.id = pgt.linked_sop_id
-            WHERE sd.sop_master_id = ANY(${masterIds}::varchar[])
+            WHERE sd.sop_master_id IN (${sql.join(masterIds.map(id => sql`${id}`), sql`, `)})
               AND sd.is_current = true
           `)).rows as any[];
 
@@ -18500,9 +18503,11 @@ Canonical domain: ${BASE}
 
   // Auto-assign training on publish, filtered through the rollout gate. Returns the
   // number of users assigned and the impacted/skipped breakdown.
-  async function assignSopTraining(doc: SopDocument, req: Request): Promise<{ assignedCount: number; skippedOutOfRollout: number; impacted: number }> {
+  // actorUserId is the user who triggered the action (for audit log + assignedBy).
+  async function assignSopTraining(doc: SopDocument, actorUserIdOrReq: string | Request): Promise<{ assignedCount: number; skippedOutOfRollout: number; impacted: number; tracksPublished: number }> {
+    const actorUserId = typeof actorUserIdOrReq === "string" ? actorUserIdOrReq : (actorUserIdOrReq as Request).session.userId!;
     const impacted = await impactedUserIdsForSop(doc.sopMasterId);
-    if (impacted.length === 0) return { assignedCount: 0, skippedOutOfRollout: 0, impacted: 0 };
+    if (impacted.length === 0) return { assignedCount: 0, skippedOutOfRollout: 0, impacted: 0, tracksPublished: 0 };
 
     // Always project progress rows for impacted users (in-rollout or not), so a
     // later rollout expansion + sync simply assigns training for already-tracked users.
@@ -18511,7 +18516,28 @@ Canonical domain: ${BASE}
       await storage.upsertSopEmployeeProgress(doc.sopMasterId, current?.version ?? doc.version, userId);
     }
 
-    if (!doc.learningTrackId) return { assignedCount: 0, skippedOutOfRollout: 0, impacted: impacted.length };
+    if (!doc.learningTrackId) return { assignedCount: 0, skippedOutOfRollout: 0, impacted: impacted.length, tracksPublished: 0 };
+
+    // Auto-publish the linked learning track if it is still in draft state so
+    // employees can actually access it after assignment.
+    let tracksPublished = 0;
+    try {
+      const [track] = await db.select().from(learningTracks).where(eq(learningTracks.id, doc.learningTrackId));
+      if (track && track.status === "draft") {
+        await db.update(learningTracks)
+          .set({ status: "published", publishedAt: new Date(), updatedAt: new Date() })
+          .where(eq(learningTracks.id, doc.learningTrackId));
+        tracksPublished = 1;
+        try {
+          await storage.createAuditLog({
+            actorId: actorUserId,
+            targetId: doc.learningTrackId,
+            action: "sop_training_auto_published",
+            changes: { sopMasterId: doc.sopMasterId, sopCode: doc.code, trackId: doc.learningTrackId, trackTitle: track.title },
+          });
+        } catch (e) { console.error("[sopTraining] auto-publish audit log error:", e); }
+      }
+    } catch (e) { console.error("[sopTraining] track auto-publish check error:", e); }
 
     // Filter recipients through the server-side rollout gate.
     const rollout = await getSopRolloutScope();
@@ -18536,7 +18562,7 @@ Canonical domain: ${BASE}
         .where(and(eq(trackAssignments.trackId, doc.learningTrackId), eq(trackAssignments.userId, userId)));
       if (existing) continue;
       await db.insert(trackAssignments).values({
-        trackId: doc.learningTrackId, userId, assignedBy: req.session.userId!, dueDate, status: "not_started",
+        trackId: doc.learningTrackId, userId, assignedBy: actorUserId, dueDate, status: "not_started",
       });
       assignedCount += 1;
       try {
@@ -18550,8 +18576,64 @@ Canonical domain: ${BASE}
         });
       } catch (e) { console.error("SOP training notify error:", e); }
     }
-    return { assignedCount, skippedOutOfRollout, impacted: impacted.length };
+    return { assignedCount, skippedOutOfRollout, impacted: impacted.length, tracksPublished };
   }
+
+  // Re-run SOP assignment for an already-activated wave — idempotent backfill.
+  // Creates missing sop_employee_progress rows, assigns training (skips if already
+  // assigned), and auto-publishes any still-draft linked training tracks.
+  // Roles allowed: super_admin, admin, hr.
+  app.post("/api/sops/rollout/waves/:waveNumber/reassign", requireAuth, requirePermission("sops.rollout", "hr", "admin"), async (req: Request, res: Response) => {
+    try {
+      const waveNumber = Number(req.params.waveNumber);
+      if (!Number.isInteger(waveNumber) || waveNumber < 0) {
+        return res.status(400).json({ error: "Invalid wave number" });
+      }
+
+      // Verify the wave exists and is active
+      const [waveRow] = await db.select().from(rolloutWaves).where(eq(rolloutWaves.waveNumber, waveNumber));
+      if (!waveRow) return res.status(404).json({ error: "Wave not found" });
+      if (waveRow.status !== "active") {
+        return res.status(409).json({ error: `Wave ${waveNumber} is not active (status: ${waveRow.status}). Only active waves can be reassigned.` });
+      }
+
+      const memberCodes = await sopRollout.getWaveMemberMasterIds(waveNumber);
+      let progressRowsCreated = 0;
+      let trainingsAssigned = 0;
+      let tracksPublished = 0;
+
+      for (const code of memberCodes) {
+        const doc = await storage.getCurrentSopByMasterId(code);
+        if (!doc) continue;
+
+        // Sync progress rows (idempotent)
+        const impactedIds = await impactedUserIdsForSop(doc.sopMasterId);
+        for (const userId of impactedIds) {
+          const before = await storage.getSopEmployeeProgressForUser(userId);
+          const had = before.some((p) => p.sopMasterId === doc.sopMasterId);
+          await storage.upsertSopEmployeeProgress(doc.sopMasterId, doc.version, userId);
+          if (!had) progressRowsCreated += 1;
+        }
+
+        // Auto-publish draft track and assign training (idempotent — skips existing assignments)
+        const result = await assignSopTraining(doc, req.session.userId!);
+        trainingsAssigned += result.assignedCount;
+        tracksPublished += result.tracksPublished;
+      }
+
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: null,
+        action: "sop_wave_reassignment_run",
+        changes: { waveNumber, progressRowsCreated, trainingsAssigned, tracksPublished },
+      });
+
+      res.json({ ok: true, progressRowsCreated, trainingsAssigned, tracksPublished });
+    } catch (error) {
+      console.error("SOP wave reassign error:", error);
+      res.status(500).json({ error: "Failed to run assignment" });
+    }
+  });
 
   // ==========================================
   // ACCESS CONTROL (DB-driven RBAC, Super Admin editor)

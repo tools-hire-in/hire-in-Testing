@@ -109,7 +109,14 @@ export function WaveImpactDrawer({
     queryKey: ["/api/sops/rollout/waves", waveNumber, "preview"],
     queryFn: async () => {
       const res = await fetch(`/api/sops/rollout/waves/${waveNumber}/preview`, { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load preview");
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.error) msg = body.error;
+        } catch {}
+        throw new Error(msg);
+      }
       return res.json();
     },
     enabled: open,
@@ -160,9 +167,14 @@ export function WaveImpactDrawer({
         )}
 
         {error && (
-          <div className="flex items-center gap-2 rounded border border-destructive/30 bg-destructive/10 p-4 mt-6 text-sm text-destructive">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            Failed to load impact preview.
+          <div className="flex items-start gap-2 rounded border border-destructive/30 bg-destructive/10 p-4 mt-6 text-sm text-destructive">
+            <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+            <div>
+              <div className="font-medium">Failed to load impact preview.</div>
+              {(error as Error)?.message && (
+                <div className="mt-1 text-xs opacity-80">{(error as Error).message}</div>
+              )}
+            </div>
           </div>
         )}
 
