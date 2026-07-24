@@ -341,6 +341,21 @@ export interface CeipalJob {
   industry: string;
   tax_terms: string;
   post_job_on_career_portal: string;
+  // v2 enriched fields from getJobPostingDetails
+  pay_rates?: CeipalPayRate[];
+  primary_recruiter?: string;
+  remote_opportunities?: string;
+  closing_date?: string;
+  employment_type?: string;
+  skills?: string;
+  [key: string]: any;
+}
+
+export interface CeipalPayRate {
+  pay_type?: string;
+  min_pay_rate?: string | number;
+  max_pay_rate?: string | number;
+  currency?: string;
   [key: string]: any;
 }
 
@@ -352,21 +367,78 @@ function isCeipalJobActive(status: string | undefined): boolean {
 }
 
 const MAX_PAGES = 500;
+const V2_JOBS_BASE_URL = "https://api.ceipal.com/v2/getJobPostings/";
+const V2_JOB_DETAIL_BASE_URL = "https://api.ceipal.com/v2/getJobPostingDetails/";
+
+/**
+ * Fetch enriched details for a single job from the Ceipal v2 detail endpoint.
+ * Returns null on any error (non-fatal — the list-page stub is still used).
+ */
+async function getCeipalJobPostingDetails(jobId: string): Promise<Partial<CeipalJob> | null> {
+  try {
+    const url = `${V2_JOB_DETAIL_BASE_URL}${encodeURIComponent(jobId)}/`;
+    const res = await fetchWithTokenRetry(url, { method: "GET" });
+    if (!res.ok) {
+      console.warn(`[ceipal] getJobPostingDetails(${jobId}) returned ${res.status} — skipping detail enrichment`);
+      return null;
+    }
+    const data = await res.json();
+    // The v2 detail endpoint may wrap in { results: [...] } or return the object directly
+    if (Array.isArray(data?.results) && data.results.length > 0) return data.results[0];
+    if (data && typeof data === "object" && !Array.isArray(data)) return data;
+    return null;
+  } catch (err: any) {
+    console.warn(`[ceipal] getJobPostingDetails(${jobId}) error:`, err.message);
+    return null;
+  }
+}
+
+/**
+ * Concurrency-limited batch enrichment: fetches job details for up to
+ * `concurrency` jobs in parallel, merges the result back into each stub.
+ */
+async function enrichJobsWithDetails(jobs: CeipalJob[], concurrency = 5): Promise<CeipalJob[]> {
+  const enriched: CeipalJob[] = [];
+  for (let i = 0; i < jobs.length; i += concurrency) {
+    const batch = jobs.slice(i, i + concurrency);
+    const details = await Promise.all(
+      batch.map((job) => {
+        const lookupId = job.id || job.job_code;
+        if (!lookupId) return Promise.resolve(null);
+        return getCeipalJobPostingDetails(lookupId);
+      })
+    );
+    for (let j = 0; j < batch.length; j++) {
+      const detail = details[j];
+      if (detail) {
+        enriched.push({ ...batch[j], ...detail });
+      } else {
+        enriched.push(batch[j]);
+      }
+    }
+  }
+  return enriched;
+}
 
 export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
-  const endpoint = process.env.CEIPAL_JOBS_ENDPOINT;
-  if (!endpoint) {
-    throw new Error("CEIPAL_JOBS_ENDPOINT not configured");
-  }
+  // Allow manual override via env var; default to v2 paginated endpoint
+  const overrideEndpoint = process.env.CEIPAL_JOBS_ENDPOINT;
+  const isV2 = !overrideEndpoint;
 
+  // v2 uses page_size=50; legacy override keeps its own param style
   const PAGE_LIMIT = 50;
   const allJobs: CeipalJob[] = [];
   const seenIds = new Set<string>();
   let page = 1;
 
   while (page <= MAX_PAGES) {
-    const separator = endpoint.includes("?") ? "&" : "?";
-    const pagedUrl = `${endpoint}${separator}page=${page}&limit=${PAGE_LIMIT}`;
+    let pagedUrl: string;
+    if (overrideEndpoint) {
+      const separator = overrideEndpoint.includes("?") ? "&" : "?";
+      pagedUrl = `${overrideEndpoint}${separator}page=${page}&limit=${PAGE_LIMIT}`;
+    } else {
+      pagedUrl = `${V2_JOBS_BASE_URL}?page=${page}&page_size=${PAGE_LIMIT}`;
+    }
 
     const res = await fetchWithTokenRetry(pagedUrl, { method: "GET" });
 
@@ -380,7 +452,7 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
           msg404.includes("please provide the access token") ||
           msg404.includes("company access is temporarily disabled") ||
           msg404.includes("invalid token") ||
-          msg404.includes("token") && msg404.includes("authentication")
+          (msg404.includes("token") && msg404.includes("authentication"))
         ) {
           throw new Error(`Ceipal auth error on page ${page}: ${json404.message || body404}`);
         }
@@ -398,6 +470,8 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
       pageJobs = data;
     } else if (data && Array.isArray(data.results)) {
       pageJobs = data.results;
+    } else if (data && Array.isArray(data.data)) {
+      pageJobs = data.data;
     }
 
     if (pageJobs.length === 0) break;
@@ -427,6 +501,15 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
 
   const totalPages = Math.min(page, MAX_PAGES);
   console.log(`[ceipal] Total jobs fetched across ${totalPages} page(s): ${allJobs.length}`);
+
+  // v2 path: enrich each job stub with detail-endpoint data (pay_rates, primary_recruiter, etc.)
+  if (isV2 && allJobs.length > 0) {
+    console.log(`[ceipal] Fetching v2 job details for ${allJobs.length} jobs (concurrency=5)...`);
+    const enriched = await enrichJobsWithDetails(allJobs, 5);
+    console.log(`[ceipal] v2 enrichment complete`);
+    return enriched;
+  }
+
   return allJobs;
 }
 
@@ -478,8 +561,24 @@ function formatLocation(city: string, states: string): { city: string; state: st
 function mapCeipalJobToLocal(ceipalJob: CeipalJob) {
   const rawDescription = ceipalJob.public_job_description || ceipalJob.job_description || "";
   const description = stripHtml(rawDescription);
-  const skills = [ceipalJob.primary_skills, ceipalJob.secondary_skills].filter(Boolean).join(", ");
+  const skills = [ceipalJob.primary_skills, ceipalJob.secondary_skills, ceipalJob.skills]
+    .filter(Boolean).join(", ");
   const location = formatLocation(ceipalJob.city, ceipalJob.states);
+
+  // Normalize pay_rates — v2 detail returns an array; guard against missing/malformed
+  let ceipalPayRates: CeipalPayRate[] | null = null;
+  if (Array.isArray(ceipalJob.pay_rates) && ceipalJob.pay_rates.length > 0) {
+    ceipalPayRates = ceipalJob.pay_rates;
+  }
+
+  // Normalize closing_date to YYYY-MM-DD if present
+  let closingDate: string | null = null;
+  if (ceipalJob.closing_date) {
+    const d = new Date(ceipalJob.closing_date);
+    if (!isNaN(d.getTime())) {
+      closingDate = d.toISOString().split("T")[0];
+    }
+  }
 
   return {
     jobId: ceipalJob.job_code,
@@ -489,7 +588,7 @@ function mapCeipalJobToLocal(ceipalJob: CeipalJob) {
     facility: ceipalJob.client || null,
     city: location.city || null,
     state: location.state || null,
-    jobType: ceipalJob.job_type || ceipalJob.tax_terms || null,
+    jobType: ceipalJob.job_type || ceipalJob.employment_type || ceipalJob.tax_terms || null,
     shift: null,
     duration: ceipalJob.duration || null,
     payRate: ceipalJob.pay_rate___salary || null,
@@ -503,6 +602,13 @@ function mapCeipalJobToLocal(ceipalJob: CeipalJob) {
     source: "ceipal" as const,
     ceipalJobCode: ceipalJob.job_code,
     ceipalJobId: ceipalJob.id,
+    // v2 enriched fields
+    ceipalPayRates: ceipalPayRates as any,
+    ceipalIndustry: ceipalJob.industry || null,
+    ceipalClient: ceipalJob.client || null,
+    ceipalPrimaryRecruiter: ceipalJob.primary_recruiter || null,
+    remoteOpportunities: ceipalJob.remote_opportunities || ceipalJob.remote_job || null,
+    closingDate: closingDate,
   };
 }
 

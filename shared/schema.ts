@@ -125,6 +125,14 @@ export const jobs = pgTable("jobs", {
   // AI-generated social captions stored per-job so they can be reused without regenerating.
   // Shape: { linkedin: string, instagram: string, facebook: string, generatedAt: string }
   socialCaptions: jsonb("social_captions"),
+  // Ceipal v2 enriched fields — populated during job sync from getJobPostingDetails
+  // ceipalPayRates shape: [{ pay_type, min_pay_rate, max_pay_rate, currency, ... }]
+  ceipalPayRates: jsonb("ceipal_pay_rates"),
+  ceipalIndustry: text("ceipal_industry"),
+  ceipalClient: text("ceipal_client"),
+  ceipalPrimaryRecruiter: text("ceipal_primary_recruiter"),
+  remoteOpportunities: text("remote_opportunities"),
+  closingDate: date("closing_date"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useSearch, useLocation } from "wouter";
 import { useSEO } from "@/hooks/use-seo";
-import { Search, MapPin, Clock, DollarSign, Filter, X, ArrowRight, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, MapPin, Clock, DollarSign, Filter, X, ArrowRight, ChevronLeft, ChevronRight, Wifi } from "lucide-react";
 import { Layout } from "@/components/layout/Layout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +22,37 @@ import type { Industry } from "@/lib/jobUtils";
 import type { Job } from "@shared/schema";
 
 const PAGE_SIZE = 12;
+
+interface CeipalPayRate {
+  pay_type?: string;
+  min_pay_rate?: string | number;
+  max_pay_rate?: string | number;
+  currency?: string;
+}
+
+function formatPayRateRange(payRates: CeipalPayRate[] | null | undefined): string | null {
+  if (!payRates || payRates.length === 0) return null;
+  const primary = payRates[0];
+  const min = primary.min_pay_rate != null ? parseFloat(String(primary.min_pay_rate)) : null;
+  const max = primary.max_pay_rate != null ? parseFloat(String(primary.max_pay_rate)) : null;
+  const currency = primary.currency?.toUpperCase() === "USD" ? "$" : (primary.currency || "$");
+  const payType = primary.pay_type ? `/${primary.pay_type}` : "/hr";
+  if (min != null && max != null && min !== max) {
+    return `${currency}${min.toFixed(0)}–${currency}${max.toFixed(0)}${payType}`;
+  }
+  if (max != null) return `${currency}${max.toFixed(0)}${payType}`;
+  if (min != null) return `${currency}${min.toFixed(0)}${payType}`;
+  return null;
+}
+
+function getRemoteBadge(remoteOpportunities: string | null | undefined): { label: string; variant: "secondary" | "outline" } | null {
+  if (!remoteOpportunities) return null;
+  const val = remoteOpportunities.trim().toLowerCase();
+  if (val === "no" || val === "false" || val === "0") return null;
+  if (val.includes("hybrid")) return { label: "Hybrid", variant: "outline" };
+  if (val.includes("remote") || val === "yes" || val === "true" || val === "1") return { label: "Remote", variant: "secondary" };
+  return { label: remoteOpportunities, variant: "outline" };
+}
 
 export default function Jobs() {
   useSEO({
@@ -298,13 +329,26 @@ export default function Jobs() {
                         {job.specialty && (
                           <Badge variant="outline">{job.specialty}</Badge>
                         )}
+                        {(() => {
+                          const remoteBadge = getRemoteBadge((job as any).remoteOpportunities);
+                          return remoteBadge ? (
+                            <Badge variant={remoteBadge.variant} data-testid={`badge-remote-${job.id}`}>
+                              <Wifi className="h-3 w-3 mr-1" />
+                              {remoteBadge.label}
+                            </Badge>
+                          ) : null;
+                        })()}
                       </div>
-                      {job.payRate && (
-                        <div className="flex items-center gap-1 text-sm text-primary font-medium mb-3">
-                          <DollarSign className="h-4 w-4" />
-                          {job.payRate}
-                        </div>
-                      )}
+                      {(() => {
+                        const payRateRange = formatPayRateRange((job as any).ceipalPayRates as CeipalPayRate[] | null);
+                        const displayPayRate = payRateRange || job.payRate;
+                        return displayPayRate ? (
+                          <div className="flex items-center gap-1 text-sm text-primary font-medium mb-3" data-testid={`text-pay-rate-${job.id}`}>
+                            <DollarSign className="h-4 w-4" />
+                            {displayPayRate}
+                          </div>
+                        ) : null;
+                      })()}
                       {job.description && (
                         <p className="text-sm text-muted-foreground line-clamp-3 mb-4 flex-1">
                           {getCleanDescriptionSnippet(job.description)}

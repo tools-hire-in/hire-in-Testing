@@ -3262,6 +3262,13 @@ async function runStartupTasks() {
   } catch (err) {
     console.error("[startup] Ceipal compliance schema apply error (early):", err);
   }
+  // Ceipal v2 job enrichment columns (pay_rates, industry, client, recruiter, remote, closing_date)
+  try {
+    const { applyCeipalJobsV2Schema } = await import("../scripts/apply-ceipal-jobs-v2-schema");
+    await applyCeipalJobsV2Schema();
+  } catch (err) {
+    console.error("[startup] Ceipal v2 jobs schema apply error:", err);
+  }
 
   await ensureSalaryStructuresTable();
   try {
