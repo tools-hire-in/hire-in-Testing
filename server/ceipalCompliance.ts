@@ -17,10 +17,10 @@ import { storage } from "./storage";
 
 // ── Ceipal API helpers ────────────────────────────────────────────────────────
 
-async function getCeipalToken(): Promise<string | null> {
+async function getTokenRetryFetch(): Promise<typeof import("./ceipalService").fetchWithTokenRetry | null> {
   try {
-    const { getCeipalToken: tokenFn } = await import("./ceipalService");
-    return await tokenFn();
+    const { fetchWithTokenRetry } = await import("./ceipalService");
+    return fetchWithTokenRetry;
   } catch {
     return null;
   }
@@ -55,17 +55,15 @@ async function fetchTodaySubmissions(): Promise<FetchResult> {
   }
 
   try {
-    const token = await getCeipalToken();
-    if (!token) {
-      console.log("[ceipal-compliance] fetchTodaySubmissions: token fetch failed → api_unavailable");
+    const fetchFn = await getTokenRetryFetch();
+    if (!fetchFn) {
+      console.log("[ceipal-compliance] fetchTodaySubmissions: could not load fetch helper → api_unavailable");
       return { ok: false, data: [] };
     }
 
     const today = todayStr();
     const url = `https://api.ceipal.com/v1/getSubmissions/?from_date=${today}&to_date=${today}&page=1&page_size=300`;
-    const res = await fetch(url, {
-      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-    });
+    const res = await fetchFn(url);
     if (!res.ok) {
       console.log(`[ceipal-compliance] getSubmissions returned ${res.status} → api_unavailable`);
       return { ok: false, data: [] };
@@ -92,20 +90,17 @@ async function fetchTodayJobActivity(): Promise<FetchResult> {
   }
 
   try {
-    const token = await getCeipalToken();
-    if (!token) {
-      console.log("[ceipal-compliance] fetchTodayJobActivity: token fetch failed → api_unavailable");
+    const fetchFn = await getTokenRetryFetch();
+    if (!fetchFn) {
+      console.log("[ceipal-compliance] fetchTodayJobActivity: could not load fetch helper → api_unavailable");
       return { ok: false, data: [] };
     }
 
-    const today = todayStr();
     const allJobs: any[] = [];
     for (let page = 1; page <= 3; page++) {
       const separator = jobsEndpoint.includes("?") ? "&" : "?";
       const url = `${jobsEndpoint}${separator}page=${page}&limit=50`;
-      const res = await fetch(url, {
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      });
+      const res = await fetchFn(url);
       if (!res.ok) {
         // First page fail → API unavailable; mid-page break → treat as end of results
         if (page === 1) return { ok: false, data: [] };

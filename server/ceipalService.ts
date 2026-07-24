@@ -9,13 +9,17 @@ import {
   getZoomMeetings,
 } from "./zoomService";
 
-const CEIPAL_AUTH_URL = "https://api.ceipal.com/v1/createAuthtoken";
+const CEIPAL_AUTH_URL_V1 = "https://api.ceipal.com/v1/createAuthtoken";
+const CEIPAL_AUTH_URL_V2 = "https://api.ceipal.com/v2/createAuthtoken";
 const CEIPAL_REFRESH_URL = "https://api.ceipal.com/v1/refreshToken/";
+
+let activeAuthUrl = CEIPAL_AUTH_URL_V1;
 
 let cachedToken: string | null = null;
 let tokenExpiresAt: number = 0;
 let lastAuthAt: number = 0;
 let isSyncing = false;
+let v2CompatChecked = false;
 
 /** Return health metadata for the Ceipal token cache — used by the status route. */
 export function getCeipalTokenHealth(): {
@@ -31,19 +35,12 @@ export function getCeipalTokenHealth(): {
   };
 }
 
-function parseXmlToken(xml: string, tag: string): string | null {
-  const match = xml.match(new RegExp(`<${tag}>([^<]+)</${tag}>`));
-  return match ? match[1] : null;
-}
-
 function parseTokenResponse(text: string): { access_token?: string; refresh_token?: string } {
   try {
     return JSON.parse(text);
   } catch {
-    return {
-      access_token: parseXmlToken(text, "access_token") || undefined,
-      refresh_token: parseXmlToken(text, "refresh_token") || undefined,
-    };
+    console.warn("[ceipal] Auth response is not valid JSON — Ceipal API is expected to return JSON");
+    return {};
   }
 }
 
@@ -52,8 +49,67 @@ export async function getCeipalToken(): Promise<string> {
   return authenticate();
 }
 
-async function authenticate(): Promise<string> {
+/**
+ * Make a fetch call with automatic token-retry on 401.
+ * On a 401 response the cached token is cleared, a fresh token is requested,
+ * and the call is retried exactly once.  Exported so compliance and other
+ * modules can share the same behaviour without duplicating token logic.
+ */
+export async function fetchWithTokenRetry(
+  url: string,
+  options: RequestInit = {}
+): Promise<Response> {
+  const token = await authenticate();
+  const headers: Record<string, string> = {
+    "Authorization": `Bearer ${token}`,
+    "Content-Type": "application/json",
+    ...(options.headers as Record<string, string> || {}),
+  };
+  const res = await fetch(url, { ...options, headers });
+  if (res.status === 401) {
+    console.log(`[ceipal] 401 on ${url} — force-refreshing token and retrying`);
+    const freshToken = await authenticate(true);
+    const retryHeaders: Record<string, string> = {
+      "Authorization": `Bearer ${freshToken}`,
+      "Content-Type": "application/json",
+      ...(options.headers as Record<string, string> || {}),
+    };
+    return fetch(url, { ...options, headers: retryHeaders });
+  }
+  return res;
+}
+
+/** One-time v2 endpoint compatibility check (runs async, never throws).
+ *  If v1 tokens are rejected by a v2 endpoint, switches activeAuthUrl to
+ *  the v2 auth URL and invalidates the cached token so the next call
+ *  re-authenticates via the v2 endpoint automatically.
+ */
+async function checkV2Compat(token: string): Promise<void> {
+  try {
+    const res = await fetch("https://api.ceipal.com/v2/getUsers/?page=1&page_size=1", {
+      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
+    });
+    if (res.status === 401) {
+      console.warn("[ceipal] v2 compat check: v1 tokens are NOT valid for v2 endpoints — switching auth URL to v2 and re-authenticating");
+      activeAuthUrl = CEIPAL_AUTH_URL_V2;
+      cachedToken = null;
+      tokenExpiresAt = 0;
+    } else {
+      console.log(`[ceipal] v2 compat check: status ${res.status} — v1 tokens are compatible with v2 endpoints`);
+    }
+  } catch (err: any) {
+    console.warn("[ceipal] v2 compat check failed (network):", err.message);
+  }
+}
+
+async function authenticate(forceRefresh = false): Promise<string> {
   const now = Date.now();
+
+  if (forceRefresh) {
+    cachedToken = null;
+    tokenExpiresAt = 0;
+  }
+
   if (cachedToken && now < tokenExpiresAt) {
     return cachedToken;
   }
@@ -71,7 +127,7 @@ async function authenticate(): Promise<string> {
         const parsed = parseTokenResponse(await refreshRes.text());
         if (parsed.access_token) {
           cachedToken = parsed.access_token;
-          tokenExpiresAt = now + 55 * 60 * 1000;
+          tokenExpiresAt = now + 50 * 60 * 1000;
           lastAuthAt = now;
           return cachedToken;
         }
@@ -89,7 +145,7 @@ async function authenticate(): Promise<string> {
     throw new Error("Ceipal API credentials not configured");
   }
 
-  const res = await fetch(CEIPAL_AUTH_URL, {
+  const res = await fetch(activeAuthUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ email, password, api_key: apiKey }),
@@ -106,8 +162,13 @@ async function authenticate(): Promise<string> {
   }
 
   cachedToken = parsed.access_token;
-  tokenExpiresAt = now + 55 * 60 * 1000;
+  tokenExpiresAt = now + 50 * 60 * 1000;
   lastAuthAt = now;
+
+  if (!v2CompatChecked) {
+    v2CompatChecked = true;
+    checkV2Compat(cachedToken).catch(() => {});
+  }
 
   return cachedToken;
 }
@@ -160,7 +221,6 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
   }
 
   const PAGE_LIMIT = 50;
-  const token = await authenticate();
   const allJobs: CeipalJob[] = [];
   const seenIds = new Set<string>();
   let page = 1;
@@ -169,16 +229,22 @@ export async function fetchCeipalJobs(): Promise<CeipalJob[]> {
     const separator = endpoint.includes("?") ? "&" : "?";
     const pagedUrl = `${endpoint}${separator}page=${page}&limit=${PAGE_LIMIT}`;
 
-    const res = await fetch(pagedUrl, {
-      method: "GET",
-      headers: {
-        "Authorization": `Bearer ${token}`,
-        "Content-Type": "application/json",
-      },
-    });
+    const res = await fetchWithTokenRetry(pagedUrl, { method: "GET" });
 
     if (!res.ok) {
       if (res.status === 404) {
+        const body404 = await res.text();
+        let json404: any = {};
+        try { json404 = JSON.parse(body404); } catch {}
+        const msg404 = (json404.message || json404.detail || body404 || "").toLowerCase();
+        if (
+          msg404.includes("please provide the access token") ||
+          msg404.includes("company access is temporarily disabled") ||
+          msg404.includes("invalid token") ||
+          msg404.includes("token") && msg404.includes("authentication")
+        ) {
+          throw new Error(`Ceipal auth error on page ${page}: ${json404.message || body404}`);
+        }
         console.log(`[ceipal] Page ${page} returned 404 — reached end of results`);
         break;
       }
@@ -376,11 +442,8 @@ export async function searchCeipalCandidates(q: string): Promise<{
   }
 
   try {
-    const token = await authenticate();
     const url = `https://api.ceipal.com/v1/getCandidates/?search=${encodeURIComponent(q.trim())}&page=1&page_size=10`;
-    const res = await fetch(url, {
-      headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-    });
+    const res = await fetchWithTokenRetry(url);
 
     if (!res.ok) {
       console.warn(`[ceipal] Candidate search returned ${res.status} — endpoint may not be supported`);
@@ -482,13 +545,9 @@ export async function getCeipalRecruiterMetrics(
   }
 
   try {
-    const token = await authenticate();
-
     async function fetchSubmissions(from: string, to: string): Promise<any[]> {
       const url = `https://api.ceipal.com/v1/getSubmissions/?from_date=${from}&to_date=${to}&page=1&page_size=300`;
-      const res = await fetch(url, {
-        headers: { "Authorization": `Bearer ${token}`, "Content-Type": "application/json" },
-      });
+      const res = await fetchWithTokenRetry(url);
       if (!res.ok) {
         console.warn(`[ceipal] getSubmissions ${from}→${to} returned ${res.status}`);
         return [];
