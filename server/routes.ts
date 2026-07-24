@@ -19142,12 +19142,7 @@ Canonical domain: ${BASE}
           });
         } catch (e) { console.error("SOP training notify error:", e); }
       }
-<<<<<<< HEAD
 
-      // Auto-create compliance goal + check-in schedule for this assignment
-      await ensureSopComplianceGoal(userId, doc, dueDate, waveNumber).catch((e) =>
-        console.error("[sopTraining] compliance goal create error:", e));
-=======
       // Auto-create compliance goal and check-ins (non-fatal — must not roll back assignment)
       try {
         const goalResult = await createSopComplianceGoal(userId, doc, actorUserId);
@@ -19160,7 +19155,6 @@ Canonical domain: ${BASE}
           });
         }
       } catch (e) { console.error("[sopGoalEngine] createSopComplianceGoal error (non-fatal):", e); }
->>>>>>> 14942613 (feat: SOP wave activation — auto-create compliance goals, check-ins & compliance health API)
     }
     return { assignedCount, skippedOutOfRollout, impacted: impactedWithLevel.length, tracksPublished };
   }
