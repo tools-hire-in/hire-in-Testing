@@ -364,6 +364,128 @@ function SectionPlayer({
   );
 }
 
+const LEVEL_BADGE: Record<string, { label: string; cls: string; fullLabel: string }> = {
+  awareness:          { label: "A", cls: "bg-blue-100 text-blue-700 border-blue-200",   fullLabel: "Awareness" },
+  required:           { label: "R", cls: "bg-amber-100 text-amber-700 border-amber-200", fullLabel: "Required" },
+  certification:      { label: "C", cls: "bg-purple-100 text-purple-700 border-purple-200", fullLabel: "Certification" },
+  optional_reference: { label: "O", cls: "bg-slate-100 text-slate-600 border-slate-200", fullLabel: "Optional Reference" },
+};
+
+function EvidenceSubmissionForm({
+  assignmentId,
+  sopCode,
+  onSubmitted,
+}: {
+  assignmentId: string;
+  sopCode: string;
+  onSubmitted: () => void;
+}) {
+  const { toast } = useToast();
+  const [evidenceType, setEvidenceType] = useState("self_attestation");
+  const [evidenceNotes, setEvidenceNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
+  const { data: existingSubmissions } = useQuery<any[]>({
+    queryKey: ["/api/training/evidence", assignmentId],
+    queryFn: async () => {
+      const res = await fetch(`/api/training/evidence/${assignmentId}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const latestSubmission = existingSubmissions?.[0];
+  const isApproved = latestSubmission?.reviewStatus === "approved" || latestSubmission?.review_status === "approved";
+  const isPending = latestSubmission?.reviewStatus === "pending" || latestSubmission?.review_status === "pending";
+  const needsResubmit = latestSubmission?.reviewStatus === "resubmit_requested" || latestSubmission?.review_status === "resubmit_requested";
+
+  const handleSubmit = async () => {
+    if (!evidenceNotes.trim()) {
+      toast({ title: "Please describe your evidence", variant: "destructive" });
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const res = await apiRequest("POST", "/api/training/evidence", {
+        trackAssignmentId: assignmentId,
+        sopCode,
+        evidenceType,
+        evidenceNotes: evidenceNotes.trim(),
+      });
+      if (!res.ok) throw new Error("Failed to submit");
+      queryClient.invalidateQueries({ queryKey: ["/api/training/evidence", assignmentId] });
+      toast({ title: "Evidence submitted! Awaiting manager review." });
+      onSubmitted();
+    } catch {
+      toast({ title: "Failed to submit evidence", variant: "destructive" });
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  if (isApproved) {
+    return (
+      <div className="mt-6 p-4 bg-green-50 border border-green-200 rounded-lg space-y-2">
+        <p className="font-semibold text-green-900 flex items-center gap-2">
+          <Award className="h-4 w-4" /> Certification Evidence Approved
+        </p>
+        <p className="text-sm text-green-700">Your manager has approved your evidence. You can now complete this track.</p>
+      </div>
+    );
+  }
+
+  if (isPending) {
+    return (
+      <div className="mt-6 p-4 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+        <p className="font-semibold text-amber-900">Evidence Submitted — Awaiting Review</p>
+        <p className="text-sm text-amber-700">Your evidence is under manager review. You will be notified once it's reviewed.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-6 p-4 bg-purple-50 border border-purple-200 rounded-lg space-y-3">
+      <p className="font-semibold text-purple-900 flex items-center gap-2">
+        <Award className="h-4 w-4" /> Certification Evidence Required
+      </p>
+      {needsResubmit && (
+        <div className="p-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+          Resubmission requested: {latestSubmission?.review_notes || "Please review the feedback and resubmit."}
+        </div>
+      )}
+      <p className="text-sm text-purple-700">This SOP requires certification-level evidence before completion. Your manager will review and approve.</p>
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Evidence Type</Label>
+        <select
+          value={evidenceType}
+          onChange={(e) => setEvidenceType(e.target.value)}
+          className="w-full border rounded-md px-3 py-2 text-sm bg-white"
+          data-testid="select-evidence-type"
+        >
+          <option value="self_attestation">Self Attestation</option>
+          <option value="screenshot">Screenshot / Photo</option>
+          <option value="document">Document / File Reference</option>
+          <option value="link">Link / URL</option>
+        </select>
+      </div>
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Evidence Description *</Label>
+        <Textarea
+          value={evidenceNotes}
+          onChange={(e) => setEvidenceNotes(e.target.value)}
+          placeholder="Describe how you applied this SOP in your work..."
+          rows={3}
+          data-testid="textarea-evidence-notes"
+        />
+      </div>
+      <Button size="sm" onClick={handleSubmit} disabled={submitting} className="bg-purple-700 hover:bg-purple-800" data-testid="button-submit-evidence">
+        {submitting ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Send className="h-4 w-4 mr-2" />}
+        Submit Evidence for Review
+      </Button>
+    </div>
+  );
+}
+
 function TrackPlayer({
   assignmentId,
   onBack,
@@ -377,6 +499,7 @@ function TrackPlayer({
   const [completing, setCompleting] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [receiptData, setReceiptData] = useState<any>(null);
+  const [evidenceSubmitted, setEvidenceSubmitted] = useState(false);
 
   const { data, isLoading, refetch } = useQuery<any>({
     queryKey: ["/api/onboarding/assignments", assignmentId],
@@ -483,6 +606,13 @@ function TrackPlayer({
   const activeSection = data?.sections?.find((s: any) => s.id === activeSectionId);
   const activeSectionIdx = data?.sections?.findIndex((s: any) => s.id === activeSectionId) ?? 0;
 
+  const assignmentLevel = data?.assignment?.assignmentLevel as string | undefined;
+  const isCertification = assignmentLevel === "certification";
+  const evidenceRequired = data?.assignment?.evidenceRequired ?? isCertification;
+  const managerSignoffStatus = data?.assignment?.managerSignoffStatus;
+  const sopCode = data?.assignment?.sopCode as string | undefined;
+  const levelBadge = LEVEL_BADGE[assignmentLevel ?? "required"] ?? LEVEL_BADGE.required;
+
   return (
     <div className="flex h-full">
       <div className="w-64 border-r bg-muted/30 p-4 space-y-2 shrink-0">
@@ -490,9 +620,16 @@ function TrackPlayer({
           <ArrowLeft className="h-4 w-4 mr-1" />
           Back
         </Button>
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          {data?.track?.title}
-        </p>
+        <div className="flex items-center gap-2 mb-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider truncate">
+            {data?.track?.title}
+          </p>
+          {assignmentLevel && (
+            <span className={`shrink-0 inline-flex items-center rounded border px-1.5 py-0.5 text-[10px] font-bold ${levelBadge.cls}`} title={levelBadge.fullLabel}>
+              {levelBadge.label}
+            </span>
+          )}
+        </div>
         {data?.sections?.map((section: any, idx: number) => {
           const isComplete = section.progress?.status === "completed";
           const isActive = section.id === activeSectionId;
@@ -547,10 +684,22 @@ function TrackPlayer({
               }}
             />
 
-            {allDone && !completed && (
+            {allDone && !completed && evidenceRequired && sopCode && (
+              <EvidenceSubmissionForm
+                assignmentId={assignmentId}
+                sopCode={sopCode}
+                onSubmitted={() => setEvidenceSubmitted(true)}
+              />
+            )}
+
+            {allDone && !completed && (!evidenceRequired || evidenceSubmitted || managerSignoffStatus === "approved") && (
               <div className="mt-8 p-4 bg-green-50 border border-green-200 rounded-lg text-center space-y-3">
                 <p className="font-semibold text-green-900">All sections complete!</p>
-                <p className="text-sm text-green-700">Click below to finalize your completion receipt.</p>
+                <p className="text-sm text-green-700">
+                  {isCertification
+                    ? "Your certification evidence is on record. Click below to finalize."
+                    : "Click below to finalize your completion receipt."}
+                </p>
                 <Button onClick={handleComplete} disabled={completing} className="bg-green-700 hover:bg-green-800" data-testid="button-complete-track">
                   {completing ? <Loader2 className="h-4 w-4 animate-spin mr-2" /> : <Trophy className="h-4 w-4 mr-2" />}
                   Complete Track &amp; Get Receipt

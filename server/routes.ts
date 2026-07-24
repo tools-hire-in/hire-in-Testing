@@ -121,7 +121,7 @@ import { signHrLetter as _signHrLetter, signOfferLetterAcceptance as _signOfferL
 import * as sopGov from "./sopGovernance";
 import { generateSalarySlipHtml, SLIP_MONTH_NAMES, type SalarySlipData } from "@shared/salarySlipHtml";
 import { IndiaStatutoryEngine, computeComponentsFromGross, applyWaterfall, endOfContributionPeriod, rupeesToPaise, paiseToRupees, type IndiaEmployeeConfig, type CoverageConfig, type ResolvedRate, type StructureRule, type WaterfallInput, type StateDeductionConfig } from "./payrollEngine";
-import { syncSopProgressForUser, impactedUserIdsForSop, backfillAllSopProgress } from "./sopAssignmentEngine";
+import { syncSopProgressForUser, impactedUserIdsForSop, backfillAllSopProgress, impactedUsersForSopWithLevel, LEVEL_PARAMS, resolveTrainingGroups } from "./sopAssignmentEngine";
 import * as sopRollout from "./sopRollout";
 import fs from "fs";
 import { syncCeipalJobs, pushApplicantToCeipal } from "./ceipalService";
@@ -15308,35 +15308,41 @@ Canonical domain: ${BASE}
 
       const roleAssignmentRows = masterIds.length > 0
         ? (await db.execute(sql`
-            SELECT sra.sop_master_id, sra.role
+            SELECT sra.sop_master_id, sra.role, sra.role_group_key, sra.applies_to_all,
+                   sra.assignment_level
             FROM sop_role_assignments sra
             WHERE sra.sop_master_id IN (${sql.join(masterIds.map(id => sql`${id}`), sql`, `)})
           `)).rows as any[]
         : [];
 
-      // Group roles by master_id
+      // Group roles by master_id (for legacy role-based matching)
       const rolesByMaster = new Map<string, string[]>();
+      // Group role-group assignments by master_id (for level-aware matching)
+      const groupsByMaster = new Map<string, any[]>();
       for (const ra of roleAssignmentRows) {
         const list = rolesByMaster.get(ra.sop_master_id) ?? [];
         list.push(ra.role);
         rolesByMaster.set(ra.sop_master_id, list);
+        const glist = groupsByMaster.get(ra.sop_master_id) ?? [];
+        glist.push(ra);
+        groupsByMaster.set(ra.sop_master_id, glist);
       }
 
       // All roles targeted by any SOP in this wave
       const allTargetRoles = Array.from(new Set(roleAssignmentRows.map((r: any) => r.role as string)));
 
-      // Resolve employees who will receive obligations
-      const employees = allTargetRoles.length > 0
-        ? (await db.execute(sql`
+      // Resolve employees who will receive obligations.
+      // Fetch ALL active users (not pre-filtered by role) because the new role-group
+      // system uses department-derived groups (e.g. Healthcare-Team) that don't
+      // necessarily match any role slug in sop_role_assignments.role.
+      const employees = (await db.execute(sql`
             SELECT au.id, au.first_name || ' ' || au.last_name AS name,
                    au.role, d.name AS department
             FROM admin_users au
             LEFT JOIN departments d ON d.id = au.department_id
             WHERE au.is_active = true AND au.deleted_at IS NULL
-              AND au.role IN (${sql.join(allTargetRoles.map(r => sql`${r}`), sql`, `)})
             ORDER BY au.first_name, au.last_name
-          `)).rows as any[]
-        : [];
+          `)).rows as any[];
 
       // Fetch current ack status for employees
       const employeeIds = employees.map((e: any) => e.id as string);
@@ -15369,14 +15375,45 @@ Canonical domain: ${BASE}
         ? (parseInt(String((graceDaysRow.rows[0] as any).value), 10) || 15)
         : 15;
 
-      // Build employee list with per-employee sops + ack status
-      const empList = employees.map((e: any) => {
-        const sopsToReceive = masterIds.filter((mid) => {
-          const roles = rolesByMaster.get(mid) ?? [];
-          return roles.includes(e.role);
-        }).map((mid) => sopDocMap.get(mid)?.code ?? mid);
+      // Level rank helper for highest-wins resolution
+      const LEVEL_RANK_PREVIEW: Record<string, number> = { optional_reference: 0, awareness: 1, required: 2, certification: 3 };
 
-        const assigned = assignedMap.get(e.id) ?? new Set<string>();
+      // Build employee list with per-employee sops + ack status + A/R/C level
+      const empList = employees.map((e: any) => {
+        const empGroups = resolveTrainingGroups({ id: e.id, role: e.role, departmentName: e.department });
+
+        // For each SOP, determine if this employee is impacted and at what level
+        const sopsToReceive: string[] = [];
+        const sopLevels: Record<string, string> = {};
+
+        for (const mid of masterIds) {
+          const groupAssignments = groupsByMaster.get(mid) ?? [];
+          const hasGroupRows = groupAssignments.some((ra: any) => ra.role_group_key);
+
+          let bestLevel: string | null = null;
+          if (hasGroupRows) {
+            // New group-based matching
+            for (const ra of groupAssignments) {
+              if (ra.applies_to_all || (ra.role_group_key && empGroups.includes(ra.role_group_key))) {
+                const lvl = ra.assignment_level ?? "required";
+                if (!bestLevel || (LEVEL_RANK_PREVIEW[lvl] ?? 1) > (LEVEL_RANK_PREVIEW[bestLevel] ?? 1)) {
+                  bestLevel = lvl;
+                }
+              }
+            }
+          } else {
+            // Legacy role-based matching
+            const roles = rolesByMaster.get(mid) ?? [];
+            if (roles.includes(e.role)) bestLevel = "required";
+          }
+
+          if (bestLevel) {
+            const code = sopDocMap.get(mid)?.code ?? mid;
+            sopsToReceive.push(code);
+            sopLevels[code] = bestLevel;
+          }
+        }
+
         const acked = ackedMap.get(e.id) ?? new Set<string>();
         const totalAssigned = sopsToReceive.length;
         const totalAcked = sopsToReceive.filter((code) => {
@@ -15388,12 +15425,35 @@ Canonical domain: ${BASE}
         if (totalAssigned > 0) {
           ackStatus = totalAcked === totalAssigned ? "acknowledged" : "pending";
         }
+        // Build per-SOP resolved role group map for the preview table
+        const sopRoleGroups: Record<string, string> = {};
+        for (const mid of masterIds) {
+          const groupAssignments = groupsByMaster.get(mid) ?? [];
+          const hasGroupRowsForSop = groupAssignments.some((ra: any) => ra.role_group_key);
+          if (hasGroupRowsForSop) {
+            let bestGroup: string | null = null;
+            let bestRank = -1;
+            for (const ra of groupAssignments) {
+              if (ra.applies_to_all || (ra.role_group_key && empGroups.includes(ra.role_group_key))) {
+                const lvl = ra.assignment_level ?? "required";
+                const rank = LEVEL_RANK_PREVIEW[lvl] ?? 1;
+                if (rank > bestRank) { bestRank = rank; bestGroup = ra.role_group_key ?? "ALL"; }
+              }
+            }
+            if (bestGroup) {
+              const code = sopDocMap.get(mid)?.code ?? mid;
+              sopRoleGroups[code] = bestGroup;
+            }
+          }
+        }
         return {
           userId: e.id as string,
           name: e.name as string,
           department: (e.department as string | null) ?? null,
           role: e.role as string,
           sopsToReceive,
+          sopLevels,
+          sopRoleGroups,
           ackStatus,
         };
       });
@@ -18540,17 +18600,19 @@ Canonical domain: ${BASE}
   // actorUserId is the user who triggered the action (for audit log + assignedBy).
   async function assignSopTraining(doc: SopDocument, actorUserIdOrReq: string | Request): Promise<{ assignedCount: number; skippedOutOfRollout: number; impacted: number; tracksPublished: number }> {
     const actorUserId = typeof actorUserIdOrReq === "string" ? actorUserIdOrReq : (actorUserIdOrReq as Request).session.userId!;
-    const impacted = await impactedUserIdsForSop(doc.sopMasterId);
-    if (impacted.length === 0) return { assignedCount: 0, skippedOutOfRollout: 0, impacted: 0, tracksPublished: 0 };
+
+    // Use the level-aware resolver (falls back to legacy role-based for unported SOPs)
+    const impactedWithLevel = await impactedUsersForSopWithLevel(doc.sopMasterId);
+    if (impactedWithLevel.length === 0) return { assignedCount: 0, skippedOutOfRollout: 0, impacted: 0, tracksPublished: 0 };
 
     // Always project progress rows for impacted users (in-rollout or not), so a
     // later rollout expansion + sync simply assigns training for already-tracked users.
     const current = await storage.getSopDocumentById(doc.id);
-    for (const userId of impacted) {
+    for (const { userId } of impactedWithLevel) {
       await storage.upsertSopEmployeeProgress(doc.sopMasterId, current?.version ?? doc.version, userId);
     }
 
-    if (!doc.learningTrackId) return { assignedCount: 0, skippedOutOfRollout: 0, impacted: impacted.length, tracksPublished: 0 };
+    if (!doc.learningTrackId) return { assignedCount: 0, skippedOutOfRollout: 0, impacted: impactedWithLevel.length, tracksPublished: 0 };
 
     // Auto-publish the linked learning track if it is still in draft state so
     // employees can actually access it after assignment.
@@ -18590,28 +18652,271 @@ Canonical domain: ${BASE}
     let assignedCount = 0;
     let skippedOutOfRollout = 0;
     const dueDate = new Date(Date.now() + 15 * 24 * 60 * 60 * 1000);
-    for (const userId of impacted) {
+
+    for (const { userId, level, roleGroup, assignmentId, department } of impactedWithLevel) {
       if (!inRollout(userId)) { skippedOutOfRollout += 1; continue; }
+      // Idempotency: skip if already assigned for this SOP (via sopCode + trackId + userId)
       const [existing] = await db.select().from(trackAssignments)
-        .where(and(eq(trackAssignments.trackId, doc.learningTrackId), eq(trackAssignments.userId, userId)));
-      if (existing) continue;
+        .where(and(eq(trackAssignments.trackId, doc.learningTrackId!), eq(trackAssignments.userId, userId)));
+      if (existing) {
+        // Backfill level fields if this is an old assignment without them
+        if (!existing.assignmentLevel || existing.assignmentLevel === "required" && !existing.resolvedRoleGroup) {
+          const params = LEVEL_PARAMS[level];
+          await db.update(trackAssignments)
+            .set({
+              assignmentLevel: level,
+              resolvedRoleGroup: roleGroup,
+              resolvedDepartment: department || null,
+              sourceSopRoleAssignmentId: assignmentId,
+              requiredQuestionCount: params.questionCount,
+              requiredPassScore: params.passScore,
+              evidenceRequired: params.evidenceRequired,
+              managerSignoffRequired: params.managerSignoffRequired,
+              sopCode: doc.code,
+              sopVersion: current?.version ?? doc.version,
+            })
+            .where(eq(trackAssignments.id, existing.id));
+        }
+        continue;
+      }
+
+      const params = LEVEL_PARAMS[level];
+      // optional_reference assignments are informational only — mark not_required immediately
+      const initialStatus = level === "optional_reference" ? "not_required" : "not_started";
       await db.insert(trackAssignments).values({
-        trackId: doc.learningTrackId, userId, assignedBy: actorUserId, dueDate, status: "not_started",
+        trackId: doc.learningTrackId!, userId, assignedBy: actorUserId, dueDate, status: initialStatus,
+        assignmentLevel: level,
+        resolvedRoleGroup: roleGroup,
+        resolvedDepartment: department || null,
+        sourceSopRoleAssignmentId: assignmentId,
+        requiredQuestionCount: params.questionCount,
+        requiredPassScore: params.passScore,
+        evidenceRequired: params.evidenceRequired,
+        managerSignoffRequired: params.managerSignoffRequired,
+        sopCode: doc.code,
+        sopVersion: current?.version ?? doc.version,
       });
       assignedCount += 1;
+      // Audit: log the assignment with level details
       try {
-        await storage.createNotification({
-          userId,
-          type: "sop_training_assigned",
-          title: "New SOP training assigned",
-          message: `Training is required for SOP ${doc.code} — ${doc.title}.`,
-          isRead: false,
-          metadata: { sopId: doc.id, trackId: doc.learningTrackId, link: "/admin/my-training" },
+        await storage.createAuditLog({
+          actorId: actorUserId,
+          targetId: userId,
+          action: "sop_training_assigned",
+          changes: { sopCode: doc.code, trackId: doc.learningTrackId, assignmentLevel: level, resolvedRoleGroup: roleGroup, resolvedDepartment: department || null },
         });
-      } catch (e) { console.error("SOP training notify error:", e); }
+      } catch (e) { console.error("SOP assignment audit log error (non-fatal):", e); }
+      // optional_reference tracks are informational only — no notification needed
+      if (level !== "optional_reference") {
+        try {
+          await storage.createNotification({
+            userId,
+            type: "sop_training_assigned",
+            title: "New SOP training assigned",
+            message: `Training is required for SOP ${doc.code} — ${doc.title}. Your level: ${level.replace("_", " ")}.`,
+            isRead: false,
+            metadata: { sopId: doc.id, trackId: doc.learningTrackId, link: "/admin/my-training", assignmentLevel: level },
+          });
+        } catch (e) { console.error("SOP training notify error:", e); }
+      }
     }
-    return { assignedCount, skippedOutOfRollout, impacted: impacted.length, tracksPublished };
+    return { assignedCount, skippedOutOfRollout, impacted: impactedWithLevel.length, tracksPublished };
   }
+
+  // Submit certification evidence for a track assignment
+  app.post("/api/training/evidence", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const { trackAssignmentId, sopCode, evidenceType, evidenceNotes, evidenceUrl } = req.body;
+      if (!trackAssignmentId || !sopCode || !evidenceType) {
+        return res.status(400).json({ error: "trackAssignmentId, sopCode, and evidenceType are required" });
+      }
+      const allowedTypes = ["screenshot", "document", "link", "self_attestation"];
+      if (!allowedTypes.includes(evidenceType)) {
+        return res.status(400).json({ error: `evidenceType must be one of: ${allowedTypes.join(", ")}` });
+      }
+      // Ownership + certification-level check: verify this assignment belongs to the submitter
+      // and actually requires evidence before allowing insert
+      const [assignmentCheck] = await db.select().from(trackAssignments)
+        .where(eq(trackAssignments.id, trackAssignmentId));
+      if (!assignmentCheck) {
+        return res.status(404).json({ error: "Assignment not found" });
+      }
+      if (assignmentCheck.userId !== userId) {
+        return res.status(403).json({ error: "You can only submit evidence for your own assignments" });
+      }
+      if (!assignmentCheck.evidenceRequired) {
+        return res.status(400).json({ error: "This assignment does not require evidence submission" });
+      }
+      const result = await db.execute(sql`
+        INSERT INTO training_evidence_submissions
+          (track_assignment_id, user_id, sop_code, training_id, evidence_type, evidence_notes, evidence_url)
+        VALUES
+          (${trackAssignmentId}, ${userId}, ${sopCode}, ${assignmentCheck.trackId}, ${evidenceType}, ${evidenceNotes ?? null}, ${evidenceUrl ?? null})
+        RETURNING id, review_status, submitted_at
+      `);
+      const row = (result.rows as any[])[0];
+      // Update the assignment's manager_signoff_status to 'pending'
+      await db.execute(sql`
+        UPDATE track_assignments SET manager_signoff_status = 'pending'
+        WHERE id = ${trackAssignmentId} AND user_id = ${userId}
+      `);
+      // Notify manager that evidence is awaiting review
+      try {
+        const empResult = await db.execute(sql`
+          SELECT manager_id FROM admin_users WHERE id = ${userId} LIMIT 1
+        `);
+        const managerId = ((empResult.rows[0] as any) ?? {})?.manager_id as string | null;
+        if (managerId) {
+          await storage.createNotification({
+            userId: managerId,
+            type: "training_evidence_submitted",
+            title: "Certification evidence awaiting review",
+            message: `An employee has submitted certification evidence for SOP ${sopCode}. Please review and approve.`,
+            isRead: false,
+            metadata: { trackAssignmentId, sopCode, submittedBy: userId, link: "/admin/hr/my-team" },
+          });
+        }
+      } catch (notifyErr) {
+        console.error("Evidence submit manager notify error (non-fatal):", notifyErr);
+      }
+      return res.json({ ok: true, submissionId: row.id, reviewStatus: row.review_status, submittedAt: row.submitted_at });
+    } catch (err) {
+      console.error("Training evidence submit error:", err);
+      return res.status(500).json({ error: "Failed to submit evidence" });
+    }
+  });
+
+  // Manager/HR reviews certification evidence
+  app.patch("/api/training/evidence/:submissionId/review", requireAuth, requirePermission("training.evidence.review", "hr", "admin", "manager"), async (req: Request, res: Response) => {
+    try {
+      const { submissionId } = req.params;
+      const reviewerId = req.session.userId!;
+      const reviewerRole = req.session.role!;
+      const { reviewStatus, reviewNotes } = req.body;
+      const allowedStatuses = ["approved", "resubmit_requested"];
+      if (!allowedStatuses.includes(reviewStatus)) {
+        return res.status(400).json({ error: "reviewStatus must be 'approved' or 'resubmit_requested'" });
+      }
+      // Fetch the submission and its assignment
+      const subRows = await db.execute(sql`
+        SELECT tes.*, ta.user_id AS assignment_user_id
+        FROM training_evidence_submissions tes
+        JOIN track_assignments ta ON ta.id = tes.track_assignment_id
+        WHERE tes.id = ${submissionId} LIMIT 1
+      `);
+      if (!subRows.rows.length) return res.status(404).json({ error: "Submission not found" });
+      const sub = subRows.rows[0] as any;
+
+      // Manager-scoping: a manager can only review their own direct reports' submissions
+      if (reviewerRole === "manager") {
+        const empResult = await db.execute(sql`
+          SELECT manager_id FROM admin_users WHERE id = ${sub.assignment_user_id} LIMIT 1
+        `);
+        const empRow = empResult.rows[0] as any;
+        if (!empRow || empRow.manager_id !== reviewerId) {
+          return res.status(403).json({ error: "You can only review evidence for your direct reports" });
+        }
+      }
+
+      await db.execute(sql`
+        UPDATE training_evidence_submissions
+        SET review_status = ${reviewStatus}, reviewed_by = ${reviewerId}, reviewed_at = NOW(), review_notes = ${reviewNotes ?? null}
+        WHERE id = ${submissionId}
+      `);
+      // Update the assignment's manager_signoff_status
+      await db.execute(sql`
+        UPDATE track_assignments SET manager_signoff_status = ${reviewStatus}
+        WHERE id = ${sub.track_assignment_id}
+      `);
+
+      // If approved: check if all sections are acknowledged and auto-complete the certification track
+      if (reviewStatus === "approved") {
+        try {
+          const [assignmentRow] = await db.select().from(trackAssignments)
+            .where(eq(trackAssignments.id, sub.track_assignment_id as string));
+          if (assignmentRow && assignmentRow.status !== "completed") {
+            const allSections = await db.select().from(trackSections)
+              .where(eq(trackSections.trackId, assignmentRow.trackId));
+            const allAcks = await db.select().from(sectionAcknowledgements)
+              .where(eq(sectionAcknowledgements.assignmentId, assignmentRow.id));
+            if (allAcks.length >= allSections.length) {
+              const allHashes = allAcks.sort((a, b) => a.sectionId.localeCompare(b.sectionId))
+                .map(a => a.documentHash || "").join("|");
+              const receiptHash = crypto.createHash("sha256").update(allHashes).digest("hex");
+              const [existingCompletion] = await db.select().from(trackCompletions)
+                .where(eq(trackCompletions.assignmentId, assignmentRow.id));
+              if (!existingCompletion) {
+                await db.insert(trackCompletions).values({
+                  assignmentId: assignmentRow.id,
+                  userId: assignmentRow.userId,
+                  receiptHash,
+                  receiptData: { trackId: assignmentRow.trackId, assignmentId: assignmentRow.id, completedViaEvidenceApproval: true },
+                });
+              }
+              await db.update(trackAssignments)
+                .set({ status: "completed", completedAt: new Date() })
+                .where(eq(trackAssignments.id, assignmentRow.id));
+              await storage.createNotification({
+                userId: assignmentRow.userId,
+                type: "sop_certification_approved",
+                title: "Certification Evidence Approved",
+                message: `Your certification evidence for ${sub.sop_code ?? "this track"} has been approved. Training marked complete.`,
+                metadata: { trackAssignmentId: assignmentRow.id, sopCode: sub.sop_code },
+              }).catch(() => {});
+            }
+          }
+        } catch (autoCompleteErr) {
+          console.error("Evidence approval auto-complete error (non-fatal):", autoCompleteErr);
+        }
+      }
+
+      // Notify the employee about the review outcome
+      try {
+        const notifyMsg = reviewStatus === "approved"
+          ? `Your certification evidence for SOP ${sub.sop_code ?? "this track"} has been approved. Training marked complete.`
+          : `Your certification evidence for SOP ${sub.sop_code ?? "this track"} needs revision. ${reviewNotes ? `Reviewer notes: ${reviewNotes}` : "Please resubmit with additional detail."}`;
+        await storage.createNotification({
+          userId: sub.assignment_user_id as string,
+          type: reviewStatus === "approved" ? "sop_certification_approved" : "sop_evidence_resubmit_requested",
+          title: reviewStatus === "approved" ? "Certification evidence approved" : "Evidence resubmission requested",
+          message: notifyMsg,
+          isRead: false,
+          metadata: { trackAssignmentId: sub.track_assignment_id, sopCode: sub.sop_code, reviewNotes: reviewNotes ?? null, link: "/admin/my-training" },
+        });
+      } catch (notifyErr) { console.error("Evidence review notify error (non-fatal):", notifyErr); }
+      try {
+        await storage.createAuditLog({
+          actorId: reviewerId,
+          targetId: sub.track_assignment_id as string,
+          action: "training_evidence_reviewed",
+          changes: { submissionId, reviewStatus, sopCode: sub.sop_code, evidenceType: sub.evidence_type },
+        });
+      } catch (e) { console.error("Evidence review audit log error:", e); }
+      return res.json({ ok: true, reviewStatus });
+    } catch (err) {
+      console.error("Training evidence review error:", err);
+      return res.status(500).json({ error: "Failed to review evidence" });
+    }
+  });
+
+  // Get evidence submissions for a track assignment (for the employee to see their submission status)
+  app.get("/api/training/evidence/:trackAssignmentId", requireAuth, async (req: Request, res: Response) => {
+    try {
+      const userId = req.session.userId!;
+      const { trackAssignmentId } = req.params;
+      const rows = await db.execute(sql`
+        SELECT id, sop_code, evidence_type, evidence_notes, evidence_url, submitted_at, review_status, review_notes, reviewed_at
+        FROM training_evidence_submissions
+        WHERE track_assignment_id = ${trackAssignmentId} AND user_id = ${userId}
+        ORDER BY submitted_at DESC
+      `);
+      return res.json(rows.rows);
+    } catch (err) {
+      console.error("Training evidence fetch error:", err);
+      return res.status(500).json({ error: "Failed to fetch evidence" });
+    }
+  });
 
   // Re-run SOP assignment for an already-activated wave — idempotent backfill.
   // Creates missing sop_employee_progress rows, assigns training (skips if already

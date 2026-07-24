@@ -1,14 +1,22 @@
-// Process Governance Center — 21-SOP Launch Library seed data (Task #660).
+// Process Governance Center — 21-SOP Launch Library seed data (Task #660, updated Task #1576).
 // Sourced from the Final SOP Launch Playbook (HIS-IMPL final library).
 // IMPORTANT: plain ASCII only in every string (no Unicode dashes/symbols) to
 // avoid ON CONFLICT mismatches on re-seed.
 //
-// audienceRoles holds SYSTEM role slugs (user_role enum) so the phased-rollout
-// gate can match a user's role against a SOP's audience. launchWave 0 = always-on
-// foundation/governance docs; waves 1-5 follow the playbook's successive rollout.
+// Task #1576: roleAssignments now use 13 business role groups (roleGroupKey) instead of
+// system role slugs. Three confirmed matrix corrections:
+//   FIN-001 TA-Recruiter => awareness
+//   BD-001  TA-Recruiter => awareness
+//   TPL-001 TA-Recruiter + Healthcare-Team => awareness
+
+export type SopAssignmentLevel = "awareness" | "required" | "certification" | "optional_reference";
 
 export interface SopRoleAssignmentSeed {
-  role: string;
+  // v2 fields (Task #1576): role group key instead of system role slug
+  roleGroupKey: string; // e.g. TA-Recruiter, Healthcare-Team, CEO-SuperAdmin, ALL
+  assignmentLevel: SopAssignmentLevel;
+  assignmentReason?: string; // company_standard | daily_workflow | compliance_mandatory | certification_track
+  appliesToAll?: boolean; // true when roleGroupKey is 'ALL'
   trainingType: string;
   quizRequired: boolean;
   kpiDescription: string;
@@ -16,6 +24,10 @@ export interface SopRoleAssignmentSeed {
   frequency: string;
   evidenceDescription: string;
   target: string;
+  // Legacy field retained so the seeder can populate the old `role` column
+  // for backward compat with existing code that resolves by system role.
+  // Use '_' for ALL-group rows that have no single system role.
+  legacyRole?: string;
 }
 
 export interface SopSeed {
@@ -42,6 +54,11 @@ export interface SopSeed {
 const REVIEW_CYCLE = "Quarterly for first 2 quarters, then semiannual";
 const CONFIDENTIALITY = "Internal - Hire'in Solutions only";
 
+// Level-derived quiz defaults
+function levelQuiz(level: SopAssignmentLevel): { quizRequired: boolean } {
+  return { quizRequired: level !== "optional_reference" };
+}
+
 export const SOP_SEED: SopSeed[] = [
   {
     code: "GOV-001",
@@ -62,12 +79,11 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "How SOPs are owned, versioned, approved, and changed. Every SOP has an owner, evidence requirement, quality gate, and audit cadence.",
     roleAssignments: [
-      { role: "super_admin", trainingType: "Manager orientation", quizRequired: true, kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
-      { role: "admin", trainingType: "Manager orientation", quizRequired: true, kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
-      { role: "manager", trainingType: "Manager orientation", quizRequired: true, kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
-      { role: "operations", trainingType: "Manager orientation", quizRequired: true, kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
-      { role: "hr", trainingType: "Manager orientation", quizRequired: true, kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
-      { role: "employee", trainingType: "Manager orientation", quizRequired: false, kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "certification", assignmentReason: "compliance_mandatory", legacyRole: "super_admin", trainingType: "Manager orientation", ...levelQuiz("certification"), kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Manager orientation", ...levelQuiz("required"), kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "recruiter", trainingType: "Online training + quiz", ...levelQuiz("required"), kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "operations", trainingType: "Manager orientation", ...levelQuiz("required"), kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
+      { roleGroupKey: "ALL", assignmentLevel: "awareness", assignmentReason: "company_standard", appliesToAll: true, legacyRole: "employee", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "SOP review completion, change log compliance", auditOwnerRole: "Ops", frequency: "Monthly during rollout", evidenceDescription: "Approved SOP index, change log, acknowledgments", target: "100% docs controlled" },
     ],
   },
   {
@@ -89,9 +105,9 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "Turn raw client requirements into a calibrated, must-have-driven brief before any sourcing begins. AI may draft the synthesis; a human must sign off.",
     roleAssignments: [
-      { role: "recruiter", trainingType: "Live workshop + role play", quizRequired: true, kpiDescription: "Requirement clarity score, calibration completeness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Calibrated requirement brief, must-have split", target: "95%+ calibrated before sourcing" },
-      { role: "manager", trainingType: "Live workshop + role play", quizRequired: true, kpiDescription: "Requirement clarity score, calibration completeness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Calibrated requirement brief, must-have split", target: "95%+ calibrated before sourcing" },
-      { role: "employee", trainingType: "Live workshop + role play", quizRequired: true, kpiDescription: "Requirement clarity score, calibration completeness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Calibrated requirement brief, must-have split", target: "95%+ calibrated before sourcing" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "recruiter", trainingType: "Live workshop + role play", ...levelQuiz("certification"), kpiDescription: "Requirement clarity score, calibration completeness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Calibrated requirement brief, must-have split", target: "95%+ calibrated before sourcing" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Live workshop + role play", ...levelQuiz("required"), kpiDescription: "Requirement clarity score, calibration completeness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Calibrated requirement brief, must-have split", target: "95%+ calibrated before sourcing" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "admin", trainingType: "Live workshop + role play", ...levelQuiz("required"), kpiDescription: "Requirement clarity score, calibration completeness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Calibrated requirement brief, must-have split", target: "95%+ calibrated before sourcing" },
     ],
   },
   {
@@ -113,9 +129,8 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "Requirement intake, must-haves, pay/bill rate alignment, and a clean delivery kickoff so recruiters start on accurate, approved roles.",
     roleAssignments: [
-      { role: "recruiter", trainingType: "Live workshop + role play", quizRequired: true, kpiDescription: "Intake completeness, rate approval, role release readiness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Intake notes, rate sheet, assignment board", target: "95%+ complete" },
-      { role: "manager", trainingType: "Live workshop + role play", quizRequired: true, kpiDescription: "Intake completeness, rate approval, role release readiness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Intake notes, rate sheet, assignment board", target: "95%+ complete" },
-      { role: "employee", trainingType: "Live workshop + role play", quizRequired: true, kpiDescription: "Intake completeness, rate approval, role release readiness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Intake notes, rate sheet, assignment board", target: "95%+ complete" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "recruiter", trainingType: "Live workshop + role play", ...levelQuiz("certification"), kpiDescription: "Intake completeness, rate approval, role release readiness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Intake notes, rate sheet, assignment board", target: "95%+ complete" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Live workshop + role play", ...levelQuiz("required"), kpiDescription: "Intake completeness, rate approval, role release readiness", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Intake notes, rate sheet, assignment board", target: "95%+ complete" },
     ],
   },
   {
@@ -137,9 +152,8 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: false,
     summary: "Sourcing tools, ethical outreach, candidate ownership rules, and consent/RTR capture. Work must be visible in the ATS, not in personal messages.",
     roleAssignments: [
-      { role: "recruiter", trainingType: "Live workshop", quizRequired: true, kpiDescription: "Candidate ownership logs, duplicate avoidance, outreach quality", auditOwnerRole: "Lead Recruiter", frequency: "Weekly", evidenceDescription: "ATS notes, candidate consent record", target: "100% consent where required" },
-      { role: "manager", trainingType: "Live workshop", quizRequired: true, kpiDescription: "Candidate ownership logs, duplicate avoidance, outreach quality", auditOwnerRole: "Lead Recruiter", frequency: "Weekly", evidenceDescription: "ATS notes, candidate consent record", target: "100% consent where required" },
-      { role: "employee", trainingType: "Live workshop", quizRequired: true, kpiDescription: "Candidate ownership logs, duplicate avoidance, outreach quality", auditOwnerRole: "Lead Recruiter", frequency: "Weekly", evidenceDescription: "ATS notes, candidate consent record", target: "100% consent where required" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "recruiter", trainingType: "Live workshop", ...levelQuiz("certification"), kpiDescription: "Candidate ownership logs, duplicate avoidance, outreach quality", auditOwnerRole: "Lead Recruiter", frequency: "Weekly", evidenceDescription: "ATS notes, candidate consent record", target: "100% consent where required" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Live workshop", ...levelQuiz("required"), kpiDescription: "Candidate ownership logs, duplicate avoidance, outreach quality", auditOwnerRole: "Lead Recruiter", frequency: "Weekly", evidenceDescription: "ATS notes, candidate consent record", target: "100% consent where required" },
     ],
   },
   {
@@ -161,9 +175,8 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "Screening, qualification, the submission checklist, and the QC gate. Submissions count only when qualified, documented, and aligned to the requirement.",
     roleAssignments: [
-      { role: "recruiter", trainingType: "Workshop + submission audit", quizRequired: true, kpiDescription: "Submission acceptance rate, rework rate, interview conversion", auditOwnerRole: "Lead / AM", frequency: "Weekly", evidenceDescription: "Submission packet, QC checklist", target: "95%+ QC pass" },
-      { role: "manager", trainingType: "Workshop + submission audit", quizRequired: true, kpiDescription: "Submission acceptance rate, rework rate, interview conversion", auditOwnerRole: "Lead / AM", frequency: "Weekly", evidenceDescription: "Submission packet, QC checklist", target: "95%+ QC pass" },
-      { role: "employee", trainingType: "Workshop + submission audit", quizRequired: true, kpiDescription: "Submission acceptance rate, rework rate, interview conversion", auditOwnerRole: "Lead / AM", frequency: "Weekly", evidenceDescription: "Submission packet, QC checklist", target: "95%+ QC pass" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "recruiter", trainingType: "Workshop + submission audit", ...levelQuiz("certification"), kpiDescription: "Submission acceptance rate, rework rate, interview conversion", auditOwnerRole: "Lead / AM", frequency: "Weekly", evidenceDescription: "Submission packet, QC checklist", target: "95%+ QC pass" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Workshop + submission audit", ...levelQuiz("required"), kpiDescription: "Submission acceptance rate, rework rate, interview conversion", auditOwnerRole: "Lead / AM", frequency: "Weekly", evidenceDescription: "Submission packet, QC checklist", target: "95%+ QC pass" },
     ],
   },
   {
@@ -185,9 +198,8 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: false,
     summary: "Interview scheduling, offer management, start tracking, and post-start retention follow-through to protect interview-to-start conversion.",
     roleAssignments: [
-      { role: "recruiter", trainingType: "Scenario training", quizRequired: true, kpiDescription: "Interview show rate, offer-to-start, start retention", auditOwnerRole: "AM / Delivery Manager", frequency: "Weekly", evidenceDescription: "Interview tracker, offer notes, start confirmation", target: "90%+ show rate" },
-      { role: "manager", trainingType: "Scenario training", quizRequired: true, kpiDescription: "Interview show rate, offer-to-start, start retention", auditOwnerRole: "AM / Delivery Manager", frequency: "Weekly", evidenceDescription: "Interview tracker, offer notes, start confirmation", target: "90%+ show rate" },
-      { role: "employee", trainingType: "Scenario training", quizRequired: true, kpiDescription: "Interview show rate, offer-to-start, start retention", auditOwnerRole: "AM / Delivery Manager", frequency: "Weekly", evidenceDescription: "Interview tracker, offer notes, start confirmation", target: "90%+ show rate" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "required", assignmentReason: "daily_workflow", legacyRole: "recruiter", trainingType: "Scenario training", ...levelQuiz("required"), kpiDescription: "Interview show rate, offer-to-start, start retention", auditOwnerRole: "AM / Delivery Manager", frequency: "Weekly", evidenceDescription: "Interview tracker, offer notes, start confirmation", target: "90%+ show rate" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Scenario training", ...levelQuiz("required"), kpiDescription: "Interview show rate, offer-to-start, start retention", auditOwnerRole: "AM / Delivery Manager", frequency: "Weekly", evidenceDescription: "Interview tracker, offer notes, start confirmation", target: "90%+ show rate" },
     ],
   },
   {
@@ -209,10 +221,10 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "Credential-aware screening, license/cert checks, packet handoff, and audit readiness for healthcare placements.",
     roleAssignments: [
-      { role: "recruiter", trainingType: "Compliance lab", quizRequired: true, kpiDescription: "Credential packet completeness, expiration tracking", auditOwnerRole: "Healthcare Manager / Ops", frequency: "Weekly", evidenceDescription: "Credential packet, verification notes", target: "100% required docs" },
-      { role: "operations", trainingType: "Compliance lab", quizRequired: true, kpiDescription: "Credential packet completeness, expiration tracking", auditOwnerRole: "Healthcare Manager / Ops", frequency: "Weekly", evidenceDescription: "Credential packet, verification notes", target: "100% required docs" },
-      { role: "hr", trainingType: "Compliance lab", quizRequired: true, kpiDescription: "Credential packet completeness, expiration tracking", auditOwnerRole: "Healthcare Manager / Ops", frequency: "Weekly", evidenceDescription: "Credential packet, verification notes", target: "100% required docs" },
-      { role: "employee", trainingType: "Compliance lab", quizRequired: true, kpiDescription: "Credential packet completeness, expiration tracking", auditOwnerRole: "Healthcare Manager / Ops", frequency: "Weekly", evidenceDescription: "Credential packet, verification notes", target: "100% required docs" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "required", assignmentReason: "compliance_mandatory", legacyRole: "recruiter", trainingType: "Compliance lab", ...levelQuiz("required"), kpiDescription: "Credential packet completeness, expiration tracking", auditOwnerRole: "Healthcare Manager / Ops", frequency: "Weekly", evidenceDescription: "Credential packet, verification notes", target: "100% required docs" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "required", assignmentReason: "compliance_mandatory", legacyRole: "operations", trainingType: "Compliance lab", ...levelQuiz("required"), kpiDescription: "Credential packet completeness, expiration tracking", auditOwnerRole: "Healthcare Manager / Ops", frequency: "Weekly", evidenceDescription: "Credential packet, verification notes", target: "100% required docs" },
+      { roleGroupKey: "Healthcare-Team", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "hr", trainingType: "Compliance lab + evidence", ...levelQuiz("certification"), kpiDescription: "Credential packet completeness, expiration tracking", auditOwnerRole: "Healthcare Manager / Ops", frequency: "Weekly", evidenceDescription: "Credential packet, verification notes", target: "100% required docs" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Compliance lab", ...levelQuiz("required"), kpiDescription: "Credential packet completeness, expiration tracking", auditOwnerRole: "Healthcare Manager / Ops", frequency: "Weekly", evidenceDescription: "Credential packet, verification notes", target: "100% required docs" },
     ],
   },
   {
@@ -234,9 +246,9 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: false,
     summary: "IT requirement calibration, technical screening, visa/work authorization handling, and submission standards for IT staffing.",
     roleAssignments: [
-      { role: "recruiter", trainingType: "Functional training", quizRequired: true, kpiDescription: "Submittal quality, interview ratio, margin guardrail", auditOwnerRole: "IT Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, tech screen summary", target: "95%+ complete" },
-      { role: "manager", trainingType: "Functional training", quizRequired: true, kpiDescription: "Submittal quality, interview ratio, margin guardrail", auditOwnerRole: "IT Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, tech screen summary", target: "95%+ complete" },
-      { role: "employee", trainingType: "Functional training", quizRequired: true, kpiDescription: "Submittal quality, interview ratio, margin guardrail", auditOwnerRole: "IT Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, tech screen summary", target: "95%+ complete" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "required", assignmentReason: "daily_workflow", legacyRole: "recruiter", trainingType: "Functional training", ...levelQuiz("required"), kpiDescription: "Submittal quality, interview ratio, margin guardrail", auditOwnerRole: "IT Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, tech screen summary", target: "95%+ complete" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Functional training", ...levelQuiz("required"), kpiDescription: "Submittal quality, interview ratio, margin guardrail", auditOwnerRole: "IT Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, tech screen summary", target: "95%+ complete" },
+      { roleGroupKey: "IT-Team", assignmentLevel: "awareness", assignmentReason: "company_standard", legacyRole: "employee", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Submittal quality, interview ratio, margin guardrail", auditOwnerRole: "IT Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, tech screen summary", target: "95%+ complete" },
     ],
   },
   {
@@ -258,9 +270,9 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: false,
     summary: "Requirement calibration, domain-aware screening, and submission standards for engineering and professional services placements.",
     roleAssignments: [
-      { role: "recruiter", trainingType: "Functional training", quizRequired: true, kpiDescription: "Submittal quality, domain screening accuracy, interview conversion", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, domain screen summary", target: "95%+ complete" },
-      { role: "manager", trainingType: "Functional training", quizRequired: true, kpiDescription: "Submittal quality, domain screening accuracy, interview conversion", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, domain screen summary", target: "95%+ complete" },
-      { role: "employee", trainingType: "Functional training", quizRequired: true, kpiDescription: "Submittal quality, domain screening accuracy, interview conversion", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, domain screen summary", target: "95%+ complete" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "required", assignmentReason: "daily_workflow", legacyRole: "recruiter", trainingType: "Functional training", ...levelQuiz("required"), kpiDescription: "Submittal quality, domain screening accuracy, interview conversion", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, domain screen summary", target: "95%+ complete" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Functional training", ...levelQuiz("required"), kpiDescription: "Submittal quality, domain screening accuracy, interview conversion", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, domain screen summary", target: "95%+ complete" },
+      { roleGroupKey: "Engineering-Prof-Services-Team", assignmentLevel: "awareness", assignmentReason: "company_standard", legacyRole: "employee", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Submittal quality, domain screening accuracy, interview conversion", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "ATS submission notes, domain screen summary", target: "95%+ complete" },
     ],
   },
   {
@@ -282,8 +294,9 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "Client and MSP/VMS communication, rate governance, SLA management, and escalation handling.",
     roleAssignments: [
-      { role: "manager", trainingType: "Manager workshop", quizRequired: true, kpiDescription: "Client cadence, status update timeliness, margin review", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Client update log, VMS status, escalation log", target: "95%+ status accuracy" },
-      { role: "admin", trainingType: "Manager workshop", quizRequired: true, kpiDescription: "Client cadence, status update timeliness, margin review", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Client update log, VMS status, escalation log", target: "95%+ status accuracy" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "admin", trainingType: "Manager workshop", ...levelQuiz("required"), kpiDescription: "Client cadence, status update timeliness, margin review", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Client update log, VMS status, escalation log", target: "95%+ status accuracy" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "manager", trainingType: "Manager workshop + evidence", ...levelQuiz("certification"), kpiDescription: "Client cadence, status update timeliness, margin review", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Client update log, VMS status, escalation log", target: "95%+ status accuracy" },
+      { roleGroupKey: "Sales-AM", assignmentLevel: "required", assignmentReason: "daily_workflow", legacyRole: "employee", trainingType: "Manager workshop", ...levelQuiz("required"), kpiDescription: "Client cadence, status update timeliness, margin review", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Client update log, VMS status, escalation log", target: "95%+ status accuracy" },
     ],
   },
   {
@@ -305,8 +318,11 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: false,
     summary: "Lead qualification, opportunity vetting, and structured client onboarding so new accounts start with clear terms and ownership.",
     roleAssignments: [
-      { role: "manager", trainingType: "Manager workshop", quizRequired: true, kpiDescription: "Qualified lead rate, onboarding completeness, conversion", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Lead qualification notes, onboarding checklist", target: "90%+ onboarding complete" },
-      { role: "admin", trainingType: "Manager workshop", quizRequired: true, kpiDescription: "Qualified lead rate, onboarding completeness, conversion", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Lead qualification notes, onboarding checklist", target: "90%+ onboarding complete" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "admin", trainingType: "Manager workshop", ...levelQuiz("required"), kpiDescription: "Qualified lead rate, onboarding completeness, conversion", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Lead qualification notes, onboarding checklist", target: "90%+ onboarding complete" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Manager workshop", ...levelQuiz("required"), kpiDescription: "Qualified lead rate, onboarding completeness, conversion", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Lead qualification notes, onboarding checklist", target: "90%+ onboarding complete" },
+      // Matrix correction: TA-Recruiter => awareness for BD-001
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "awareness", assignmentReason: "company_standard", legacyRole: "recruiter", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Qualified lead rate, onboarding completeness, conversion", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Lead qualification notes, onboarding checklist", target: "90%+ onboarding complete" },
+      { roleGroupKey: "BD-Team", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "employee", trainingType: "Manager workshop + evidence", ...levelQuiz("certification"), kpiDescription: "Qualified lead rate, onboarding completeness, conversion", auditOwnerRole: "Sales Director", frequency: "Weekly", evidenceDescription: "Lead qualification notes, onboarding checklist", target: "90%+ onboarding complete" },
     ],
   },
   {
@@ -328,8 +344,9 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: false,
     summary: "Employer brand, content review/approval, and claim-safety governance for marketing output and social channels.",
     roleAssignments: [
-      { role: "manager", trainingType: "Workshop", quizRequired: true, kpiDescription: "Content approval compliance, brand consistency, claim safety", auditOwnerRole: "Marketing Manager", frequency: "Monthly", evidenceDescription: "Approved content log, brand checklist", target: "100% approved before publish" },
-      { role: "admin", trainingType: "Workshop", quizRequired: true, kpiDescription: "Content approval compliance, brand consistency, claim safety", auditOwnerRole: "Marketing Manager", frequency: "Monthly", evidenceDescription: "Approved content log, brand checklist", target: "100% approved before publish" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "awareness", assignmentReason: "company_standard", legacyRole: "admin", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Content approval compliance, brand consistency, claim safety", auditOwnerRole: "Marketing Manager", frequency: "Monthly", evidenceDescription: "Approved content log, brand checklist", target: "100% approved before publish" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Workshop", ...levelQuiz("required"), kpiDescription: "Content approval compliance, brand consistency, claim safety", auditOwnerRole: "Marketing Manager", frequency: "Monthly", evidenceDescription: "Approved content log, brand checklist", target: "100% approved before publish" },
+      { roleGroupKey: "Marketing-Team", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "employee", trainingType: "Workshop + evidence", ...levelQuiz("certification"), kpiDescription: "Content approval compliance, brand consistency, claim safety", auditOwnerRole: "Marketing Manager", frequency: "Monthly", evidenceDescription: "Approved content log, brand checklist", target: "100% approved before publish" },
     ],
   },
   {
@@ -351,9 +368,9 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: false,
     summary: "Candidate-first communication standards and response SLAs across the funnel, from first contact through post-placement.",
     roleAssignments: [
-      { role: "recruiter", trainingType: "Workshop", quizRequired: true, kpiDescription: "Candidate communication SLA, response timeliness, NPS", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Communication log, SLA report", target: "95%+ within SLA" },
-      { role: "manager", trainingType: "Workshop", quizRequired: true, kpiDescription: "Candidate communication SLA, response timeliness, NPS", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Communication log, SLA report", target: "95%+ within SLA" },
-      { role: "employee", trainingType: "Workshop", quizRequired: true, kpiDescription: "Candidate communication SLA, response timeliness, NPS", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Communication log, SLA report", target: "95%+ within SLA" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "required", assignmentReason: "daily_workflow", legacyRole: "recruiter", trainingType: "Workshop", ...levelQuiz("required"), kpiDescription: "Candidate communication SLA, response timeliness, NPS", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Communication log, SLA report", target: "95%+ within SLA" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Workshop", ...levelQuiz("required"), kpiDescription: "Candidate communication SLA, response timeliness, NPS", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Communication log, SLA report", target: "95%+ within SLA" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "awareness", assignmentReason: "company_standard", legacyRole: "operations", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Candidate communication SLA, response timeliness, NPS", auditOwnerRole: "Delivery Manager", frequency: "Weekly", evidenceDescription: "Communication log, SLA report", target: "95%+ within SLA" },
     ],
   },
   {
@@ -375,10 +392,9 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "How Hire'in uses ProKred and KleriQ as separate SaaS platforms (pilot/design-partner tools), including correct data handling and confidentiality.",
     roleAssignments: [
-      { role: "operations", trainingType: "Ops briefing", quizRequired: true, kpiDescription: "ProKred adoption, data handling compliance", auditOwnerRole: "Ops", frequency: "Monthly", evidenceDescription: "Platform usage log, data handling acknowledgment", target: "Adoption per rollout plan" },
-      { role: "recruiter", trainingType: "Ops briefing", quizRequired: true, kpiDescription: "ProKred adoption, data handling compliance", auditOwnerRole: "Ops", frequency: "Monthly", evidenceDescription: "Platform usage log, data handling acknowledgment", target: "Adoption per rollout plan" },
-      { role: "manager", trainingType: "Ops briefing", quizRequired: true, kpiDescription: "ProKred adoption, data handling compliance", auditOwnerRole: "Ops", frequency: "Monthly", evidenceDescription: "Platform usage log, data handling acknowledgment", target: "Adoption per rollout plan" },
-      { role: "employee", trainingType: "Ops briefing", quizRequired: true, kpiDescription: "ProKred adoption, data handling compliance", auditOwnerRole: "Ops", frequency: "Monthly", evidenceDescription: "Platform usage log, data handling acknowledgment", target: "Adoption per rollout plan" },
+      { roleGroupKey: "ALL", assignmentLevel: "required", assignmentReason: "company_standard", appliesToAll: true, legacyRole: "employee", trainingType: "Ops briefing", ...levelQuiz("required"), kpiDescription: "ProKred adoption, data handling compliance", auditOwnerRole: "Ops", frequency: "Monthly", evidenceDescription: "Platform usage log, data handling acknowledgment", target: "Adoption per rollout plan" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "admin", trainingType: "Ops briefing", ...levelQuiz("required"), kpiDescription: "ProKred adoption, data handling compliance", auditOwnerRole: "Ops", frequency: "Monthly", evidenceDescription: "Platform usage log, data handling acknowledgment", target: "Adoption per rollout plan" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "required", assignmentReason: "compliance_mandatory", legacyRole: "operations", trainingType: "Ops briefing", ...levelQuiz("required"), kpiDescription: "ProKred adoption, data handling compliance", auditOwnerRole: "Ops", frequency: "Monthly", evidenceDescription: "Platform usage log, data handling acknowledgment", target: "Adoption per rollout plan" },
     ],
   },
   {
@@ -400,9 +416,10 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "Contract handling, confidentiality, and lawful-conduct compliance across client and candidate engagements.",
     roleAssignments: [
-      { role: "admin", trainingType: "Compliance workshop", quizRequired: true, kpiDescription: "Contract compliance, confidentiality adherence", auditOwnerRole: "Legal / Ops", frequency: "Monthly", evidenceDescription: "Signed contracts, confidentiality acknowledgments", target: "100% contracts compliant" },
-      { role: "operations", trainingType: "Compliance workshop", quizRequired: true, kpiDescription: "Contract compliance, confidentiality adherence", auditOwnerRole: "Legal / Ops", frequency: "Monthly", evidenceDescription: "Signed contracts, confidentiality acknowledgments", target: "100% contracts compliant" },
-      { role: "hr", trainingType: "Compliance workshop", quizRequired: true, kpiDescription: "Contract compliance, confidentiality adherence", auditOwnerRole: "Legal / Ops", frequency: "Monthly", evidenceDescription: "Signed contracts, confidentiality acknowledgments", target: "100% contracts compliant" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "required", assignmentReason: "compliance_mandatory", legacyRole: "admin", trainingType: "Compliance workshop", ...levelQuiz("required"), kpiDescription: "Contract compliance, confidentiality adherence", auditOwnerRole: "Legal / Ops", frequency: "Monthly", evidenceDescription: "Signed contracts, confidentiality acknowledgments", target: "100% contracts compliant" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "compliance_mandatory", legacyRole: "manager", trainingType: "Compliance workshop", ...levelQuiz("required"), kpiDescription: "Contract compliance, confidentiality adherence", auditOwnerRole: "Legal / Ops", frequency: "Monthly", evidenceDescription: "Signed contracts, confidentiality acknowledgments", target: "100% contracts compliant" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "required", assignmentReason: "compliance_mandatory", legacyRole: "operations", trainingType: "Compliance workshop", ...levelQuiz("required"), kpiDescription: "Contract compliance, confidentiality adherence", auditOwnerRole: "Legal / Ops", frequency: "Monthly", evidenceDescription: "Signed contracts, confidentiality acknowledgments", target: "100% contracts compliant" },
+      { roleGroupKey: "Finance-Team", assignmentLevel: "required", assignmentReason: "compliance_mandatory", legacyRole: "finance", trainingType: "Compliance workshop", ...levelQuiz("required"), kpiDescription: "Contract compliance, confidentiality adherence", auditOwnerRole: "Legal / Ops", frequency: "Monthly", evidenceDescription: "Signed contracts, confidentiality acknowledgments", target: "100% contracts compliant" },
     ],
   },
   {
@@ -424,8 +441,12 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "Invoicing, margin controls, and payment governance so revenue is recognized accurately and margins are protected.",
     roleAssignments: [
-      { role: "finance", trainingType: "Finance workshop", quizRequired: true, kpiDescription: "Invoice accuracy, margin compliance, payment timeliness", auditOwnerRole: "Finance / Ops", frequency: "Monthly", evidenceDescription: "Invoice records, margin report, payment log", target: "100% invoices accurate" },
-      { role: "admin", trainingType: "Finance workshop", quizRequired: true, kpiDescription: "Invoice accuracy, margin compliance, payment timeliness", auditOwnerRole: "Finance / Ops", frequency: "Monthly", evidenceDescription: "Invoice records, margin report, payment log", target: "100% invoices accurate" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "admin", trainingType: "Finance workshop", ...levelQuiz("required"), kpiDescription: "Invoice accuracy, margin compliance, payment timeliness", auditOwnerRole: "Finance / Ops", frequency: "Monthly", evidenceDescription: "Invoice records, margin report, payment log", target: "100% invoices accurate" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Finance workshop", ...levelQuiz("required"), kpiDescription: "Invoice accuracy, margin compliance, payment timeliness", auditOwnerRole: "Finance / Ops", frequency: "Monthly", evidenceDescription: "Invoice records, margin report, payment log", target: "100% invoices accurate" },
+      { roleGroupKey: "Finance-Team", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "finance", trainingType: "Finance workshop + evidence", ...levelQuiz("certification"), kpiDescription: "Invoice accuracy, margin compliance, payment timeliness", auditOwnerRole: "Finance / Ops", frequency: "Monthly", evidenceDescription: "Invoice records, margin report, payment log", target: "100% invoices accurate" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "awareness", assignmentReason: "company_standard", legacyRole: "operations", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Invoice accuracy, margin compliance, payment timeliness", auditOwnerRole: "Finance / Ops", frequency: "Monthly", evidenceDescription: "Invoice records, margin report, payment log", target: "100% invoices accurate" },
+      // Matrix correction: TA-Recruiter => awareness for FIN-001
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "awareness", assignmentReason: "company_standard", legacyRole: "recruiter", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Invoice accuracy, margin compliance, payment timeliness", auditOwnerRole: "Finance / Ops", frequency: "Monthly", evidenceDescription: "Invoice records, margin report, payment log", target: "100% invoices accurate" },
     ],
   },
   {
@@ -447,9 +468,11 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "Tool request, access approval under least privilege, password reset, and timely deprovisioning when people change roles or leave.",
     roleAssignments: [
-      { role: "operations", trainingType: "Ops briefing", quizRequired: true, kpiDescription: "Access request approval, deprovisioning completion", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Access register, approval email/ticket", target: "100% approval before access" },
-      { role: "manager", trainingType: "Ops briefing", quizRequired: true, kpiDescription: "Access request approval, deprovisioning completion", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Access register, approval email/ticket", target: "100% approval before access" },
-      { role: "employee", trainingType: "Ops briefing", quizRequired: true, kpiDescription: "Access request approval, deprovisioning completion", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Access register, approval email/ticket", target: "100% approval before access" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "required", assignmentReason: "compliance_mandatory", legacyRole: "admin", trainingType: "Ops briefing", ...levelQuiz("required"), kpiDescription: "Access request approval, deprovisioning completion", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Access register, approval email/ticket", target: "100% approval before access" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "compliance_mandatory", legacyRole: "manager", trainingType: "Ops briefing", ...levelQuiz("required"), kpiDescription: "Access request approval, deprovisioning completion", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Access register, approval email/ticket", target: "100% approval before access" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "required", assignmentReason: "compliance_mandatory", legacyRole: "recruiter", trainingType: "Ops briefing", ...levelQuiz("required"), kpiDescription: "Access request approval, deprovisioning completion", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Access register, approval email/ticket", target: "100% approval before access" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "operations", trainingType: "Ops briefing + evidence", ...levelQuiz("certification"), kpiDescription: "Access request approval, deprovisioning completion", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Access register, approval email/ticket", target: "100% approval before access" },
+      { roleGroupKey: "ALL", assignmentLevel: "awareness", assignmentReason: "company_standard", appliesToAll: true, legacyRole: "employee", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Access request approval, deprovisioning completion", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Access register, approval email/ticket", target: "100% approval before access" },
     ],
   },
   {
@@ -471,12 +494,11 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "Training records, acknowledgments, role scorecards, and coaching/PIP linkage that tie SOP adoption to performance.",
     roleAssignments: [
-      { role: "super_admin", trainingType: "HR manager training", quizRequired: true, kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
-      { role: "admin", trainingType: "HR manager training", quizRequired: true, kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
-      { role: "hr", trainingType: "HR manager training", quizRequired: true, kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
-      { role: "manager", trainingType: "HR manager training", quizRequired: true, kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
-      { role: "operations", trainingType: "HR manager training", quizRequired: true, kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
-      { role: "employee", trainingType: "HR manager training", quizRequired: true, kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "super_admin", trainingType: "HR manager training", ...levelQuiz("required"), kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "HR manager training", ...levelQuiz("required"), kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "hr", trainingType: "HR manager training + evidence", ...levelQuiz("certification"), kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "recruiter", trainingType: "HR manager training", ...levelQuiz("required"), kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
+      { roleGroupKey: "ALL", assignmentLevel: "awareness", assignmentReason: "company_standard", appliesToAll: true, legacyRole: "employee", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Training completion, acknowledgment, coaching records", auditOwnerRole: "HR / Ops", frequency: "Weekly rollout; monthly after", evidenceDescription: "LMS/training record, signed acknowledgment", target: "100% completion" },
     ],
   },
   {
@@ -498,12 +520,10 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: true,
     summary: "Weekly SOP audits, the KPI dashboard, the monthly business review, and corrective-action tracking.",
     roleAssignments: [
-      { role: "super_admin", trainingType: "Leadership workshop", quizRequired: true, kpiDescription: "Audit score, corrective action closure, KPI adoption", auditOwnerRole: "Ops / CEO", frequency: "Weekly + Monthly", evidenceDescription: "Audit sheet, scorecard, MBR deck", target: "90%+ audit score" },
-      { role: "admin", trainingType: "Leadership workshop", quizRequired: true, kpiDescription: "Audit score, corrective action closure, KPI adoption", auditOwnerRole: "Ops / CEO", frequency: "Weekly + Monthly", evidenceDescription: "Audit sheet, scorecard, MBR deck", target: "90%+ audit score" },
-      { role: "manager", trainingType: "Leadership workshop", quizRequired: true, kpiDescription: "Audit score, corrective action closure, KPI adoption", auditOwnerRole: "Ops / CEO", frequency: "Weekly + Monthly", evidenceDescription: "Audit sheet, scorecard, MBR deck", target: "90%+ audit score" },
-      { role: "operations", trainingType: "Leadership workshop", quizRequired: true, kpiDescription: "Audit score, corrective action closure, KPI adoption", auditOwnerRole: "Ops / CEO", frequency: "Weekly + Monthly", evidenceDescription: "Audit sheet, scorecard, MBR deck", target: "90%+ audit score" },
-      { role: "hr", trainingType: "Leadership workshop", quizRequired: true, kpiDescription: "Audit score, corrective action closure, KPI adoption", auditOwnerRole: "Ops / CEO", frequency: "Weekly + Monthly", evidenceDescription: "Audit sheet, scorecard, MBR deck", target: "90%+ audit score" },
-      { role: "employee", trainingType: "Leadership workshop", quizRequired: false, kpiDescription: "Audit score, corrective action closure, KPI adoption", auditOwnerRole: "Ops / CEO", frequency: "Weekly + Monthly", evidenceDescription: "Audit sheet, scorecard, MBR deck", target: "90%+ audit score" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "certification", assignmentReason: "certification_track", legacyRole: "super_admin", trainingType: "Leadership workshop + evidence", ...levelQuiz("certification"), kpiDescription: "Audit score, corrective action closure, KPI adoption", auditOwnerRole: "Ops / CEO", frequency: "Weekly + Monthly", evidenceDescription: "Audit sheet, scorecard, MBR deck", target: "90%+ audit score" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Leadership workshop", ...levelQuiz("required"), kpiDescription: "Audit score, corrective action closure, KPI adoption", auditOwnerRole: "Ops / CEO", frequency: "Weekly + Monthly", evidenceDescription: "Audit sheet, scorecard, MBR deck", target: "90%+ audit score" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "operations", trainingType: "Leadership workshop", ...levelQuiz("required"), kpiDescription: "Audit score, corrective action closure, KPI adoption", auditOwnerRole: "Ops / CEO", frequency: "Weekly + Monthly", evidenceDescription: "Audit sheet, scorecard, MBR deck", target: "90%+ audit score" },
+      { roleGroupKey: "Finance-Team", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "finance", trainingType: "Leadership workshop", ...levelQuiz("required"), kpiDescription: "Audit score, corrective action closure, KPI adoption", auditOwnerRole: "Ops / CEO", frequency: "Weekly + Monthly", evidenceDescription: "Audit sheet, scorecard, MBR deck", target: "90%+ audit score" },
     ],
   },
   {
@@ -525,12 +545,11 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: false,
     summary: "Role-based curriculum, certification, quizzes, and live work-sample checks. No more than two operational SOPs trained per week.",
     roleAssignments: [
-      { role: "super_admin", trainingType: "Training program", quizRequired: true, kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
-      { role: "admin", trainingType: "Training program", quizRequired: true, kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
-      { role: "hr", trainingType: "Training program", quizRequired: true, kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
-      { role: "manager", trainingType: "Training program", quizRequired: true, kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
-      { role: "operations", trainingType: "Training program", quizRequired: true, kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
-      { role: "employee", trainingType: "Training program", quizRequired: true, kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "super_admin", trainingType: "Training program", ...levelQuiz("required"), kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Training program", ...levelQuiz("required"), kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "recruiter", trainingType: "Training program", ...levelQuiz("required"), kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "hr", trainingType: "Training program", ...levelQuiz("required"), kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
+      { roleGroupKey: "ALL", assignmentLevel: "awareness", assignmentReason: "company_standard", appliesToAll: true, legacyRole: "employee", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Certification completion and behavior adoption", auditOwnerRole: "HR / Training Lead", frequency: "Weekly during rollout", evidenceDescription: "Attendance, quiz score, certification tracker", target: "90% quiz pass" },
     ],
   },
   {
@@ -552,8 +571,12 @@ export const SOP_SEED: SopSeed[] = [
     humanSignoffRequired: false,
     summary: "Standardized manager acknowledgment forms, audit checklists, and field templates so documentation stays consistent.",
     roleAssignments: [
-      { role: "manager", trainingType: "Manager walkthrough", quizRequired: false, kpiDescription: "Template usage, consistent documentation", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Completed forms/checklists", target: "95% usage" },
-      { role: "operations", trainingType: "Manager walkthrough", quizRequired: false, kpiDescription: "Template usage, consistent documentation", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Completed forms/checklists", target: "95% usage" },
+      { roleGroupKey: "CEO-SuperAdmin", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "admin", trainingType: "Manager walkthrough", ...levelQuiz("required"), kpiDescription: "Template usage, consistent documentation", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Completed forms/checklists", target: "95% usage" },
+      { roleGroupKey: "Managers-All", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "manager", trainingType: "Manager walkthrough", ...levelQuiz("required"), kpiDescription: "Template usage, consistent documentation", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Completed forms/checklists", target: "95% usage" },
+      { roleGroupKey: "Ops-HR", assignmentLevel: "required", assignmentReason: "company_standard", legacyRole: "operations", trainingType: "Manager walkthrough", ...levelQuiz("required"), kpiDescription: "Template usage, consistent documentation", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Completed forms/checklists", target: "95% usage" },
+      // Matrix corrections: TA-Recruiter and Healthcare-Team => awareness for TPL-001
+      { roleGroupKey: "TA-Recruiter", assignmentLevel: "awareness", assignmentReason: "company_standard", legacyRole: "recruiter", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Template usage, consistent documentation", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Completed forms/checklists", target: "95% usage" },
+      { roleGroupKey: "Healthcare-Team", assignmentLevel: "awareness", assignmentReason: "company_standard", legacyRole: "employee", trainingType: "Self-paced reading (awareness)", ...levelQuiz("awareness"), kpiDescription: "Template usage, consistent documentation", auditOwnerRole: "Ops", frequency: "Weekly", evidenceDescription: "Completed forms/checklists", target: "95% usage" },
     ],
   },
 ];

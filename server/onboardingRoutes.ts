@@ -488,12 +488,19 @@ export function registerOnboardingRoutes(app: Express) {
       const ackRows = await db.select().from(sectionAcknowledgements)
         .where(eq(sectionAcknowledgements.assignmentId, id));
 
+      const assignmentLevel = (assignment as any).assignmentLevel ?? "required";
+      const isAwarenessLevel = assignmentLevel === "awareness";
+
       const sectionsWithProgress = await Promise.all(sections.map(async (section) => {
         const progress = progressRows.find(p => p.sectionId === section.id) || null;
         const ack = ackRows.find(a => a.sectionId === section.id) || null;
         const [question] = await db.select().from(sectionQuizQuestions)
           .where(eq(sectionQuizQuestions.sectionId, section.id));
         if (question) {
+          // For awareness-level, only show quiz if flagged include_for_awareness=true
+          if (isAwarenessLevel && !(question as any).includeForAwareness) {
+            return { ...section, quiz: null, progress, acknowledgement: ack };
+          }
           const options = await db.select().from(sectionQuizOptions)
             .where(eq(sectionQuizOptions.questionId, question.id))
             .orderBy(sectionQuizOptions.orderIndex);
@@ -592,7 +599,11 @@ export function registerOnboardingRoutes(app: Express) {
         .where(and(eq(sectionProgress.assignmentId, assignmentId), eq(sectionProgress.sectionId, sectionId)));
 
       const newAttempts = (progress?.quizAttempts ?? 0) + 1;
-      const passed = isCorrect || newAttempts >= 3; // allow pass after 3 attempts (show answer)
+      // For certification level: only pass if correct answer (no 3-attempt auto-pass)
+      const [assignmentForQuiz] = await db.select({ assignmentLevel: trackAssignments.assignmentLevel })
+        .from(trackAssignments).where(eq(trackAssignments.id, assignmentId));
+      const isCertification = (assignmentForQuiz?.assignmentLevel ?? "required") === "certification";
+      const passed = isCorrect || (!isCertification && newAttempts >= 3);
 
       await db.update(sectionProgress)
         .set({ quizAttempts: newAttempts, quizPassed: passed })
@@ -667,12 +678,17 @@ export function registerOnboardingRoutes(app: Express) {
       let autoReceiptData: any = null;
       try {
         if (assignment && assignment.status !== "completed") {
+          // Certification tracks require approved manager signoff — skip auto-complete until then
+          const assignmentLevelForAck = (assignment as any).assignmentLevel ?? "required";
+          const signoffStatusForAck = (assignment as any).managerSignoffStatus;
+          const signoffBlocksCompletion = assignmentLevelForAck === "certification" && signoffStatusForAck !== "approved";
+
           const allSections = await db.select().from(trackSections)
             .where(eq(trackSections.trackId, assignment.trackId));
           const allAcks = await db.select().from(sectionAcknowledgements)
             .where(eq(sectionAcknowledgements.assignmentId, assignmentId));
 
-          if (allAcks.length >= allSections.length) {
+          if (allAcks.length >= allSections.length && !signoffBlocksCompletion) {
             const allHashes = allAcks.sort((a, b) => a.sectionId.localeCompare(b.sectionId))
               .map(a => a.documentHash || "").join("|");
             autoReceiptHash = crypto.createHash("sha256").update(allHashes).digest("hex");
@@ -745,6 +761,43 @@ export function registerOnboardingRoutes(app: Express) {
 
       if (acks.length < sections.length) {
         return res.status(400).json({ error: "Not all sections acknowledged", remaining: sections.length - acks.length });
+      }
+
+      // Level-aware quiz enforcement: verify required_question_count and required_pass_score
+      // from the assignment snapshot (applied to quizzed sections in this track)
+      const requiredQuestionCount = (assignment as any).requiredQuestionCount ?? 8;
+      const requiredPassScore = (assignment as any).requiredPassScore ?? 80;
+      if (requiredQuestionCount > 0) {
+        const allProgress = await db.select().from(sectionProgress)
+          .where(eq(sectionProgress.assignmentId, assignmentId));
+        const quizzedSections = allProgress.filter(p => p.quizAttempts !== null && (p.quizAttempts ?? 0) > 0);
+        const passedQuizzes = allProgress.filter(p => p.quizPassed === true);
+        // Only enforce if the track actually has quizzes (avoid false-blocking quiz-free tracks)
+        if (quizzedSections.length > 0) {
+          const passRate = quizzedSections.length > 0
+            ? Math.round((passedQuizzes.length / quizzedSections.length) * 100)
+            : 100;
+          if (passRate < requiredPassScore) {
+            return res.status(400).json({
+              error: `Quiz pass rate ${passRate}% is below the required ${requiredPassScore}% for this assignment level. Please retake failed quizzes.`,
+              code: "QUIZ_PASS_SCORE_REQUIRED",
+              passRate,
+              requiredPassScore,
+            });
+          }
+        }
+      }
+
+      // For certification level: require approved manager signoff before completing
+      const assignmentLevelComplete = (assignment as any).assignmentLevel ?? "required";
+      if (assignmentLevelComplete === "certification") {
+        const signoffStatus = (assignment as any).managerSignoffStatus;
+        if (signoffStatus !== "approved") {
+          return res.status(400).json({
+            error: "Certification tracks require an approved manager signoff. Please submit your evidence and wait for HR/manager approval.",
+            code: "SIGNOFF_REQUIRED",
+          });
+        }
       }
 
       // Compute receipt hash from all ack hashes

@@ -2446,6 +2446,79 @@ async function ensureHealthcarePlansTables() {
   }
 }
 
+// Ensure A/R/C SOP schema columns (Task #1576).
+// All new columns are nullable or have defaults so existing rows are unaffected.
+async function ensureSopArcSchema() {
+  try {
+    // sop_role_assignments: role group key + level
+    await db.execute(sql`ALTER TABLE sop_role_assignments ADD COLUMN IF NOT EXISTS assignment_level TEXT NOT NULL DEFAULT 'required'`);
+    await db.execute(sql`ALTER TABLE sop_role_assignments ADD COLUMN IF NOT EXISTS assignment_reason TEXT`);
+    await db.execute(sql`ALTER TABLE sop_role_assignments ADD COLUMN IF NOT EXISTS role_group_key TEXT`);
+    await db.execute(sql`ALTER TABLE sop_role_assignments ADD COLUMN IF NOT EXISTS department_key TEXT`);
+    await db.execute(sql`ALTER TABLE sop_role_assignments ADD COLUMN IF NOT EXISTS applies_to_all BOOLEAN NOT NULL DEFAULT FALSE`);
+    // Unique index for idempotent group-based upserts (NULLs are non-equal so existing rows unaffected)
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS sop_role_assignments_master_group_unique ON sop_role_assignments(sop_master_id, role_group_key)`);
+
+    // track_assignments: level-aware fields
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS assignment_level TEXT NOT NULL DEFAULT 'required'`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS assignment_reason TEXT`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS source_sop_role_assignment_id VARCHAR`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS resolved_role_group TEXT`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS resolved_department TEXT`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS required_question_count INTEGER NOT NULL DEFAULT 8`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS required_pass_score INTEGER NOT NULL DEFAULT 80`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS evidence_required BOOLEAN NOT NULL DEFAULT FALSE`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS manager_signoff_required BOOLEAN NOT NULL DEFAULT FALSE`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS manager_signoff_status TEXT`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS sop_code TEXT`);
+    await db.execute(sql`ALTER TABLE track_assignments ADD COLUMN IF NOT EXISTS sop_version INTEGER`);
+
+    // section_quiz_questions: awareness-level flag
+    await db.execute(sql`ALTER TABLE section_quiz_questions ADD COLUMN IF NOT EXISTS include_for_awareness BOOLEAN NOT NULL DEFAULT FALSE`);
+
+    // training_evidence_submissions table (new)
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS training_evidence_submissions (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        track_assignment_id VARCHAR NOT NULL,
+        user_id VARCHAR NOT NULL REFERENCES admin_users(id),
+        sop_code TEXT NOT NULL,
+        evidence_type TEXT NOT NULL,
+        evidence_notes TEXT,
+        evidence_url TEXT,
+        submitted_at TIMESTAMP NOT NULL DEFAULT NOW(),
+        reviewed_by VARCHAR REFERENCES admin_users(id),
+        reviewed_at TIMESTAMP,
+        review_status TEXT NOT NULL DEFAULT 'pending',
+        review_notes TEXT
+      )
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS training_evidence_user_idx ON training_evidence_submissions(user_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS training_evidence_assignment_idx ON training_evidence_submissions(track_assignment_id)`);
+    // FK constraint from evidence submissions to track_assignments (idempotent via DO NOTHING)
+    await db.execute(sql`
+      DO $$ BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM information_schema.table_constraints
+          WHERE constraint_name = 'training_evidence_track_assignment_fk'
+        ) THEN
+          ALTER TABLE training_evidence_submissions
+            ADD CONSTRAINT training_evidence_track_assignment_fk
+            FOREIGN KEY (track_assignment_id) REFERENCES track_assignments(id) ON DELETE CASCADE;
+        END IF;
+      END $$
+    `);
+    // Partial unique index for track_assignments idempotency: (user_id, track_id, sop_code) where sop_code IS NOT NULL
+    await db.execute(sql`CREATE UNIQUE INDEX IF NOT EXISTS track_assignments_sop_idempotent ON track_assignments(user_id, track_id, sop_code) WHERE sop_code IS NOT NULL`);
+    // training_id column on evidence submissions (mirrors track_assignments.track_id / learning_tracks.id)
+    await db.execute(sql`ALTER TABLE training_evidence_submissions ADD COLUMN IF NOT EXISTS training_id VARCHAR REFERENCES learning_tracks(id)`);
+
+    log("SOP A/R/C schema columns and training_evidence_submissions table ensured");
+  } catch (err) {
+    console.error("[index] SOP A/R/C schema ensure error:", err);
+  }
+}
+
 // Seed the Process Governance Center 21-SOP launch library (Task #660).
 // Idempotent, ON CONFLICT-safe, plain ASCII. Each SOP is seeded as version 1,
 // is_current=true, lifecycle 'published'. Role assignments are seeded per SOP.
@@ -2477,15 +2550,29 @@ async function seedSopLibrary() {
       if ((r.rowCount ?? 0) > 0) docsInserted++;
 
       for (const ra of sop.roleAssignments) {
+        const legacyRole = ra.legacyRole ?? ra.roleGroupKey;
         const ar = await db.execute(sql`
           INSERT INTO sop_role_assignments
-            (sop_master_id, role, training_type, quiz_required, kpi_description,
+            (sop_master_id, role, role_group_key, applies_to_all, assignment_level,
+             assignment_reason, training_type, quiz_required, kpi_description,
              audit_owner_role, frequency, evidence_description, target)
           VALUES
-            (${sop.code}, ${ra.role}, ${ra.trainingType}, ${ra.quizRequired},
-             ${ra.kpiDescription}, ${ra.auditOwnerRole}, ${ra.frequency},
+            (${sop.code}, ${legacyRole}, ${ra.roleGroupKey}, ${ra.appliesToAll ?? false},
+             ${ra.assignmentLevel}, ${ra.assignmentReason ?? null}, ${ra.trainingType},
+             ${ra.quizRequired}, ${ra.kpiDescription}, ${ra.auditOwnerRole}, ${ra.frequency},
              ${ra.evidenceDescription}, ${ra.target})
-          ON CONFLICT (sop_master_id, role) DO NOTHING
+          ON CONFLICT (sop_master_id, role) DO UPDATE SET
+            role_group_key = EXCLUDED.role_group_key,
+            applies_to_all = EXCLUDED.applies_to_all,
+            assignment_level = EXCLUDED.assignment_level,
+            assignment_reason = EXCLUDED.assignment_reason,
+            training_type = EXCLUDED.training_type,
+            quiz_required = EXCLUDED.quiz_required,
+            kpi_description = EXCLUDED.kpi_description,
+            audit_owner_role = EXCLUDED.audit_owner_role,
+            frequency = EXCLUDED.frequency,
+            evidence_description = EXCLUDED.evidence_description,
+            target = EXCLUDED.target
         `);
         if ((ar.rowCount ?? 0) > 0) assignmentsInserted++;
       }
@@ -3415,6 +3502,10 @@ async function runStartupTasks() {
   await seedShiftData();
   await notifyShiftCorrectionEmployees();
   await sendShiftCorrectionApology();
+  // Must run before seedUniversalPolicies — that seeder may insert into sop_role_assignments
+  // which now has assignment_level (NOT NULL DEFAULT 'required'). Running the ensure here
+  // prevents "column does not exist" on first boot.
+  await ensureSopArcSchema();
 
   try {
     const [firstAdmin] = await db.select({ id: adminUsers.id })

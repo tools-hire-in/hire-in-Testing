@@ -1359,6 +1359,8 @@ export const sectionQuizQuestions = pgTable("section_quiz_questions", {
   sectionId: varchar("section_id").notNull().references(() => trackSections.id, { onDelete: "cascade" }),
   questionText: text("question_text").notNull(),
   explanation: text("explanation"), // shown after answering
+  // A/R/C level filtering (Task #1576): awareness-level learners only see questions marked true
+  includeForAwareness: boolean("include_for_awareness").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
 });
 
@@ -1385,6 +1387,19 @@ export const trackAssignments = pgTable("track_assignments", {
   exceptionGrantedAt: timestamp("exception_granted_at"),
   exceptionReason: text("exception_reason"),
   signedVersion: integer("signed_version"),
+  // A/R/C training level wiring (Task #1576)
+  assignmentLevel: text("assignment_level").notNull().default("required"), // awareness | required | certification | optional_reference
+  assignmentReason: text("assignment_reason"), // company_standard | daily_workflow | compliance_mandatory | certification_track
+  sourceSopRoleAssignmentId: varchar("source_sop_role_assignment_id"), // FK to sop_role_assignments.id
+  resolvedRoleGroup: text("resolved_role_group"), // e.g. Healthcare-Team
+  resolvedDepartment: text("resolved_department"),
+  requiredQuestionCount: integer("required_question_count").notNull().default(8),
+  requiredPassScore: integer("required_pass_score").notNull().default(80),
+  evidenceRequired: boolean("evidence_required").notNull().default(false),
+  managerSignoffRequired: boolean("manager_signoff_required").notNull().default(false),
+  managerSignoffStatus: text("manager_signoff_status"), // pending | approved | resubmit_requested
+  sopCode: text("sop_code"), // which SOP this assignment is for (null for generic tracks)
+  sopVersion: integer("sop_version"), // SOP version at assignment time
 });
 
 // Per-section progress for an assignment
@@ -4117,11 +4132,42 @@ export const sopRoleAssignments = pgTable("sop_role_assignments", {
   frequency: varchar("frequency"),
   evidenceDescription: text("evidence_description"),
   target: varchar("target"),
+  // A/R/C level matrix (Task #1576)
+  assignmentLevel: text("assignment_level").notNull().default("required"), // awareness | required | certification | optional_reference
+  assignmentReason: text("assignment_reason"), // company_standard | daily_workflow | compliance_mandatory | certification_track
+  roleGroupKey: text("role_group_key"), // one of 13 business groups (e.g. TA-Recruiter, Healthcare-Team)
+  departmentKey: text("department_key"), // normalized dept when group is dept-resolved
+  appliesToAll: boolean("applies_to_all").notNull().default(false), // true => ALL role group
   createdAt: timestamp("created_at").defaultNow().notNull(),
 }, (table) => ({
   masterRoleUnique: uniqueIndex("sop_role_assignments_master_role_unique").on(table.sopMasterId, table.role),
+  masterGroupUnique: uniqueIndex("sop_role_assignments_master_group_unique").on(table.sopMasterId, table.roleGroupKey),
   masterIdx: index("sop_role_assignments_master_idx").on(table.sopMasterId),
 }));
+
+// Training evidence submitted for certification-level assignments (Task #1576)
+export const trainingEvidenceSubmissions = pgTable("training_evidence_submissions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  trackAssignmentId: varchar("track_assignment_id").notNull().references(() => trackAssignments.id, { onDelete: "cascade" }),
+  userId: varchar("user_id").notNull().references(() => adminUsers.id),
+  sopCode: text("sop_code").notNull(),
+  trainingId: varchar("training_id").references(() => learningTracks.id), // FK to the learning track
+  evidenceType: text("evidence_type").notNull(), // screenshot | document | link | self_attestation
+  evidenceNotes: text("evidence_notes"),
+  evidenceUrl: text("evidence_url"),
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewStatus: text("review_status").notNull().default("pending"), // pending | approved | resubmit_requested
+  reviewNotes: text("review_notes"),
+}, (table) => ({
+  userIdx: index("training_evidence_user_idx").on(table.userId),
+  assignmentIdx: index("training_evidence_assignment_idx").on(table.trackAssignmentId),
+}));
+
+export const insertTrainingEvidenceSubmissionSchema = createInsertSchema(trainingEvidenceSubmissions).omit({ id: true, submittedAt: true, reviewedAt: true });
+export type TrainingEvidenceSubmission = typeof trainingEvidenceSubmissions.$inferSelect;
+export type InsertTrainingEvidenceSubmission = z.infer<typeof insertTrainingEvidenceSubmissionSchema>;
 
 export const sopEmployeeProgress = pgTable("sop_employee_progress", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),

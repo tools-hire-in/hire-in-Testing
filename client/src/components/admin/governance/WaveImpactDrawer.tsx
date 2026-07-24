@@ -26,6 +26,8 @@ interface PreviewEmployee {
   department: string | null;
   role: string;
   sopsToReceive: string[];
+  sopLevels: Record<string, string>; // sopCode -> assignment level (A/R/C)
+  sopRoleGroups: Record<string, string>; // sopCode -> resolved role group key
   ackStatus: "acknowledged" | "pending" | "not_assigned";
 }
 
@@ -221,7 +223,7 @@ export function WaveImpactDrawer({
                         <th className="text-left px-3 py-2 font-medium">Employee</th>
                         <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Dept</th>
                         <th className="text-left px-3 py-2 font-medium hidden sm:table-cell">Role</th>
-                        <th className="text-left px-3 py-2 font-medium">SOPs</th>
+                        <th className="text-left px-3 py-2 font-medium">SOPs &amp; Level</th>
                         <th className="text-left px-3 py-2 font-medium">Status</th>
                       </tr>
                     </thead>
@@ -233,9 +235,24 @@ export function WaveImpactDrawer({
                           <td className="px-3 py-2 text-muted-foreground hidden sm:table-cell capitalize">{emp.role.replace("_", " ")}</td>
                           <td className="px-3 py-2">
                             <div className="flex flex-wrap gap-1">
-                              {emp.sopsToReceive.map((code) => (
-                                <span key={code} className="rounded bg-muted px-1.5 py-0.5 text-[10px]">{code}</span>
-                              ))}
+                              {emp.sopsToReceive.map((code) => {
+                                const level = emp.sopLevels?.[code] ?? "required";
+                                const levelConfig: Record<string, { label: string; cls: string }> = {
+                                  awareness: { label: "A", cls: "bg-blue-100 text-blue-700" },
+                                  required: { label: "R", cls: "bg-amber-100 text-amber-700" },
+                                  certification: { label: "C", cls: "bg-purple-100 text-purple-700" },
+                                  optional_reference: { label: "O", cls: "bg-slate-100 text-slate-600" },
+                                };
+                                const cfg = levelConfig[level] ?? levelConfig.required;
+                                const roleGroup = emp.sopRoleGroups?.[code];
+                                return (
+                                  <span key={code} className="inline-flex items-center gap-0.5 rounded bg-muted px-1.5 py-0.5 text-[10px]" title={`${code} — ${level}${roleGroup ? ` (${roleGroup})` : ""}`}>
+                                    {code}
+                                    <span className={`rounded px-1 font-bold ${cfg.cls}`}>{cfg.label}</span>
+                                    {roleGroup && <span className="text-muted-foreground text-[9px] leading-none">{roleGroup.split("-")[0]}</span>}
+                                  </span>
+                                );
+                              })}
                             </div>
                           </td>
                           <td className="px-3 py-2">
