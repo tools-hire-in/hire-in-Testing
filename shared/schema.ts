@@ -2208,6 +2208,16 @@ export const praisePosts = pgTable("praise_posts", {
   badgeTypeId: varchar("badge_type_id").notNull().references(() => praiseBadgeTypes.id),
   message: text("message").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // Visibility (pre-existing column)
+  visibility: varchar("visibility").default("public").notNull(),
+  // Recognition certificate fields
+  certificateRequested: boolean("certificate_requested").default(false).notNull(),
+  certificateStatus: varchar("certificate_status"),
+  recognitionDescription: text("recognition_description"),
+  contributionSummary: text("contribution_summary"),
+  publicCitationDraft: text("public_citation_draft"),
+  publicCitationApproved: text("public_citation_approved"),
+  recognitionContext: varchar("recognition_context"),
 });
 
 export const praiseReactions = pgTable("praise_reactions", {
@@ -5494,3 +5504,72 @@ export const zoomAiInsights = pgTable("zoom_ai_insights", {
 export const insertZoomAiInsightSchema = createInsertSchema(zoomAiInsights).omit({ id: true, createdAt: true, generatedAt: true });
 export type ZoomAiInsight = typeof zoomAiInsights.$inferSelect;
 export type InsertZoomAiInsight = z.infer<typeof insertZoomAiInsightSchema>;
+
+// ==========================================
+// RECOGNITION CERTIFICATES
+// ==========================================
+
+export const recognitionCertificates = pgTable("recognition_certificates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  praisePostId: varchar("praise_post_id").references(() => praisePosts.id),
+  certificateId: varchar("certificate_id").notNull().unique(), // HIS-REC-{BADGE}-{YY}-{RANDOM6}
+  recipientId: varchar("recipient_id").notNull().references(() => adminUsers.id),
+  approverId: varchar("approver_id").notNull().references(() => adminUsers.id),
+  badgeTypeId: varchar("badge_type_id").notNull().references(() => praiseBadgeTypes.id),
+  recognitionDescription: text("recognition_description").notNull(),
+  contributionSummary: text("contribution_summary").notNull(),
+  publicCitation: text("public_citation").notNull(),
+  recognitionContext: varchar("recognition_context"),
+  referenceNumber: varchar("reference_number").notNull().unique(), // RC/{BADGE}/{YEAR}/{RANDOM6}
+  authCode: varchar("auth_code").notNull(),
+  documentHash: varchar("document_hash").notNull(),
+  pdfStoragePath: varchar("pdf_storage_path"),
+  pdfUrl: varchar("pdf_url"),
+  status: varchar("status").notNull().default("issued"), // issued | corrected | superseded | revoked
+  version: integer("version").notNull().default(1),
+  supersededById: varchar("superseded_by_id"), // self-ref via raw FK
+  issuedAt: timestamp("issued_at").defaultNow(),
+  revokedAt: timestamp("revoked_at"),
+  revokedById: varchar("revoked_by_id").references(() => adminUsers.id),
+  correctionReason: text("correction_reason"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const recognitionCertificateAudit = pgTable("recognition_certificate_audit", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  certificateId: varchar("certificate_id").notNull().references(() => recognitionCertificates.id),
+  actorId: varchar("actor_id").notNull().references(() => adminUsers.id),
+  action: varchar("action").notNull(), // issued | revoked | corrected | superseded | downloaded | viewed
+  metadata: jsonb("metadata"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const recognitionCertificatesRelations = relations(recognitionCertificates, ({ one }) => ({
+  recipient: one(adminUsers, { fields: [recognitionCertificates.recipientId], references: [adminUsers.id], relationName: "certRecipient" }),
+  approver: one(adminUsers, { fields: [recognitionCertificates.approverId], references: [adminUsers.id], relationName: "certApprover" }),
+  badgeType: one(praiseBadgeTypes, { fields: [recognitionCertificates.badgeTypeId], references: [praiseBadgeTypes.id] }),
+  praisePost: one(praisePosts, { fields: [recognitionCertificates.praisePostId], references: [praisePosts.id] }),
+}));
+
+export const recognitionCertificateAuditRelations = relations(recognitionCertificateAudit, ({ one }) => ({
+  certificate: one(recognitionCertificates, { fields: [recognitionCertificateAudit.certificateId], references: [recognitionCertificates.id] }),
+  actor: one(adminUsers, { fields: [recognitionCertificateAudit.actorId], references: [adminUsers.id] }),
+}));
+
+export const recognitionCertificateViews = pgTable("recognition_certificate_views", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  certificateId: varchar("certificate_id").notNull().references(() => recognitionCertificates.id, { onDelete: "cascade" }),
+  referenceNumber: varchar("reference_number").notNull(),
+  viewedAt: timestamp("viewed_at").defaultNow().notNull(),
+  ipAddress: varchar("ip_address"),
+  userAgent: text("user_agent"),
+});
+
+export const recognitionCertificateViewsRelations = relations(recognitionCertificateViews, ({ one }) => ({
+  certificate: one(recognitionCertificates, { fields: [recognitionCertificateViews.certificateId], references: [recognitionCertificates.id] }),
+}));
+
+export const insertRecognitionCertificateSchema = createInsertSchema(recognitionCertificates).omit({ id: true, createdAt: true, updatedAt: true, issuedAt: true });
+export type RecognitionCertificate = typeof recognitionCertificates.$inferSelect;
+export type InsertRecognitionCertificate = z.infer<typeof insertRecognitionCertificateSchema>;

@@ -52,7 +52,7 @@ function resolveChromiumPath(): string {
 
 // ---- Shared browser lifecycle -------------------------------------------
 let browserPromise: Promise<Browser> | null = null;
-async function getBrowser(): Promise<Browser> {
+export async function getBrowser(): Promise<Browser> {
   if (browserPromise) {
     try {
       const b = await browserPromise;

@@ -48,6 +48,7 @@ const MyDesk = lazy(() => import("@/pages/admin/my-desk/MyDesk"));
 const ServiceDesk = lazy(() => import("@/pages/admin/service-desk/ServiceDesk"));
 const MyProfile = lazy(() => import("@/pages/admin/MyProfile"));
 const MyGrowth = lazy(() => import("@/pages/admin/MyGrowth"));
+const RecognitionApprovals = lazy(() => import("@/pages/admin/performance/RecognitionApprovals"));
 const PeopleHR = lazy(() => import("@/pages/admin/PeopleHR"));
 const MyTeamTabs = lazy(() => import("@/pages/admin/hr/MyTeamTabs"));
 const HRDashboard = lazy(() => import("@/pages/admin/hr/HRDashboard"));
@@ -337,6 +338,7 @@ function PublicRouter() {
       <Route path="/admin/profile">{() => <Suspense fallback={<AdminFallback />}><MyProfile /></Suspense>}</Route>
       <Route path="/admin/growth">{() => <Suspense fallback={<AdminFallback />}><MyGrowth /></Suspense>}</Route>
       <Route path="/admin/hr/my-team/comms">{() => <RequireRoles roles={COMMS_ROLES}><Suspense fallback={<AdminFallback />}><CommsAnalytics /></Suspense></RequireRoles>}</Route>
+      <Route path="/admin/recognition/approvals">{() => <Suspense fallback={<AdminFallback />}><RecognitionApprovals /></Suspense>}</Route>
       <Route path="/admin/hr/my-team">{() => <Suspense fallback={<AdminFallback />}><MyTeamTabs /></Suspense>}</Route>
       <Route path="/admin/hr/people">{() => <Suspense fallback={<AdminFallback />}><PeopleHR /></Suspense>}</Route>
 
@@ -570,6 +572,7 @@ function EmployeeRouter() {
       <Route path="/admin/profile">{() => <Suspense fallback={<AdminFallback />}><MyProfile /></Suspense>}</Route>
       <Route path="/admin/growth">{() => <Suspense fallback={<AdminFallback />}><MyGrowth /></Suspense>}</Route>
       <Route path="/admin/hr/my-team/comms">{() => <RequireRoles roles={COMMS_ROLES}><Suspense fallback={<AdminFallback />}><CommsAnalytics /></Suspense></RequireRoles>}</Route>
+      <Route path="/admin/recognition/approvals">{() => <Suspense fallback={<AdminFallback />}><RecognitionApprovals /></Suspense>}</Route>
       <Route path="/admin/hr/my-team">{() => <Suspense fallback={<AdminFallback />}><MyTeamTabs /></Suspense>}</Route>
       <Route path="/admin/hr/people">{() => <Suspense fallback={<AdminFallback />}><PeopleHR /></Suspense>}</Route>
 

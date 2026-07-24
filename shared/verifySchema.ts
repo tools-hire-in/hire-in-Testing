@@ -21,6 +21,7 @@ export const ALLOWED_DOC_TYPES = [
   "contract",
   "offer_letter",
   "addendum",
+  "recognition",
 ] as const;
 
 export type AllowedDocType = (typeof ALLOWED_DOC_TYPES)[number];
@@ -34,6 +35,8 @@ export const REF_PATTERNS: Record<AllowedDocType, RegExp> = {
     /^OL\/\d{4}\/\d{4}$/,
   addendum:
     /^AM\/(SAL|ROL|CMB|DEV|PRB|CST)\/\d{4}\/\d{4}$/,
+  recognition:
+    /^RC\/[A-Z0-9_-]+\/\d{4}\/[A-Z0-9]{6}$/,
 };
 
 const AUTH_CODE_RE = /^[A-F0-9]{4}-[A-F0-9]{4}$/;
@@ -51,6 +54,7 @@ export function inferDocType(ref: string): AllowedDocType | null {
   if (upper.startsWith("CTR/")) return "contract";
   if (upper.startsWith("OL/")) return "offer_letter";
   if (upper.startsWith("AM/")) return "addendum";
+  if (upper.startsWith("RC/")) return "recognition";
   return null;
 }
 

@@ -346,6 +346,11 @@ function GiveBadgeModal({
   const [selectedBadgeId, setSelectedBadgeId] = useState("");
   const [message, setMessage] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
+  const [requestCertificate, setRequestCertificate] = useState(false);
+  const [recognitionDescription, setRecognitionDescription] = useState("");
+  const [contributionSummary, setContributionSummary] = useState("");
+  const [publicCitationDraft, setPublicCitationDraft] = useState("");
+  const [recognitionContext, setRecognitionContext] = useState("");
 
   const { data: employees = [] } = useQuery<Employee[]>({
     queryKey: ["/api/praise/users"],
@@ -361,27 +366,44 @@ function GiveBadgeModal({
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/praise", {
+      const body: Record<string, unknown> = {
         recipientId: selectedRecipient!.id,
         badgeTypeId: selectedBadgeId,
         message: message.trim(),
-      });
+        certificateRequested: requestCertificate,
+      };
+      if (requestCertificate) {
+        body.recognitionDescription = recognitionDescription.trim();
+        body.contributionSummary = contributionSummary.trim();
+        body.publicCitationDraft = publicCitationDraft.trim();
+        if (recognitionContext.trim()) body.recognitionContext = recognitionContext.trim();
+      }
+      const res = await apiRequest("POST", "/api/praise", body);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/praise/board"] });
       queryClient.invalidateQueries({ queryKey: ["/api/praise/my-badges"] });
-      toast({ title: "Badge awarded! 🎉", description: `Praised ${selectedRecipient?.firstName}` });
+      const desc = requestCertificate
+        ? `Recognition certificate request submitted for ${selectedRecipient?.firstName}`
+        : `Praised ${selectedRecipient?.firstName}`;
+      toast({ title: "Badge awarded! 🎉", description: desc });
       onClose();
       setSelectedRecipient(null);
       setSelectedBadgeId("");
       setMessage("");
       setRecipientSearch("");
+      setRequestCertificate(false);
+      setRecognitionDescription("");
+      setContributionSummary("");
+      setPublicCitationDraft("");
+      setRecognitionContext("");
     },
     onError: (err: any) => toast({ title: "Error", description: err.message || "Failed to award badge", variant: "destructive" }),
   });
 
-  const canSubmit = selectedRecipient && selectedBadgeId && message.trim().length > 0;
+  const canSubmit = selectedRecipient && selectedBadgeId && message.trim().length > 0 &&
+    (!requestCertificate || (recognitionDescription.trim().length >= 40 && contributionSummary.trim().length >= 40 && publicCitationDraft.trim().length > 0));
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
@@ -484,6 +506,78 @@ function GiveBadgeModal({
               data-testid="input-praise-message"
             />
             <p className="text-xs text-muted-foreground text-right">{message.length}/500</p>
+          </div>
+
+          {/* Certificate request toggle */}
+          <div className="rounded-lg border p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <div>
+                <Label className="text-sm font-semibold">Request Recognition Certificate</Label>
+                <p className="text-xs text-muted-foreground">Submit for manager approval to issue a verified certificate</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setRequestCertificate((v) => !v)}
+                className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${requestCertificate ? "bg-[#F47C20]" : "bg-gray-200"}`}
+                data-testid="toggle-request-certificate"
+              >
+                <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition-transform ${requestCertificate ? "translate-x-4" : "translate-x-1"}`} />
+              </button>
+            </div>
+
+            {requestCertificate && (
+              <div className="space-y-3 pt-1 border-t">
+                <div className="space-y-1">
+                  <Label className="text-xs">Recognition Description *</Label>
+                  <Textarea
+                    value={recognitionDescription}
+                    onChange={(e) => setRecognitionDescription(e.target.value)}
+                    placeholder="Describe what this person did that deserves recognition..."
+                    rows={2}
+                    maxLength={800}
+                    data-testid="input-recognition-description"
+                  />
+                  <p className={`text-xs ${recognitionDescription.trim().length < 40 ? "text-orange-500" : "text-muted-foreground"}`}>
+                    {recognitionDescription.trim().length}/800 — minimum 40 characters required
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Contribution Summary *</Label>
+                  <Textarea
+                    value={contributionSummary}
+                    onChange={(e) => setContributionSummary(e.target.value)}
+                    placeholder="Summarize the impact of their contribution..."
+                    rows={2}
+                    maxLength={800}
+                    data-testid="input-contribution-summary"
+                  />
+                  <p className={`text-xs ${contributionSummary.trim().length < 40 ? "text-orange-500" : "text-muted-foreground"}`}>
+                    {contributionSummary.trim().length}/800 — minimum 40 characters required
+                  </p>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Public Citation Draft *</Label>
+                  <Textarea
+                    value={publicCitationDraft}
+                    onChange={(e) => setPublicCitationDraft(e.target.value)}
+                    placeholder="Draft a public citation to appear on the certificate..."
+                    rows={2}
+                    maxLength={500}
+                    data-testid="input-public-citation-draft"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Recognition Context (optional)</Label>
+                  <Input
+                    value={recognitionContext}
+                    onChange={(e) => setRecognitionContext(e.target.value)}
+                    placeholder="e.g. Q2 2026 Project Delivery"
+                    maxLength={100}
+                    data-testid="input-recognition-context"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         </div>
         <DialogFooter>

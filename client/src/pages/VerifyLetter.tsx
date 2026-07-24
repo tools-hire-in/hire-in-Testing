@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useSEO } from "@/hooks/use-seo";
-import { Shield, CheckCircle, XCircle, Loader2, AlertTriangle, FileText } from "lucide-react";
+import { Shield, CheckCircle, XCircle, Loader2, AlertTriangle, FileText, Download, Copy } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -21,6 +21,7 @@ const DOC_TYPE_LABELS: Record<AllowedDocType, string> = {
   contract: "Staffing Services Agreement (Contract)",
   offer_letter: "Offer Letter",
   addendum: "Amendment / Addendum Letter",
+  recognition: "Recognition Certificate",
 };
 
 const REF_PLACEHOLDERS: Record<AllowedDocType, string> = {
@@ -28,6 +29,7 @@ const REF_PLACEHOLDERS: Record<AllowedDocType, string> = {
   contract: "e.g. CTR/2026/ABCD1234",
   offer_letter: "e.g. OL/2026/0042",
   addendum: "e.g. AM/SAL/2026/0007",
+  recognition: "e.g. RC/EXCELLENCE/2026/AB1234",
 };
 
 interface HrLetterVerifyResult {
@@ -92,11 +94,32 @@ interface AddendumVerifyResult {
   warning?: string;
 }
 
+interface RecognitionVerifyResult {
+  documentType: "recognition";
+  verified: boolean;
+  id: string;
+  referenceNumber: string;
+  certificateId: string;
+  recipientName: string;
+  badgeName: string;
+  badgeEmoji: string;
+  recognitionDescription: string;
+  contributionSummary: string;
+  publicCitation: string;
+  issuedAt: string;
+  status: string;
+  version: number;
+  approverName: string;
+  approverDesignation: string | null;
+  pdfUrl: string | null;
+}
+
 type VerifyResult =
   | HrLetterVerifyResult
   | ContractVerifyResult
   | OfferLetterVerifyResult
-  | AddendumVerifyResult;
+  | AddendumVerifyResult
+  | RecognitionVerifyResult;
 
 function formatDate(dateStr?: string | null) {
   if (!dateStr) return "—";
@@ -120,6 +143,10 @@ function isOfferLetter(r: VerifyResult): r is OfferLetterVerifyResult {
 
 function isAddendum(r: VerifyResult): r is AddendumVerifyResult {
   return (r as any).documentType === "addendum";
+}
+
+function isRecognition(r: VerifyResult): r is RecognitionVerifyResult {
+  return (r as any).documentType === "recognition";
 }
 
 
@@ -148,7 +175,7 @@ export default function VerifyLetter() {
     const upper = value.trim().toUpperCase();
     const docType = inferDocType(upper);
     if (!docType) {
-      return "Unrecognised prefix. Start with RL/, CTR/, OL/, or AM/";
+      return "Unrecognised prefix. Start with RL/, CTR/, OL/, AM/, or RC/";
     }
     if (!refMatchesDocType(upper, docType)) {
       const examples: Record<AllowedDocType, string> = {
@@ -156,6 +183,7 @@ export default function VerifyLetter() {
         contract: "CTR/2026/ABCD1234",
         offer_letter: "OL/2026/0042",
         addendum: "AM/SAL/2026/0007",
+        recognition: "RC/EXCELLENCE/2026/AB1234",
       };
       return `Invalid format for ${docType}. Example: ${examples[docType]}`;
     }
@@ -180,6 +208,8 @@ export default function VerifyLetter() {
     setAuthError(validateAuth(value));
   }
 
+  const [revokedRef, setRevokedRef] = useState<string | null>(null);
+
   const verifyMutation = useMutation({
     mutationFn: async () => {
       const docType = inferredDocType;
@@ -190,12 +220,21 @@ export default function VerifyLetter() {
         documentType: docType,
       });
       const res = await fetch(`/api/verify-letter?${params.toString()}`);
+      if (res.status === 410) {
+        // Document found but revoked — show explicit revoked state
+        setRevokedRef(refNumber.trim().toUpperCase());
+        setNotFound(false);
+        setResult(null);
+        return null;
+      }
       if (res.status === 404) {
+        setRevokedRef(null);
         setNotFound(true);
         setResult(null);
         return null;
       }
       if (res.status === 400) {
+        setRevokedRef(null);
         setNotFound(true);
         setResult(null);
         return null;
@@ -204,6 +243,7 @@ export default function VerifyLetter() {
         throw new Error("Too many requests. Please wait a minute before trying again.");
       }
       if (!res.ok) throw new Error("Verification failed");
+      setRevokedRef(null);
       return res.json();
     },
     onSuccess: (data) => {
@@ -213,6 +253,7 @@ export default function VerifyLetter() {
       }
     },
     onError: () => {
+      setRevokedRef(null);
       setNotFound(true);
       setResult(null);
     },
@@ -232,7 +273,7 @@ export default function VerifyLetter() {
 
   const placeholder = inferredDocType
     ? REF_PLACEHOLDERS[inferredDocType]
-    : "e.g. RL/EXP/2026/0001, CTR/2026/..., OL/2026/..., or AM/SAL/2026/...";
+    : "e.g. RL/EXP/2026/0001, CTR/2026/..., OL/2026/..., AM/SAL/2026/..., or RC/BADGE/2026/...";
 
   const detectedLabel = inferredDocType ? DOC_TYPE_LABELS[inferredDocType] : null;
 
@@ -300,6 +341,23 @@ export default function VerifyLetter() {
             </form>
           </CardContent>
         </Card>
+
+        {revokedRef && (
+          <Card className="mt-6 border-red-300 dark:border-red-700">
+            <CardContent className="pt-6">
+              <div className="flex items-center gap-2 mb-3">
+                <XCircle className="h-6 w-6 text-red-600" />
+                <span className="text-lg font-semibold text-red-700 dark:text-red-400" data-testid="text-verify-revoked">
+                  Certificate No Longer Valid
+                </span>
+              </div>
+              <p className="text-sm text-muted-foreground">
+                The certificate with reference <span className="font-mono font-medium">{revokedRef}</span> has been revoked by the issuing organization.
+                This document should not be considered valid or accepted as proof of recognition.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         {result && (
           <Card className={`mt-6 ${result.verified === false ? "border-amber-300 dark:border-amber-700" : "border-green-200 dark:border-green-800"}`}>
@@ -413,6 +471,119 @@ export default function VerifyLetter() {
                     <p className="text-muted-foreground">Reference</p>
                     <p className="font-mono text-xs">{result.referenceNumber}</p>
                   </div>
+                </div>
+              ) : isRecognition(result) ? (
+                <div className="space-y-4 text-sm">
+                  {/* Status-specific banner */}
+                  <div className="flex items-center gap-3 p-3 bg-orange-50 dark:bg-orange-950/20 rounded-lg border border-orange-200 dark:border-orange-800">
+                    <span className="text-3xl">{result.badgeEmoji}</span>
+                    <div>
+                      <p className="font-bold text-base text-orange-700 dark:text-orange-400" data-testid="text-verify-badge">{result.badgeName} Badge</p>
+                      <p className="text-xs text-muted-foreground">Verified Recognition Certificate</p>
+                    </div>
+                    <Badge
+                      className={`ml-auto ${
+                        result.status === "issued"
+                          ? "bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200"
+                          : result.status === "corrected"
+                          ? "bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                          : result.status === "superseded"
+                          ? "bg-amber-100 text-amber-800 dark:bg-amber-900 dark:text-amber-200"
+                          : "bg-gray-100 text-gray-700"
+                      }`}
+                      data-testid="badge-verify-status"
+                    >
+                      {result.status}
+                    </Badge>
+                  </div>
+                  {result.status === "corrected" && (
+                    <div className="flex items-start gap-2 p-2 bg-blue-50 dark:bg-blue-950/20 rounded border border-blue-200 text-blue-700 dark:text-blue-400 text-xs">
+                      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                      This is version v{result.version} — a corrected re-issue of an earlier certificate.
+                    </div>
+                  )}
+                  {result.status === "superseded" && (
+                    <div className="flex items-start gap-2 p-2 bg-amber-50 dark:bg-amber-950/20 rounded border border-amber-200 text-amber-700 dark:text-amber-400 text-xs">
+                      <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" />
+                      This certificate has been superseded by a newer version. Please request the latest copy from the issuer.
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-y-3 gap-x-4">
+                    <div>
+                      <p className="text-muted-foreground">Recipient</p>
+                      <p className="font-medium" data-testid="text-verify-name">{result.recipientName}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Approved By</p>
+                      <p className="font-medium">{result.approverName}</p>
+                      {result.approverDesignation && <p className="text-xs text-muted-foreground">{result.approverDesignation}</p>}
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Issued On</p>
+                      <p className="font-medium">{new Date(result.issuedAt).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Certificate ID</p>
+                      <p className="font-mono text-xs" data-testid="text-certificate-id">{result.certificateId}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Reference</p>
+                      <p className="font-mono text-xs">{result.referenceNumber}</p>
+                    </div>
+                    <div>
+                      <p className="text-muted-foreground">Version</p>
+                      <p className="font-medium">v{result.version}</p>
+                    </div>
+                  </div>
+                  {/* Action buttons */}
+                  <div className="flex gap-2 pt-1 border-t">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => {
+                        navigator.clipboard.writeText(result.certificateId);
+                      }}
+                      data-testid="btn-copy-certificate-id"
+                    >
+                      <Copy className="h-3.5 w-3.5 mr-1.5" />
+                      Copy Certificate ID
+                    </Button>
+                    {result.pdfUrl && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        asChild
+                        data-testid="btn-download-verified-pdf"
+                      >
+                        <a
+                          href={`/api/public/recognition/pdf?ref=${encodeURIComponent(result.referenceNumber)}&auth=${encodeURIComponent(authCode)}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <Download className="h-3.5 w-3.5 mr-1.5" />
+                          Download Verified PDF
+                        </a>
+                      </Button>
+                    )}
+                  </div>
+                  {result.recognitionDescription && (
+                    <div className="pt-2 border-t">
+                      <p className="text-muted-foreground mb-1 font-medium text-xs uppercase tracking-wide">Recognition Description</p>
+                      <p className="text-sm">{result.recognitionDescription}</p>
+                    </div>
+                  )}
+                  {result.contributionSummary && (
+                    <div className="pt-2 border-t">
+                      <p className="text-muted-foreground mb-1 font-medium text-xs uppercase tracking-wide">Contribution Summary</p>
+                      <p className="text-sm">{result.contributionSummary}</p>
+                    </div>
+                  )}
+                  {result.publicCitation && (
+                    <div className="pt-2 border-t">
+                      <p className="text-muted-foreground mb-1 font-medium text-xs uppercase tracking-wide">Recognition Citation</p>
+                      <p className="text-sm italic text-slate-600 dark:text-slate-400">&ldquo;{result.publicCitation}&rdquo;</p>
+                    </div>
+                  )}
                 </div>
               ) : isContract(result) ? (
                 <div className="space-y-3 text-sm">

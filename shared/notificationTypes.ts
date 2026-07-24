@@ -194,6 +194,14 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
     category: "hr",
     typePrefixes: ["ceipal_morning_reminder", "ceipal_manager_alert", "ceipal_"],
   },
+  // ── Recognition Certificates ─────────────────────────────────────────────
+  {
+    key: "recognition_certificates",
+    label: "Recognition certificates",
+    description: "Notifications when a verified recognition certificate is issued, returned, or rejected.",
+    category: "hr",
+    typePrefixes: ["recognition_certificate_", "recognition_issued", "recognition_returned", "recognition_rejected", "recognition_"],
+  },
   // ── System ────────────────────────────────────────────────────────────────
   {
     key: "system_general",

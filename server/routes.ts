@@ -140,6 +140,7 @@ import { registerOnboardingFlowRoutes } from "./onboardingFlowRoutes";
 import { registerPerformanceRoutes, ensureGrowthPlanFromAddendum, ensurePlanFromDocument, resolveAttachedPlanGoals, seedPlanGoals, generatePlanCheckIns, fetchPlanCadenceSettings, normalizeGoalCategory, type AttachablePlanType } from "./performanceRoutes";
 import { registerContractRoutes } from "./contractRoutes";
 import { registerPraiseRoutes, seedPraiseBadgeTypes } from "./praiseRoutes";
+import { registerRecognitionRoutes } from "./recognitionRoutes";
 import { registerPolicySigningRoutes } from "./policySigningRoutes";
 import { registerAttendanceReportRoutes } from "./attendanceReportRoutes";
 import { registerBdDecksRoutes } from "./bdDecksRoutes";
@@ -1191,6 +1192,38 @@ Canonical domain: ${BASE}
   });
 
   // ==========================================
+  // PUBLIC RECOGNITION CERTIFICATE PDF DOWNLOAD (no auth required — validated by auth code)
+  app.get("/api/public/recognition/pdf", async (req: Request, res: Response) => {
+    try {
+      const ref = (req.query.ref as string || "").trim().toUpperCase();
+      const auth = (req.query.auth as string || "").trim().toUpperCase();
+      if (!ref || !auth) return res.status(400).json({ error: "ref and auth are required" });
+      if (!/^RC\//.test(ref)) return res.status(400).json({ error: "Not a recognition certificate reference" });
+
+      const { recognitionCertificates } = await import("../shared/schema");
+      const { eq, and } = await import("drizzle-orm");
+      const rows = await db.select().from(recognitionCertificates)
+        .where(and(eq(recognitionCertificates.referenceNumber, ref), eq(recognitionCertificates.authCode, auth)))
+        .limit(1);
+      const cert = rows[0];
+
+      if (!cert) return res.status(404).json({ error: "Certificate not found or auth code invalid" });
+      if (cert.status === "revoked") return res.status(410).json({ error: "Certificate has been revoked" });
+      if (!cert.pdfStoragePath) return res.status(404).json({ error: "PDF not yet available" });
+
+      const { objectStorageService } = await import("./replit_integrations/object_storage/objectStorage");
+      const pdfBuffer = await objectStorageService.downloadBuffer(cert.pdfStoragePath);
+
+      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Disposition", `attachment; filename="recognition-${cert.certificateId}.pdf"`);
+      res.setHeader("Cache-Control", "private, max-age=300");
+      res.send(pdfBuffer);
+    } catch (err: any) {
+      console.error("[public/recognition/pdf]", err);
+      res.status(500).json({ error: "Failed to retrieve certificate PDF" });
+    }
+  });
+
   // PUBLIC AUTHOR DIRECTORY
   // ==========================================
 
@@ -27995,6 +28028,41 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         });
       }
 
+      // ── Recognition certificate verification branch ──────────────────────────
+      if (documentType === "recognition") {
+        const { verifyRecognitionCertificate } = await import("./services/certificateEngine/verifyAdapter");
+        const result = await verifyRecognitionCertificate(ref, auth);
+        if (!result.found) {
+          return res.status(404).json({ error: "Document not found or auth code does not match" });
+        }
+        if (result.revoked) {
+          return res.status(410).json({ error: "This certificate has been revoked", revoked: true });
+        }
+        if (!result.valid) {
+          return res.status(404).json({ error: "Document not found or auth code does not match" });
+        }
+        // Log this verification as a view (fire-and-forget)
+        try {
+          await pool.query(
+            `INSERT INTO recognition_certificate_views (certificate_id, reference_number, ip_address, user_agent)
+             VALUES ($1, $2, $3, $4)`,
+            [
+              result.record?.id ?? null,
+              ref,
+              req.ip ?? null,
+              req.headers["user-agent"] ?? null,
+            ],
+          );
+        } catch { /* non-critical — don't fail the verify response */ }
+        return res.json({
+          documentType: "recognition",
+          verified: true,
+          tamperDetected: false,
+          referenceNumber: ref,
+          ...result.record,
+        });
+      }
+
       // ── HR letter verification branch ───────────────────────────────────────
       const letter = await storage.getHrLetterByRef(ref);
       if (!letter) {
@@ -28546,6 +28614,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   registerPerformanceRoutes(app);
   registerContractRoutes(app);
   registerPraiseRoutes(app);
+  registerRecognitionRoutes(app);
   registerPolicySigningRoutes(app);
   registerAttendanceReportRoutes(app);
   registerReleaseNotesRoutes(app);

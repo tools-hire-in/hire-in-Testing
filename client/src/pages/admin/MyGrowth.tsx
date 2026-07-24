@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import {
   Award, BookOpen, Target, CalendarCheck, MessageSquare,
   ClipboardList, Map, Users, Flag, FileCheck, Briefcase,
-  GraduationCap, Settings2, TrendingUp,
+  GraduationCap, Settings2, TrendingUp, Medal,
 } from "lucide-react";
 import MyTraining from "./hr/MyTraining";
 import { MyGoalsContent } from "./performance/MyGoals";
@@ -19,6 +19,7 @@ import PerformanceFeedback from "./performance/Feedback";
 import { MyReviewsContent } from "./performance/MyReviews";
 import { TeamReviewsContent } from "./performance/TeamReviews";
 import PraiseBoard from "./performance/PraiseBoard";
+import MyCertificates from "./performance/MyCertificates";
 import MyPlanView from "./hr/MyPlanView";
 import { PerformanceSettingsSection, GoalTemplatesSection, RayoAcademySettingsSection } from "./hr/HRSettings";
 import TrainingManagement from "./hr/TrainingManagement";
@@ -29,6 +30,7 @@ const HR_ADMIN_ROLES = ["super_admin", "admin", "hr"];
 
 type Tab =
   | "praise"
+  | "my-certificates"
   | "training"
   | "my-goals"
   | "team-goals"
@@ -66,7 +68,7 @@ function aliasTab(raw: string): string {
 }
 
 function getAllowedTabs(isManager: boolean, isHrAdmin: boolean, hasPlan: boolean): Tab[] {
-  const tabs: Tab[] = ["praise", "training", "my-goals", "check-ins", "feedback", "my-reviews"];
+  const tabs: Tab[] = ["praise", "my-certificates", "training", "my-goals", "check-ins", "feedback", "my-reviews"];
   if (hasPlan) tabs.push("my-plan");
   if (isManager) tabs.push("team-check-ins", "team-goals", "team-reviews", "employee-plans", "settings");
   if (isHrAdmin) tabs.push("training-mgmt");
@@ -106,6 +108,7 @@ function getTabFromSearch(): string {
 // Which segment each tab belongs to
 const TAB_SEGMENT: Record<Tab, Segment> = {
   praise: "my-growth",
+  "my-certificates": "my-growth",
   training: "my-growth",
   "my-goals": "my-growth",
   "check-ins": "my-growth",
@@ -129,6 +132,7 @@ interface SubItem {
 function getMyGrowthItems(hasPlan: boolean): SubItem[] {
   return [
     { tab: "praise", label: "Praise", Icon: Award },
+    { tab: "my-certificates", label: "Certificates", Icon: Medal },
     { tab: "training", label: "Training", Icon: BookOpen },
     { tab: "my-goals", label: "Goals", Icon: Target },
     { tab: "check-ins", label: "Check-Ins", Icon: CalendarCheck },
@@ -296,6 +300,7 @@ export default function MyGrowth() {
         {/* Content card */}
         <div className="bg-card rounded-xl border shadow-sm p-6 min-h-[400px]">
           {activeTab === "praise" && <PraiseBoard />}
+          {activeTab === "my-certificates" && <MyCertificates />}
           {activeTab === "training" && <MyTraining />}
           {activeTab === "my-goals" && <MyGoalsContent />}
           {activeTab === "check-ins" && <PerformanceCheckIns mode="mine" />}

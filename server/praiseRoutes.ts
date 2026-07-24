@@ -194,7 +194,11 @@ export function registerPraiseRoutes(app: Express) {
     const userId = requireAuth(req, res);
     if (!userId) return;
     try {
-      const { recipientId, badgeTypeId, message } = req.body;
+      const {
+        recipientId, badgeTypeId, message,
+        certificateRequested, recognitionDescription, contributionSummary,
+        publicCitationDraft, recognitionContext,
+      } = req.body;
       if (!recipientId || !badgeTypeId || !message?.trim()) {
         return res.status(400).json({ error: "recipientId, badgeTypeId, and message are required" });
       }
@@ -202,15 +206,35 @@ export function registerPraiseRoutes(app: Express) {
         return res.status(400).json({ error: "You cannot award a badge to yourself" });
       }
 
+      if (certificateRequested) {
+        if (!recognitionDescription?.trim() || !contributionSummary?.trim() || !publicCitationDraft?.trim()) {
+          return res.status(400).json({ error: "recognitionDescription, contributionSummary, and publicCitationDraft are required when requesting a certificate" });
+        }
+        if (recognitionDescription.trim().length < 40 || contributionSummary.trim().length < 40) {
+          return res.status(400).json({ error: "recognitionDescription and contributionSummary must each be at least 40 characters" });
+        }
+      }
+
       const [badge] = await db.select().from(praiseBadgeTypes).where(eq(praiseBadgeTypes.id, badgeTypeId));
       if (!badge) return res.status(404).json({ error: "Badge type not found" });
 
-      const [post] = await db.insert(praisePosts).values({
+      const insertValues: any = {
         giverId: userId,
         recipientId,
         badgeTypeId,
         message: message.trim(),
-      }).returning();
+      };
+
+      if (certificateRequested) {
+        insertValues.certificateRequested = true;
+        insertValues.certificateStatus = "pending_verification";
+        insertValues.recognitionDescription = recognitionDescription.trim();
+        insertValues.contributionSummary = contributionSummary.trim();
+        insertValues.publicCitationDraft = publicCitationDraft.trim();
+        if (recognitionContext?.trim()) insertValues.recognitionContext = recognitionContext.trim();
+      }
+
+      const [post] = await db.insert(praisePosts).values(insertValues).returning();
 
       // Fire-and-forget notifications
       (async () => {
