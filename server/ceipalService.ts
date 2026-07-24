@@ -748,6 +748,30 @@ export async function searchCeipalCandidates(q: string): Promise<{
   }
 }
 
+export interface CeipalInterviewDetail {
+  interviewId: string;
+  submissionId?: string;
+  interviewMode?: string;
+  interviewOutcome?: string;
+  interviewDate?: string;
+  scheduledDate?: string;
+  recruiterEmail?: string;
+  recruiterId?: string;
+  [key: string]: any;
+}
+
+export interface CeipalPlacementDetail {
+  placementId: string;
+  jobSeekerId?: string;
+  clientBillRate?: string;
+  payRateMode?: string;
+  placementStatus?: string;
+  startDate?: string;
+  recruiterEmail?: string;
+  recruiterId?: string;
+  [key: string]: any;
+}
+
 export interface RecruiterMetric {
   recruiterId: string;
   recruiterName: string;
@@ -775,17 +799,160 @@ export interface RecruiterMetric {
   businessUnitId?: string;
   ceipalRole?: string;
   reportingTo?: string;
+  /** Latest interview detail for this recruiter (from v2 getInterviews) */
+  latestInterview?: CeipalInterviewDetail;
+  /** Latest placement detail for this recruiter (from v2 getPlacements) */
+  latestPlacement?: CeipalPlacementDetail;
 }
 
-function parseSubmissions(data: any): any[] {
+function parsePagedResults(data: any): any[] {
   return Array.isArray(data?.results) ? data.results
     : Array.isArray(data?.data) ? data.data
     : Array.isArray(data) ? data : [];
 }
 
-function isPlacement(sub: any): boolean {
-  const stage = (sub.stage || sub.status || "").toLowerCase();
-  return stage.includes("placement") || stage.includes("placed") || stage.includes("start");
+/** @deprecated use parsePagedResults */
+function parseSubmissions(data: any): any[] {
+  return parsePagedResults(data);
+}
+
+/**
+ * Fetch all pages of a Ceipal v2 paginated list endpoint.
+ * Stops when a page returns 0 results, a 404, or the page_size is under-filled.
+ */
+async function fetchCeipalV2Pages(
+  baseUrl: string,
+  pageSize = 100,
+  maxPages = 50
+): Promise<any[]> {
+  const all: any[] = [];
+  for (let page = 1; page <= maxPages; page++) {
+    const sep = baseUrl.includes("?") ? "&" : "?";
+    const url = `${baseUrl}${sep}page=${page}&page_size=${pageSize}`;
+    let res: Response;
+    try {
+      res = await fetchWithTokenRetry(url);
+    } catch (err: any) {
+      console.warn(`[ceipal] fetchCeipalV2Pages page ${page} network error:`, err.message);
+      break;
+    }
+    if (res.status === 404) break;
+    if (!res.ok) {
+      console.warn(`[ceipal] fetchCeipalV2Pages page ${page} status ${res.status}`);
+      break;
+    }
+    const data = await res.json().catch(() => ({}));
+    const rows = parsePagedResults(data);
+    if (rows.length === 0) break;
+    all.push(...rows);
+    if (rows.length < pageSize) break;
+  }
+  return all;
+}
+
+/**
+ * Fetch v2 submissions with date filtering (paginated).
+ * Replaces the v1 single-page call throughout metrics and compliance.
+ */
+export async function getCeipalSubmissionsV2(fromDate: string, toDate: string): Promise<any[]> {
+  const base = `https://api.ceipal.com/v2/getSubmissions/?from_date=${fromDate}&to_date=${toDate}`;
+  return fetchCeipalV2Pages(base);
+}
+
+/**
+ * Fetch all v2 interviews for the given date range (paginated).
+ */
+export async function getCeipalInterviews(fromDate: string, toDate: string): Promise<CeipalInterviewDetail[]> {
+  const base = `https://api.ceipal.com/v2/getInterviews/?from_date=${fromDate}&to_date=${toDate}`;
+  const rows = await fetchCeipalV2Pages(base);
+  return rows.map((r: any) => ({
+    interviewId: String(r.id ?? r.interview_id ?? ""),
+    submissionId: String(r.submission_id ?? r.applicant_id ?? ""),
+    interviewMode: r.interview_mode ?? r.mode ?? r.interview_type ?? undefined,
+    interviewOutcome: r.interview_outcome ?? r.outcome ?? r.result ?? undefined,
+    interviewDate: r.interview_date ?? r.scheduled_date ?? r.date ?? undefined,
+    scheduledDate: r.scheduled_date ?? r.interview_date ?? undefined,
+    recruiterEmail: (r.recruiter_email ?? r.submitted_by_email ?? r.owner_email ?? "").toLowerCase() || undefined,
+    recruiterId: String(r.recruiter_id ?? r.submitted_by_id ?? r.user_id ?? ""),
+    ...r,
+  }));
+}
+
+/**
+ * Fetch full interview detail by ID from v2 API.
+ */
+export async function getCeipalInterviewDetails(interviewId: string): Promise<CeipalInterviewDetail | null> {
+  try {
+    const url = `https://api.ceipal.com/v2/getInterviewDetails/${interviewId}/`;
+    const res = await fetchWithTokenRetry(url);
+    if (!res.ok) {
+      console.warn(`[ceipal] getCeipalInterviewDetails(${interviewId}): ${res.status}`);
+      return null;
+    }
+    const r = await res.json();
+    return {
+      interviewId: String(r.id ?? r.interview_id ?? interviewId),
+      submissionId: String(r.submission_id ?? r.applicant_id ?? ""),
+      interviewMode: r.interview_mode ?? r.mode ?? r.interview_type ?? undefined,
+      interviewOutcome: r.interview_outcome ?? r.outcome ?? r.result ?? undefined,
+      interviewDate: r.interview_date ?? r.scheduled_date ?? r.date ?? undefined,
+      scheduledDate: r.scheduled_date ?? r.interview_date ?? undefined,
+      recruiterEmail: (r.recruiter_email ?? r.submitted_by_email ?? "").toLowerCase() || undefined,
+      recruiterId: String(r.recruiter_id ?? r.submitted_by_id ?? r.user_id ?? ""),
+      ...r,
+    };
+  } catch (err: any) {
+    console.warn(`[ceipal] getCeipalInterviewDetails(${interviewId}) error:`, err.message);
+    return null;
+  }
+}
+
+/**
+ * Fetch all v2 placements for the given date range (paginated).
+ */
+export async function getCeipalPlacements(fromDate: string, toDate: string): Promise<CeipalPlacementDetail[]> {
+  const base = `https://api.ceipal.com/v2/getPlacements/?from_date=${fromDate}&to_date=${toDate}`;
+  const rows = await fetchCeipalV2Pages(base);
+  return rows.map((r: any) => ({
+    placementId: String(r.id ?? r.placement_id ?? ""),
+    jobSeekerId: String(r.job_seeker_id ?? r.candidate_id ?? r.applicant_id ?? ""),
+    clientBillRate: r.client_bill_rate ?? r.bill_rate ?? r.client_bill_rate_salary ?? undefined,
+    payRateMode: r.pay_rate_mode ?? r.pay_type ?? r.payment_mode ?? undefined,
+    placementStatus: r.placement_status ?? r.status ?? undefined,
+    startDate: r.start_date ?? r.placement_date ?? r.joining_date ?? undefined,
+    recruiterEmail: (r.recruiter_email ?? r.submitted_by_email ?? r.owner_email ?? "").toLowerCase() || undefined,
+    recruiterId: String(r.recruiter_id ?? r.submitted_by_id ?? r.user_id ?? ""),
+    ...r,
+  }));
+}
+
+/**
+ * Fetch full placement detail by ID from v2 API.
+ */
+export async function getCeipalPlacementDetails(placementId: string): Promise<CeipalPlacementDetail | null> {
+  try {
+    const url = `https://api.ceipal.com/v2/getPlacementDetails/${placementId}/`;
+    const res = await fetchWithTokenRetry(url);
+    if (!res.ok) {
+      console.warn(`[ceipal] getCeipalPlacementDetails(${placementId}): ${res.status}`);
+      return null;
+    }
+    const r = await res.json();
+    return {
+      placementId: String(r.id ?? r.placement_id ?? placementId),
+      jobSeekerId: String(r.job_seeker_id ?? r.candidate_id ?? r.applicant_id ?? ""),
+      clientBillRate: r.client_bill_rate ?? r.bill_rate ?? r.client_bill_rate_salary ?? undefined,
+      payRateMode: r.pay_rate_mode ?? r.pay_type ?? r.payment_mode ?? undefined,
+      placementStatus: r.placement_status ?? r.status ?? undefined,
+      startDate: r.start_date ?? r.placement_date ?? r.joining_date ?? undefined,
+      recruiterEmail: (r.recruiter_email ?? r.submitted_by_email ?? "").toLowerCase() || undefined,
+      recruiterId: String(r.recruiter_id ?? r.submitted_by_id ?? r.user_id ?? ""),
+      ...r,
+    };
+  } catch (err: any) {
+    console.warn(`[ceipal] getCeipalPlacementDetails(${placementId}) error:`, err.message);
+    return null;
+  }
 }
 
 export async function getCeipalRecruiterMetrics(
@@ -827,25 +994,36 @@ export async function getCeipalRecruiterMetrics(
   }
 
   try {
-    async function fetchSubmissions(from: string, to: string): Promise<any[]> {
-      const url = `https://api.ceipal.com/v1/getSubmissions/?from_date=${from}&to_date=${to}&page=1&page_size=300`;
-      const res = await fetchWithTokenRetry(url);
-      if (!res.ok) {
-        console.warn(`[ceipal] getSubmissions ${from}→${to} returned ${res.status}`);
+    // Fetch rolling 30-day submissions (v2, paginated), YTD submissions, interviews,
+    // placements, local admin_user emails, and Ceipal user list in parallel.
+    const [monthSubs, ytdSubs, periodSubs, allInterviews, allPlacements, ytdPlacements, localAdminRows, ceipalUserList] = await Promise.all([
+      getCeipalSubmissionsV2(monthFromStr, todayStr).catch((err: any) => {
+        console.warn("[ceipal] v2 month submissions failed (non-fatal):", err.message);
         return [];
-      }
-      return parseSubmissions(await res.json());
-    }
-
-    // Fetch rolling 30-day submissions, YTD submissions, local admin_user
-    // emails, and Ceipal user list in parallel.
-    const [monthSubs, ytdSubs, periodSubs, localAdminRows, ceipalUserList] = await Promise.all([
-      fetchSubmissions(monthFromStr, todayStr),
-      fetchSubmissions(ytdFromStr, todayStr),
+      }),
+      getCeipalSubmissionsV2(ytdFromStr, todayStr).catch((err: any) => {
+        console.warn("[ceipal] v2 ytd submissions failed (non-fatal):", err.message);
+        return [];
+      }),
       // Only fetch separately for custom ranges; week/month overlap with monthSubs
       (period === "custom" && customFrom && customTo)
-        ? fetchSubmissions(periodFrom, periodTo)
+        ? getCeipalSubmissionsV2(periodFrom, periodTo).catch((err: any) => {
+            console.warn("[ceipal] v2 period submissions failed (non-fatal):", err.message);
+            return [];
+          })
         : Promise.resolve(null),
+      getCeipalInterviews(monthFromStr, todayStr).catch((err: any) => {
+        console.warn("[ceipal] v2 interviews failed (non-fatal):", err.message);
+        return [] as CeipalInterviewDetail[];
+      }),
+      getCeipalPlacements(monthFromStr, todayStr).catch((err: any) => {
+        console.warn("[ceipal] v2 placements failed (non-fatal):", err.message);
+        return [] as CeipalPlacementDetail[];
+      }),
+      getCeipalPlacements(ytdFromStr, todayStr).catch((err: any) => {
+        console.warn("[ceipal] v2 ytd placements failed (non-fatal):", err.message);
+        return [] as CeipalPlacementDetail[];
+      }),
       db.select({ id: adminUsers.id, email: adminUsers.email, name: adminUsers.name })
         .from(adminUsers)
         .where(isNull(adminUsers.deletedAt)),
@@ -979,10 +1157,6 @@ export async function getCeipalRecruiterMetrics(
       const subDate = new Date(sub.submission_date || sub.created_date || now);
       if (subDate >= weekAgo) m.submissionsWeek++;
 
-      const stage = (sub.stage || sub.status || "").toLowerCase();
-      if (stage.includes("interview") || stage.includes("scheduled")) m.interviews++;
-      if (isPlacement(sub)) m.placements++;
-
       const channel = sub.source || sub.sourcing_channel || sub.job_board || "Other";
       m.channels[channel] = (m.channels[channel] || 0) + 1;
     }
@@ -1004,16 +1178,161 @@ export async function getCeipalRecruiterMetrics(
       else m.dailyBreakdown.push({ date: dateKey, submissions: 1, calls: 0 });
     }
 
-    // ── Process YTD submissions → placementsYTD ───────────────────────────────
-    for (const sub of ytdSubs) {
+    // ── Build lookup maps for interview/placement attribution ─────────────────
+    // Maps Ceipal submission IDs AND job_seeker_ids to the resolved recruiter
+    // key (rId) so that interviews/placements can be attributed even when
+    // recruiterEmail/recruiterId fields are absent from the v2 record.
+    const submissionIdToRecruiterId = new Map<string, string>();
+    const jobSeekerIdToRecruiterId = new Map<string, string>();
+    for (const sub of monthSubs) {
       const resolved = resolveRecruiter(sub);
       if (!resolved) continue;
-      const { rId, rEmail, rName } = resolved;
-      if (recruiterId && rId !== recruiterId) continue;
-      if (!isPlacement(sub)) continue;
+      const subId = String(sub.id ?? sub.submission_id ?? "");
+      if (subId) submissionIdToRecruiterId.set(subId, resolved.rId);
+      const jsId = String(sub.job_seeker_id ?? sub.candidate_id ?? sub.applicant_id ?? "");
+      if (jsId) jobSeekerIdToRecruiterId.set(jsId, resolved.rId);
+    }
 
-      const m = ensureRecruiter(rId, rName, rEmail);
-      m.placementsYTD++;
+    // ── Process v2 interviews → real interview counts per recruiter ────────────
+    // Interviews are attributed to a recruiter via:
+    //   (a) interview.recruiterEmail / interview.recruiterId field
+    //   (b) interview.submissionId → submission recruiter map
+    const recruiterInterviews = new Map<string, CeipalInterviewDetail[]>();
+    for (const iv of allInterviews) {
+      // Resolve recruiter from interview record
+      let ivRecruiterId: string | null = null;
+      if (iv.recruiterEmail) {
+        const cu = ceipalUserByEmail.get(iv.recruiterEmail.toLowerCase());
+        if (cu) {
+          ivRecruiterId = cu.id;
+        } else if (isLocalRecruiter(iv.recruiterEmail)) {
+          ivRecruiterId = iv.recruiterEmail;
+        }
+      }
+      if (!ivRecruiterId && iv.recruiterId) {
+        const cu = ceipalUserById.get(iv.recruiterId);
+        if (cu) ivRecruiterId = cu.id;
+      }
+      if (!ivRecruiterId && iv.submissionId) {
+        ivRecruiterId = submissionIdToRecruiterId.get(iv.submissionId) ?? null;
+      }
+      if (!ivRecruiterId) continue;
+      if (recruiterId && ivRecruiterId !== recruiterId) continue;
+      if (!recruiterInterviews.has(ivRecruiterId)) recruiterInterviews.set(ivRecruiterId, []);
+      recruiterInterviews.get(ivRecruiterId)!.push(iv);
+    }
+
+    // Apply interview counts and collect the most recent per recruiter for detail fetch
+    const interviewDetailFetches: Array<{ rId: string; interviewId: string }> = [];
+    for (const [rId, ivList] of recruiterInterviews.entries()) {
+      const mExisting = recruiterMap.get(rId);
+      if (mExisting) {
+        mExisting.interviews = ivList.length;
+        // Latest interview = most recent by date
+        const sorted = [...ivList].sort((a, b) =>
+          (b.interviewDate ?? "").localeCompare(a.interviewDate ?? "")
+        );
+        if (sorted[0]) {
+          mExisting.latestInterview = sorted[0]; // list-row data (always shown even if detail fails)
+          interviewDetailFetches.push({ rId, interviewId: sorted[0].interviewId });
+        }
+      }
+    }
+    // Enrich latest interview with authoritative detail records (non-fatal)
+    if (interviewDetailFetches.length > 0) {
+      const ivDetailResults = await Promise.allSettled(
+        interviewDetailFetches.map(({ rId, interviewId }) =>
+          getCeipalInterviewDetails(interviewId).then(detail => ({ rId, detail }))
+        )
+      );
+      for (const result of ivDetailResults) {
+        if (result.status === "fulfilled" && result.value.detail) {
+          const m = recruiterMap.get(result.value.rId);
+          if (m) m.latestInterview = result.value.detail;
+        }
+      }
+    }
+
+    // ── Process v2 placements → real placement counts per recruiter ────────────
+    // Attribution priority: (a) recruiterEmail/recruiterId on record, then
+    // (b) jobSeekerId → submission recruiter map (cross-reference via candidate).
+    const recruiterPlacements = new Map<string, CeipalPlacementDetail[]>();
+    for (const pl of allPlacements) {
+      let plRecruiterId: string | null = null;
+      if (pl.recruiterEmail) {
+        const cu = ceipalUserByEmail.get(pl.recruiterEmail.toLowerCase());
+        if (cu) {
+          plRecruiterId = cu.id;
+        } else if (isLocalRecruiter(pl.recruiterEmail)) {
+          plRecruiterId = pl.recruiterEmail;
+        }
+      }
+      if (!plRecruiterId && pl.recruiterId) {
+        const cu = ceipalUserById.get(pl.recruiterId);
+        if (cu) plRecruiterId = cu.id;
+      }
+      // Fallback: jobSeekerId → recruiter via submissions cross-reference
+      if (!plRecruiterId && pl.jobSeekerId) {
+        plRecruiterId = jobSeekerIdToRecruiterId.get(pl.jobSeekerId) ?? null;
+      }
+      if (!plRecruiterId) continue;
+      if (recruiterId && plRecruiterId !== recruiterId) continue;
+      if (!recruiterPlacements.has(plRecruiterId)) recruiterPlacements.set(plRecruiterId, []);
+      recruiterPlacements.get(plRecruiterId)!.push(pl);
+    }
+
+    // Collect latest placement per recruiter, then fetch authoritative detail records
+    const placementDetailFetches: Array<{ rId: string; placementId: string }> = [];
+    for (const [rId, plList] of recruiterPlacements.entries()) {
+      const mExisting = recruiterMap.get(rId);
+      if (mExisting) {
+        mExisting.placements = plList.length;
+        const sorted = [...plList].sort((a, b) =>
+          (b.startDate ?? "").localeCompare(a.startDate ?? "")
+        );
+        if (sorted[0]) {
+          mExisting.latestPlacement = sorted[0]; // list-row data (always shown even if detail fails)
+          placementDetailFetches.push({ rId, placementId: sorted[0].placementId });
+        }
+      }
+    }
+    // Enrich with authoritative detail records (non-fatal — list-row data already set)
+    if (placementDetailFetches.length > 0) {
+      const detailResults = await Promise.allSettled(
+        placementDetailFetches.map(({ rId, placementId }) =>
+          getCeipalPlacementDetails(placementId).then(detail => ({ rId, detail }))
+        )
+      );
+      for (const result of detailResults) {
+        if (result.status === "fulfilled" && result.value.detail) {
+          const m = recruiterMap.get(result.value.rId);
+          if (m) m.latestPlacement = result.value.detail;
+        }
+      }
+    }
+
+    // ── Process YTD placements → placementsYTD ────────────────────────────────
+    for (const pl of ytdPlacements) {
+      let plRecruiterId: string | null = null;
+      if (pl.recruiterEmail) {
+        const cu = ceipalUserByEmail.get(pl.recruiterEmail.toLowerCase());
+        if (cu) {
+          plRecruiterId = cu.id;
+        } else if (isLocalRecruiter(pl.recruiterEmail)) {
+          plRecruiterId = pl.recruiterEmail;
+        }
+      }
+      if (!plRecruiterId && pl.recruiterId) {
+        const cu = ceipalUserById.get(pl.recruiterId);
+        if (cu) plRecruiterId = cu.id;
+      }
+      if (!plRecruiterId && pl.jobSeekerId) {
+        plRecruiterId = jobSeekerIdToRecruiterId.get(pl.jobSeekerId) ?? null;
+      }
+      if (!plRecruiterId) continue;
+      if (recruiterId && plRecruiterId !== recruiterId) continue;
+      const mExisting = recruiterMap.get(plRecruiterId);
+      if (mExisting) mExisting.placementsYTD++;
     }
 
     for (const m of recruiterMap.values()) {

@@ -62,17 +62,27 @@ async function fetchTodaySubmissions(): Promise<FetchResult> {
     }
 
     const today = todayStr();
-    const url = `https://api.ceipal.com/v1/getSubmissions/?from_date=${today}&to_date=${today}&page=1&page_size=300`;
-    const res = await fetchFn(url);
-    if (!res.ok) {
-      console.log(`[ceipal-compliance] getSubmissions returned ${res.status} → api_unavailable`);
-      return { ok: false, data: [] };
+    // v2 paginated submissions — fetch up to 3 pages (300 submissions should be ample for compliance check)
+    const allRows: any[] = [];
+    for (let page = 1; page <= 3; page++) {
+      const url = `https://api.ceipal.com/v2/getSubmissions/?from_date=${today}&to_date=${today}&page=${page}&page_size=100`;
+      const res = await fetchFn(url);
+      if (!res.ok) {
+        if (page === 1) {
+          console.log(`[ceipal-compliance] v2 getSubmissions returned ${res.status} → api_unavailable`);
+          return { ok: false, data: [] };
+        }
+        break;
+      }
+      const data = await res.json().catch(() => ({}));
+      const rows: any[] = Array.isArray(data?.results) ? data.results
+        : Array.isArray(data?.data) ? data.data
+        : Array.isArray(data) ? data : [];
+      if (rows.length === 0) break;
+      allRows.push(...rows);
+      if (rows.length < 100) break;
     }
-    const data = await res.json().catch(() => ({}));
-    const rows: any[] = Array.isArray(data?.results) ? data.results
-      : Array.isArray(data?.data) ? data.data
-      : Array.isArray(data) ? data : [];
-    return { ok: true, data: rows };
+    return { ok: true, data: allRows };
   } catch (err: any) {
     console.warn("[ceipal-compliance] fetchTodaySubmissions network error:", err.message, "→ api_unavailable");
     return { ok: false, data: [] };

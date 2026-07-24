@@ -56,6 +56,30 @@ interface IntegrationInfo {
   unmatchedCeipalUsers?: string[];
 }
 
+interface CeipalInterviewDetail {
+  interviewId: string;
+  submissionId?: string;
+  interviewMode?: string;
+  interviewOutcome?: string;
+  interviewDate?: string;
+  scheduledDate?: string;
+  recruiterEmail?: string;
+  recruiterId?: string;
+  [key: string]: any;
+}
+
+interface CeipalPlacementDetail {
+  placementId: string;
+  jobSeekerId?: string;
+  clientBillRate?: string;
+  payRateMode?: string;
+  placementStatus?: string;
+  startDate?: string;
+  recruiterEmail?: string;
+  recruiterId?: string;
+  [key: string]: any;
+}
+
 interface RecruiterMetric {
   recruiterId: string;
   recruiterName: string;
@@ -78,6 +102,8 @@ interface RecruiterMetric {
   businessUnitId?: string;
   ceipalRole?: string;
   reportingTo?: string;
+  latestInterview?: CeipalInterviewDetail;
+  latestPlacement?: CeipalPlacementDetail;
 }
 
 const CEIPAL_LINKS = [
@@ -769,6 +795,64 @@ function RecruiterDrawer({
               ))}
             </div>
           </div>
+
+          {recruiter.latestInterview && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Latest Interview</p>
+              <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
+                {recruiter.latestInterview.interviewDate && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Date</span>
+                    <span className="font-medium" data-testid="text-interview-date">{recruiter.latestInterview.interviewDate}</span>
+                  </div>
+                )}
+                {recruiter.latestInterview.interviewMode && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Mode</span>
+                    <span className="font-medium capitalize" data-testid="text-interview-mode">{recruiter.latestInterview.interviewMode}</span>
+                  </div>
+                )}
+                {recruiter.latestInterview.interviewOutcome && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Outcome</span>
+                    <span className="font-medium capitalize" data-testid="text-interview-outcome">{recruiter.latestInterview.interviewOutcome}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {recruiter.latestPlacement && (
+            <div>
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-3">Latest Placement</p>
+              <div className="space-y-2 p-3 bg-muted/30 rounded-lg">
+                {recruiter.latestPlacement.startDate && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Start Date</span>
+                    <span className="font-medium" data-testid="text-placement-start-date">{recruiter.latestPlacement.startDate}</span>
+                  </div>
+                )}
+                {recruiter.latestPlacement.clientBillRate && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Client Bill Rate</span>
+                    <span className="font-medium" data-testid="text-placement-bill-rate">{recruiter.latestPlacement.clientBillRate}</span>
+                  </div>
+                )}
+                {recruiter.latestPlacement.payRateMode && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Pay Rate Mode</span>
+                    <span className="font-medium capitalize" data-testid="text-placement-pay-rate-mode">{recruiter.latestPlacement.payRateMode}</span>
+                  </div>
+                )}
+                {recruiter.latestPlacement.placementStatus && (
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">Status</span>
+                    <Badge variant="outline" className="text-xs capitalize" data-testid="text-placement-status">{recruiter.latestPlacement.placementStatus}</Badge>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           {(recruiter.teamName || recruiter.businessUnitId || recruiter.ceipalRole || recruiter.reportingTo) && (
             <div>

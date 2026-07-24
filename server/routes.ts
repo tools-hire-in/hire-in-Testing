@@ -30561,21 +30561,36 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   // GET /api/ceipal/team-compliance — manager's team view
   app.get("/api/ceipal/team-compliance", requireAuth, async (req: Request, res: Response) => {
+    const userId = req.session.userId!;
+    const userRole = req.session.role!;
+    const { month } = req.query;
+
+    const allowedRoles = ["manager", "hr", "admin", "super_admin", "operations"];
+    if (!allowedRoles.includes(userRole)) {
+      return res.status(403).json({ error: "Not authorized" });
+    }
+
+    // Check credential configuration up front so the frontend can distinguish
+    // "no data because API is down" from "no data because no recruiters"
+    const ceipalConfigured = !!(
+      process.env.CEIPAL_EMAIL &&
+      process.env.CEIPAL_PASSWORD &&
+      process.env.CEIPAL_API_KEY
+    );
+    if (!ceipalConfigured) {
+      return res.json({
+        members: [],
+        apiStatus: "unconfigured",
+        apiError: "Ceipal credentials not configured. Set CEIPAL_EMAIL, CEIPAL_PASSWORD, and CEIPAL_API_KEY.",
+      });
+    }
+
     try {
-      const userId = req.session.userId!;
-      const userRole = req.session.role!;
-      const { month } = req.query;
-
-      const allowedRoles = ["manager", "hr", "admin", "super_admin", "operations"];
-      if (!allowedRoles.includes(userRole)) {
-        return res.status(403).json({ error: "Not authorized" });
-      }
-
       const { getTeamCeipalCompliance, getOrgCeipalCompliance } = await import("./ceipalCompliance");
 
       if (["hr", "admin", "super_admin"].includes(userRole)) {
         const result = await getOrgCeipalCompliance();
-        return res.json(result);
+        return res.json({ ...result, apiStatus: "ok" });
       }
 
       // Manager: their direct reports
@@ -30593,10 +30608,18 @@ Return JSON with keys: linkedin, instagram, facebook.`;
           belowThreshold,
           exempted,
         },
+        apiStatus: "ok",
       });
     } catch (err: any) {
       console.error("[ceipal-compliance] GET /api/ceipal/team-compliance:", err);
-      res.status(500).json({ error: "Failed to fetch team Ceipal compliance" });
+      // Return 200 so the frontend query client can read apiStatus from the body
+      // (the query client throws on non-2xx before the caller can inspect the payload)
+      res.json({
+        error: "Failed to fetch team Ceipal compliance",
+        members: [],
+        apiStatus: "error",
+        apiError: err.message ?? "Unknown error",
+      });
     }
   });
 

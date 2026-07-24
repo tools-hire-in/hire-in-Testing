@@ -5549,6 +5549,8 @@ interface CeipalTeamData {
   avgRate?: number;
   belowThreshold?: number;
   totalRecruiters?: number;
+  apiStatus?: "ok" | "error" | "unconfigured";
+  apiError?: string;
 }
 
 const CEIPAL_DOT_COLORS: Record<string, string> = {
@@ -5572,15 +5574,37 @@ function CeipalTeamComplianceView() {
     );
   }
 
+  const apiStatus = data?.apiStatus;
+  const apiError = data?.apiError;
   const members = data?.members ?? [];
   const avgRate = data?.summary?.avgRate ?? data?.avgRate ?? 0;
   const belowThreshold = data?.summary?.belowThreshold ?? data?.belowThreshold ?? 0;
+
+  if (apiStatus === "error" || apiStatus === "unconfigured") {
+    return (
+      <div className="rounded-lg border border-red-200 bg-red-50 p-4 flex items-start gap-3" data-testid="banner-ceipal-api-unavailable">
+        <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-semibold text-red-800">
+            Ceipal API unavailable — {apiError ?? (apiStatus === "unconfigured" ? "credentials not configured" : "unknown error")}
+          </p>
+          <p className="text-xs text-red-700 mt-1">
+            <a href="/admin/integrations" className="underline hover:no-underline font-medium">
+              Fix credentials in Integrations →
+            </a>
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (members.length === 0) {
     return (
       <Card>
         <CardContent className="py-12 text-center text-muted-foreground">
-          No recruiters on your team, or none have the Ceipal check-in enabled.
+          {apiStatus === "ok"
+            ? "No recruiters on your team, or none have the Ceipal check-in enabled."
+            : "No recruiters on your team, or none have the Ceipal check-in enabled."}
         </CardContent>
       </Card>
     );
