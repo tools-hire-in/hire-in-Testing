@@ -5399,3 +5399,90 @@ export const devEmailInbox = pgTable("dev_email_inbox", {
 });
 
 export type DevEmailInboxEntry = typeof devEmailInbox.$inferSelect;
+
+// ==========================================
+// ZOOM COMMUNICATIONS TABLES
+// ==========================================
+// Applied via scripts/apply-zoom-comms-schema.ts (raw SQL) to avoid
+// drizzle-kit interactive prompts. All tables include createdAt defaults.
+
+export const zoomCallLogs = pgTable("zoom_call_logs", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  zoomCallId: varchar("zoom_call_id").unique(),
+  userId: varchar("user_id").references(() => adminUsers.id, { onDelete: "set null" }),
+  zoomUserId: varchar("zoom_user_id"),
+  direction: varchar("direction"),
+  duration: integer("duration"),
+  callerNumber: varchar("caller_number"),
+  calleeNumber: varchar("callee_number"),
+  startTime: timestamp("start_time"),
+  endTime: timestamp("end_time"),
+  status: varchar("status"),
+  rawData: jsonb("raw_data"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertZoomCallLogSchema = createInsertSchema(zoomCallLogs).omit({ id: true, createdAt: true });
+export type ZoomCallLog = typeof zoomCallLogs.$inferSelect;
+export type InsertZoomCallLog = z.infer<typeof insertZoomCallLogSchema>;
+
+export const zoomSmsSessions = pgTable("zoom_sms_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  zoomSessionId: varchar("zoom_session_id").unique(),
+  userId: varchar("user_id").references(() => adminUsers.id, { onDelete: "set null" }),
+  zoomUserId: varchar("zoom_user_id"),
+  peerNumber: varchar("peer_number"),
+  sessionStart: timestamp("session_start"),
+  sessionEnd: timestamp("session_end"),
+  messageCount: integer("message_count").default(0),
+  sanitizedThread: text("sanitized_thread"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertZoomSmsSessionSchema = createInsertSchema(zoomSmsSessions).omit({ id: true, createdAt: true, updatedAt: true });
+export type ZoomSmsSession = typeof zoomSmsSessions.$inferSelect;
+export type InsertZoomSmsSession = z.infer<typeof insertZoomSmsSessionSchema>;
+
+export const zoomSmsMessages = pgTable("zoom_sms_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => zoomSmsSessions.id, { onDelete: "cascade" }),
+  zoomMessageId: varchar("zoom_message_id").unique(),
+  body: text("body"),
+  direction: varchar("direction"),
+  sentAt: timestamp("sent_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertZoomSmsMessageSchema = createInsertSchema(zoomSmsMessages).omit({ id: true, createdAt: true });
+export type ZoomSmsMessage = typeof zoomSmsMessages.$inferSelect;
+export type InsertZoomSmsMessage = z.infer<typeof insertZoomSmsMessageSchema>;
+
+export const zoomSmsDigests = pgTable("zoom_sms_digests", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sessionId: varchar("session_id").notNull().references(() => zoomSmsSessions.id, { onDelete: "cascade" }),
+  date: varchar("date").notNull(),
+  digestText: text("digest_text"),
+  generatedAt: timestamp("generated_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_zoom_sms_digests_session_date").on(table.sessionId, table.date),
+]);
+
+export const insertZoomSmsDigestSchema = createInsertSchema(zoomSmsDigests).omit({ id: true, createdAt: true });
+export type ZoomSmsDigest = typeof zoomSmsDigests.$inferSelect;
+export type InsertZoomSmsDigest = z.infer<typeof insertZoomSmsDigestSchema>;
+
+export const zoomAiInsights = pgTable("zoom_ai_insights", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  insightType: varchar("insight_type").notNull(),
+  subjectId: varchar("subject_id"),
+  subjectType: varchar("subject_type"),
+  content: jsonb("content").notNull(),
+  generatedAt: timestamp("generated_at").defaultNow(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertZoomAiInsightSchema = createInsertSchema(zoomAiInsights).omit({ id: true, createdAt: true, generatedAt: true });
+export type ZoomAiInsight = typeof zoomAiInsights.$inferSelect;
+export type InsertZoomAiInsight = z.infer<typeof insertZoomAiInsightSchema>;

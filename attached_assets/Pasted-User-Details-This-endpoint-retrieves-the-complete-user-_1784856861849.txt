@@ -95,7 +95,7 @@ Node.js
 
 var myHeaders = new Headers();
 myHeaders.append("Content-Type", "application/json");
-myHeaders.append("Authorization", "Bearer eyJ0eXAiU3NDcyNDYwLCJpY.S2JDSPBLMOvaFpz8pIkTAd94J3T-ju7kUA9YSoxunHA");
+myHeaders.append("Authorization", "Bearer [REDACTED]");
 
 var requestOptions = {
   method: 'GET',
