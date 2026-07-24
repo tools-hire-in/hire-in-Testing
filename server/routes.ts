@@ -152,6 +152,7 @@ import { registerAttendanceExceptionRoutes, createExceptionForShortDay, checkEsc
 import { registerTravelRoutes } from "./travelRoutes";
 import { registerIntegrationsRoutes } from "./integrationsRoutes";
 import { registerRecruiterRoutes, getAutoRecruiterIdFromSession } from "./recruiterRoutes";
+import { registerZoomCommsRoutes } from "./zoomCommsRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 import { registerTrainingCatalogRoutes } from "./trainingCatalogRoutes";
 import { registerGovernanceRoutes } from "./governanceRoutes";
@@ -28554,6 +28555,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   registerTravelRoutes(app);
   registerIntegrationsRoutes(app);
   registerRecruiterRoutes(app);
+  registerZoomCommsRoutes(app);
   registerTrainingCatalogRoutes(app);
   registerGovernanceRoutes(app);
   registerCopilotRoutes(app);
