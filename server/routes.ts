@@ -23624,6 +23624,7 @@ Canonical domain: ${BASE}
           createdByUserId: req.session.userId,
         } as any);
         let created = 0;
+        let skippedDuplicates = 0;
         for (const row of valid) {
           // Re-run the deterministic quality audit (fast, no LLM) so needsAttention
           // is accurate even when the client didn't pass skipQualityAudit.
@@ -23631,6 +23632,28 @@ Canonical domain: ${BASE}
           const rowNeedsAttention = !skipQualityAudit && audit?.qualityScore === "needs_work";
           const groupId = row.ideas.length > 1 ? crypto.randomUUID() : null;
           for (const ideaData of row.ideas) {
+            // Dedup guard: skip if a non-archived idea with the same topic +
+            // scheduledDate + projectId already exists in this project.
+            const topic = (ideaData as any).topic ?? "";
+            const scheduledDate = (ideaData as any).scheduledDate ?? null;
+            const existing = await db
+              .select({ id: studioContentIdeas.id })
+              .from(studioContentIdeas)
+              .where(
+                and(
+                  eq(studioContentIdeas.projectId, projectId),
+                  sql`lower(${studioContentIdeas.topic}) = lower(${topic})`,
+                  scheduledDate
+                    ? sql`${studioContentIdeas.scheduledDate} = ${scheduledDate}`
+                    : isNull(studioContentIdeas.scheduledDate),
+                  isNull(studioContentIdeas.archivedAt),
+                ),
+              )
+              .limit(1);
+            if (existing.length > 0) {
+              skippedDuplicates++;
+              continue;
+            }
             await storage.createStudioContentIdea({
               ...ideaData,
               projectId,
@@ -23645,6 +23668,7 @@ Canonical domain: ${BASE}
         res.status(201).json({
           batchId: batch.id,
           createdIdeas: created,
+          skippedDuplicates,
           validRows: valid.length,
           invalidRows: invalid.length,
         });
@@ -23690,6 +23714,69 @@ Canonical domain: ${BASE}
       } catch (error: any) {
         console.error("Import rollback error:", error);
         res.status(400).json({ error: error?.message || "Failed to roll back import" });
+      }
+    },
+  );
+
+  // ---- Duplicate finder & cleaner ----
+
+  app.get(
+    "/api/studio/content-ideas/duplicates",
+    requireAuth,
+    requirePermission("studio.view", "marketing_manager", "content_editor", "reviewer"),
+    async (req: Request, res: Response) => {
+      try {
+        const projectId = typeof req.query.projectId === "string" ? req.query.projectId : "";
+        if (!projectId) return res.status(400).json({ error: "projectId is required" });
+        const projErr = await assertPipelineProject(projectId);
+        if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
+        const groups = await storage.findDuplicateStudioContentIdeas(projectId);
+        res.json({ groups });
+      } catch (error: any) {
+        console.error("Find duplicate ideas error:", error);
+        res.status(500).json({ error: "Failed to find duplicates" });
+      }
+    },
+  );
+
+  app.post(
+    "/api/studio/content-ideas/duplicates/remove",
+    requireAuth,
+    requirePermission("studio.edit_article", "marketing_manager", "content_editor"),
+    async (req: Request, res: Response) => {
+      try {
+        const { projectId, ids } = req.body ?? {};
+        if (!projectId || typeof projectId !== "string") return res.status(400).json({ error: "projectId is required" });
+        if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: "ids must be a non-empty array" });
+        const projErr = await assertPipelineProject(projectId, { forWrite: true });
+        if (projErr) return res.status(projErr.status).json({ error: projErr.error, code: projErr.code });
+
+        // Server-side safety check: only archive IDs that are confirmed non-keepers
+        // (i.e. they appear in the duplicate groups returned for this project but
+        // are NOT the keeper of their group). This prevents accidental archival of
+        // keepers even if the client sends wrong IDs.
+        const groups = await storage.findDuplicateStudioContentIdeas(projectId);
+        const safeToArchive = new Set<string>();
+        for (const grp of groups) {
+          for (const id of grp.ids) {
+            if (id !== grp.keeperId) safeToArchive.add(id);
+          }
+        }
+
+        const toArchive = (ids as string[]).filter((id) => safeToArchive.has(id));
+        if (!toArchive.length) return res.json({ archived: 0 });
+
+        const archived = await storage.bulkArchiveStudioContentIdeas(toArchive);
+        await storage.createAuditLog({
+          actorId: req.session.userId!,
+          targetId: projectId,
+          action: "studio_duplicates_removed",
+          changes: { archived, ids: toArchive },
+        });
+        res.json({ archived });
+      } catch (error: any) {
+        console.error("Remove duplicate ideas error:", error);
+        res.status(500).json({ error: "Failed to remove duplicates" });
       }
     },
   );

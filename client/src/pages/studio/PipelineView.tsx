@@ -604,6 +604,49 @@ function ImportWizardDialog({
     enabled: open && tab === "batches" && !!projectId,
   });
 
+  // ── Duplicate cleaner ──
+  type DuplicateGroup = { topic: string; scheduledDate: string | null; ids: string[]; createdAts: string[]; keeperId: string };
+  const [showDupeDialog, setShowDupeDialog] = useState(false);
+  const [selectedDupeGroups, setSelectedDupeGroups] = useState<Set<string>>(new Set());
+
+  const { data: dupesData, isLoading: dupesLoading, refetch: refetchDupes } = useQuery<{ groups: DuplicateGroup[] }>({
+    queryKey: ["/api/studio/content-ideas/duplicates", { projectId }],
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/studio/content-ideas/duplicates?projectId=${encodeURIComponent(projectId)}`);
+      return res.json();
+    },
+    enabled: showDupeDialog && !!projectId,
+  });
+  const dupeGroups = dupesData?.groups ?? [];
+
+  const removeDupesMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("POST", "/api/studio/content-ideas/duplicates/remove", { projectId, ids });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
+      toast({ title: `Removed ${data.archived} duplicate entr${data.archived === 1 ? "y" : "ies"}` });
+      setShowDupeDialog(false);
+      setSelectedDupeGroups(new Set());
+    },
+    onError: (e: Error) => toast({ title: "Couldn't remove duplicates", description: e.message, variant: "destructive" }),
+  });
+
+  const handleConfirmRemoveDupes = () => {
+    const idsToRemove: string[] = [];
+    for (const grp of dupeGroups) {
+      const key = `${grp.topic}|||${grp.scheduledDate ?? ""}`;
+      if (selectedDupeGroups.has(key)) {
+        for (const id of grp.ids) {
+          if (id !== grp.keeperId) idsToRemove.push(id);
+        }
+      }
+    }
+    if (idsToRemove.length > 0) removeDupesMutation.mutate(idsToRemove);
+  };
+
   // ── Payload builders ──
   const buildParsePayload = () =>
     excelB64 !== null ? { fileData: excelB64, fileName } : { csv };
@@ -658,9 +701,11 @@ function ImportWizardDialog({
       queryClient.invalidateQueries({ queryKey: ["/api/studio/content-ideas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/studio/content-ideas"] });
       queryClient.invalidateQueries({ queryKey: ["/api/studio/import/batches"] });
+      const skipped = data.skippedDuplicates ?? 0;
+      const skippedNote = skipped > 0 ? ` ${skipped} row${skipped === 1 ? "" : "s"} skipped — already exist.` : "";
       toast({
         title: "Import complete",
-        description: `${data.createdIdeas} idea(s) created from ${data.validRows} row(s).`,
+        description: `${data.createdIdeas} idea(s) created from ${data.validRows} row(s).${skippedNote}`,
       });
       onOpenChange(false);
     },
@@ -1211,8 +1256,25 @@ function ImportWizardDialog({
             )}
           </div>
         ) : (
-          /* ── Past imports tab (unchanged) ── */
-          <div className="space-y-2">
+          /* ── Past imports tab ── */
+          <div className="space-y-3">
+            {/* Duplicate cleaner action */}
+            <div className="flex items-center justify-between rounded-md border border-dashed border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20 px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Duplicate entries</p>
+                <p className="text-xs text-muted-foreground">Find and remove content ideas imported more than once.</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => { setShowDupeDialog(true); refetchDupes(); }}
+                data-testid="button-find-duplicates"
+              >
+                <Filter className="mr-1.5 h-3.5 w-3.5" />
+                Clean up
+              </Button>
+            </div>
+
             {!batches?.length && <p className="text-sm text-muted-foreground">No imports yet.</p>}
             {batches?.map((b) => (
               <div key={b.id} className="flex items-center justify-between gap-2 rounded-md border p-2 text-sm" data-testid={`row-batch-${b.id}`}>
@@ -1239,6 +1301,100 @@ function ImportWizardDialog({
               </div>
             ))}
           </div>
+
+          {/* Duplicate cleaner dialog */}
+          <Dialog open={showDupeDialog} onOpenChange={(v) => { setShowDupeDialog(v); if (!v) setSelectedDupeGroups(new Set()); }}>
+            <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto" data-testid="dialog-duplicates">
+              <DialogHeader>
+                <DialogTitle>Find &amp; Remove Duplicates</DialogTitle>
+                <p className="text-sm text-muted-foreground">
+                  Groups below share the same topic and scheduled date. The oldest entry in each group is kept; extras will be archived.
+                </p>
+              </DialogHeader>
+
+              {dupesLoading && (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                </div>
+              )}
+
+              {!dupesLoading && dupeGroups.length === 0 && (
+                <p className="py-6 text-center text-sm text-muted-foreground" data-testid="text-no-duplicates">
+                  No duplicates found in this project.
+                </p>
+              )}
+
+              {!dupesLoading && dupeGroups.length > 0 && (
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs text-muted-foreground">{dupeGroups.length} duplicate group{dupeGroups.length === 1 ? "" : "s"} found</p>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="h-7 text-xs"
+                      onClick={() => {
+                        if (selectedDupeGroups.size === dupeGroups.length) {
+                          setSelectedDupeGroups(new Set());
+                        } else {
+                          setSelectedDupeGroups(new Set(dupeGroups.map((g) => `${g.topic}|||${g.scheduledDate ?? ""}`)));
+                        }
+                      }}
+                      data-testid="button-select-all-dupes"
+                    >
+                      {selectedDupeGroups.size === dupeGroups.length ? "Deselect all" : "Select all"}
+                    </Button>
+                  </div>
+
+                  {dupeGroups.map((grp, i) => {
+                    const key = `${grp.topic}|||${grp.scheduledDate ?? ""}`;
+                    const checked = selectedDupeGroups.has(key);
+                    const extras = grp.ids.length - 1;
+                    return (
+                      <div
+                        key={i}
+                        className={`flex items-start gap-3 rounded-md border p-2.5 cursor-pointer transition-colors ${checked ? "border-primary bg-primary/5" : "border-border"}`}
+                        onClick={() => {
+                          setSelectedDupeGroups((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(key)) next.delete(key); else next.add(key);
+                            return next;
+                          });
+                        }}
+                        data-testid={`row-dupe-group-${i}`}
+                      >
+                        <Checkbox
+                          checked={checked}
+                          onCheckedChange={() => {}}
+                          className="mt-0.5 pointer-events-none"
+                          data-testid={`checkbox-dupe-${i}`}
+                        />
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium truncate">{grp.topic}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {grp.scheduledDate ? fmtDate(grp.scheduledDate) : "No date"} ·{" "}
+                            <span className="font-medium text-amber-600 dark:text-amber-400">{grp.ids.length}×</span> copies
+                            {extras > 0 && <span className="ml-1 text-muted-foreground">— {extras} will be archived</span>}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })}
+
+                  <Button
+                    className="w-full mt-2"
+                    disabled={selectedDupeGroups.size === 0 || removeDupesMutation.isPending}
+                    onClick={handleConfirmRemoveDupes}
+                    data-testid="button-confirm-remove-dupes"
+                  >
+                    {removeDupesMutation.isPending
+                      ? <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      : <XCircle className="mr-2 h-4 w-4" />}
+                    Archive extras in {selectedDupeGroups.size} group{selectedDupeGroups.size === 1 ? "" : "s"}
+                  </Button>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
         )}
       </DialogContent>
     </Dialog>

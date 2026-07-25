@@ -722,6 +722,8 @@ export interface IStorage {
   getStudioImportBatches(projectId?: string): Promise<StudioImportBatch[]>;
   rollbackStudioImportBatch(id: string): Promise<number>;
   getStudioIdeasDueOn(date: string): Promise<StudioContentIdea[]>;
+  findDuplicateStudioContentIdeas(projectId: string): Promise<{ topic: string; scheduledDate: string | null; ids: string[]; createdAts: string[]; keeperId: string }[]>;
+  bulkArchiveStudioContentIdeas(ids: string[]): Promise<number>;
 
   // Studio T2 — campaigns + outreach (Task #907)
   getStudioCampaigns(projectId?: string): Promise<StudioCampaign[]>;
@@ -4363,6 +4365,65 @@ export class DatabaseStorage implements IStorage {
           sql`${studioContentIdeas.status} NOT IN ('published','done','rejected')`,
         ),
       );
+  }
+
+  async findDuplicateStudioContentIdeas(projectId: string): Promise<{ topic: string; scheduledDate: string | null; ids: string[]; createdAts: string[]; keeperId: string }[]> {
+    const rows = await db
+      .select({
+        id: studioContentIdeas.id,
+        topic: studioContentIdeas.topic,
+        scheduledDate: studioContentIdeas.scheduledDate,
+        createdAt: studioContentIdeas.createdAt,
+      })
+      .from(studioContentIdeas)
+      .where(
+        and(
+          eq(studioContentIdeas.projectId, projectId),
+          isNull(studioContentIdeas.archivedAt),
+        ),
+      )
+      .orderBy(asc(studioContentIdeas.createdAt));
+
+    // Group by normalised topic + scheduledDate
+    const groupMap = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const dateKey = row.scheduledDate
+        ? (row.scheduledDate instanceof Date ? ymdStr(row.scheduledDate) : String(row.scheduledDate).slice(0, 10))
+        : "__none__";
+      const key = `${row.topic.trim().toLowerCase()}|||${dateKey}`;
+      const grp = groupMap.get(key) ?? [];
+      grp.push(row);
+      groupMap.set(key, grp);
+    }
+
+    const duplicates: { topic: string; scheduledDate: string | null; ids: string[]; createdAts: string[]; keeperId: string }[] = [];
+    for (const [, grp] of groupMap) {
+      if (grp.length < 2) continue;
+      // grp is already sorted by createdAt asc — first is keeper
+      const dateVal = grp[0].scheduledDate;
+      const scheduledDate = dateVal
+        ? (dateVal instanceof Date ? ymdStr(dateVal) : String(dateVal).slice(0, 10))
+        : null;
+      duplicates.push({
+        topic: grp[0].topic,
+        scheduledDate,
+        ids: grp.map((r) => r.id),
+        createdAts: grp.map((r) => (r.createdAt ? new Date(r.createdAt as any).toISOString() : "")),
+        keeperId: grp[0].id,
+      });
+    }
+    return duplicates;
+  }
+
+  async bulkArchiveStudioContentIdeas(ids: string[]): Promise<number> {
+    if (!ids.length) return 0;
+    const now = new Date();
+    const rows = await db
+      .update(studioContentIdeas)
+      .set({ archivedAt: now, updatedAt: now })
+      .where(and(inArray(studioContentIdeas.id, ids), isNull(studioContentIdeas.archivedAt)))
+      .returning({ id: studioContentIdeas.id });
+    return rows.length;
   }
 
   // ---- Studio T2: campaigns + outreach (Task #907) ----
