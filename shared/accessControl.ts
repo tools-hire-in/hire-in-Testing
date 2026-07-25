@@ -66,7 +66,7 @@ export const ACCESS_REGISTRY: AccessRegistry = {
   "admin.offerLetters.countersign": ["super_admin", "admin", "hr"],
   "admin.users.bulkUpload": ["super_admin", "admin", "manager"],
   "admin.users.delete": ["super_admin", "admin"],
-  "admin.users.externalEmailDomain": ["super_admin"],
+  "admin.users.externalEmailDomain": ["super_admin", "executive"],
   "admin.users.employmentStatus": ["super_admin", "admin", "manager"],
   "admin.users.hierarchy": ["super_admin", "admin", "hr", "manager"],
   "admin.users.patch": ["super_admin", "admin", "manager", "hr"],

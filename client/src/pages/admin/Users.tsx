@@ -278,8 +278,9 @@ export default function AdminUsers() {
       setNewEmail(""); setNewFirstName(""); setNewLastName(""); setNewRole("employee"); setExecToggle(false);
       setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary(""); setNewManagerId(""); setNewEmployeeCategory("experienced"); setNewShiftId("");
     },
-    onError: () => {
-      toast({ title: "Failed to invite user", description: "Please ensure the email ends with @hire-in.com", variant: "destructive" });
+    onError: (error: any) => {
+      const message = error?.error || error?.message || "Please ensure the email ends with @hire-in.com";
+      toast({ title: "Failed to invite user", description: message, variant: "destructive" });
     },
   });
 
