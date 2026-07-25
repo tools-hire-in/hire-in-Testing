@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { PolicyHint } from "@/components/shared/PolicyHint";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
@@ -584,7 +585,10 @@ function ClosePlanModal({ plan, open, onClose, onSuccess }: {
     <Dialog open={open} onOpenChange={v => !v && handleClose()}>
       <DialogContent data-testid="modal-close-plan">
         <DialogHeader>
-          <DialogTitle>Close Plan — Record Outcome</DialogTitle>
+          <DialogTitle className="flex items-center gap-1.5">
+            Close Plan — Record Outcome
+            <PolicyHint policyKey="plan_outcomes" />
+          </DialogTitle>
           <DialogDescription>
             {plan.employee_name} · {planTypeLabel(plan.plan_type)} Plan
           </DialogDescription>

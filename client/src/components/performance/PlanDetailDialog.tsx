@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { PolicyHint } from "@/components/shared/PolicyHint";
 import {
   Target,
   Calendar,
@@ -408,6 +409,8 @@ export function PlanDetailDialog({
               </Badge>
             )}
             <span>{data?.plan.employeeName ?? "Plan Details"}</span>
+            {data?.plan.planType === "pip" && <PolicyHint policyKey="pip_rule" />}
+            {data?.plan.planType === "probation" && <PolicyHint policyKey="probation_cadence" />}
           </DialogTitle>
           {data && (
             <DialogDescription className="flex flex-wrap gap-x-4 gap-y-1 text-sm">

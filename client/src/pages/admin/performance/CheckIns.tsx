@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { PolicyHint } from "@/components/shared/PolicyHint";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   MessageSquare,
@@ -653,8 +654,9 @@ function CheckInDetailDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle data-testid="text-checkin-detail-title">
+          <DialogTitle data-testid="text-checkin-detail-title" className="flex items-center gap-1.5">
             {milestoneTitle(checkIn) ?? "Check-In Details"}
+            <PolicyHint policyKey="probation_cadence" />
           </DialogTitle>
           <DialogDescription>
             {formatDate(checkIn.scheduledDate)} — {checkIn.employeeName} &amp; {checkIn.managerName}
@@ -688,6 +690,7 @@ function CheckInDetailDialog({
               <div className="flex items-center gap-1.5 text-sm font-medium text-orange-700 dark:text-orange-400">
                 <AlertCircle className="h-4 w-4" />
                 Update these overdue goals first
+                <PolicyHint policyKey="three_strike_escalation" />
               </div>
               <ul className="space-y-1">
                 {blockingGoals.map((g) => (

@@ -125,7 +125,7 @@ export function ManagerCommandCard({ compact = false }: ManagerCommandCardProps)
         data-testid="command-card-content"
       >
         {/* Probation Cadence */}
-        <div className="rounded-lg border bg-card p-4 space-y-3" data-testid="card-probation-cadence">
+        <div id="probation-cadence" className="rounded-lg border bg-card p-4 space-y-3" data-testid="card-probation-cadence">
           <div className="flex items-center gap-2">
             <Calendar className="h-4 w-4 text-primary shrink-0" />
             <h3 className="font-semibold text-sm">{data.probationCadence.title}</h3>
@@ -155,7 +155,7 @@ export function ManagerCommandCard({ compact = false }: ManagerCommandCardProps)
         </div>
 
         {/* 3-Strike Escalation */}
-        <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3" data-testid="card-three-strike">
+        <div id="three-strike-escalation" className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-3" data-testid="card-three-strike">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
             <h3 className="font-semibold text-sm">{data.threeStrikeEscalation.title}</h3>
@@ -174,7 +174,7 @@ export function ManagerCommandCard({ compact = false }: ManagerCommandCardProps)
         </div>
 
         {/* PIP Rule */}
-        <div className="rounded-lg border bg-card p-4 space-y-2" data-testid="card-pip-rule">
+        <div id="pip-rule" className="rounded-lg border bg-card p-4 space-y-2" data-testid="card-pip-rule">
           <div className="flex items-center gap-2">
             <TrendingUp className="h-4 w-4 text-amber-600 shrink-0" />
             <h3 className="font-semibold text-sm">{data.pipRule.title}</h3>
@@ -183,7 +183,7 @@ export function ManagerCommandCard({ compact = false }: ManagerCommandCardProps)
         </div>
 
         {/* Attendance Correction Window */}
-        <div className="rounded-lg border bg-card p-4 space-y-3" data-testid="card-correction-window">
+        <div id="correction-window" className="rounded-lg border bg-card p-4 space-y-3" data-testid="card-correction-window">
           <div className="flex items-center gap-2">
             <Clock className="h-4 w-4 text-blue-600 shrink-0" />
             <h3 className="font-semibold text-sm">{data.correctionWindow.title}</h3>
@@ -198,7 +198,7 @@ export function ManagerCommandCard({ compact = false }: ManagerCommandCardProps)
         </div>
 
         {/* Leave LWP Warning */}
-        <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3" data-testid="card-lwp-warning">
+        <div id="leave-lwp-warning" className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/30 p-4 space-y-3" data-testid="card-lwp-warning">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
             <h3 className="font-semibold text-sm">{data.leaveLwpWarning.title}</h3>
@@ -217,7 +217,7 @@ export function ManagerCommandCard({ compact = false }: ManagerCommandCardProps)
         </div>
 
         {/* Plan Outcomes */}
-        <div className="rounded-lg border bg-card p-4 space-y-3" data-testid="card-plan-outcomes">
+        <div id="plan-outcomes" className="rounded-lg border bg-card p-4 space-y-3" data-testid="card-plan-outcomes">
           <div className="flex items-center gap-2">
             <Target className="h-4 w-4 text-green-600 shrink-0" />
             <h3 className="font-semibold text-sm">{data.planOutcomes.title}</h3>
@@ -247,7 +247,7 @@ export function ManagerCommandCard({ compact = false }: ManagerCommandCardProps)
         </div>
 
         {/* SOP Enforcement Levels */}
-        <div className="rounded-lg border bg-card p-4 space-y-3" data-testid="card-sop-enforcement">
+        <div id="sop-enforcement-levels" className="rounded-lg border bg-card p-4 space-y-3" data-testid="card-sop-enforcement">
           <div className="flex items-center gap-2">
             <Shield className="h-4 w-4 text-indigo-600 shrink-0" />
             <h3 className="font-semibold text-sm">{data.sopEnforcementLevels.title}</h3>
@@ -273,7 +273,7 @@ export function ManagerCommandCard({ compact = false }: ManagerCommandCardProps)
         </div>
 
         {/* Training Compliance Lock */}
-        <div className="rounded-lg border bg-card p-4 space-y-3" data-testid="card-compliance-lock">
+        <div id="training-compliance-lock" className="rounded-lg border bg-card p-4 space-y-3" data-testid="card-compliance-lock">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-orange-500 shrink-0" />
             <h3 className="font-semibold text-sm">{data.trainingComplianceLock.title}</h3>

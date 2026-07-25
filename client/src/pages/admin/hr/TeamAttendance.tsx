@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PolicyHint } from "@/components/shared/PolicyHint";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Clock, ChevronLeft, ChevronRight, Download, X, ArrowLeft, Coffee, UtensilsCrossed, Pencil, AlertTriangle, CheckCircle } from "lucide-react";
@@ -1142,7 +1143,10 @@ function MemberMonthlyCalendar({
       <Dialog open={!!(editRecord || editAbsentDate)} onOpenChange={(open) => { if (!open) { setEditRecord(null); setEditAbsentDate(null); } }}>
         <DialogContent className="sm:max-w-md" data-testid="dialog-correct-attendance">
           <DialogHeader>
-            <DialogTitle>Correct Attendance Hours</DialogTitle>
+            <DialogTitle className="flex items-center gap-1.5">
+              Correct Attendance Hours
+              <PolicyHint policyKey="correction_window" />
+            </DialogTitle>
           </DialogHeader>
           {(editRecord || editAbsentDate) && (
             <div className="space-y-4">

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { PolicyHint } from "@/components/shared/PolicyHint";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { CalendarCheck, Check, X } from "lucide-react";
@@ -233,8 +234,9 @@ export default function LeaveApprovals() {
         <Dialog open={!!reviewData} onOpenChange={() => setReviewData(null)}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle>
+              <DialogTitle className="flex items-center gap-1.5">
                 {reviewData?.action === "approved" ? "Approve" : "Reject"} Leave Request
+                <PolicyHint policyKey="leave_lwp_warning" />
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">

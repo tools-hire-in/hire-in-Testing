@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { PolicyHint } from "@/components/shared/PolicyHint";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   GraduationCap, CheckCircle, Lock, ChevronRight, Clock, BookOpen,
@@ -1231,7 +1232,10 @@ export default function MyTraining() {
           <Alert variant="destructive" data-testid="banner-compliance-lock">
             <ShieldAlert className="h-4 w-4" />
             <AlertDescription>
-              <p className="font-semibold">Portal Locked — Overdue Training</p>
+              <p className="font-semibold flex items-center gap-1.5">
+                Portal Locked — Overdue Training
+                <PolicyHint policyKey="training_compliance_lock" />
+              </p>
               <p className="text-sm mt-1">
                 Your portal access is restricted because you have {complianceStatus?.overdueCount} overdue training
                 {(complianceStatus?.overdueCount ?? 0) === 1 ? " track" : " tracks"}:
