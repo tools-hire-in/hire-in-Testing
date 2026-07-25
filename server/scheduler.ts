@@ -366,6 +366,15 @@ export function startScheduler() {
     schedule: "Daily 7 AM IST",
     handler: handleGovernanceSyncSweep,
   });
+  JOB_REGISTRY.set("inbox_escalation_sweep", {
+    name: "inbox_escalation_sweep",
+    label: "Manager Inbox Auto-Escalation Sweep",
+    schedule: "Daily 8 AM IST",
+    handler: async () => {
+      const { runInboxEscalationSweep } = await import("./inboxEscalationSweep");
+      return runInboxEscalationSweep();
+    },
+  });
   JOB_REGISTRY.set("zoom_comms_sync", {
     name: "zoom_comms_sync",
     label: "Zoom Daily Comms Sync",
@@ -1793,6 +1802,28 @@ export function startScheduler() {
       );
     } catch (err) {
       console.error("[scheduler] Unified governance sync sweep failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
+  // ─── Manager Inbox auto-escalation sweep — daily 08:00 IST ───────────────────
+  // Any item that has been sitting without action for ≥ 48 h is auto-escalated
+  // to the next tier; super_admin items that are ≥ 24 h unresolved stay at tier
+  // but get a red governance-risk badge on the GovernanceHub.
+  cron.schedule("0 8 * * *", async () => {
+    const _envMode = await getEnvMode();
+    if (_envMode !== "production") {
+      console.log(`[scheduler] [SUSPENDED] inbox_escalation_sweep — env_mode=${_envMode}`);
+      return;
+    }
+    const _entry = JOB_REGISTRY.get("inbox_escalation_sweep");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
+    console.log("[scheduler] Running manager inbox auto-escalation sweep...");
+    try {
+      const { runInboxEscalationSweep } = await import("./inboxEscalationSweep");
+      const result = await runInboxEscalationSweep();
+      console.log(`[scheduler] Inbox escalation sweep: escalated=${result.escalated}, notified=${result.notified}`);
+    } catch (err) {
+      console.error("[scheduler] Inbox escalation sweep failed:", err);
     }
   }, { timezone: "Asia/Kolkata" });
 

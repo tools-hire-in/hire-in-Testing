@@ -211,6 +211,14 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
     category: "hr",
     typePrefixes: ["ceipal_morning_reminder", "ceipal_manager_alert", "ceipal_"],
   },
+  // ── Manager Inbox ─────────────────────────────────────────────────────────
+  {
+    key: "hr_action_required",
+    label: "Manager inbox escalations",
+    description: "Notifications when an inbox item is escalated to you or approaches the 48-hour deferral cap.",
+    category: "hr",
+    typePrefixes: ["hr_action_required"],
+  },
   // ── Recognition Certificates ─────────────────────────────────────────────
   {
     key: "recognition_certificates",

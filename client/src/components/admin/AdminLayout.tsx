@@ -1697,6 +1697,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
   });
   const blastPendingCount = blastPendingData?.pending_count ?? 0;
 
+
   // Salary advance pending approval badge (managers + final approver)
   const { data: salaryAdvanceStats } = useQuery<{ pendingManager: number; pendingFinal: number; active: number; pendingCeo?: number }>({
     queryKey: ["/api/salary-advances/stats"],
@@ -1884,6 +1885,12 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
       roles: ["super_admin", "admin"],
     }] : []),
     // Payroll Dashboard is rendered as a dedicated PayrollSection (expandable) — not here
+    ...(["manager", "hr", "admin", "super_admin"].includes(userRole) ? [{
+      href: "/admin/inbox",
+      label: "Manager Inbox",
+      icon: Inbox,
+      roles: ["super_admin", "admin", "hr", "manager"],
+    }] : []),
     ...(hasHelpDeskAccess ? [{
       href: "/admin/help-desk",
       label: "Help Desk",
@@ -1961,6 +1968,7 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
     if (href === "/admin/studio/authors") return location.startsWith("/admin/studio/authors");
     if (href === "/admin/sops/my-reviews") return location === "/admin/sops/my-reviews" || location.startsWith("/admin/sops/my-reviews");
     if (href === "/admin/onboarding") return location === "/admin/onboarding" || location.startsWith("/admin/onboarding");
+    if (href === "/admin/inbox") return location === "/admin/inbox" || location.startsWith("/admin/inbox");
     return location.startsWith(href);
   };
 

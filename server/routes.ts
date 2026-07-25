@@ -158,8 +158,8 @@ import { registerZoomCommsRoutes } from "./zoomCommsRoutes";
 import { provisionRayoUser, isRayoEnabled } from "./rayoAcademyClient";
 import { registerTrainingCatalogRoutes } from "./trainingCatalogRoutes";
 import { registerGovernanceRoutes } from "./governanceRoutes";
+import { registerInboxRoutes } from "./inboxRoutes";
 import { registerCopilotRoutes } from "./copilotRoutes";
-import { registerZoomCommsRoutes } from "./zoomCommsRoutes";
 import { registerCeoRoutes } from "./ceoRoutes";
 import { registerObservationRoutes } from "./observationRoutes";
 import { registerSalaryStructureRoutes, seedDefaultSalaryStructure, getPtCustomSlabs } from "./salaryStructureRoutes";
@@ -29455,10 +29455,10 @@ Return JSON with keys: linkedin, instagram, facebook.`;
   registerZoomCommsRoutes(app);
   registerTrainingCatalogRoutes(app);
   registerGovernanceRoutes(app);
+  registerInboxRoutes(app);
   registerCopilotRoutes(app);
   registerCeoRoutes(app);
   registerObservationRoutes(app);
-  registerZoomCommsRoutes(app);
 
   // ── Email Blast Review Queue routes (super_admin + admin) ──────────────────
   // GET  /api/admin/blasts               — list blasts (optional ?status=pending)

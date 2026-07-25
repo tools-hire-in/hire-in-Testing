@@ -5644,3 +5644,59 @@ export const recognitionCertificateViewsRelations = relations(recognitionCertifi
 export const insertRecognitionCertificateSchema = createInsertSchema(recognitionCertificates).omit({ id: true, createdAt: true, updatedAt: true, issuedAt: true });
 export type RecognitionCertificate = typeof recognitionCertificates.$inferSelect;
 export type InsertRecognitionCertificate = z.infer<typeof insertRecognitionCertificateSchema>;
+
+// ==========================================
+// MANAGER INBOX TABLES
+// ==========================================
+// NOTE: Tables created via scripts/apply-inbox-schema.ts (not drizzle push)
+// because enum creation stalls the interactive drizzle-kit prompt.
+// schema.ts is kept in sync for type safety.
+
+export const inboxAssigneeTierEnum = pgEnum("inbox_assignee_tier", ["manager", "hr_admin", "super_admin"]);
+export const inboxItemTypeEnum = pgEnum("inbox_item_type", [
+  "leave_approval", "offer_letter", "probation_checkin",
+  "attendance_correction", "pip_checkin", "training_compliance",
+]);
+export const inboxItemStatusEnum = pgEnum("inbox_item_status", ["new", "deferred", "escalated", "resolved"]);
+export const inboxAuditActionEnum = pgEnum("inbox_audit_action", [
+  "deferred", "escalated", "auto_escalated", "act_clicked", "resolved",
+]);
+
+export const managerActionDueDates = pgTable("manager_action_due_dates", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  assigneeId: varchar("assignee_id").notNull().references(() => adminUsers.id),
+  assigneeTier: inboxAssigneeTierEnum("assignee_tier").notNull(),
+  itemType: inboxItemTypeEnum("item_type").notNull(),
+  itemId: varchar("item_id").notNull(),
+  deferUntil: timestamp("defer_until"),
+  escalatedAt: timestamp("escalated_at"),
+  escalationReason: text("escalation_reason"),
+  originalAssignedAt: timestamp("original_assigned_at").defaultNow(),
+  status: inboxItemStatusEnum("status").notNull().default("new"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("uq_inbox_assignee_item").on(table.assigneeId, table.itemType, table.itemId),
+]);
+
+export const managerInboxAudit = pgTable("manager_inbox_audit", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  actionDueDateId: varchar("action_due_date_id").notNull().references(() => managerActionDueDates.id, { onDelete: "cascade" }),
+  actorId: varchar("actor_id").notNull().references(() => adminUsers.id),
+  action: inboxAuditActionEnum("action").notNull(),
+  note: text("note"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const managerActionDueDatesRelations = relations(managerActionDueDates, ({ one, many }) => ({
+  assignee: one(adminUsers, { fields: [managerActionDueDates.assigneeId], references: [adminUsers.id] }),
+  auditEntries: many(managerInboxAudit),
+}));
+
+export const managerInboxAuditRelations = relations(managerInboxAudit, ({ one }) => ({
+  actionDueDate: one(managerActionDueDates, { fields: [managerInboxAudit.actionDueDateId], references: [managerActionDueDates.id] }),
+  actor: one(adminUsers, { fields: [managerInboxAudit.actorId], references: [adminUsers.id] }),
+}));
+
+export type ManagerActionDueDate = typeof managerActionDueDates.$inferSelect;
+export type ManagerInboxAudit = typeof managerInboxAudit.$inferSelect;

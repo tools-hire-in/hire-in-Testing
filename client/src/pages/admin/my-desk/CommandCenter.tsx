@@ -21,6 +21,7 @@ import {
   ShieldAlert,
   BookOpen,
   CheckCircle2,
+  Inbox,
 } from "lucide-react";
 import CeipalComplianceModal, { CeipalComplianceCard } from "@/components/admin/CeipalComplianceModal";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -226,6 +227,21 @@ export default function CommandCenter() {
   const isManagerRole = ["manager", "hr", "admin", "super_admin", "operations"].includes(user?.role || "");
   const isManager = ["manager", "hr", "admin", "super_admin"].includes(user?.role || "");
 
+  // Manager inbox banner — surfaces ONLY after a successful punch-in or punch-out
+  const [showInboxBanner, setShowInboxBanner] = useState(false);
+  const [inboxBannerDismissed, setInboxBannerDismissed] = useState(false);
+  const { data: inboxCountForBanner, refetch: refetchInboxCount } = useQuery<{ count: number; urgentCount: number; todayDueCount: number }>({
+    queryKey: ["/api/inbox/count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/inbox/count", { credentials: "include" });
+        if (!res.ok) return { count: 0, urgentCount: 0, todayDueCount: 0 };
+        return res.json();
+      } catch { return { count: 0, urgentCount: 0, todayDueCount: 0 }; }
+    },
+    enabled: false, // Only fetched on demand after punch events
+  });
+
   // My own manager obligations (manager_checkin_obligation / manager_coaching_obligation
   // where owner_id = me). Uses a dedicated endpoint so we don't conflate "my obligations"
   // with "my team's compliance breakdown" (/manager/:id/breakdown uses manager_id = me).
@@ -321,9 +337,17 @@ export default function CommandCenter() {
 
   const punchInMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hr/attendance/punch-in"),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/dashboard-stats"] });
       toast({ title: "Punched In", description: "Your attendance has been recorded." });
+      if (isManager) {
+        const result = await refetchInboxCount();
+        // Punch-in: show banner for any active (new) inbox items
+        if ((result.data?.count ?? 0) > 0) {
+          setShowInboxBanner(true);
+          setInboxBannerDismissed(false);
+        }
+      }
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message || "Failed to punch in", variant: "destructive" });
@@ -332,12 +356,20 @@ export default function CommandCenter() {
 
   const punchOutMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/hr/attendance/punch-out"),
-    onSuccess: () => {
+    onSuccess: async () => {
       queryClient.invalidateQueries({ queryKey: ["/api/hr/dashboard-stats"] });
       toast({ title: "Punched Out", description: "See you next shift!" });
       // Show Ceipal checkpoint for eligible roles who haven't answered today
       if (isCeipalEligible && ceipalTodayStatus?.promptEnabled !== false && !ceipalTodayStatus?.hasAnsweredToday) {
         setTimeout(() => setCeipalModalOpen(true), 600);
+      }
+      if (isManager) {
+        const result = await refetchInboxCount();
+        // Punch-out: show banner for items first assigned today that are still unresolved
+        if ((result.data?.todayDueCount ?? 0) > 0) {
+          setShowInboxBanner(true);
+          setInboxBannerDismissed(false);
+        }
       }
     },
     onError: (err: any) => {
@@ -468,6 +500,41 @@ export default function CommandCenter() {
             <GraduationCap className="h-3.5 w-3.5 mr-1.5" />
             My Growth
           </Button>
+        </Alert>
+      )}
+
+      {/* Manager inbox action banner — shown only after a successful punch-in or punch-out */}
+      {isManager && showInboxBanner && !inboxBannerDismissed && (inboxCountForBanner?.count ?? 0) > 0 && (
+        <Alert
+          className="flex items-center justify-between gap-4 border-blue-300 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-700"
+          data-testid="cc-inbox-banner"
+        >
+          <div className="flex items-center gap-3">
+            <Inbox className="h-5 w-5 shrink-0 text-blue-600" />
+            <AlertDescription className="text-blue-800 dark:text-blue-200">
+              You have <strong>{inboxCountForBanner!.count}</strong> pending action{inboxCountForBanner!.count !== 1 ? "s" : ""} in your inbox.
+            </AlertDescription>
+          </div>
+          <div className="flex items-center gap-2 shrink-0">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setLocation("/admin/inbox")}
+              className="border-blue-300 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:text-blue-300"
+              data-testid="cc-link-go-inbox"
+            >
+              <Inbox className="h-3.5 w-3.5 mr-1.5" />
+              Open Inbox
+            </Button>
+            <button
+              onClick={() => setInboxBannerDismissed(true)}
+              className="rounded p-1 text-blue-600 hover:text-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+              aria-label="Dismiss"
+              data-testid="cc-dismiss-inbox-banner"
+            >
+              <X className="h-3.5 w-3.5" />
+            </button>
+          </div>
         </Alert>
       )}
 

@@ -992,6 +992,62 @@ function PendingWaveApprovalsCard() {
   );
 }
 
+function EscalatedInboxRiskCard() {
+  const [, setLocation] = useLocation();
+
+  const { data, isLoading } = useQuery<{ count: number; over24h: number }>({
+    queryKey: ["/api/inbox/escalated-count"],
+    queryFn: async () => {
+      try {
+        const res = await fetch("/api/inbox/escalated-count", { credentials: "include" });
+        if (!res.ok) return { count: 0, over24h: 0 };
+        return res.json();
+      } catch { return { count: 0, over24h: 0 }; }
+    },
+    staleTime: 60000,
+    refetchInterval: 120000,
+  });
+
+  if (isLoading || !data || data.count === 0) return null;
+
+  const isRisk = data.over24h > 0;
+
+  return (
+    <Card
+      className={`border-2 ${isRisk ? "border-red-400 bg-red-50 dark:bg-red-950/20 dark:border-red-700" : "border-orange-300 bg-orange-50 dark:bg-orange-950/20 dark:border-orange-700"}`}
+      data-testid="escalated-inbox-risk-card"
+    >
+      <CardHeader className="pb-2">
+        <CardTitle className={`text-base flex items-center gap-2 ${isRisk ? "text-red-700 dark:text-red-300" : "text-orange-700 dark:text-orange-300"}`}>
+          <ShieldAlert className="h-4 w-4" />
+          {isRisk ? "Governance Risk — Escalated Items" : "Escalated Inbox Items"}
+          {isRisk && (
+            <Badge className="bg-red-500 text-white hover:bg-red-500 text-[10px] h-4 px-1.5">
+              {data.over24h} over 24h
+            </Badge>
+          )}
+        </CardTitle>
+        <p className={`text-xs ${isRisk ? "text-red-600 dark:text-red-400" : "text-orange-600 dark:text-orange-400"}`}>
+          {data.count} item{data.count !== 1 ? "s" : ""} escalated to super-admin level
+          {isRisk ? ` — ${data.over24h} unresolved for over 24 hours.` : "."}
+        </p>
+      </CardHeader>
+      <CardContent>
+        <Button
+          size="sm"
+          variant={isRisk ? "destructive" : "outline"}
+          onClick={() => setLocation("/admin/inbox?tier=super_admin")}
+          className={!isRisk ? "border-orange-400 text-orange-700 hover:bg-orange-100 dark:border-orange-600 dark:text-orange-300" : ""}
+          data-testid="button-view-escalated-inbox"
+        >
+          <ShieldAlert className="h-3.5 w-3.5 mr-1.5" />
+          Review Inbox
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 function ManagerReadinessCard() {
   const { toast } = useToast();
   const [readinessSent, setReadinessSent] = useState<Set<number>>(new Set());
@@ -1215,6 +1271,11 @@ export default function GovernanceHub() {
           </TabsList>
 
           <TabsContent value="overview">
+            {role === "super_admin" && (
+              <div className="mb-4">
+                <EscalatedInboxRiskCard />
+              </div>
+            )}
             {["super_admin", "admin"].includes(role || "") && (
               <div className="mb-4">
                 <PendingWaveApprovalsCard />

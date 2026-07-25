@@ -137,6 +137,7 @@ const HelpGuides = lazy(() => import("@/pages/admin/HelpGuides"));
 const KnowledgeHub = lazy(() => import("@/pages/admin/KnowledgeHub"));
 const Integrations = lazy(() => import("@/pages/admin/Integrations"));
 const GovernanceHub = lazy(() => import("@/pages/admin/governance/GovernanceHub"));
+const InboxPage = lazy(() => import("@/pages/admin/InboxPage"));
 const DevToolsPage = lazy(() => import("@/pages/admin/DevTools"));
 const NotificationSettings = lazy(() => import("@/pages/admin/NotificationSettings"));
 const NotificationBlasts = lazy(() => import("@/pages/admin/NotificationBlasts"));
@@ -369,6 +370,9 @@ function PublicRouter() {
 
       {/* Governance Hub — Action Required feed, nudge & escalate */}
       <Route path="/admin/governance">{() => <Suspense fallback={<AdminFallback />}><GovernanceHub /></Suspense>}</Route>
+
+      {/* Manager Inbox — action triage with escalation chain */}
+      <Route path="/admin/inbox">{() => <Suspense fallback={<AdminFallback />}><InboxPage /></Suspense>}</Route>
 
       {/* Process Governance Center — SOP library */}
       <Route path="/admin/sops/compliance">{() => <Suspense fallback={<AdminFallback />}><SOPCompliance /></Suspense>}</Route>
@@ -604,6 +608,9 @@ function EmployeeRouter() {
 
       {/* Governance Hub — Action Required feed, nudge & escalate */}
       <Route path="/admin/governance">{() => <Suspense fallback={<AdminFallback />}><GovernanceHub /></Suspense>}</Route>
+
+      {/* Manager Inbox — action triage with escalation chain */}
+      <Route path="/admin/inbox">{() => <Suspense fallback={<AdminFallback />}><InboxPage /></Suspense>}</Route>
 
       {/* Process Governance Center — SOP library */}
       <Route path="/admin/sops/compliance">{() => <Suspense fallback={<AdminFallback />}><SOPCompliance /></Suspense>}</Route>
