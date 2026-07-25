@@ -821,6 +821,9 @@ export const hrLetterStatusEnum = pgEnum("hr_letter_status", [
   "issued",
   "reissued",
   "revoked",
+  "needs_revision",
+  "resubmitted",
+  "withdrawn",
 ]);
 
 export const hrLetterPerformanceBandEnum = pgEnum("hr_letter_performance_band", [
@@ -901,6 +904,10 @@ export const hrLetters = pgTable("hr_letters", {
   metadata: jsonb("metadata"),
   manualEmployeeEmail: varchar("manual_employee_email"),
   annexureData: jsonb("annexure_data"),
+  draftData: jsonb("draft_data"),
+  revisionRound: integer("revision_round").notNull().default(0),
+  revisionReason: text("revision_reason"),
+  ccRecipients: jsonb("cc_recipients"),
 }, (table) => [
   uniqueIndex("hr_letters_reference_number_idx").on(table.referenceNumber),
 ]);
@@ -918,6 +925,33 @@ export const insertHrLetterSchema = createInsertSchema(hrLetters).omit({
   authCode: true,
   documentHash: true,
 });
+
+export const letterReviewCycleActionEnum = pgEnum("letter_review_cycle_action", [
+  "approved",
+  "needs_revision",
+  "withdrawn",
+  "resubmitted",
+]);
+
+export const letterReviewCycles = pgTable("letter_review_cycles", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  letterId: varchar("letter_id").notNull(),
+  letterType: varchar("letter_type").notNull(),
+  round: integer("round").notNull(),
+  action: letterReviewCycleActionEnum("action").notNull(),
+  reason: text("reason"),
+  reviewedBy: varchar("reviewed_by").references(() => adminUsers.id),
+  reviewedAt: timestamp("reviewed_at").notNull().defaultNow(),
+}, (table) => [
+  index("letter_review_cycles_letter_idx").on(table.letterId, table.letterType),
+]);
+
+export const insertLetterReviewCycleSchema = createInsertSchema(letterReviewCycles).omit({
+  id: true,
+  reviewedAt: true,
+});
+export type InsertLetterReviewCycle = z.infer<typeof insertLetterReviewCycleSchema>;
+export type LetterReviewCycle = typeof letterReviewCycles.$inferSelect;
 
 // ==========================================
 // PERFORMANCE MANAGEMENT SYSTEM
