@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import {
   FileText, Loader2, Search, ChevronRight, ChevronLeft, Eye, CheckCircle,
   TrendingUp, Award, Layers, Laptop, Plus, Trash2, Mail, Cloud, CloudOff,
-  AlertTriangle, RotateCcw, AlertCircle,
+  AlertTriangle, RotateCcw, AlertCircle, Sparkles, X,
 } from "lucide-react";
 import { useDraft } from "@/hooks/useDraft";
 import { AnnexureEditor, buildGoalsFromAnnexures, type AnnexureItem } from "./AnnexureEditor";
@@ -226,6 +227,7 @@ function buildSentencesOverride(sentences: LetterTemplateSentence[]): LetterSent
 export function LetterGenerator({ editingLetter, onResubmitted }: LetterGeneratorProps = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
+  const [, navigate] = useLocation();
   const [step, setStep] = useState(editingLetter ? 1 : 0);
   const [form, setForm] = useState<FormData>(editingLetter ? buildFormFromLetter(editingLetter) : { ...defaultForm });
   const [amendmentMeta, setAmendmentMeta] = useState<AmendmentMeta>(editingLetter ? buildAmendmentMetaFromLetter(editingLetter) : { ...defaultAmendmentMeta });
@@ -238,6 +240,11 @@ export function LetterGenerator({ editingLetter, onResubmitted }: LetterGenerato
   const [annexures, setAnnexures] = useState<AnnexureItem[]>([]);
   const [amendmentPolicyAnnexures, setAmendmentPolicyAnnexures] = useState<string[]>([]);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const [growthPlanSuggestion, setGrowthPlanSuggestion] = useState<{
+    employeeId: string;
+    employeeName: string;
+    newDesignation: string;
+  } | null>(null);
 
   const { draftId, saveState, rehydratedLetter, isRehydrating, saveDraft, discardDraft, clearDraft } = useDraft();
   const rehydrated = useRef(false);
@@ -431,7 +438,7 @@ export function LetterGenerator({ editingLetter, onResubmitted }: LetterGenerato
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/hr/letters", data);
-      return res.json() as Promise<{ id: string; referenceNumber?: string; templateType?: string }>;
+      return res.json() as Promise<{ id: string; referenceNumber?: string; templateType?: string; suggestGrowthPlan?: boolean }>;
     },
     onSuccess: async (data) => {
       const isAmendment = data.templateType && (AMENDMENT_TEMPLATE_TYPES as readonly string[]).includes(data.templateType);
@@ -450,6 +457,14 @@ export function LetterGenerator({ editingLetter, onResubmitted }: LetterGenerato
           amendmentMeta.effectiveDate,
           annexures
         );
+      }
+      // Capture before form reset — show growth plan suggestion if backend signals one
+      if (data.suggestGrowthPlan && form.employeeId && form.employeeName) {
+        setGrowthPlanSuggestion({
+          employeeId: form.employeeId,
+          employeeName: form.employeeName,
+          newDesignation: amendmentMeta.newDesignation || form.designation || "",
+        });
       }
       toast({ title: "Letter created", description: isAmendment ? "DOCX downloaded successfully." : "Letter has been generated successfully." });
       clearDraft();
@@ -730,6 +745,42 @@ export function LetterGenerator({ editingLetter, onResubmitted }: LetterGenerato
 
   return (
     <>
+    {growthPlanSuggestion && (
+      <div
+        className="mb-4 flex items-start gap-3 rounded-lg border border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-700 p-4"
+        data-testid="banner-suggest-growth-plan"
+      >
+        <Sparkles className="h-5 w-5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+        <div className="flex-1 text-sm">
+          <p className="font-semibold text-blue-800 dark:text-blue-200 mb-0.5">
+            Start a Growth Plan for {growthPlanSuggestion.employeeName}?
+          </p>
+          <p className="text-blue-700 dark:text-blue-300">
+            {growthPlanSuggestion.employeeName} has been promoted
+            {growthPlanSuggestion.newDesignation ? ` to ${growthPlanSuggestion.newDesignation}` : ""}. They don't have an active growth plan yet — a good time to start one.
+          </p>
+          <Button
+            size="sm"
+            className="mt-2"
+            onClick={() => {
+              setGrowthPlanSuggestion(null);
+              navigate(`/admin/hr/my-team?tab=plans`);
+            }}
+            data-testid="button-start-growth-plan"
+          >
+            Go to Plans
+          </Button>
+        </div>
+        <button
+          onClick={() => setGrowthPlanSuggestion(null)}
+          className="text-blue-500 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-200 shrink-0"
+          data-testid="button-dismiss-growth-plan-banner"
+          aria-label="Dismiss"
+        >
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+    )}
     {showDiscardDialog && (
       <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" data-testid="dialog-discard-draft">
         <div className="bg-background rounded-lg border shadow-lg p-6 max-w-sm w-full mx-4">

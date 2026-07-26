@@ -27882,7 +27882,57 @@ Return JSON with keys: linkedin, instagram, facebook.`;
           }
         }
 
-        return res.status(201).json(issueResult.letter);
+        // Downward population from amendment issuance (Task #1650).
+        // Promotion = role_change template, OR salary_revision where metadata carries
+        // a real designation change (old ≠ new). Salary-only revisions without a title
+        // change are not treated as promotions and do not trigger the growth-plan prompt.
+        let suggestGrowthPlan = false;
+        const amendMeta = (draft.metadata ?? {}) as Record<string, any>;
+        const isPromotion = draft.templateType === "role_change" ||
+          (draft.templateType === "salary_revision" &&
+           amendMeta.oldDesignation &&
+           amendMeta.newDesignation &&
+           String(amendMeta.oldDesignation).trim() !== String(amendMeta.newDesignation).trim());
+
+        if (isPromotion && resolvedEmployeeId) {
+          try {
+            const gpCheck = await db.execute(sql`
+              SELECT ep.id, ep.manager_id
+              FROM employee_plans ep
+              WHERE ep.employee_id = ${resolvedEmployeeId}
+                AND ep.plan_type = 'growth'::employee_plan_type
+                AND ep.status = 'active'::employee_plan_status
+              LIMIT 1
+            `);
+            const newDesig = String(amendMeta.newDesignation || draft.designation || "their new role");
+            const empName = draft.employeeName;
+
+            if (gpCheck.rows.length > 0) {
+              // Active growth plan exists → notify the manager to review goals
+              const activePlan = gpCheck.rows[0] as any;
+              if (activePlan.manager_id) {
+                const { notifyUser } = await import("./notifications");
+                await notifyUser({
+                  userId: activePlan.manager_id,
+                  type: "growth_plan_goals_review_prompt",
+                  title: `Update ${empName}'s growth goals for their new role`,
+                  message: `${empName} has been promoted to ${newDesig}. Consider updating their growth goals to reflect their new responsibilities.`,
+                  metadata: {
+                    employeeId: resolvedEmployeeId,
+                    planId: activePlan.id,
+                    newDesignation: newDesig,
+                    deepLink: `/admin/hr/my-team?tab=plans&planId=${activePlan.id}`,
+                  },
+                }).catch(() => { /* non-fatal */ });
+              }
+            } else {
+              // No active growth plan + promotion → suggest starting one in the UI
+              suggestGrowthPlan = true;
+            }
+          } catch { /* non-fatal */ }
+        }
+
+        return res.status(201).json({ ...issueResult.letter, suggestGrowthPlan });
       }
 
       // --- STANDARD LETTER PATH ---

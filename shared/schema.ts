@@ -1145,8 +1145,9 @@ export const employeePlans = pgTable("employee_plans", {
   departmentScope: employeePlanDeptScopeEnum("department_scope").notNull().default("healthcare"),
   status: employeePlanStatusEnum("status").notNull().default("pending"),
   outcome: employeePlanOutcomeEnum("outcome"),
-  startDate: varchar("start_date").notNull(),
-  endDate: varchar("end_date").notNull(),
+  // Nullable: pending plans have no dates until the manager activates them.
+  startDate: varchar("start_date"),
+  endDate: varchar("end_date"),
   durationDays: integer("duration_days").notNull(),
   acknowledgedAt: timestamp("acknowledged_at"),
   acknowledgedBy: varchar("acknowledged_by").references(() => adminUsers.id),
@@ -1163,6 +1164,8 @@ export const employeePlans = pgTable("employee_plans", {
   // so that the "Action required" accountability banner can be surfaced on
   // the manager's Team Goals view when no coaching action has been taken.
   managerGoalEscalatedAt: timestamp("manager_goal_escalated_at"),
+  // HR must acknowledge a PIP plan before the manager's Activate button becomes enabled.
+  pipHrAcknowledgedAt: timestamp("pip_hr_acknowledged_at"),
   createdBy: varchar("created_by").notNull().references(() => adminUsers.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -1202,6 +1205,10 @@ export const planGoalTemplates = pgTable("plan_goal_templates", {
   targetMetric: varchar("target_metric"),
   sortOrder: integer("sort_order").notNull().default(0),
   isActive: boolean("is_active").notNull().default(true),
+  // Number of days after plan start_date when this goal is due.
+  // Used at activation time to populate goal.target_date.
+  // NULL = goal is due at plan end_date.
+  dueDayOffset: integer("due_day_offset"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [

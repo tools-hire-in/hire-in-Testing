@@ -41,11 +41,12 @@ interface EmployeePlan {
   department_scope: string;
   status: string;
   outcome: string | null;
-  start_date: string;
-  end_date: string;
+  start_date: string | null;
+  end_date: string | null;
   duration_days: number;
   acknowledged_at: string | null;
   acknowledged_by: string | null;
+  pip_hr_acknowledged_at: string | null;
   created_by: string;
   created_at: string | null;
   updated_at: string | null;
@@ -214,12 +215,14 @@ export async function resolveAttachedPlanGoals(opts: {
 // ─── Shared helper: seed plan-linked goals from a resolved goal set ───────────
 // Single canonical insert used by both the document-activation engine and the
 // onboarding probation activation, so goal columns stay consistent everywhere.
+// startDate/endDate are nullable — pending plans pass null and dates are
+// populated at activation time.
 export async function seedPlanGoals(
   planId: string,
   employeeId: string,
   managerId: string | null,
-  startDate: string,
-  endDate: string,
+  startDate: string | null,
+  endDate: string | null,
   goals: SeedGoal[],
 ): Promise<number> {
   const sourceRef = `plan:${planId}`;
@@ -251,9 +254,8 @@ export async function ensurePlanFromDocument(opts: {
   offerLetterId?: string | null;
   effectiveDate?: string | null;
   // The date the EMPLOYEE actually signed the addendum (addendum.accepted_at).
-  // Addendum-attached plans (growth/pip/etc.) start from this signature date so a
-  // late-signed addendum doesn't start a plan mid-stream or already-expired.
-  // Falls back to effectiveDate, then today, when missing.
+  // Kept for back-compat; no longer used to set start_date (plans are now
+  // dormant until the manager explicitly activates them).
   signatureDate?: string | Date | null;
   createdBy: string;
   durationDays?: number;
@@ -280,41 +282,41 @@ export async function ensurePlanFromDocument(opts: {
   if (emp.rows.length === 0) return { created: false, reason: "employee_missing" };
   const managerId = ((emp.rows[0] as any)?.manager_id as string | undefined) ?? null;
 
-  // Start the plan on the employee's signature date when known (a late-signed
-  // addendum shouldn't start its plan back on the effective date). Fall back to
-  // the effective date, then today, preserving legacy behavior.
+  const durationDays = opts.durationDays ?? PLAN_DEFAULT_DURATION_DAYS[planType];
+
+  // Idempotency: a plan of this type for this employee already exists in a non-
+  // closed state. When an offer_letter_id is provided match by that first (new
+  // pending-plan path). Fall back to the legacy date-window match for already-
+  // activated plans created before this flow change so the startup backfill
+  // never double-creates a plan that was previously activated.
   const signatureDateStr = opts.signatureDate
     ? (opts.signatureDate instanceof Date
         ? opts.signatureDate.toISOString().slice(0, 10)
         : String(opts.signatureDate).slice(0, 10))
     : null;
-  const startDate = (signatureDateStr && signatureDateStr.trim())
+  const legacyStart = (signatureDateStr && signatureDateStr.trim())
     ? signatureDateStr
     : (opts.effectiveDate && opts.effectiveDate.trim())
       ? opts.effectiveDate.slice(0, 10)
-      : new Date().toISOString().slice(0, 10);
-  const durationDays = opts.durationDays ?? PLAN_DEFAULT_DURATION_DAYS[planType];
-  const endDate = new Date(new Date(startDate).getTime() + durationDays * 86400000)
-    .toISOString().slice(0, 10);
-
-  // Idempotency: a plan of this type for this employee + identical window already
-  // exists. Match the new signature-derived window OR the legacy effective-date
-  // window (both keyed on start AND end). Historical plans were created under the
-  // old rule with start_date = effective_date, so once the start source moved to
-  // the signature date the startup backfill would otherwise no longer recognize
-  // them and would double-create. Checking both windows keeps the backfill safe
-  // for already-activated addendums while preserving end-date-aware dedup.
+      : null;
+  const legacyEnd = legacyStart
+    ? new Date(new Date(legacyStart).getTime() + durationDays * 86400000).toISOString().slice(0, 10)
+    : null;
   const legacyEffectiveStart = (opts.effectiveDate && opts.effectiveDate.trim())
     ? opts.effectiveDate.slice(0, 10)
-    : startDate;
-  const legacyEffectiveEnd = new Date(new Date(legacyEffectiveStart).getTime() + durationDays * 86400000)
-    .toISOString().slice(0, 10);
+    : legacyStart;
+  const legacyEffectiveEnd = legacyEffectiveStart
+    ? new Date(new Date(legacyEffectiveStart).getTime() + durationDays * 86400000).toISOString().slice(0, 10)
+    : null;
+
   const dup = await db.execute(sql`
     SELECT id FROM employee_plans
     WHERE employee_id = ${employeeId} AND plan_type = ${planType}::employee_plan_type
+      AND status NOT IN ('closed', 'extended')
       AND (
-        (start_date = ${startDate} AND end_date = ${endDate})
-        OR (start_date = ${legacyEffectiveStart} AND end_date = ${legacyEffectiveEnd})
+        ${opts.offerLetterId != null} AND offer_letter_id = ${opts.offerLetterId ?? null}
+        OR ${legacyStart != null} AND start_date = ${legacyStart} AND end_date = ${legacyEnd}
+        OR ${legacyEffectiveStart != null} AND start_date = ${legacyEffectiveStart} AND end_date = ${legacyEffectiveEnd}
       )
     LIMIT 1
   `);
@@ -333,45 +335,25 @@ export async function ensurePlanFromDocument(opts: {
   // so abort rather than create an empty plan. PIP may legitimately be zero-goal.
   if (goals.length === 0 && planType !== "pip") return { created: false, reason: "no_templates" };
 
-  // Create the ACTIVE plan, its SOP check-in schedule, and the template goals.
+  // Create the PENDING plan (dormant — no dates, no check-ins yet).
+  // The manager will explicitly activate it, at which point start_date, end_date,
+  // check-in schedule, and governance control are all set in one deliberate action.
+  const offerLetterIdVal = opts.offerLetterId ?? null;
   const result = await db.execute(sql`
-    INSERT INTO employee_plans (employee_id, manager_id, plan_type, department_scope, status, start_date, end_date, duration_days, created_by)
-    VALUES (${employeeId}, ${managerId}, ${planType}::employee_plan_type, 'healthcare'::employee_plan_dept_scope, 'active'::employee_plan_status, ${startDate}, ${endDate}, ${durationDays}, ${opts.createdBy})
+    INSERT INTO employee_plans
+      (employee_id, manager_id, plan_type, department_scope, status, start_date, end_date,
+       duration_days, offer_letter_id, created_by)
+    VALUES
+      (${employeeId}, ${managerId}, ${planType}::employee_plan_type,
+       'healthcare'::employee_plan_dept_scope, 'pending'::employee_plan_status,
+       NULL, NULL, ${durationDays}, ${offerLetterIdVal}, ${opts.createdBy})
     RETURNING *
   `);
   const plan = result.rows[0] as EmployeePlan;
 
-  const cadenceOpts = await fetchPlanCadenceSettings();
-  const checkInSchedule = generatePlanCheckIns(plan.id, employeeId, managerId, planType, startDate, endDate, cadenceOpts);
-  for (const ci of checkInSchedule) {
-    await db.execute(sql`
-      INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status)
-      VALUES (${ci.employeeId}, ${ci.managerId}, ${ci.planId}, ${ci.checkInType}::check_in_type, ${ci.scheduledDate}, 'scheduled'::check_in_status)
-    `);
-  }
-
-  await seedPlanGoals(plan.id, employeeId, managerId, startDate, endDate, goals);
-
-  // ── Governance hook: create a control for this plan at the moment of creation.
-  // This ensures the governance layer has visibility at due-time, not only post-overdue.
-  // Non-fatal — wrapped in try/catch so plan creation never fails due to governance errors.
-  try {
-    const controlType = planType === "pip" ? "pip" : "probation";
-    const { createGovernanceControl } = await import("./governanceService");
-    await createGovernanceControl({
-      controlType,
-      referenceId: `${controlType === "pip" ? "pip" : "prob"}:${plan.id}`,
-      ownerId: employeeId,
-      managerId: managerId ?? null,
-      dueDate: endDate,
-      requiredAction: planType === "pip"
-        ? "Meet all Performance Improvement Plan checkpoints by the end of the plan period."
-        : "Complete all probation milestones and pass the confirmation review.",
-      evidenceRequired: true,
-    });
-  } catch (govErr) {
-    console.error("[governance] Non-fatal: failed to create governance control for plan:", govErr);
-  }
+  // Seed goals with NULL dates — target_date is set at activation time from
+  // the template's due_day_offset.
+  await seedPlanGoals(plan.id, employeeId, managerId, null, null, goals);
 
   return { created: true, planId: plan.id };
 }
@@ -2676,7 +2658,8 @@ export function registerPerformanceRoutes(app: Express) {
             (m.first_name || ' ' || m.last_name) AS manager_name,
             d.name AS department_name,
             (SELECT COUNT(*) FROM check_ins ci WHERE ci.plan_id = ep.id AND ci.status = 'completed')::int AS completed_checkins,
-            (SELECT COUNT(*) FROM check_ins ci WHERE ci.plan_id = ep.id)::int AS total_checkins
+            (SELECT COUNT(*) FROM check_ins ci WHERE ci.plan_id = ep.id)::int AS total_checkins,
+            (SELECT COUNT(*) FROM performance_goals pg WHERE pg.plan_id = ep.id)::int AS goals_count
           FROM employee_plans ep
           LEFT JOIN admin_users au ON ep.employee_id = au.id
           LEFT JOIN admin_users m ON ep.manager_id = m.id
@@ -2689,7 +2672,16 @@ export function registerPerformanceRoutes(app: Express) {
       } else if (role === "employee") {
         // Employees can only see their own plans
         const where = buildConditions(sql`ep.employee_id = ${userId}`);
-        const r = await db.execute(sql`SELECT ep.*, au.full_name as employee_name, m.full_name as manager_name FROM employee_plans ep LEFT JOIN admin_users au ON ep.employee_id = au.id LEFT JOIN admin_users m ON ep.manager_id = m.id WHERE ${where} ORDER BY ep.created_at DESC`);
+        const r = await db.execute(sql`
+          SELECT ep.*,
+            (au.first_name || ' ' || au.last_name) AS employee_name,
+            (m.first_name || ' ' || m.last_name) AS manager_name,
+            (SELECT COUNT(*) FROM performance_goals pg WHERE pg.plan_id = ep.id)::int AS goals_count
+          FROM employee_plans ep
+          LEFT JOIN admin_users au ON ep.employee_id = au.id
+          LEFT JOIN admin_users m ON ep.manager_id = m.id
+          WHERE ${where} ORDER BY ep.created_at DESC
+        `);
         rows = r.rows as EmployeePlan[];
       } else {
         // Manager: see plans for their direct reports; if employee_id specified, verify team membership
@@ -2700,12 +2692,30 @@ export function registerPerformanceRoutes(app: Express) {
             return res.status(403).json({ error: "Not authorized to view plans for this employee" });
           }
           const where = buildConditions(sql`ep.employee_id = ${employee_id}`);
-          const r = await db.execute(sql`SELECT ep.*, au.full_name as employee_name, m.full_name as manager_name FROM employee_plans ep LEFT JOIN admin_users au ON ep.employee_id = au.id LEFT JOIN admin_users m ON ep.manager_id = m.id WHERE ${where} ORDER BY ep.created_at DESC`);
+          const r = await db.execute(sql`
+            SELECT ep.*,
+              (au.first_name || ' ' || au.last_name) AS employee_name,
+              (m.first_name || ' ' || m.last_name) AS manager_name,
+              (SELECT COUNT(*) FROM performance_goals pg WHERE pg.plan_id = ep.id)::int AS goals_count
+            FROM employee_plans ep
+            LEFT JOIN admin_users au ON ep.employee_id = au.id
+            LEFT JOIN admin_users m ON ep.manager_id = m.id
+            WHERE ${where} ORDER BY ep.created_at DESC
+          `);
           rows = r.rows as EmployeePlan[];
         } else {
           const idList = sql.join(teamIds.map(id => sql`${id}`), sql`, `);
           const where = buildConditions(sql`ep.employee_id IN (${idList})`);
-          const r = await db.execute(sql`SELECT ep.*, au.full_name as employee_name, m.full_name as manager_name FROM employee_plans ep LEFT JOIN admin_users au ON ep.employee_id = au.id LEFT JOIN admin_users m ON ep.manager_id = m.id WHERE ${where} ORDER BY ep.created_at DESC`);
+          const r = await db.execute(sql`
+            SELECT ep.*,
+              (au.first_name || ' ' || au.last_name) AS employee_name,
+              (m.first_name || ' ' || m.last_name) AS manager_name,
+              (SELECT COUNT(*) FROM performance_goals pg WHERE pg.plan_id = ep.id)::int AS goals_count
+            FROM employee_plans ep
+            LEFT JOIN admin_users au ON ep.employee_id = au.id
+            LEFT JOIN admin_users m ON ep.manager_id = m.id
+            WHERE ${where} ORDER BY ep.created_at DESC
+          `);
           rows = r.rows as EmployeePlan[];
         }
       }
@@ -2996,6 +3006,215 @@ export function registerPerformanceRoutes(app: Express) {
     } catch (error) {
       console.error("Error acknowledging employee plan:", error);
       res.status(500).json({ error: "Failed to acknowledge plan" });
+    }
+  });
+
+  // ─── Manager activates a pending plan ─────────────────────────────────────
+  // POST /api/hr/plans/:id/activate   { startDate: "YYYY-MM-DD" }
+  // Requirements:
+  //   • Plan must be pending
+  //   • Caller must be the plan's manager OR HR/Admin
+  //   • PIP plans: pip_hr_acknowledged_at must be set before activation is allowed
+
+  app.post("/api/hr/plans/:id/activate", async (req: Request, res: Response) => {
+    const userId = requirePermission(req, res, "hr.plans.activate", ALL_ROLES);
+    if (!userId) return;
+    try {
+      const { startDate } = req.body as { startDate?: string };
+      if (!startDate || !/^\d{4}-\d{2}-\d{2}$/.test(startDate)) {
+        return res.status(400).json({ error: "startDate (YYYY-MM-DD) is required" });
+      }
+
+      // Fetch plan with employee + manager names
+      const planRes = await db.execute(sql`
+        SELECT ep.*,
+               emp.first_name || ' ' || emp.last_name AS employee_name,
+               mgr.first_name || ' ' || mgr.last_name AS manager_name
+        FROM employee_plans ep
+        LEFT JOIN admin_users emp ON ep.employee_id = emp.id
+        LEFT JOIN admin_users mgr ON ep.manager_id = mgr.id
+        WHERE ep.id = ${req.params.id}
+      `);
+      if (planRes.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+      const plan = planRes.rows[0] as any;
+
+      if (plan.status !== "pending") {
+        return res.status(400).json({
+          error: `Plan is already ${plan.status}. Only pending plans can be activated.`,
+        });
+      }
+      if (!plan.employee_id) {
+        return res.status(400).json({ error: "Cannot activate a plan with no employee assigned." });
+      }
+
+      // Authorization: the plan's direct manager or HR/Admin
+      const role = req.session.role!;
+      if (!ADMIN_ROLES.includes(role)) {
+        if (plan.manager_id !== userId) {
+          return res.status(403).json({ error: "Only the assigned manager or HR/Admin can activate this plan." });
+        }
+      }
+
+      // PIP gating: HR must acknowledge before the manager can activate
+      if (plan.plan_type === "pip" && !plan.pip_hr_acknowledged_at) {
+        return res.status(400).json({
+          error: "A PIP plan must be acknowledged by HR before it can be activated.",
+        });
+      }
+
+      const durationDays: number = plan.duration_days;
+      const startMs = new Date(startDate).getTime();
+      const endDate = new Date(startMs + durationDays * 86400000).toISOString().slice(0, 10);
+
+      // Seed check-ins
+      const cadenceOpts = await fetchPlanCadenceSettings();
+      const checkInSchedule = generatePlanCheckIns(
+        plan.id, plan.employee_id, plan.manager_id, plan.plan_type, startDate, endDate, cadenceOpts,
+      );
+      for (const ci of checkInSchedule) {
+        await db.execute(sql`
+          INSERT INTO check_ins (employee_id, manager_id, plan_id, check_in_type, scheduled_date, status)
+          VALUES (${ci.employeeId}, ${ci.managerId}, ${ci.planId},
+                  ${ci.checkInType}::check_in_type, ${ci.scheduledDate}, 'scheduled'::check_in_status)
+          ON CONFLICT DO NOTHING
+        `);
+      }
+
+      // Update seeded goals: set start_date + target_date from due_day_offset
+      const goalsRes = await db.execute(sql`
+        SELECT id, title FROM performance_goals WHERE plan_id = ${plan.id}
+      `);
+      const msPerDay = 86400000;
+      for (const goal of goalsRes.rows as any[]) {
+        const tmplRes = await db.execute(sql`
+          SELECT due_day_offset FROM plan_goal_templates
+          WHERE plan_type = ${plan.plan_type}::employee_plan_type
+            AND goal_title = ${goal.title}
+            AND is_active = true
+          ORDER BY due_day_offset ASC NULLS LAST
+          LIMIT 1
+        `);
+        const offset = (tmplRes.rows[0] as any)?.due_day_offset ?? null;
+        const targetDate = offset != null
+          ? new Date(startMs + offset * msPerDay).toISOString().slice(0, 10)
+          : endDate;
+        await db.execute(sql`
+          UPDATE performance_goals
+          SET start_date = ${startDate}, target_date = ${targetDate}, updated_at = NOW()
+          WHERE id = ${goal.id}
+        `);
+      }
+
+      // Register governance control
+      try {
+        const controlType = plan.plan_type === "pip" ? "pip" : "probation";
+        const { createGovernanceControl } = await import("./governanceService");
+        await createGovernanceControl({
+          controlType,
+          referenceId: `${controlType === "pip" ? "pip" : "prob"}:${plan.id}`,
+          ownerId: plan.employee_id,
+          managerId: plan.manager_id ?? null,
+          dueDate: endDate,
+          requiredAction: plan.plan_type === "pip"
+            ? "Meet all Performance Improvement Plan checkpoints by the end of the plan period."
+            : "Complete all probation milestones and pass the confirmation review.",
+          evidenceRequired: true,
+        });
+      } catch (govErr) {
+        console.error("[governance] Non-fatal: failed to register governance control on plan activation:", govErr);
+      }
+
+      // Activate
+      const updatedRes = await db.execute(sql`
+        UPDATE employee_plans
+        SET status = 'active'::employee_plan_status,
+            start_date = ${startDate}, end_date = ${endDate},
+            updated_at = NOW()
+        WHERE id = ${plan.id}
+        RETURNING *
+      `);
+
+      await createAuditLog(userId, "employee_plan_activated", {
+        planId: plan.id, planType: plan.plan_type, startDate, endDate, activatedBy: userId,
+      });
+
+      // Notify the employee
+      const planLabel = plan.plan_type === "pip"
+        ? "Performance Improvement Plan"
+        : plan.plan_type === "probation" ? "Probation Plan" : "Growth Plan";
+      const actorRes = await db.execute(sql`SELECT first_name || ' ' || last_name AS name FROM admin_users WHERE id = ${userId} LIMIT 1`);
+      const actorName = (actorRes.rows[0] as any)?.name ?? "Your manager";
+
+      await notifyPlan(
+        plan.employee_id, "plan_activated",
+        `Your ${planLabel} is now active`,
+        `Your ${planLabel} has been activated by ${actorName}, starting ${startDate} and running ${durationDays} days. Your goals are now live.`,
+        { planId: plan.id, planType: plan.plan_type, startDate, endDate },
+      );
+
+      // Brief manager (idempotent once-only — safe to call after activation)
+      await briefManagerOnce(plan.id);
+
+      res.json(updatedRes.rows[0]);
+    } catch (error) {
+      console.error("Error activating plan:", error);
+      res.status(500).json({ error: "Failed to activate plan" });
+    }
+  });
+
+  // ─── HR acknowledges a pending PIP plan ────────────────────────────────────
+  // PATCH /api/hr/plans/:id/acknowledge-pip
+  // Sets pip_hr_acknowledged_at, unlocking the manager's Activate button.
+
+  app.patch("/api/hr/plans/:id/acknowledge-pip", async (req: Request, res: Response) => {
+    const userId = requirePermission(req, res, "hr.plans.acknowledgePip", ADMIN_ROLES);
+    if (!userId) return;
+    try {
+      const planRes = await db.execute(sql`
+        SELECT ep.*,
+               emp.first_name || ' ' || emp.last_name AS employee_name
+        FROM employee_plans ep
+        LEFT JOIN admin_users emp ON ep.employee_id = emp.id
+        WHERE ep.id = ${req.params.id}
+      `);
+      if (planRes.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+      const plan = planRes.rows[0] as any;
+
+      if (plan.plan_type !== "pip") {
+        return res.status(400).json({ error: "HR acknowledgement is only required for PIP plans." });
+      }
+      if (plan.pip_hr_acknowledged_at) {
+        return res.json({ ok: true, alreadyAcknowledged: true });
+      }
+      if (plan.status !== "pending") {
+        return res.status(400).json({ error: "Only pending PIP plans need HR acknowledgement." });
+      }
+
+      await db.execute(sql`
+        UPDATE employee_plans
+        SET pip_hr_acknowledged_at = NOW(), updated_at = NOW()
+        WHERE id = ${req.params.id}
+      `);
+
+      await createAuditLog(userId, "pip_hr_acknowledged", {
+        planId: req.params.id, hrUserId: userId, employeeName: plan.employee_name,
+      });
+
+      // Notify the plan's manager so they know they can now activate
+      if (plan.manager_id) {
+        await notifyPlan(
+          plan.manager_id, "pip_hr_acknowledged",
+          `PIP acknowledged — you can now activate ${plan.employee_name ?? "the employee"}'s plan`,
+          `HR has reviewed and approved ${plan.employee_name ?? "the employee"}'s Performance Improvement Plan. ` +
+          `You can now activate it from your team's Plans tab.`,
+          { planId: plan.id, planType: "pip" },
+        );
+      }
+
+      res.json({ ok: true });
+    } catch (error) {
+      console.error("Error acknowledging PIP plan:", error);
+      res.status(500).json({ error: "Failed to acknowledge PIP plan" });
     }
   });
 

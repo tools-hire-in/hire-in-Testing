@@ -40,6 +40,7 @@ import {
   RefreshCw,
   ShieldCheck,
   Radar,
+  AlertCircle,
 } from "lucide-react";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { V2PageHeader } from "@/components/admin/V2PageHeader";
@@ -3187,15 +3188,17 @@ interface TeamPlan {
   department_scope: string;
   status: string;
   outcome: string | null;
-  start_date: string;
-  end_date: string;
+  start_date: string | null;
+  end_date: string | null;
   duration_days: number;
   acknowledged_at: string | null;
+  pip_hr_acknowledged_at: string | null;
   created_by: string;
   created_at: string;
   employee_name: string | null;
   manager_name: string | null;
   manager_goal_escalated_at?: string | null;
+  goals_count?: number;
 }
 
 interface PlanGoal {
@@ -3608,7 +3611,7 @@ function PlanDetailPanel({
   }
 
   const { plan, checkIns, goals, coachingLog = [] } = data;
-  const remaining = daysRemaining(plan.end_date);
+  const remaining = plan.end_date ? daysRemaining(plan.end_date) : 0;
   const compliance = calcCompliance(checkIns);
   const overdue = overdueCount(checkIns);
 
@@ -3617,11 +3620,13 @@ function PlanDetailPanel({
   const completedCIs = [...managerCheckIns].filter(ci => ci.status === "completed").sort((a, b) => (b.completed_at || "").localeCompare(a.completed_at || ""));
   const pendingCIs = managerCheckIns.filter(ci => ci.status !== "completed").sort((a, b) => a.scheduled_date.localeCompare(b.scheduled_date));
 
-  const phases = computePlanPhases(plan.plan_type, plan.start_date, plan.duration_days ?? null);
-  const currentPhaseIdx = phases.findIndex(p => p.startDate <= today && today <= p.endDate);
+  // Pending plans have no start date yet — use a placeholder for phase display
+  const effectiveStartDate = plan.start_date ?? todayStr();
+  const phases = computePlanPhases(plan.plan_type, effectiveStartDate, plan.duration_days ?? null);
+  const currentPhaseIdx = plan.start_date ? phases.findIndex(p => p.startDate <= today && today <= p.endDate) : -1;
   const goalsByPhase: PlanGoal[][] = phases.map(() => []);
   for (const g of goals) {
-    const idx = goalPhaseIdx(g, plan.start_date, phases);
+    const idx = goalPhaseIdx(g, effectiveStartDate, phases);
     goalsByPhase[idx].push(g);
   }
 
@@ -3637,11 +3642,17 @@ function PlanDetailPanel({
               <span>{plan.employee_name || "Employee"}</span>
             </DialogTitle>
             <DialogDescription className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
-              <span><strong>Start:</strong> {formatDate(plan.start_date)}</span>
-              <span><strong>End:</strong> {formatDate(plan.end_date)}</span>
-              <span className={remaining < 0 ? "text-red-600 font-medium" : remaining <= 7 ? "text-amber-600 font-medium" : ""}>
-                {remaining < 0 ? `${Math.abs(remaining)} days overdue` : `${remaining} days remaining`}
-              </span>
+              {plan.start_date ? (
+                <>
+                  <span><strong>Start:</strong> {formatDate(plan.start_date)}</span>
+                  <span><strong>End:</strong> {formatDate(plan.end_date ?? "")}</span>
+                  <span className={remaining < 0 ? "text-red-600 font-medium" : remaining <= 7 ? "text-amber-600 font-medium" : ""}>
+                    {remaining < 0 ? `${Math.abs(remaining)} days overdue` : `${remaining} days remaining`}
+                  </span>
+                </>
+              ) : (
+                <span className="text-amber-600 font-medium">Pending activation — no start date set</span>
+              )}
               <span className="text-muted-foreground">
                 Compliance: <strong>{compliance.done}/{compliance.total}</strong>
                 {overdue > 0 && <span className="ml-2 text-red-600">({overdue} overdue)</span>}
@@ -4209,11 +4220,182 @@ function NewPlanModal({
   );
 }
 
+// ── Activate Plan Dialog ───────────────────────────────────────────────
+function ActivatePlanDialog({
+  plan,
+  onClose,
+  onSuccess,
+}: {
+  plan: TeamPlan;
+  onClose: () => void;
+  onSuccess: () => void;
+}) {
+  const { toast } = useToast();
+  const [startDate, setStartDate] = useState(todayStr());
+
+  const isPip = plan.plan_type === "pip";
+  const pipBlocked = isPip && !plan.pip_hr_acknowledged_at;
+  const durationDays = plan.duration_days;
+  const endDate = startDate
+    ? new Date(new Date(startDate).getTime() + durationDays * 86400000).toISOString().slice(0, 10)
+    : "—";
+
+  // Fetch goals preview from plan detail
+  const { data: planDetail, isLoading: goalsLoading } = useQuery<{ goals: PlanGoal[] }>({
+    queryKey: ["/api/hr/plans", plan.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/plans/${plan.id}`);
+      if (!res.ok) throw new Error("Failed to load plan");
+      return res.json();
+    },
+  });
+  const previewGoals = planDetail?.goals ?? [];
+
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/hr/plans/${plan.id}/activate`, { startDate });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to activate plan");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Plan activated", description: `${plan.employee_name ?? "Employee"}'s plan starts ${startDate}.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/plans"] });
+      onSuccess();
+      onClose();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Activation failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const planLabel = PLAN_TYPE_LABELS[plan.plan_type] || plan.plan_type;
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Activate {planLabel}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="bg-muted/40 rounded-lg p-3 text-sm space-y-1.5">
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Employee</span>
+              <strong>{plan.employee_name ?? plan.employee_id}</strong>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Plan type</span>
+              <Badge className={`${PLAN_TYPE_COLORS[plan.plan_type]} text-xs`}>{planLabel}</Badge>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Duration</span>
+              <strong>{durationDays} days</strong>
+            </div>
+          </div>
+
+          {/* Goals preview */}
+          <div className="space-y-1.5">
+            <p className="text-sm font-medium">Pre-populated goals</p>
+            {goalsLoading ? (
+              <p className="text-xs text-muted-foreground">Loading goals…</p>
+            ) : previewGoals.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">No goals seeded yet.</p>
+            ) : (
+              <ul className="space-y-1 max-h-40 overflow-y-auto rounded-lg border bg-muted/20 p-2" data-testid="goals-preview-list">
+                {previewGoals.map(g => (
+                  <li key={g.id} className="flex items-start gap-2 text-xs py-0.5" data-testid={`goal-preview-${g.id}`}>
+                    <span className="mt-0.5 h-1.5 w-1.5 rounded-full bg-primary/60 shrink-0" />
+                    <span className="text-foreground">{g.title}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <p className="text-xs text-muted-foreground">Target dates are calculated from the start date you choose below.</p>
+          </div>
+
+          {pipBlocked ? (
+            <div className="flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-700 p-3">
+              <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div className="text-sm text-amber-800 dark:text-amber-200">
+                <p className="font-semibold mb-0.5">HR acknowledgement required</p>
+                <p>An HR team member must acknowledge this PIP before you can activate it. Ask your HR team to review and acknowledge the plan.</p>
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Start date</label>
+              <Input
+                type="date"
+                value={startDate}
+                onChange={e => setStartDate(e.target.value)}
+                data-testid="input-plan-start-date"
+              />
+              <p className="text-xs text-muted-foreground">
+                End date: <strong>{endDate}</strong>. Goals and check-ins are scheduled from this date.
+              </p>
+            </div>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-activate-cancel">Cancel</Button>
+          <Button
+            onClick={() => mutation.mutate()}
+            disabled={pipBlocked || mutation.isPending || !startDate}
+            data-testid="button-activate-confirm"
+          >
+            {mutation.isPending ? "Activating…" : "Activate Plan"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── HR Acknowledge PIP button (shown in pending PIP rows) ──────────────
+function AcknowledgePipButton({ plan, onSuccess }: { plan: TeamPlan; onSuccess: () => void }) {
+  const { toast } = useToast();
+  const mutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/hr/plans/${plan.id}/acknowledge-pip`, {});
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error ?? "Failed to acknowledge PIP");
+      }
+    },
+    onSuccess: () => {
+      toast({ title: "PIP acknowledged", description: "The manager can now activate the plan." });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/plans"] });
+      onSuccess();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      onClick={e => { e.stopPropagation(); mutation.mutate(); }}
+      disabled={mutation.isPending}
+      data-testid={`button-acknowledge-pip-${plan.id}`}
+      className="text-amber-700 border-amber-400 hover:bg-amber-50 dark:text-amber-300 dark:border-amber-600 dark:hover:bg-amber-900/20"
+    >
+      {mutation.isPending ? "Acknowledging…" : "Acknowledge PIP"}
+    </Button>
+  );
+}
+
 // ── Team Plans Tab ─────────────────────────────────────────────────────
 function TeamPlansTab({ teamMembers }: { teamMembers: TeamMember[] }) {
   const { user } = useAuth();
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [showNewPlan, setShowNewPlan] = useState(false);
+  const [activatingPlan, setActivatingPlan] = useState<TeamPlan | null>(null);
+
+  const role = user?.role as string | undefined;
+  const isHrAdmin = role === "hr" || role === "admin" || role === "super_admin";
 
   const { data: plans, isLoading, refetch } = useQuery<TeamPlan[]>({
     queryKey: ["/api/hr/plans", { status: "active" }],
@@ -4224,9 +4406,18 @@ function TeamPlansTab({ teamMembers }: { teamMembers: TeamMember[] }) {
     },
   });
 
-  const today = todayStr();
+  const { data: pendingPlans, isLoading: pendingLoading, refetch: refetchPending } = useQuery<TeamPlan[]>({
+    queryKey: ["/api/hr/plans", { status: "pending" }],
+    queryFn: async () => {
+      const res = await fetch("/api/hr/plans?status=pending", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load pending plans");
+      return res.json();
+    },
+  });
 
-  if (isLoading) {
+  const refetchAll = () => { refetch(); refetchPending(); };
+
+  if (isLoading || pendingLoading) {
     return (
       <div className="space-y-3">
         {[1, 2, 3].map(i => <Skeleton key={i} className="h-16 w-full" />)}
@@ -4234,7 +4425,10 @@ function TeamPlansTab({ teamMembers }: { teamMembers: TeamMember[] }) {
     );
   }
 
-  if (!plans || plans.length === 0) {
+  const hasPending = pendingPlans && pendingPlans.length > 0;
+  const hasActive = plans && plans.length > 0;
+
+  if (!hasPending && !hasActive) {
     return (
       <Card>
         <CardContent className="py-12 text-center space-y-4">
@@ -4254,68 +4448,147 @@ function TeamPlansTab({ teamMembers }: { teamMembers: TeamMember[] }) {
   return (
     <>
       <div className="flex items-center justify-between mb-4">
-        <div className="text-sm text-muted-foreground">{plans.length} active plan{plans.length !== 1 ? "s" : ""}</div>
+        <div className="text-sm text-muted-foreground">
+          {(plans?.length ?? 0)} active{hasPending ? `, ${pendingPlans!.length} pending` : ""} plan{((plans?.length ?? 0) + (pendingPlans?.length ?? 0)) !== 1 ? "s" : ""}
+        </div>
         <Button onClick={() => setShowNewPlan(true)} data-testid="button-new-plan" size="sm">
           <Plus className="h-4 w-4 mr-1" /> New Plan
         </Button>
       </div>
 
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Employee</TableHead>
-              <TableHead>Type</TableHead>
-              <TableHead>Period</TableHead>
-              <TableHead>Days Left</TableHead>
-              <TableHead>Compliance</TableHead>
-              <TableHead>Overdue</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {plans.map(plan => {
-              const remaining = daysRemaining(plan.end_date);
-              return (
-                <TableRow
-                  key={plan.id}
-                  className="cursor-pointer hover:bg-muted/50"
-                  onClick={() => setSelectedPlanId(plan.id)}
-                  data-testid={`plan-row-${plan.id}`}
-                >
-                  <TableCell>
-                    <div className="font-medium">{plan.employee_name || plan.employee_id}</div>
-                  </TableCell>
-                  <TableCell>
-                    <Badge className={`${PLAN_TYPE_COLORS[plan.plan_type]} text-xs`}>
-                      {PLAN_TYPE_LABELS[plan.plan_type] || plan.plan_type}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {formatDate(plan.start_date)} – {formatDate(plan.end_date)}
-                  </TableCell>
-                  <TableCell>
-                    <span className={remaining < 0 ? "text-red-600 font-medium text-sm" : remaining <= 7 ? "text-amber-600 font-medium text-sm" : "text-sm"}>
-                      {remaining < 0 ? `${Math.abs(remaining)}d overdue` : `${remaining}d`}
-                    </span>
-                  </TableCell>
-                  <TableCell>
-                    <PlanComplianceCell planId={plan.id} />
-                  </TableCell>
-                  <TableCell>
-                    <PlanOverdueCell planId={plan.id} />
-                  </TableCell>
+      {hasPending && (
+        <div className="mb-6">
+          <div className="flex items-center gap-2 mb-2">
+            <Clock className="h-4 w-4 text-amber-600" />
+            <h3 className="text-sm font-semibold text-amber-700 dark:text-amber-400">Ready to Activate ({pendingPlans!.length})</h3>
+          </div>
+          <Card className="border-amber-200 dark:border-amber-800">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Goals</TableHead>
+                  <TableHead>Waiting</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead className="text-right">Action</TableHead>
                 </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {pendingPlans!.map(plan => {
+                  const pipNeedsAck = plan.plan_type === "pip" && !plan.pip_hr_acknowledged_at;
+                  const daysSince = Math.floor((Date.now() - new Date(plan.created_at).getTime()) / 86400000);
+                  return (
+                    <TableRow key={plan.id} data-testid={`pending-plan-row-${plan.id}`}>
+                      <TableCell>
+                        <div className="font-medium">{plan.employee_name ?? plan.employee_id}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`${PLAN_TYPE_COLORS[plan.plan_type]} text-xs`}>
+                          {PLAN_TYPE_LABELS[plan.plan_type] || plan.plan_type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {plan.goals_count != null ? (
+                          <span>{plan.goals_count} goal{plan.goals_count !== 1 ? "s" : ""}</span>
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        <span title={plan.created_at}>{daysSince === 0 ? "Today" : `${daysSince}d ago`}</span>
+                      </TableCell>
+                      <TableCell>
+                        {pipNeedsAck ? (
+                          <span className="text-xs font-medium text-amber-700 dark:text-amber-400">Awaiting HR acknowledgement</span>
+                        ) : (
+                          <span className="text-xs font-medium text-green-700 dark:text-green-400">Ready for activation</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {isHrAdmin && pipNeedsAck && (
+                            <AcknowledgePipButton plan={plan} onSuccess={refetchAll} />
+                          )}
+                          <Button
+                            size="sm"
+                            disabled={pipNeedsAck}
+                            onClick={() => setActivatingPlan(plan)}
+                            data-testid={`button-activate-plan-${plan.id}`}
+                          >
+                            Activate
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+        </div>
+      )}
+
+      {hasActive && (
+        <>
+          <Card>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Employee</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Period</TableHead>
+                  <TableHead>Days Left</TableHead>
+                  <TableHead>Compliance</TableHead>
+                  <TableHead>Overdue</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {plans!.map(plan => {
+                  const remaining = plan.end_date ? daysRemaining(plan.end_date) : 0;
+                  return (
+                    <TableRow
+                      key={plan.id}
+                      className="cursor-pointer hover:bg-muted/50"
+                      onClick={() => setSelectedPlanId(plan.id)}
+                      data-testid={`plan-row-${plan.id}`}
+                    >
+                      <TableCell>
+                        <div className="font-medium">{plan.employee_name || plan.employee_id}</div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge className={`${PLAN_TYPE_COLORS[plan.plan_type]} text-xs`}>
+                          {PLAN_TYPE_LABELS[plan.plan_type] || plan.plan_type}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {plan.start_date ? formatDate(plan.start_date) : "—"} – {plan.end_date ? formatDate(plan.end_date) : "—"}
+                      </TableCell>
+                      <TableCell>
+                        {plan.end_date ? (
+                          <span className={remaining < 0 ? "text-red-600 font-medium text-sm" : remaining <= 7 ? "text-amber-600 font-medium text-sm" : "text-sm"}>
+                            {remaining < 0 ? `${Math.abs(remaining)}d overdue` : `${remaining}d`}
+                          </span>
+                        ) : "—"}
+                      </TableCell>
+                      <TableCell>
+                        <PlanComplianceCell planId={plan.id} />
+                      </TableCell>
+                      <TableCell>
+                        <PlanOverdueCell planId={plan.id} />
+                      </TableCell>
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </Card>
+        </>
+      )}
 
       {selectedPlanId && (
         <PlanDetailPanel
           planId={selectedPlanId}
           onClose={() => setSelectedPlanId(null)}
-          onRefresh={refetch}
+          onRefresh={refetchAll}
         />
       )}
 
@@ -4325,7 +4598,15 @@ function TeamPlansTab({ teamMembers }: { teamMembers: TeamMember[] }) {
           managerId={user.id}
           activePlans={plans ?? []}
           onClose={() => setShowNewPlan(false)}
-          onSuccess={refetch}
+          onSuccess={refetchAll}
+        />
+      )}
+
+      {activatingPlan && (
+        <ActivatePlanDialog
+          plan={activatingPlan}
+          onClose={() => setActivatingPlan(null)}
+          onSuccess={refetchAll}
         />
       )}
     </>
