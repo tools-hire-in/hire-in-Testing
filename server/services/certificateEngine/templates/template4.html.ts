@@ -460,7 +460,16 @@ export function renderTemplate4(data: Template4Data): string {
 <div class="corner-accent-br"></div>
 
 <!-- Ribbon icon top-right -->
-<div class="right-ribbon">🎖️</div>
+<div class="right-ribbon">
+  <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="16" cy="12" r="9" fill="#F47C20" opacity="0.18"/>
+    <circle cx="16" cy="12" r="6" fill="#F47C20" opacity="0.35"/>
+    <polygon points="16,6 17.5,10.5 22,10.5 18.5,13.5 19.8,18 16,15.2 12.2,18 13.5,13.5 10,10.5 14.5,10.5" fill="#F47C20"/>
+    <rect x="13" y="20" width="1.8" height="8" rx="0.6" fill="#1F3A6E"/>
+    <rect x="17.2" y="20" width="1.8" height="8" rx="0.6" fill="#1F3A6E"/>
+    <polygon points="13,20 14.8,20 16,23 17.2,20 19,20 16,26" fill="#F47C20"/>
+  </svg>
+</div>
 
 <!-- Main content -->
 <div class="main-content">
@@ -526,8 +535,12 @@ export function renderTemplate4(data: Template4Data): string {
   <div class="right-col">
     <div class="right-section">
       <div class="right-section-header">
-        <div class="section-icon">🏆</div>
-        <div class="section-label">Recognition Description</div>
+        <div class="section-icon">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="7,1 8.5,5 13,5 9.5,7.8 10.8,12 7,9.5 3.2,12 4.5,7.8 1,5 5.5,5" fill="#1F3A6E"/>
+          </svg>
+        </div>
+        <div class="section-label">Recognition</div>
       </div>
       <div class="section-text">${d.recognitionDescription}</div>
     </div>
@@ -536,8 +549,16 @@ export function renderTemplate4(data: Template4Data): string {
 
     <div class="right-section">
       <div class="right-section-header">
-        <div class="section-icon">📈</div>
-        <div class="section-label">Contribution Summary</div>
+        <div class="section-icon">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <rect x="1" y="8" width="2.5" height="5" rx="0.5" fill="#1F3A6E"/>
+            <rect x="4.5" y="5.5" width="2.5" height="7.5" rx="0.5" fill="#1F3A6E"/>
+            <rect x="8" y="3" width="2.5" height="10" rx="0.5" fill="#1F3A6E"/>
+            <polyline points="1.5,9 5.5,6 9,3.5 12.5,1" stroke="#F47C20" stroke-width="1.2" stroke-linecap="round"/>
+            <polygon points="10.5,1 13,1 13,3.5" fill="#F47C20"/>
+          </svg>
+        </div>
+        <div class="section-label">Contribution</div>
       </div>
       <div class="section-text">${d.contributionSummary}</div>
     </div>
@@ -546,7 +567,12 @@ export function renderTemplate4(data: Template4Data): string {
 
     <div class="right-section">
       <div class="right-section-header">
-        <div class="section-icon">💬</div>
+        <div class="section-icon">
+          <svg width="14" height="14" viewBox="0 0 14 14" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M1.5 3C1.5 2.17 2.17 1.5 3 1.5h3.5C7.33 1.5 8 2.17 8 3v3c0 .83-.67 1.5-1.5 1.5H3l-1.5 2V3z" fill="#1F3A6E"/>
+            <path d="M6 7.5C6 6.67 6.67 6 7.5 6H11C11.83 6 12.5 6.67 12.5 7.5v3c0 .83-.67 1.5-1.5 1.5H7.5L6 13V7.5z" fill="#F47C20"/>
+          </svg>
+        </div>
         <div class="section-label">Recognition Citation</div>
       </div>
       <div class="section-text">&ldquo;${d.publicCitation}&rdquo;</div>

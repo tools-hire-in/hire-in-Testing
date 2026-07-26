@@ -16,6 +16,7 @@ import {
   correctCertificate,
 } from "./services/certificateEngine/index";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
+import OpenAI from "openai";
 
 const objectStorageService = new ObjectStorageService();
 
@@ -329,6 +330,81 @@ export function registerRecognitionRoutes(app: Express) {
       res.json({ success: true, pdfUrl: result.pdfUrl });
     } catch (err: any) {
       res.status(500).json({ error: err.message || "Failed to regenerate PDF" });
+    }
+  });
+
+  // POST /api/praise/certificates/:id/linkedin-draft — AI-generated LinkedIn post
+  app.post("/api/praise/certificates/:id/linkedin-draft", async (req: Request, res: Response) => {
+    const userId = requireAuth(req, res);
+    if (!userId) return;
+    try {
+      const [cert] = await db.select()
+        .from(recognitionCertificates)
+        .where(eq(recognitionCertificates.id, req.params.id))
+        .limit(1);
+
+      if (!cert) return res.status(404).json({ error: "Certificate not found" });
+
+      const isOwner = cert.recipientId === userId;
+      const isPrivileged = MANAGER_ROLES.includes(req.session?.role ?? "");
+      if (!isOwner && !isPrivileged) return res.status(403).json({ error: "Access denied" });
+
+      const approverIds = [cert.approverId];
+      const badgeIds = [cert.badgeTypeId];
+      const recipientIds = [cert.recipientId];
+
+      const [approvers, badges, recipients] = await Promise.all([
+        db.select({ firstName: adminUsers.firstName, lastName: adminUsers.lastName })
+          .from(adminUsers).where(inArray(adminUsers.id, approverIds)),
+        db.select({ name: praiseBadgeTypes.name }).from(praiseBadgeTypes).where(inArray(praiseBadgeTypes.id, badgeIds)),
+        db.select({ firstName: adminUsers.firstName }).from(adminUsers).where(inArray(adminUsers.id, recipientIds)),
+      ]);
+
+      const approverName = approvers[0] ? `${approvers[0].firstName} ${approvers[0].lastName}` : "Management";
+      const badgeName = badges[0]?.name ?? "Recognition";
+      const recipientFirstName = recipients[0]?.firstName ?? "I";
+      const citation = cert.publicCitation ?? "";
+      const contribution = (cert as any).contributionSummary ?? (cert as any).contribution_summary ?? "";
+      const issuedAt = cert.issuedAt ? new Date(cert.issuedAt).toLocaleDateString("en-IN", { day: "numeric", month: "long", year: "numeric" }) : "recently";
+
+      if (!process.env.AI_INTEGRATIONS_OPENAI_API_KEY) {
+        const fallback = `I'm honoured to share that I've been awarded the ${badgeName} badge at Hire'in Solutions!\n\n${citation ? `"${citation}"\n\n` : ""}This recognition means a great deal to me and reflects the incredible team and culture we've built together. Thank you to ${approverName} and the entire Hire'in family for this acknowledgement.\n\nExcited to keep growing, contributing, and making a difference. 🚀\n\n#Recognition #Teamwork #HireinSolutions #Growth`;
+        return res.json({ post: fallback });
+      }
+
+      const aiClient = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const prompt = `Write a warm, professional LinkedIn post for ${recipientFirstName} who just received the "${badgeName}" recognition badge at Hire'in Solutions on ${issuedAt}, approved by ${approverName}.
+
+${citation ? `The official citation reads: "${citation}"` : ""}
+${contribution ? `Their contribution was: "${contribution}"` : ""}
+
+Guidelines:
+- 3–4 short paragraphs, conversational and genuine, NOT corporate-hollow
+- First paragraph: share the news with some personal warmth
+- Second paragraph: briefly describe what the recognition was for (use the citation/contribution context naturally)
+- Third paragraph: express gratitude to the team and approver by name
+- Fourth paragraph (optional): forward-looking sentiment — what this means going forward
+- End with 3–5 relevant hashtags (#Recognition, #HireinSolutions, etc.)
+- Do NOT use words like "thrilled", "delighted", "humbled" (overused); aim for genuine and specific
+- Write in first person as ${recipientFirstName}
+- Keep it under 280 words total`;
+
+      const completion = await aiClient.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [{ role: "user", content: prompt }],
+        max_tokens: 500,
+        temperature: 0.75,
+      });
+
+      const post = completion.choices[0]?.message?.content?.trim() ?? "";
+      res.json({ post });
+    } catch (err: any) {
+      console.error("[recognition] linkedin-draft error:", err);
+      res.status(500).json({ error: err.message || "Failed to generate LinkedIn draft" });
     }
   });
 

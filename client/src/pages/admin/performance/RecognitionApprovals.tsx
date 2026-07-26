@@ -113,13 +113,13 @@ function RecognitionCard({
             </div>
             {post.recognition_description && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Recognition Description</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Recognition</p>
                 <p>{post.recognition_description}</p>
               </div>
             )}
             {post.contribution_summary && (
               <div>
-                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Contribution Summary</p>
+                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Contribution</p>
                 <p>{post.contribution_summary}</p>
               </div>
             )}

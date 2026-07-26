@@ -528,7 +528,7 @@ function GiveBadgeModal({
             {requestCertificate && (
               <div className="space-y-3 pt-1 border-t">
                 <div className="space-y-1">
-                  <Label className="text-xs">Recognition Description *</Label>
+                  <Label className="text-xs">Recognition *</Label>
                   <Textarea
                     value={recognitionDescription}
                     onChange={(e) => setRecognitionDescription(e.target.value)}
@@ -542,7 +542,7 @@ function GiveBadgeModal({
                   </p>
                 </div>
                 <div className="space-y-1">
-                  <Label className="text-xs">Contribution Summary *</Label>
+                  <Label className="text-xs">Contribution *</Label>
                   <Textarea
                     value={contributionSummary}
                     onChange={(e) => setContributionSummary(e.target.value)}
