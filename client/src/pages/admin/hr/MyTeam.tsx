@@ -43,6 +43,7 @@ import {
   AlertCircle,
   FolderOpen,
   Download,
+  MessageSquare,
 } from "lucide-react";
 import { AmendmentSuggestionBanner } from "@/components/AmendmentSuggestionBanner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -3465,11 +3466,28 @@ interface CoachingLogEntry {
   created_at: string;
 }
 
+interface PlanMeetingRow {
+  id: string;
+  plan_id: string;
+  logged_by: string;
+  logged_by_name: string | null;
+  meeting_date: string;
+  duration_minutes: number | null;
+  meeting_type: string;
+  attendees: string[] | null;      // admin_users.id values
+  attendee_names: string[] | null; // resolved display names (from backend)
+  notes: string | null;
+  check_in_id: string | null;
+  created_at: string;
+}
+
 interface PlanDetail {
   plan: TeamPlan;
   checkIns: PlanCheckIn[];
   goals: PlanGoal[];
   coachingLog?: CoachingLogEntry[];
+  meetingCount?: number;
+  lastMeetingDate?: string | null;
 }
 
 interface PlanTemplate {
@@ -3500,6 +3518,16 @@ const CHECK_IN_TYPE_LABELS: Record<string, string> = {
   pip_review: "PIP Weekly Review",
   weekly_update: "Weekly Self-Update",
 };
+
+const MEETING_TYPE_LABELS: Record<string, string> = {
+  check_in: "Check-In",
+  coaching: "Coaching Session",
+  pip_review: "PIP Review",
+  probation_review: "Probation Review",
+  informal: "Informal 1:1",
+};
+
+const PROBATION_CADENCE_DAYS = [1, 7, 15, 30, 45, 60, 75, 90];
 
 function daysRemaining(endDate: string): number {
   const end = new Date(endDate);
@@ -3752,6 +3780,448 @@ function CompleteCheckInModal({
   );
 }
 
+// ── Probation Timeline ─────────────────────────────────────────────────────
+function ProbationTimeline({
+  startDate,
+  endDate,
+  checkIns,
+  onOpenMeeting,
+}: {
+  startDate: string;
+  endDate: string | null;
+  checkIns: PlanCheckIn[];
+  onOpenMeeting?: (checkInId: string | null) => void;
+}) {
+  const today = todayStr();
+  const start = new Date(startDate).getTime();
+  const msPerDay = 86400000;
+
+  // Build day → check-in map (excluding weekly updates)
+  const dayToCheckIn = new Map<number, PlanCheckIn>();
+  const completedDays = new Set<number>();
+  const pendingDays = new Set<number>();
+  for (const ci of checkIns) {
+    if (ci.check_in_type !== "weekly_update") {
+      const dayOffset = Math.round((new Date(ci.scheduled_date).getTime() - start) / msPerDay) + 1;
+      dayToCheckIn.set(dayOffset, ci);
+      if (ci.status === "completed") completedDays.add(dayOffset);
+      else pendingDays.add(dayOffset);
+    }
+  }
+
+  const totalDays = endDate
+    ? Math.round((new Date(endDate).getTime() - start) / msPerDay) + 1
+    : 90;
+  const elapsed = Math.max(0, Math.round((new Date(today).getTime() - start) / msPerDay) + 1);
+  const pct = Math.min(100, Math.round((elapsed / totalDays) * 100));
+
+  return (
+    <div className="space-y-3" data-testid="section-probation-timeline">
+      <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <span>Day 1</span>
+        <span className="font-medium text-foreground">Day {Math.min(elapsed, totalDays)} of {totalDays}</span>
+        <span>Day {totalDays}</span>
+      </div>
+      <div className="relative h-2 bg-muted rounded-full overflow-hidden">
+        <div className="absolute inset-y-0 left-0 bg-primary/30 rounded-full" style={{ width: `${pct}%` }} />
+      </div>
+      <div className="flex flex-wrap gap-2">
+        {PROBATION_CADENCE_DAYS.filter(d => d <= totalDays).map(day => {
+          const isDone = completedDays.has(day);
+          const isPending = !isDone && pendingDays.has(day);
+          const isOverdue = !isDone && day <= elapsed;
+          const isUpcoming = !isDone && day > elapsed;
+          const isCurrent = day === elapsed || (day > elapsed && day <= elapsed + 2);
+          const ci = dayToCheckIn.get(day);
+          const isClickable = !!onOpenMeeting;
+          return (
+            <button
+              key={day}
+              type="button"
+              data-testid={`probation-day-${day}`}
+              title={isClickable ? (isDone ? `Day ${day} — completed. Click to log a meeting.` : `Day ${day} — click to log a meeting`) : `Day ${day}`}
+              onClick={isClickable ? () => onOpenMeeting(ci?.id ?? null) : undefined}
+              className={`flex flex-col items-center gap-0.5 px-2 py-1 rounded-md border text-center min-w-[48px] transition-colors ${
+                isClickable ? "cursor-pointer hover:ring-2 hover:ring-primary/30" : ""
+              } ${
+                isDone
+                  ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-400"
+                  : isPending && isOverdue
+                  ? "border-red-300 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400"
+                  : isCurrent
+                  ? "border-primary bg-primary/10 text-primary"
+                  : isUpcoming
+                  ? "border-muted bg-muted/30 text-muted-foreground"
+                  : "border-amber-200 bg-amber-50 dark:bg-amber-950/20 text-amber-700 dark:text-amber-400"
+              }`}
+            >
+              <span className="text-[10px] font-semibold">Day {day}</span>
+              <span className="text-[9px]">
+                {isDone ? "✓" : isPending && isOverdue ? "!" : isCurrent ? "→" : "·"}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="text-[11px] text-muted-foreground">
+        ✓ Completed &nbsp;· &nbsp;<span className="text-red-600">!</span> Overdue &nbsp;· &nbsp;<span className="text-primary">→</span> Current &nbsp;· &nbsp;· Upcoming
+        {onOpenMeeting && <span className="ml-2 text-primary">· Click a day to log a meeting</span>}
+      </p>
+    </div>
+  );
+}
+
+// ── PIP Progress Card ─────────────────────────────────────────────────────────
+function PipProgressCard({
+  plan,
+  checkIns,
+  goals,
+  meetings,
+}: {
+  plan: TeamPlan;
+  checkIns: PlanCheckIn[];
+  goals: PlanGoal[];
+  meetings: PlanMeetingRow[];
+}) {
+  const today = todayStr();
+  if (!plan.start_date) {
+    return (
+      <div className="rounded-lg border border-dashed p-4 text-sm text-muted-foreground text-center">
+        PIP not yet activated — progress tracking starts after activation.
+      </div>
+    );
+  }
+
+  const startMs = new Date(plan.start_date).getTime();
+  const endMs = plan.end_date ? new Date(plan.end_date).getTime() : startMs + 30 * 86400000;
+  const totalDays = Math.round((endMs - startMs) / 86400000);
+  const elapsed = Math.max(0, Math.round((new Date(today).getTime() - startMs) / 86400000));
+  const pct = Math.min(100, Math.round((elapsed / totalDays) * 100));
+
+  // Check-in metrics
+  const formalCIs = checkIns.filter(ci => ci.check_in_type !== "weekly_update");
+  const completedCIs = formalCIs.filter(ci => ci.status === "completed").length;
+  const overdueCIs = formalCIs.filter(ci => ci.status !== "completed" && ci.scheduled_date < today).length;
+
+  // Goal metrics: "met" = progress >= 100 OR status "completed"
+  const goalsMet = goals.filter(g => g.progress >= 100 || g.status === "completed").length;
+  const goalsTotal = goals.length;
+
+  // Meeting metrics
+  const meetingCount = meetings.length;
+  // meetings are newest-first from the API
+  const lastMeetingDate = meetings[0]?.meeting_date ?? null;
+
+  const isStalled = meetingCount === 0 && elapsed > 14;
+  const isAtRisk = overdueCIs >= 2 || (elapsed > 7 && meetingCount === 0);
+
+  return (
+    <div className="space-y-4" data-testid="section-pip-progress">
+      {isStalled && (
+        <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/20 px-3 py-2 flex items-center gap-2 text-sm">
+          <AlertTriangle className="h-4 w-4 text-red-600 shrink-0" />
+          <span className="text-red-700 dark:text-red-400 font-medium">
+            No meetings logged in {elapsed} days — PIP may be stalled.
+          </span>
+        </div>
+      )}
+      {isAtRisk && !isStalled && (
+        <div className="rounded-md border border-amber-300 bg-amber-50 dark:bg-amber-950/20 px-3 py-2 flex items-center gap-2 text-sm">
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+          <span className="text-amber-700 dark:text-amber-400 font-medium">
+            {overdueCIs} overdue check-in{overdueCIs !== 1 ? "s" : ""} — weekly cadence at risk.
+          </span>
+        </div>
+      )}
+
+      {/* Plan duration progress */}
+      <div>
+        <div className="flex justify-between text-xs text-muted-foreground mb-1">
+          <span>PIP Duration</span>
+          <span>Day {Math.min(elapsed, totalDays)} / {totalDays}</span>
+        </div>
+        <div className="h-2 bg-muted rounded-full overflow-hidden">
+          <div className="h-2 rounded-full bg-red-400 dark:bg-red-600 transition-all" style={{ width: `${pct}%` }} />
+        </div>
+      </div>
+
+      {/* Stat row — goals met / check-ins / meetings / last meeting */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div className="rounded-lg border p-3 text-center" data-testid="pip-stat-goals-met">
+          <div className={`text-2xl font-bold ${goalsMet === goalsTotal && goalsTotal > 0 ? "text-emerald-600" : "text-foreground"}`}>
+            {goalsMet}/{goalsTotal}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">Goals met</div>
+        </div>
+        <div className="rounded-lg border p-3 text-center" data-testid="pip-stat-checkins">
+          <div className="text-2xl font-bold text-foreground">{completedCIs}/{formalCIs.length}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">Check-ins done</div>
+          {overdueCIs > 0 && (
+            <div className="text-[10px] text-red-600 mt-0.5">{overdueCIs} overdue</div>
+          )}
+        </div>
+        <div className="rounded-lg border p-3 text-center" data-testid="pip-stat-meetings">
+          <div className="text-2xl font-bold text-foreground">{meetingCount}</div>
+          <div className="text-xs text-muted-foreground mt-0.5">Meetings logged</div>
+          {elapsed > 7 && meetingCount === 0 && (
+            <div className="text-[10px] text-red-600 mt-0.5">None yet</div>
+          )}
+        </div>
+        <div className="rounded-lg border p-3 text-center" data-testid="pip-stat-last-meeting">
+          <div className="text-sm font-semibold text-foreground leading-tight">
+            {lastMeetingDate ? formatDate(lastMeetingDate) : "—"}
+          </div>
+          <div className="text-xs text-muted-foreground mt-0.5">Last meeting</div>
+        </div>
+      </div>
+
+      {/* Per-goal progress */}
+      {goals.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Goal Breakdown</p>
+          {goals.map(g => {
+            const isMet = g.progress >= 100 || g.status === "completed";
+            const isOverdue = g.target_date && g.target_date < today && !["completed", "cancelled"].includes(g.status);
+            return (
+              <div key={g.id} className="space-y-1" data-testid={`pip-goal-${g.id}`}>
+                <div className="flex justify-between text-xs">
+                  <span className={`font-medium ${isMet ? "text-emerald-600" : isOverdue ? "text-red-600" : ""}`}>
+                    {isMet && "✓ "}{g.title}
+                  </span>
+                  <span className="text-muted-foreground">{g.progress}%</span>
+                </div>
+                <div className="h-1.5 bg-muted rounded-full overflow-hidden">
+                  <div
+                    className={`h-1.5 rounded-full transition-all ${isMet ? "bg-emerald-500" : g.progress >= 70 ? "bg-emerald-500" : g.progress >= 40 ? "bg-amber-500" : "bg-red-400"}`}
+                    style={{ width: `${g.progress}%` }}
+                  />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Log Meeting Sheet ─────────────────────────────────────────────────────────
+function LogMeetingSheet({
+  planId,
+  planType,
+  defaultCheckInId,
+  checkIns,
+  plan,
+  open,
+  onClose,
+  onSuccess,
+  userRole,
+}: {
+  planId: string;
+  planType: string;
+  defaultCheckInId?: string | null;
+  checkIns?: PlanCheckIn[];
+  plan?: TeamPlan;
+  open: boolean;
+  onClose: () => void;
+  onSuccess: () => void;
+  userRole?: string;
+}) {
+  const { toast } = useToast();
+  const { user: currentUser } = useAuth();
+  // HR role is read-only for meeting logs (backend also enforces this)
+  const effectiveRole = userRole ?? currentUser?.role ?? "";
+  const isReadOnly = effectiveRole === "hr";
+  const defaultType = planType === "pip" ? "pip_review" : planType === "probation" ? "probation_review" : "check_in";
+
+  const [form, setForm] = useState({
+    meetingDate: todayStr(),
+    durationMinutes: "",
+    meetingType: defaultType,
+    notes: "",
+    checkInId: defaultCheckInId ?? "",
+  });
+  const [attendeeIds, setAttendeeIds] = useState<string[]>([]);
+
+  // Fetch attendee candidates from backend (admin_users scoped to this plan's team)
+  const { data: attendeeOptions } = useQuery<{
+    attendees: { id: string; full_name: string; role: string }[];
+    defaultIds: string[];
+  }>({
+    queryKey: ["/api/hr/plans", planId, "attendees"],
+    enabled: open && !isReadOnly,
+  });
+
+  const toggleAttendee = (id: string) => {
+    setAttendeeIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const mutation = useMutation({
+    mutationFn: () => {
+      return apiRequest("POST", `/api/hr/plans/${planId}/meetings`, {
+        meetingDate: form.meetingDate,
+        durationMinutes: form.durationMinutes ? Number(form.durationMinutes) : null,
+        meetingType: form.meetingType,
+        notes: form.notes || null,
+        checkInId: form.checkInId || null,
+        attendees: attendeeIds.length > 0 ? attendeeIds : undefined,
+      });
+    },
+    onSuccess: () => {
+      toast({ title: "Meeting logged" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/plans", planId, "meetings"] });
+      onSuccess();
+      onClose();
+    },
+    onError: () => toast({ title: "Failed to log meeting", variant: "destructive" }),
+  });
+
+  useEffect(() => {
+    if (open) {
+      setForm({
+        meetingDate: todayStr(),
+        durationMinutes: "",
+        meetingType: defaultType,
+        notes: "",
+        checkInId: defaultCheckInId ?? "",
+      });
+      // Default attendees = manager + employee (set when options load or reset on open)
+      setAttendeeIds(attendeeOptions?.defaultIds ?? []);
+    }
+  }, [open, planType, defaultCheckInId]);
+
+  // When attendee options first load (async), seed the default selection
+  useEffect(() => {
+    if (open && attendeeOptions?.defaultIds && attendeeIds.length === 0) {
+      setAttendeeIds(attendeeOptions.defaultIds);
+    }
+  }, [attendeeOptions?.defaultIds]);
+
+  const pendingCIsForSheet = (checkIns ?? []).filter(ci => ci.check_in_type !== "weekly_update");
+
+  return (
+    <Dialog open={open} onOpenChange={onClose}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Log Meeting</DialogTitle>
+          <DialogDescription>
+            {isReadOnly
+              ? "HR can view meeting logs. Only managers can log new meetings."
+              : "Record a 1:1, coaching session, or review for this plan."}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+        {isReadOnly ? (
+          <p className="text-sm text-muted-foreground text-center py-4">
+            HR has read-only access to this plan's meeting log.
+          </p>
+        ) : (
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Label>Date *</Label>
+            <Input
+              type="date"
+              value={form.meetingDate}
+              max={todayStr()}
+              onChange={e => setForm(f => ({ ...f, meetingDate: e.target.value }))}
+              data-testid="input-meeting-date"
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Meeting Type *</Label>
+            <Select value={form.meetingType} onValueChange={v => setForm(f => ({ ...f, meetingType: v }))}>
+              <SelectTrigger data-testid="select-meeting-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {Object.entries(MEETING_TYPE_LABELS).map(([k, label]) => (
+                  <SelectItem key={k} value={k}>{label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-2">
+            <Label>Duration (minutes)</Label>
+            <Input
+              type="number"
+              min="1"
+              max="480"
+              placeholder="e.g. 30"
+              value={form.durationMinutes}
+              onChange={e => setForm(f => ({ ...f, durationMinutes: e.target.value }))}
+              data-testid="input-meeting-duration"
+            />
+          </div>
+          {pendingCIsForSheet.length > 0 && (
+            <div className="space-y-2">
+              <Label>Link to Check-In <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Select value={form.checkInId} onValueChange={v => setForm(f => ({ ...f, checkInId: v === "none" ? "" : v }))}>
+                <SelectTrigger data-testid="select-check-in-link">
+                  <SelectValue placeholder="None — standalone meeting" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">None — standalone meeting</SelectItem>
+                  {pendingCIsForSheet.map(ci => (
+                    <SelectItem key={ci.id} value={ci.id}>
+                      {CHECK_IN_TYPE_LABELS[ci.check_in_type] || ci.check_in_type} — {formatDate(ci.scheduled_date)}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          {attendeeOptions && attendeeOptions.attendees.length > 0 && (
+            <div className="space-y-2">
+              <Label>Attendees <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto" data-testid="attendees-picker">
+                {attendeeOptions.attendees.map(u => (
+                  <label key={u.id} className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input
+                      type="checkbox"
+                      checked={attendeeIds.includes(u.id)}
+                      onChange={() => toggleAttendee(u.id)}
+                      data-testid={`checkbox-attendee-${u.id}`}
+                      className="rounded"
+                    />
+                    <span>{u.full_name}</span>
+                    <span className="text-muted-foreground text-xs capitalize">({u.role})</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="space-y-2">
+            <Label>Notes</Label>
+            <Textarea
+              rows={3}
+              placeholder="Key discussion points, action items, decisions..."
+              value={form.notes}
+              onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+              data-testid="input-meeting-notes"
+            />
+          </div>
+        </div>
+        )}
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} data-testid="button-cancel-log-meeting">
+            {isReadOnly ? "Close" : "Cancel"}
+          </Button>
+          {!isReadOnly && (
+            <Button
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending || !form.meetingDate}
+              data-testid="button-save-log-meeting"
+            >
+              {mutation.isPending ? "Saving..." : "Log Meeting"}
+            </Button>
+          )}
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Plan Detail Drawer ─────────────────────────────────────────────────
 function PlanDetailPanel({
   planId,
@@ -3762,7 +4232,11 @@ function PlanDetailPanel({
   onClose: () => void;
   onRefresh: () => void;
 }) {
+  const { toast } = useToast();
   const [completeCheckIn, setCompleteCheckIn] = useState<PlanCheckIn | null>(null);
+  const [logMeetingOpen, setLogMeetingOpen] = useState(false);
+  const [logMeetingCheckInId, setLogMeetingCheckInId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState("overview");
 
   const { data, isLoading, refetch } = useQuery<PlanDetail>({
     queryKey: ["/api/hr/plans", planId],
@@ -3771,6 +4245,25 @@ function PlanDetailPanel({
       if (!res.ok) throw new Error("Failed to load plan");
       return res.json();
     },
+  });
+
+  const { data: meetings = [], refetch: refetchMeetings } = useQuery<PlanMeetingRow[]>({
+    queryKey: ["/api/hr/plans", planId, "meetings"],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/plans/${planId}/meetings`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const deleteMeetingMutation = useMutation({
+    mutationFn: (meetingId: string) =>
+      apiRequest("DELETE", `/api/hr/plans/${planId}/meetings/${meetingId}`),
+    onSuccess: () => {
+      toast({ title: "Meeting removed" });
+      refetchMeetings();
+    },
+    onError: () => toast({ title: "Failed to remove meeting", variant: "destructive" }),
   });
 
   const today = todayStr();
@@ -3799,7 +4292,7 @@ function PlanDetailPanel({
     );
   }
 
-  const { plan, checkIns, goals, coachingLog = [] } = data;
+  const { plan, checkIns, goals, coachingLog = [], meetingCount: planMeetingCount = 0, lastMeetingDate: planLastMeetingDate = null } = data;
   const remaining = plan.end_date ? daysRemaining(plan.end_date) : 0;
   const compliance = calcCompliance(checkIns);
   const overdue = overdueCount(checkIns);
@@ -3819,16 +4312,56 @@ function PlanDetailPanel({
     goalsByPhase[idx].push(g);
   }
 
+  // Manager accountability banner logic
+  const actionBanner = (() => {
+    if (!plan.manager_goal_escalated_at) return null;
+    const escalatedAt = new Date(plan.manager_goal_escalated_at);
+    const now = new Date();
+    const daysSinceEscalation = Math.floor((now.getTime() - escalatedAt.getTime()) / 86400000);
+    if (daysSinceEscalation < 5) return null;
+    const latestGoalUpdate = goals.reduce((max, g) => {
+      const t = (g as any).updated_at ? new Date((g as any).updated_at).getTime() : 0;
+      return t > max ? t : max;
+    }, 0);
+    const latestCheckInAction = checkIns.reduce((max, ci) => {
+      const t = ci.completed_at ? new Date(ci.completed_at).getTime() : 0;
+      return t > max ? t : max;
+    }, 0);
+    const latestCoachingEntry = coachingLog.reduce((max, c) => {
+      const t = c.created_at ? new Date(c.created_at).getTime() : 0;
+      return t > max ? t : max;
+    }, 0);
+    const latestMeeting = meetings.reduce((max, m) => {
+      const t = m.created_at ? new Date(m.created_at).getTime() : 0;
+      return t > max ? t : max;
+    }, 0);
+    const latestAction = Math.max(latestGoalUpdate, latestCheckInAction, latestCoachingEntry, latestMeeting);
+    if (latestAction > escalatedAt.getTime()) return null;
+    return daysSinceEscalation;
+  })();
+
+  const overdueCheckInCount = overdue;
+  const meetingBadge = meetings.length > 0 ? meetings.length : undefined;
+
   return (
     <>
       <Dialog open onOpenChange={onClose}>
-        <DialogContent className="max-w-3xl">
+        <DialogContent className="max-w-3xl max-h-[90vh]">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2 flex-wrap">
               <Badge className={PLAN_TYPE_COLORS[plan.plan_type]}>
                 {PLAN_TYPE_LABELS[plan.plan_type] || plan.plan_type}
               </Badge>
               <span>{plan.employee_name || "Employee"}</span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="ml-auto text-xs h-7"
+                onClick={() => { setLogMeetingCheckInId(null); setLogMeetingOpen(true); }}
+                data-testid="button-log-meeting-header"
+              >
+                + Log Meeting
+              </Button>
             </DialogTitle>
             <DialogDescription className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
               {plan.start_date ? (
@@ -3844,238 +4377,460 @@ function PlanDetailPanel({
               )}
               <span className="text-muted-foreground">
                 Compliance: <strong>{compliance.done}/{compliance.total}</strong>
-                {overdue > 0 && <span className="ml-2 text-red-600">({overdue} overdue)</span>}
+                {overdueCheckInCount > 0 && <span className="ml-2 text-red-600">({overdueCheckInCount} overdue)</span>}
               </span>
             </DialogDescription>
           </DialogHeader>
           <DialogBody>
-          <div className="space-y-6 py-2">
-            {/* Manager accountability banner */}
-            {(() => {
-              if (!plan.manager_goal_escalated_at) return null;
-              const escalatedAt = new Date(plan.manager_goal_escalated_at);
-              const now = new Date();
-              const daysSinceEscalation = Math.floor((now.getTime() - escalatedAt.getTime()) / 86400000);
-              if (daysSinceEscalation < 5) return null;
-              const latestGoalUpdate = goals.reduce((max, g) => {
-                const t = g.updated_at ? new Date(g.updated_at).getTime() : 0;
-                return t > max ? t : max;
-              }, 0);
-              const latestCheckInAction = checkIns.reduce((max, ci) => {
-                const t = ci.completed_at ? new Date(ci.completed_at).getTime() : 0;
-                return t > max ? t : max;
-              }, 0);
-              const latestCoachingEntry = coachingLog.reduce((max, c) => {
-                const t = c.created_at ? new Date(c.created_at).getTime() : 0;
-                return t > max ? t : max;
-              }, 0);
-              const latestCoachingAction = Math.max(latestGoalUpdate, latestCheckInAction, latestCoachingEntry);
-              if (latestCoachingAction > escalatedAt.getTime()) return null;
-              return (
-                <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/20 px-4 py-3 flex items-start gap-2" data-testid="banner-manager-action-required">
-                  <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
-                  <div>
-                    <p className="text-sm font-semibold text-red-700 dark:text-red-400">Action Required</p>
-                    <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
-                      This employee was escalated {daysSinceEscalation} days ago for overdue goals with no progress.
-                      No coaching action (check-in, goal update, or milestone) has been recorded since. Please take action.
-                    </p>
-                  </div>
-                </div>
-              );
-            })()}
 
-            {/* Phase Timeline */}
-            <div>
-              <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                <ChevronRight className="h-4 w-4" /> Plan Timeline
-              </h3>
-              <div className="flex gap-2" data-testid="section-phase-timeline">
-                {phases.map((phase, idx) => {
-                  const isCurrentPhase = idx === currentPhaseIdx;
-                  const isPastPhase = phase.endDate < today;
-                  const isFuturePhase = phase.startDate > today;
-                  return (
-                    <div
-                      key={idx}
-                      data-testid={`phase-${idx}`}
-                      className={`flex-1 rounded-md px-3 py-2 border text-center transition-colors ${
-                        isCurrentPhase
-                          ? "border-primary bg-primary/10 text-primary font-semibold"
-                          : isPastPhase
-                          ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700"
-                          : "border-muted bg-muted/30 text-muted-foreground"
-                      }`}
-                    >
-                      <div className="text-xs font-medium">{phase.label}</div>
-                      <div className="text-[10px] mt-0.5">
-                        {isPastPhase ? "✓ Done" : isCurrentPhase ? "In progress" : isFuturePhase ? "Upcoming" : ""}
-                      </div>
-                      <div className="text-[10px] mt-0.5 opacity-70">
-                        {goalsByPhase[idx]?.length ?? 0} goal{(goalsByPhase[idx]?.length ?? 0) !== 1 ? "s" : ""}
-                      </div>
-                    </div>
-                  );
-                })}
+          {actionBanner !== null && (
+            <div className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/20 px-4 py-3 flex items-start gap-2 mb-4" data-testid="banner-manager-action-required">
+              <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-red-700 dark:text-red-400">Action Required</p>
+                <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                  This employee was escalated {actionBanner} days ago for overdue goals with no progress.
+                  No coaching action has been recorded since. Please log a meeting or take action.
+                </p>
               </div>
             </div>
+          )}
 
-            {/* Goals grouped by phase */}
-            {goals.length > 0 && (
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
+            <TabsList className="w-full grid grid-cols-4 mb-4">
+              <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+              <TabsTrigger value="checkins" data-testid="tab-checkins" className="relative">
+                Check-Ins
+                {overdueCheckInCount > 0 && (
+                  <span className="ml-1 text-[10px] bg-red-500 text-white rounded-full px-1 leading-4">{overdueCheckInCount}</span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="meetings" data-testid="tab-meetings">
+                Meetings
+                {meetingBadge !== undefined && (
+                  <span className="ml-1 text-[10px] bg-primary text-primary-foreground rounded-full px-1 leading-4">{meetingBadge}</span>
+                )}
+              </TabsTrigger>
+              <TabsTrigger value="progress" data-testid="tab-progress">Progress</TabsTrigger>
+            </TabsList>
+
+            {/* ── Overview Tab ─────────────────────────────────────────── */}
+            <TabsContent value="overview" className="space-y-6 mt-0">
+              {/* Meeting activity summary row */}
+              <div className="flex gap-3 flex-wrap" data-testid="section-meeting-summary">
+                <div className="flex-1 min-w-[120px] rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground font-medium mb-0.5">Meetings logged</div>
+                  <div className="text-xl font-bold text-foreground" data-testid="text-meeting-count">{planMeetingCount}</div>
+                </div>
+                <div className="flex-1 min-w-[160px] rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground font-medium mb-0.5">Last meeting</div>
+                  <div className="text-sm font-semibold text-foreground" data-testid="text-last-meeting-date">
+                    {planLastMeetingDate ? formatDate(planLastMeetingDate) : "—"}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-[120px] rounded-lg border p-3">
+                  <div className="text-xs text-muted-foreground font-medium mb-0.5">Check-ins</div>
+                  <div className="text-xl font-bold text-foreground" data-testid="text-checkin-compliance">
+                    {compliance.done}/{compliance.total}
+                  </div>
+                </div>
+              </div>
+
+              {/* Phase Timeline */}
               <div>
                 <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <Target className="h-4 w-4" /> Goals ({goals.length})
+                  <ChevronRight className="h-4 w-4" /> Plan Timeline
                 </h3>
-                <div className="space-y-4">
+                <div className="flex gap-2" data-testid="section-phase-timeline">
                   {phases.map((phase, idx) => {
-                    const phaseGoals = goalsByPhase[idx];
-                    if (phaseGoals.length === 0) return null;
                     const isCurrentPhase = idx === currentPhaseIdx;
+                    const isPastPhase = phase.endDate < today;
+                    const isFuturePhase = phase.startDate > today;
                     return (
-                      <div key={idx} data-testid={`phase-goals-${idx}`}>
-                        <div className={`text-xs font-semibold mb-2 px-2 py-1 rounded-md inline-flex items-center gap-1.5 ${
-                          isCurrentPhase ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                        }`}>
-                          {isCurrentPhase && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />}
-                          {phase.label}
+                      <div
+                        key={idx}
+                        data-testid={`phase-${idx}`}
+                        className={`flex-1 rounded-md px-3 py-2 border text-center transition-colors ${
+                          isCurrentPhase
+                            ? "border-primary bg-primary/10 text-primary font-semibold"
+                            : isPastPhase
+                            ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 text-emerald-700"
+                            : "border-muted bg-muted/30 text-muted-foreground"
+                        }`}
+                      >
+                        <div className="text-xs font-medium">{phase.label}</div>
+                        <div className="text-[10px] mt-0.5">
+                          {isPastPhase ? "✓ Done" : isCurrentPhase ? "In progress" : isFuturePhase ? "Upcoming" : ""}
                         </div>
-                        <div className="space-y-2">
-                          {phaseGoals.map(g => {
-                            const isOverdue = g.target_date && g.target_date < today && !["completed", "cancelled"].includes(g.status);
-                            return (
-                              <div key={g.id} className={`border rounded-lg p-3 space-y-2 ${isOverdue ? "border-orange-300" : ""}`} data-testid={`plan-goal-${g.id}`}>
-                                <div className="flex items-start justify-between gap-2">
-                                  <div className="flex-1 min-w-0">
-                                    <div className="text-sm font-medium flex items-center gap-1.5">
-                                      {g.title}
-                                      {isOverdue && (
-                                        <Badge className="text-[10px] h-4 bg-orange-100 text-orange-700 border-orange-200">
-                                          Overdue
-                                        </Badge>
-                                      )}
+                        <div className="text-[10px] mt-0.5 opacity-70">
+                          {goalsByPhase[idx]?.length ?? 0} goal{(goalsByPhase[idx]?.length ?? 0) !== 1 ? "s" : ""}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Goals grouped by phase */}
+              {goals.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <Target className="h-4 w-4" /> Goals ({goals.length})
+                  </h3>
+                  <div className="space-y-4">
+                    {phases.map((phase, idx) => {
+                      const phaseGoals = goalsByPhase[idx];
+                      if (phaseGoals.length === 0) return null;
+                      const isCurrentPhase = idx === currentPhaseIdx;
+                      return (
+                        <div key={idx} data-testid={`phase-goals-${idx}`}>
+                          <div className={`text-xs font-semibold mb-2 px-2 py-1 rounded-md inline-flex items-center gap-1.5 ${
+                            isCurrentPhase ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                          }`}>
+                            {isCurrentPhase && <span className="w-1.5 h-1.5 rounded-full bg-primary inline-block" />}
+                            {phase.label}
+                          </div>
+                          <div className="space-y-2">
+                            {phaseGoals.map(g => {
+                              const isOverdue = g.target_date && g.target_date < today && !["completed", "cancelled"].includes(g.status);
+                              return (
+                                <div key={g.id} className={`border rounded-lg p-3 space-y-2 ${isOverdue ? "border-orange-300" : ""}`} data-testid={`plan-goal-${g.id}`}>
+                                  <div className="flex items-start justify-between gap-2">
+                                    <div className="flex-1 min-w-0">
+                                      <div className="text-sm font-medium flex items-center gap-1.5">
+                                        {g.title}
+                                        {isOverdue && (
+                                          <Badge className="text-[10px] h-4 bg-orange-100 text-orange-700 border-orange-200">
+                                            Overdue
+                                          </Badge>
+                                        )}
+                                      </div>
+                                      {g.description && <div className="text-xs text-muted-foreground mt-0.5">{g.description}</div>}
+                                      {g.target_date && <div className="text-[10px] text-muted-foreground mt-0.5">Due {formatDate(g.target_date)}</div>}
                                     </div>
-                                    {g.description && <div className="text-xs text-muted-foreground mt-0.5">{g.description}</div>}
-                                    {g.target_date && <div className="text-[10px] text-muted-foreground mt-0.5">Due {formatDate(g.target_date)}</div>}
+                                    <span className="text-xs font-semibold shrink-0">{g.progress}%</span>
                                   </div>
-                                  <span className="text-xs font-semibold shrink-0">{g.progress}%</span>
+                                  <div className="w-full bg-muted rounded-full h-1.5">
+                                    <div
+                                      className="bg-primary rounded-full h-1.5 transition-all"
+                                      style={{ width: `${g.progress}%` }}
+                                    />
+                                  </div>
                                 </div>
-                                <div className="w-full bg-muted rounded-full h-1.5">
-                                  <div
-                                    className="bg-primary rounded-full h-1.5 transition-all"
-                                    style={{ width: `${g.progress}%` }}
-                                  />
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* Employee Self-Updates */}
+              {selfUpdates.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <Clipboard className="h-4 w-4" /> Employee Weekly Self-Updates
+                  </h3>
+                  <div className="space-y-2">
+                    {[...selfUpdates].sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date)).map(su => (
+                      <div key={su.id} className="border rounded-lg p-3 space-y-1" data-testid={`self-update-${su.id}`}>
+                        <div className="text-xs font-medium text-muted-foreground">{formatDate(su.scheduled_date)}</div>
+                        {su.employee_notes && <p className="text-sm">{su.employee_notes}</p>}
+                        {!su.employee_notes && <p className="text-sm text-muted-foreground italic">No notes submitted</p>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {goals.length === 0 && selfUpdates.length === 0 && (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  No goals or self-updates yet.
+                </div>
+              )}
+            </TabsContent>
+
+            {/* ── Check-Ins Tab ─────────────────────────────────────────── */}
+            <TabsContent value="checkins" className="space-y-6 mt-0">
+              {/* Build a set of check-in IDs that have a meeting linked */}
+              {(() => {
+                const linkedCIIds = new Set(meetings.map(m => m.check_in_id).filter(Boolean));
+                return (
+                  <>
+                    {/* Upcoming / Overdue Check-Ins */}
+                    {pendingCIs.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                          <Calendar className="h-4 w-4" /> Upcoming Check-Ins
+                        </h3>
+                        <div className="space-y-2">
+                          {pendingCIs.map(ci => {
+                            const isOverdue = ci.scheduled_date < today;
+                            const hasMeeting = linkedCIIds.has(ci.id);
+                            return (
+                              <div key={ci.id} className={`border rounded-lg p-3 flex items-center justify-between gap-3 ${isOverdue ? "border-red-200 bg-red-50/50 dark:border-red-800/30 dark:bg-red-900/10" : ""}`} data-testid={`pending-ci-${ci.id}`}>
+                                <div className="flex-1 min-w-0">
+                                  <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                                    {CHECK_IN_TYPE_LABELS[ci.check_in_type] || ci.check_in_type}
+                                    {isOverdue && <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-xs">Overdue</Badge>}
+                                    {hasMeeting && <Badge variant="outline" className="text-[10px] h-4 border-primary/40 text-primary">Meeting logged</Badge>}
+                                  </div>
+                                  <div className="text-xs text-muted-foreground">{formatDate(ci.scheduled_date)}</div>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-xs h-7 px-2"
+                                    onClick={() => { setLogMeetingCheckInId(ci.id); setLogMeetingOpen(true); }}
+                                    data-testid={`button-discuss-ci-${ci.id}`}
+                                  >
+                                    Discuss
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant={isOverdue ? "destructive" : "outline"}
+                                    onClick={() => setCompleteCheckIn(ci)}
+                                    data-testid={`button-complete-ci-${ci.id}`}
+                                  >
+                                    <Check className="h-3.5 w-3.5 mr-1" />
+                                    Complete
+                                  </Button>
                                 </div>
                               </div>
                             );
                           })}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                    )}
 
-            {/* Upcoming / Overdue Check-Ins */}
-            {pendingCIs.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <Calendar className="h-4 w-4" /> Upcoming Check-Ins
-                </h3>
-                <div className="space-y-2">
-                  {pendingCIs.map(ci => {
-                    const isOverdue = ci.scheduled_date < today;
-                    return (
-                      <div key={ci.id} className={`border rounded-lg p-3 flex items-center justify-between gap-3 ${isOverdue ? "border-red-200 bg-red-50/50 dark:border-red-800/30 dark:bg-red-900/10" : ""}`} data-testid={`pending-ci-${ci.id}`}>
-                        <div className="flex-1 min-w-0">
-                          <div className="text-sm font-medium flex items-center gap-2">
-                            {CHECK_IN_TYPE_LABELS[ci.check_in_type] || ci.check_in_type}
-                            {isOverdue && <Badge className="bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 text-xs">Overdue</Badge>}
-                          </div>
-                          <div className="text-xs text-muted-foreground">{formatDate(ci.scheduled_date)}</div>
+                    {/* Check-In History */}
+                    {completedCIs.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                          <History className="h-4 w-4" /> Check-In History
+                        </h3>
+                        <div className="space-y-2">
+                          {completedCIs.map(ci => {
+                            const scores = ci.review_scores as Record<string, any> | null;
+                            const hasMeeting = linkedCIIds.has(ci.id);
+                            return (
+                              <div key={ci.id} className="border rounded-lg p-3 space-y-2" data-testid={`completed-ci-${ci.id}`}>
+                                <div className="flex items-center justify-between gap-2">
+                                  <div className="flex-1 min-w-0">
+                                    <div className="text-sm font-medium flex items-center gap-2 flex-wrap">
+                                      {CHECK_IN_TYPE_LABELS[ci.check_in_type] || ci.check_in_type}
+                                      {hasMeeting && <Badge variant="outline" className="text-[10px] h-4 border-primary/40 text-primary">Meeting logged</Badge>}
+                                    </div>
+                                    <div className="text-xs text-muted-foreground">{formatDate(ci.scheduled_date)} · Completed {ci.completed_at ? formatDate(ci.completed_at) : ""}</div>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-xs h-7 px-2"
+                                      onClick={() => { setLogMeetingCheckInId(ci.id); setLogMeetingOpen(true); setActiveTab("meetings"); }}
+                                      data-testid={`button-discuss-completed-ci-${ci.id}`}
+                                    >
+                                      Discuss
+                                    </Button>
+                                    {ci.rating !== null && ci.rating !== undefined && (
+                                      <span className="text-sm font-semibold text-yellow-600">{ci.rating}/5 ★</span>
+                                    )}
+                                    <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">Done</Badge>
+                                  </div>
+                                </div>
+                                {ci.manager_notes && (
+                                  <p className="text-xs text-muted-foreground line-clamp-2 bg-muted/40 rounded px-2 py-1">{ci.manager_notes}</p>
+                                )}
+                                {scores && ci.check_in_type === "pip_review" && (
+                                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                                    {scores.activity !== undefined && <span>Activity: <strong>{scores.activity}/5</strong></span>}
+                                    {scores.quality !== undefined && <span>Quality: <strong>{scores.quality}/5</strong></span>}
+                                    {scores.ats_hygiene !== undefined && <span>ATS: <strong>{scores.ats_hygiene}/5</strong></span>}
+                                    {scores.communication !== undefined && <span>Comm: <strong>{scores.communication}/5</strong></span>}
+                                    {scores.ownership !== undefined && <span>Ownership: <strong>{scores.ownership}/5</strong></span>}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
-                        <Button
-                          size="sm"
-                          variant={isOverdue ? "destructive" : "outline"}
-                          onClick={() => setCompleteCheckIn(ci)}
-                          data-testid={`button-complete-ci-${ci.id}`}
-                        >
-                          <Check className="h-3.5 w-3.5 mr-1" />
-                          Complete
-                        </Button>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+                    )}
 
-            {/* Check-In History */}
-            {completedCIs.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <History className="h-4 w-4" /> Check-In History
+                    {pendingCIs.length === 0 && completedCIs.length === 0 && (
+                      <div className="text-center py-8 text-muted-foreground text-sm">
+                        No check-ins scheduled yet.
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </TabsContent>
+
+            {/* ── Meetings Tab ──────────────────────────────────────────── */}
+            <TabsContent value="meetings" className="space-y-4 mt-0">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold flex items-center gap-2">
+                  <Calendar className="h-4 w-4" /> Meeting Log
+                  <span className="text-xs text-muted-foreground font-normal">({meetings.length} recorded)</span>
                 </h3>
-                <div className="space-y-2">
-                  {completedCIs.map(ci => {
-                    const scores = ci.review_scores as Record<string, any> | null;
-                    return (
-                      <div key={ci.id} className="border rounded-lg p-3 space-y-2" data-testid={`completed-ci-${ci.id}`}>
-                        <div className="flex items-center justify-between gap-2">
-                          <div>
-                            <div className="text-sm font-medium">{CHECK_IN_TYPE_LABELS[ci.check_in_type] || ci.check_in_type}</div>
-                            <div className="text-xs text-muted-foreground">{formatDate(ci.scheduled_date)} · Completed {ci.completed_at ? formatDate(ci.completed_at) : ""}</div>
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {ci.rating !== null && ci.rating !== undefined && (
-                              <span className="text-sm font-semibold text-yellow-600">{ci.rating}/5 ★</span>
-                            )}
-                            <Badge className="bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">Done</Badge>
-                          </div>
+                <Button
+                  size="sm"
+                  onClick={() => { setLogMeetingCheckInId(null); setLogMeetingOpen(true); }}
+                  data-testid="button-log-meeting-tab"
+                >
+                  + Log Meeting
+                </Button>
+              </div>
+
+              {meetings.length === 0 && (
+                <div className="text-center py-10 space-y-2">
+                  <p className="text-sm text-muted-foreground">No meetings logged yet.</p>
+                  <p className="text-xs text-muted-foreground">Use "Log Meeting" to record 1:1s, coaching sessions, and reviews.</p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                {meetings.map(m => (
+                  <div key={m.id} className="border rounded-lg p-3 space-y-1" data-testid={`meeting-row-${m.id}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium">{MEETING_TYPE_LABELS[m.meeting_type] || m.meeting_type}</span>
+                          {m.duration_minutes && (
+                            <Badge variant="outline" className="text-[10px] h-4">{m.duration_minutes} min</Badge>
+                          )}
                         </div>
-                        {ci.manager_notes && (
-                          <p className="text-xs text-muted-foreground line-clamp-2 bg-muted/40 rounded px-2 py-1">{ci.manager_notes}</p>
-                        )}
-                        {scores && ci.check_in_type === "pip_review" && (
-                          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-                            {scores.activity !== undefined && <span>Activity: <strong>{scores.activity}/5</strong></span>}
-                            {scores.quality !== undefined && <span>Quality: <strong>{scores.quality}/5</strong></span>}
-                            {scores.ats_hygiene !== undefined && <span>ATS: <strong>{scores.ats_hygiene}/5</strong></span>}
-                            {scores.communication !== undefined && <span>Comm: <strong>{scores.communication}/5</strong></span>}
-                            {scores.ownership !== undefined && <span>Ownership: <strong>{scores.ownership}/5</strong></span>}
-                          </div>
-                        )}
+                        <div className="text-xs text-muted-foreground mt-0.5">
+                          {formatDate(m.meeting_date)}
+                          {m.logged_by_name && <span className="ml-2">· Logged by {m.logged_by_name}</span>}
+                          {m.attendee_names && m.attendee_names.length > 0 && (
+                            <span className="ml-2">· {m.attendee_names.join(", ")}</span>
+                          )}
+                        </div>
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* Employee Self-Updates */}
-            {selfUpdates.length > 0 && (
-              <div>
-                <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                  <Clipboard className="h-4 w-4" /> Employee Weekly Self-Updates
-                </h3>
-                <div className="space-y-2">
-                  {[...selfUpdates].sort((a, b) => b.scheduled_date.localeCompare(a.scheduled_date)).map(su => (
-                    <div key={su.id} className="border rounded-lg p-3 space-y-1" data-testid={`self-update-${su.id}`}>
-                      <div className="text-xs font-medium text-muted-foreground">{formatDate(su.scheduled_date)}</div>
-                      {su.employee_notes && <p className="text-sm">{su.employee_notes}</p>}
-                      {!su.employee_notes && <p className="text-sm text-muted-foreground italic">No notes submitted</p>}
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-7 w-7 p-0 text-muted-foreground hover:text-destructive"
+                        onClick={() => deleteMeetingMutation.mutate(m.id)}
+                        disabled={deleteMeetingMutation.isPending}
+                        data-testid={`button-delete-meeting-${m.id}`}
+                      >
+                        ×
+                      </Button>
                     </div>
-                  ))}
-                </div>
+                    {m.notes && (
+                      <p className="text-xs text-muted-foreground bg-muted/40 rounded px-2 py-1 mt-1">{m.notes}</p>
+                    )}
+                    {m.check_in_id && (
+                      <p className="text-[10px] text-muted-foreground">Linked to check-in</p>
+                    )}
+                  </div>
+                ))}
               </div>
-            )}
+            </TabsContent>
 
-            {goals.length === 0 && pendingCIs.length === 0 && completedCIs.length === 0 && selfUpdates.length === 0 && (
-              <div className="text-center py-8 text-muted-foreground text-sm">
-                No goals or check-ins scheduled yet.
-              </div>
-            )}
-          </div>
+            {/* ── Progress Tab ──────────────────────────────────────────── */}
+            <TabsContent value="progress" className="space-y-6 mt-0">
+              {plan.plan_type === "probation" && plan.start_date && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <ChevronRight className="h-4 w-4" /> Probation Milestone Timeline
+                  </h3>
+                  <ProbationTimeline
+                    startDate={plan.start_date}
+                    endDate={plan.end_date ?? null}
+                    checkIns={checkIns}
+                    onOpenMeeting={(checkInId) => {
+                      setLogMeetingCheckInId(checkInId);
+                      setLogMeetingOpen(true);
+                    }}
+                  />
+                </div>
+              )}
+
+              {plan.plan_type === "pip" && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <Target className="h-4 w-4" /> PIP Progress Tracker
+                  </h3>
+                  <PipProgressCard
+                    plan={plan}
+                    checkIns={checkIns}
+                    goals={goals}
+                    meetings={meetings}
+                  />
+                </div>
+              )}
+
+              {plan.plan_type === "growth" && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <Target className="h-4 w-4" /> Growth Plan Progress
+                  </h3>
+                  {goals.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">No goals set yet.</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {goals.map(g => {
+                        const isOverdue = g.target_date && g.target_date < today && !["completed", "cancelled"].includes(g.status);
+                        return (
+                          <div key={g.id} className="space-y-1" data-testid={`growth-goal-${g.id}`}>
+                            <div className="flex justify-between text-sm">
+                              <span className={`font-medium ${isOverdue ? "text-red-600" : ""}`}>{g.title}</span>
+                              <span className="text-muted-foreground text-xs">{g.progress}%</span>
+                            </div>
+                            <div className="h-2 bg-muted rounded-full overflow-hidden">
+                              <div
+                                className={`h-2 rounded-full transition-all ${g.progress >= 70 ? "bg-emerald-500" : g.progress >= 40 ? "bg-amber-500" : "bg-primary"}`}
+                                style={{ width: `${g.progress}%` }}
+                              />
+                            </div>
+                            {g.target_date && (
+                              <div className="text-[10px] text-muted-foreground">Due {formatDate(g.target_date)}</div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {coachingLog.length > 0 && (
+                <div>
+                  <h3 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                    <MessageSquare className="h-4 w-4" /> Coaching Notes
+                  </h3>
+                  <div className="space-y-3">
+                    {coachingLog.slice(0, 5).map(entry => (
+                      <div key={entry.id} className="border rounded-md p-3 space-y-1" data-testid={`coaching-entry-${entry.id}`}>
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-muted-foreground">{formatDate(entry.entry_date)}</span>
+                          {entry.author_name && (
+                            <span className="text-xs text-muted-foreground">{entry.author_name}</span>
+                          )}
+                        </div>
+                        <p className="text-sm">{entry.content}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {!plan.start_date && (
+                <div className="text-center py-8 text-muted-foreground text-sm">
+                  Plan not yet activated — progress tracking starts after activation.
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+
           </DialogBody>
         </DialogContent>
       </Dialog>
@@ -4092,6 +4847,20 @@ function PlanDetailPanel({
           }}
         />
       )}
+
+      <LogMeetingSheet
+        planId={planId}
+        planType={plan.plan_type}
+        defaultCheckInId={logMeetingCheckInId}
+        checkIns={checkIns}
+        plan={plan}
+        open={logMeetingOpen}
+        onClose={() => setLogMeetingOpen(false)}
+        onSuccess={() => {
+          refetchMeetings();
+          refetch();
+        }}
+      />
     </>
   );
 }

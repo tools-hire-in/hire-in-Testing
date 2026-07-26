@@ -2746,7 +2746,7 @@ export function registerPerformanceRoutes(app: Express) {
           return res.status(403).json({ error: "Not authorized to view this plan" });
         }
       }
-      // Also return associated check-ins, goals, and coaching-log entries
+      // Also return associated check-ins, goals, coaching-log entries, and meeting summary
       const checkInsResult = await db.execute(sql`SELECT * FROM check_ins WHERE plan_id = ${req.params.id} ORDER BY scheduled_date ASC`);
       const goalsResult = await db.execute(sql`SELECT * FROM performance_goals WHERE plan_id = ${req.params.id} ORDER BY start_date ASC NULLS LAST, target_date ASC NULLS LAST`);
       const coachingLogResult = await db.execute(sql`
@@ -2756,7 +2756,20 @@ export function registerPerformanceRoutes(app: Express) {
         WHERE cl.plan_id = ${req.params.id}
         ORDER BY cl.entry_date DESC, cl.created_at DESC
       `);
-      res.json({ plan, checkIns: checkInsResult.rows, goals: goalsResult.rows, coachingLog: coachingLogResult.rows });
+      const meetingSummaryResult = await db.execute(sql`
+        SELECT COUNT(*)::int AS meeting_count, MAX(meeting_date) AS last_meeting_date
+        FROM plan_meetings
+        WHERE plan_id = ${req.params.id} AND deleted_at IS NULL
+      `);
+      const meetingSummary = (meetingSummaryResult.rows[0] as any) ?? { meeting_count: 0, last_meeting_date: null };
+      res.json({
+        plan,
+        checkIns: checkInsResult.rows,
+        goals: goalsResult.rows,
+        coachingLog: coachingLogResult.rows,
+        meetingCount: meetingSummary.meeting_count ?? 0,
+        lastMeetingDate: meetingSummary.last_meeting_date ?? null,
+      });
     } catch (error) {
       console.error("Error fetching employee plan:", error);
       res.status(500).json({ error: "Failed to fetch employee plan" });
@@ -3599,7 +3612,222 @@ export function registerPerformanceRoutes(app: Express) {
     }
   });
 
-  // ─── GET /api/hr/check-ins/:id/context ────────────────────────────────────
+  // ─── Plan Meetings — meeting log per plan ─────────────────────────────────
+  // GET /api/hr/plans/:planId/meetings   — list all meeting logs
+  // POST /api/hr/plans/:planId/meetings  — log a new meeting
+  // DELETE /api/hr/plans/:planId/meetings/:meetingId — remove a log entry
+
+  app.get("/api/hr/plans/:planId/meetings", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, "hr.plans.meetings", MANAGER_ROLES);
+    if (!userId) return;
+    try {
+      const { planId } = req.params;
+      const planResult = await db.execute(sql`SELECT * FROM employee_plans WHERE id = ${planId}`);
+      if (planResult.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+      const plan = planResult.rows[0] as any;
+
+      const role = req.session.role!;
+      if (!ADMIN_ROLES.includes(role)) {
+        const teamIds = await getAllReporteeIdsFromDb(userId);
+        if (!teamIds.includes(plan.employee_id)) {
+          return res.status(403).json({ error: "Not authorized to view meetings for this plan" });
+        }
+      }
+
+      const result = await db.execute(sql`
+        SELECT pm.*, a.first_name || ' ' || a.last_name AS logged_by_name
+        FROM plan_meetings pm
+        LEFT JOIN admin_users a ON pm.logged_by = a.id
+        WHERE pm.plan_id = ${planId}
+          AND pm.deleted_at IS NULL
+        ORDER BY pm.meeting_date DESC, pm.created_at DESC
+      `);
+
+      // Resolve attendee user IDs → names in one batch query
+      const rows = result.rows as any[];
+      const allAttendeeIds = new Set<string>();
+      for (const row of rows) {
+        if (Array.isArray(row.attendees)) row.attendees.forEach((id: string) => allAttendeeIds.add(id));
+      }
+      const idList = Array.from(allAttendeeIds);
+      let nameMap: Record<string, string> = {};
+      if (idList.length > 0) {
+        const nameRes = await db.execute(sql`
+          SELECT id, first_name || ' ' || last_name AS full_name
+          FROM admin_users WHERE id = ANY(${idList}::text[])
+        `);
+        for (const nr of nameRes.rows as any[]) nameMap[nr.id] = nr.full_name;
+      }
+      const enriched = rows.map(row => ({
+        ...row,
+        attendee_names: Array.isArray(row.attendees)
+          ? (row.attendees as string[]).map(id => nameMap[id] ?? id)
+          : [],
+      }));
+      res.json(enriched);
+    } catch (error) {
+      console.error("Error fetching plan meetings:", error);
+      res.status(500).json({ error: "Failed to fetch meetings" });
+    }
+  });
+
+  const VALID_MEETING_TYPES = ["check_in", "coaching", "pip_review", "probation_review", "informal"] as const;
+
+  // HR is read-only for meeting logs; only managers, admin, and super_admin can write
+  const PLAN_MEETING_WRITE_ROLES = ["super_admin", "admin", "manager", "operations"];
+
+  app.post("/api/hr/plans/:planId/meetings", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, "hr.plans.meetings.write", PLAN_MEETING_WRITE_ROLES);
+    if (!userId) return;
+    try {
+      const { planId } = req.params;
+      const { meetingDate, durationMinutes, meetingType, notes, checkInId, attendees } = req.body ?? {};
+
+      if (!meetingDate || typeof meetingDate !== "string") {
+        return res.status(400).json({ error: "meetingDate is required" });
+      }
+      if (!meetingType || !(VALID_MEETING_TYPES as readonly string[]).includes(meetingType)) {
+        return res.status(400).json({ error: `meetingType must be one of: ${VALID_MEETING_TYPES.join(", ")}` });
+      }
+
+      const planResult = await db.execute(sql`SELECT * FROM employee_plans WHERE id = ${planId}`);
+      if (planResult.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+      const plan = planResult.rows[0] as any;
+
+      const role = req.session.role!;
+      if (!ADMIN_ROLES.includes(role)) {
+        const teamIds = await getAllReporteeIdsFromDb(userId);
+        if (!teamIds.includes(plan.employee_id)) {
+          return res.status(403).json({ error: "Not authorized to log meetings for this plan" });
+        }
+      }
+
+      // Validate checkInId belongs to this plan if provided
+      let resolvedCheckInId: string | null = null;
+      if (checkInId) {
+        const ciCheck = await db.execute(sql`
+          SELECT id FROM check_ins WHERE id = ${checkInId} AND plan_id = ${planId} LIMIT 1
+        `);
+        if (ciCheck.rows.length === 0) {
+          return res.status(400).json({ error: "checkInId does not belong to this plan" });
+        }
+        resolvedCheckInId = checkInId;
+      }
+
+      const dur = durationMinutes != null && !isNaN(Number(durationMinutes)) && Number(durationMinutes) > 0
+        ? Number(durationMinutes)
+        : null;
+
+      const attendeesJson = Array.isArray(attendees) && attendees.length > 0
+        ? JSON.stringify(attendees)
+        : null;
+
+      const inserted = await db.execute(sql`
+        INSERT INTO plan_meetings (plan_id, logged_by, meeting_date, duration_minutes, meeting_type, attendees, notes, check_in_id)
+        VALUES (
+          ${planId}, ${userId}, ${meetingDate}, ${dur},
+          ${meetingType}::plan_meeting_type,
+          ${attendeesJson}::jsonb,
+          ${notes ?? null},
+          ${resolvedCheckInId}
+        )
+        RETURNING *
+      `);
+      const row = inserted.rows[0] as any;
+
+      const authorResult = await db.execute(sql`SELECT first_name || ' ' || last_name AS logged_by_name FROM admin_users WHERE id = ${userId}`);
+      row.logged_by_name = (authorResult.rows[0] as any)?.logged_by_name ?? null;
+
+      await createAuditLog(userId, "plan_meeting_logged", { planId, employeeId: plan.employee_id, meetingDate, meetingType });
+
+      res.status(201).json(row);
+    } catch (error) {
+      console.error("Error logging plan meeting:", error);
+      res.status(500).json({ error: "Failed to log meeting" });
+    }
+  });
+
+  app.delete("/api/hr/plans/:planId/meetings/:meetingId", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, "hr.plans.meetings.write", PLAN_MEETING_WRITE_ROLES);
+    if (!userId) return;
+    try {
+      const { planId, meetingId } = req.params;
+      const meetingResult = await db.execute(sql`
+        SELECT pm.*, ep.employee_id
+        FROM plan_meetings pm
+        JOIN employee_plans ep ON ep.id = pm.plan_id
+        WHERE pm.id = ${meetingId} AND pm.plan_id = ${planId}
+      `);
+      if (meetingResult.rows.length === 0) return res.status(404).json({ error: "Meeting not found" });
+      const meeting = meetingResult.rows[0] as any;
+
+      const role = req.session.role!;
+      if (!ADMIN_ROLES.includes(role)) {
+        // Non-admin: must be the original logger, and within 24 hours of logging
+        if (String(meeting.logged_by) !== String(userId)) {
+          return res.status(403).json({ error: "You can only delete meetings you logged" });
+        }
+        const ageHours = (Date.now() - new Date(meeting.created_at).getTime()) / 3600000;
+        if (ageHours > 24) {
+          return res.status(403).json({ error: "Meetings can only be deleted within 24 hours of logging. Contact HR to remove older entries." });
+        }
+        const teamIds = await getAllReporteeIdsFromDb(userId);
+        if (!teamIds.includes(meeting.employee_id)) {
+          return res.status(403).json({ error: "Not authorized for this plan" });
+        }
+      }
+
+      await db.execute(sql`UPDATE plan_meetings SET deleted_at = NOW() WHERE id = ${meetingId}`);
+      await createAuditLog(userId, "plan_meeting_deleted", { planId, meetingId, employeeId: meeting.employee_id });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting plan meeting:", error);
+      res.status(500).json({ error: "Failed to delete meeting" });
+    }
+  });
+
+  // ── Plan attendee candidates — for the meeting log multi-select ─────────────
+  app.get("/api/hr/plans/:planId/attendees", async (req: Request, res: Response) => {
+    const userId = requireRole(req, res, "hr.plans.meetings", MANAGER_ROLES);
+    if (!userId) return;
+    try {
+      const { planId } = req.params;
+      const planResult = await db.execute(sql`SELECT * FROM employee_plans WHERE id = ${planId}`);
+      if (planResult.rows.length === 0) return res.status(404).json({ error: "Plan not found" });
+      const plan = planResult.rows[0] as any;
+
+      const role = req.session.role!;
+      if (!ADMIN_ROLES.includes(role)) {
+        const teamIds = await getAllReporteeIdsFromDb(userId);
+        if (!teamIds.includes(plan.employee_id)) {
+          return res.status(403).json({ error: "Not authorized" });
+        }
+      }
+
+      // Candidates = manager + employee + direct reports of manager (for larger team reviews)
+      const managerId = plan.manager_id as string | null;
+      const employeeId = plan.employee_id as string | null;
+      const reporteeIds = managerId ? await getAllReporteeIdsFromDb(managerId) : [];
+      const candidateIds = [...new Set([managerId, employeeId, ...reporteeIds].filter(Boolean))] as string[];
+
+      const usersResult = await db.execute(sql`
+        SELECT id, first_name || ' ' || last_name AS full_name, role
+        FROM admin_users
+        WHERE id = ANY(${candidateIds}::text[])
+          AND (deleted_at IS NULL OR deleted_at > NOW())
+        ORDER BY first_name, last_name
+      `);
+
+      res.json({
+        attendees: usersResult.rows,
+        defaultIds: [managerId, employeeId].filter(Boolean),
+      });
+    } catch (error) {
+      console.error("Error fetching plan attendees:", error);
+      res.status(500).json({ error: "Failed to fetch attendees" });
+    }
+  });
+
   // Manager context panel: goal progress + trend arrows + last 3 coaching snippets.
   // Loaded async when a check-in detail dialog opens; does not block the form.
   app.get("/api/hr/check-ins/:id/context", requireAuth, async (req: Request, res: Response) => {

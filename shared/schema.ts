@@ -1337,6 +1337,59 @@ export const insertCoachingLogEntrySchema = createInsertSchema(coachingLogEntrie
   updatedAt: true,
 });
 
+// ── Plan Meetings (meeting log per plan) ──────────────────────────────────────
+// Structured log of all manager-employee meetings attached to a plan.
+// Distinct from check-ins (scheduled milestone reviews) — these capture informal
+// 1:1s, coaching sessions, ad-hoc pip reviews, and other face-time interactions.
+
+export const planMeetingTypeEnum = pgEnum("plan_meeting_type", [
+  "check_in", "coaching", "pip_review", "probation_review", "informal",
+]);
+
+export const planMeetings = pgTable("plan_meetings", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  // References employee_plans.id — FK applied via ensure block (DO $$ EXCEPTION block)
+  planId: varchar("plan_id").notNull(),
+  loggedBy: varchar("logged_by").notNull().references(() => adminUsers.id),
+  meetingDate: varchar("meeting_date").notNull(),
+  durationMinutes: integer("duration_minutes"),
+  meetingType: planMeetingTypeEnum("meeting_type").notNull().default("check_in"),
+  // Structured array of admin_users.id values (stored as JSONB)
+  attendees: jsonb("attendees"),
+  // Optional FK to a formal check_in — references check_ins(id), applied via ensure block
+  checkInId: varchar("check_in_id"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  deletedAt: timestamp("deleted_at"),
+}, (table) => [
+  index("idx_plan_meetings_plan_id").on(table.planId),
+  index("idx_plan_meetings_date").on(table.meetingDate),
+]);
+
+export const insertPlanMeetingSchema = createInsertSchema(planMeetings).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type PlanMeeting = typeof planMeetings.$inferSelect;
+export type InsertPlanMeeting = z.infer<typeof insertPlanMeetingSchema>;
+
+// ── Proactive Plan Nudges — dedup table ──────────────────────────────────────
+// Tracks already-sent nudges so the daily sweep never double-fires.
+// nudge_type: plan_checkin_48h | plan_checkin_24h | probation_d7 | probation_d75 | pip_no_meeting_14d
+export const scheduledNudges = pgTable("scheduled_nudges", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  planId: varchar("plan_id").notNull(),
+  nudgeType: varchar("nudge_type").notNull(),
+  nudgeDate: varchar("nudge_date").notNull(), // YYYY-MM-DD the nudge was computed for (week-start for weekly throttle)
+  // For CI-level nudges: the check-in ID is part of the dedup key so two CIs same day/type still fire independently
+  checkInId: varchar("check_in_id"),
+  sentAt: timestamp("sent_at").defaultNow(),
+}, (table) => [
+  // UNIQUE INDEX with COALESCE(check_in_id,'') is managed by the raw SQL ensure block (Drizzle cannot express functional indexes)
+  index("idx_scheduled_nudges_plan_id").on(table.planId),
+]);
+
 export type EmployeePlan = typeof employeePlans.$inferSelect;
 export type InsertEmployeePlan = z.infer<typeof insertEmployeePlanSchema>;
 export type PlanGoalTemplate = typeof planGoalTemplates.$inferSelect;

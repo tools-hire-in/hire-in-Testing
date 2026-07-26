@@ -155,9 +155,9 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
   {
     key: "performance_plans",
     label: "Growth & probation plans",
-    description: "Plan milestones, overdue reminders, activations, and escalations.",
+    description: "Plan milestones, overdue reminders, activations, escalations, and proactive engagement nudges.",
     category: "performance",
-    typePrefixes: ["pip_", "probation_", "growth_", "plan_activated", "plan_pending"],
+    typePrefixes: ["pip_", "probation_", "growth_", "plan_activated", "plan_pending", "plan_nudge"],
   },
   {
     key: "performance_goals",

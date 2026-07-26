@@ -2399,6 +2399,231 @@ export function startScheduler() {
     }
   }, { timezone: "UTC" });
 
+  // ── Proactive plan nudges — daily at 06:30 IST ────────────────────────────
+  // Fires pre-milestone notifications for active plans. Deduped via scheduled_nudges table.
+  // Nudges: 48h/24h pre-check-in, probation Day-7 pulse, probation Day-75 warning, PIP 14d no-meeting.
+  cron.schedule("30 6 * * *", async () => {
+    const _envMode = await getEnvMode();
+    if (_envMode !== "production") {
+      console.log(`[scheduler] [SUSPENDED] plan_proactive_nudges — env_mode=${_envMode}`);
+      return;
+    }
+    try {
+      const { getFeatureFlag } = await import("./featureFlags");
+      const notifsEnabled = await getFeatureFlag("notifications_enabled");
+      if (!notifsEnabled) {
+        console.log("[scheduler] Proactive plan nudges skipped (notifications_enabled=false)");
+        return;
+      }
+      const { firePlanProactiveNudges } = await import("./planNudgeEngine");
+      const result = await firePlanProactiveNudges();
+      console.log(`[scheduler] Proactive plan nudges: fired=${result.fired} errors=${result.errors}`);
+    } catch (err) {
+      console.error("[scheduler] Proactive plan nudges failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
+  // ── Weekly PIP digest — Mondays at 09:00 IST ──────────────────────────────
+  // Sends each manager with an active PIP a weekly summary:
+  //   - Last 7 days: check-in completion rate, meetings logged, goal progress
+  //   - Next 7 days: upcoming check-in milestones
+  // Gated by notifications_enabled flag.
+  cron.schedule("0 9 * * 1", async () => {
+    try {
+      const { getFeatureFlag } = await import("./featureFlags");
+      const notifsEnabled = await getFeatureFlag("notifications_enabled");
+      if (!notifsEnabled) {
+        console.log("[scheduler] Weekly PIP digest skipped (notifications_enabled=false)");
+        return;
+      }
+
+      const { sql: dsql } = await import("drizzle-orm");
+      const weekOf = new Date().toISOString().slice(0, 10);
+      const todayStr2 = weekOf;
+      // Last 7 days window
+      const lastWeekStart = new Date(Date.now() - 7 * 86400000).toISOString().slice(0, 10);
+      // Next 7 days window
+      const nextWeekEnd = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+
+      // Find all active PIP plans with a manager
+      const pipRows = (await db.execute(dsql`
+        SELECT ep.id AS plan_id, ep.employee_id, ep.manager_id, ep.start_date, ep.end_date,
+               au.first_name || ' ' || au.last_name AS employee_name,
+               m.first_name || ' ' || m.last_name AS manager_name,
+               m.email AS manager_email
+        FROM employee_plans ep
+        JOIN admin_users au ON au.id = ep.employee_id
+        JOIN admin_users m ON m.id = ep.manager_id
+        WHERE ep.plan_type = 'pip'
+          AND ep.status = 'active'
+          AND ep.manager_id IS NOT NULL
+          AND m.email IS NOT NULL
+      `)).rows as any[];
+
+      if (pipRows.length === 0) {
+        console.log("[scheduler] Weekly PIP digest: no active PIP plans");
+        return;
+      }
+
+      // Group by manager
+      const managerMap = new Map<string, { managerName: string; managerEmail: string; plans: any[] }>();
+      for (const row of pipRows) {
+        if (!managerMap.has(row.manager_id)) {
+          managerMap.set(row.manager_id, { managerName: row.manager_name, managerEmail: row.manager_email, plans: [] });
+        }
+        managerMap.get(row.manager_id)!.plans.push(row);
+      }
+
+      const planIds = pipRows.map((r: any) => r.plan_id);
+      const planIdSql = dsql.join(planIds.map((id: string) => dsql`${id}`), dsql`, `);
+
+      // Last-week check-ins
+      const checkInRows = (await db.execute(dsql`
+        SELECT plan_id, check_in_type, status, scheduled_date, completed_at
+        FROM check_ins
+        WHERE plan_id = ANY(ARRAY[${planIdSql}])
+          AND check_in_type = 'pip_review'
+      `)).rows as any[];
+
+      const ciByPlan = new Map<string, any[]>();
+      for (const ci of checkInRows) {
+        const arr = ciByPlan.get(ci.plan_id) ?? [];
+        arr.push(ci);
+        ciByPlan.set(ci.plan_id, arr);
+      }
+
+      // Last-week meetings
+      const meetingRows = (await db.execute(dsql`
+        SELECT plan_id, MAX(meeting_date) AS last_meeting_date,
+               COUNT(*) AS total_meetings,
+               COUNT(CASE WHEN meeting_date >= ${lastWeekStart} THEN 1 END) AS last_week_meetings
+        FROM plan_meetings
+        WHERE plan_id = ANY(ARRAY[${planIdSql}])
+        GROUP BY plan_id
+      `)).rows as any[];
+
+      const meetingByPlan = new Map<string, { lastDate: string; totalCount: number; lastWeekCount: number }>();
+      for (const m of meetingRows) {
+        meetingByPlan.set(m.plan_id, {
+          lastDate: m.last_meeting_date,
+          totalCount: Number(m.total_meetings),
+          lastWeekCount: Number(m.last_week_meetings),
+        });
+      }
+
+      // Avg goal progress per plan
+      const goalRows = (await db.execute(dsql`
+        SELECT plan_id, AVG(progress) AS avg_progress,
+               COUNT(CASE WHEN status = 'completed' THEN 1 END) AS completed_goals,
+               COUNT(*) AS total_goals
+        FROM performance_goals
+        WHERE plan_id = ANY(ARRAY[${planIdSql}])
+          AND status NOT IN ('cancelled')
+        GROUP BY plan_id
+      `)).rows as any[];
+
+      const goalByPlan = new Map<string, { avg: number; completed: number; total: number }>();
+      for (const g of goalRows) {
+        goalByPlan.set(g.plan_id, {
+          avg: Math.round(Number(g.avg_progress) || 0),
+          completed: Number(g.completed_goals),
+          total: Number(g.total_goals),
+        });
+      }
+
+      // Next-week milestones
+      const upcomingCIs = (await db.execute(dsql`
+        SELECT plan_id, scheduled_date, check_in_type
+        FROM check_ins
+        WHERE plan_id = ANY(ARRAY[${planIdSql}])
+          AND status != 'completed'
+          AND scheduled_date >= ${todayStr2}
+          AND scheduled_date <= ${nextWeekEnd}
+          AND check_in_type != 'weekly_update'
+        ORDER BY scheduled_date
+      `)).rows as any[];
+
+      const upcomingByPlan = new Map<string, any[]>();
+      for (const ci of upcomingCIs) {
+        const arr = upcomingByPlan.get(ci.plan_id) ?? [];
+        arr.push(ci);
+        upcomingByPlan.set(ci.plan_id, arr);
+      }
+
+      const { dispatchAutomatedEmail } = await import("./email");
+      let sent = 0;
+
+      for (const [, mgr] of managerMap) {
+        const rows = mgr.plans.map((plan: any) => {
+          const cis = ciByPlan.get(plan.plan_id) ?? [];
+          const lastWeekCIs = cis.filter((ci: any) => ci.scheduled_date >= lastWeekStart && ci.scheduled_date <= todayStr2);
+          const lastWeekDone = lastWeekCIs.filter((ci: any) => ci.status === "completed").length;
+          const overdueAll = cis.filter((ci: any) => ci.status !== "completed" && ci.scheduled_date < todayStr2).length;
+          const mtg = meetingByPlan.get(plan.plan_id);
+          const daysSinceMeeting = mtg?.lastDate
+            ? Math.floor((new Date(todayStr2).getTime() - new Date(mtg.lastDate).getTime()) / 86400000)
+            : null;
+          const goals = goalByPlan.get(plan.plan_id) ?? { avg: 0, completed: 0, total: 0 };
+          const upcoming = upcomingByPlan.get(plan.plan_id) ?? [];
+          return { ...plan, lastWeekDone, lastWeekCITotal: lastWeekCIs.length, overdueAll, daysSinceMeeting, mtg, goals, upcoming };
+        });
+
+        const tableRows = rows.map((r: any) => {
+          const upcomingStr = r.upcoming.length > 0
+            ? r.upcoming.map((ci: any) => `${ci.scheduled_date}`).join(", ")
+            : "None";
+          return `<tr>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;">${r.employee_name}</td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;">
+              ${r.lastWeekDone}/${r.lastWeekCITotal} this week
+              ${r.overdueAll > 0 ? `<br><span style="color:#dc2626;font-size:11px;">${r.overdueAll} overdue</span>` : ""}
+            </td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;">
+              ${r.daysSinceMeeting !== null ? `${r.daysSinceMeeting}d ago` : "None yet"}
+              <br><span style="color:#666;font-size:11px;">${r.mtg?.lastWeekCount ?? 0} this week · ${r.mtg?.totalCount ?? 0} total</span>
+            </td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;${r.goals.avg >= 70 ? "color:#16a34a;" : r.goals.avg >= 40 ? "color:#d97706;" : "color:#dc2626;"}">
+              ${r.goals.avg}%
+              <br><span style="color:#666;font-size:11px;">${r.goals.completed}/${r.goals.total} goals done</span>
+            </td>
+            <td style="padding:6px 10px;border-bottom:1px solid #eee;font-size:11px;">${upcomingStr}</td>
+          </tr>`;
+        }).join("");
+
+        const html = `
+          <h2 style="font-family:sans-serif;color:#1F3A6E;">Weekly PIP Summary — ${weekOf}</h2>
+          <p style="font-family:sans-serif;color:#555;">Hi ${mgr.managerName}, here is your weekly PIP engagement summary.</p>
+          <table border="0" cellpadding="0" cellspacing="0" style="border-collapse:collapse;width:100%;font-family:sans-serif;font-size:13px;">
+            <thead>
+              <tr style="background:#f4f4f4;">
+                <th style="padding:8px 10px;text-align:left;">Employee</th>
+                <th style="padding:8px 10px;text-align:left;">Reviews (Last 7d)</th>
+                <th style="padding:8px 10px;text-align:left;">Meetings</th>
+                <th style="padding:8px 10px;text-align:left;">Goal Progress</th>
+                <th style="padding:8px 10px;text-align:left;">Next 7 Days</th>
+              </tr>
+            </thead>
+            <tbody>${tableRows}</tbody>
+          </table>
+          <p style="font-family:sans-serif;font-size:12px;color:#888;margin-top:16px;">
+            Log meetings and complete check-ins in the HR portal under My Team → Plans.
+          </p>
+        `;
+
+        await dispatchAutomatedEmail("pip_weekly_digest", "pip_digest_scheduler", {
+          to: mgr.managerEmail,
+          subject: `Your PIP Team Summary — Week of ${weekOf}`,
+          html,
+        }).catch(err => console.error(`[scheduler] PIP digest email to ${mgr.managerEmail} failed:`, err));
+        sent++;
+      }
+
+      console.log(`[scheduler] Weekly PIP digest sent to ${sent} manager(s)`);
+    } catch (err) {
+      console.error("[scheduler] Weekly PIP digest failed:", err);
+    }
+  }, { timezone: "Asia/Kolkata" });
+
   // ── SOP Compliance Check-in Notifications (Task #1568) ─────────────────────
   // Daily at 08:30 IST — fires sop_early_nudge / sop_deadline_reminder /
   // sop_reinforcement for any check_in rows with scheduled_date = today.
@@ -2431,6 +2656,8 @@ export function startScheduler() {
   console.log("  - Goal auto-progress sync: daily at 07:00 IST → calculates KPI-linked progress from system data (submissions, ATS, attendance, SOP, training)");
   console.log("  - Unified governance sync sweep (07:00 IST): cadence backfill → obligation sync → collectOverdueItems → collectProbationMilestoneEvents → applyEscalation (deduped) → HR checkin digest");
   console.log("  - CEO governance exception report: Mondays at 08:00 IST → anonymized AI summary emailed to super_admin/executive");
+  console.log("  - Proactive plan nudges: daily 06:30 IST (production only) → 48h/24h pre-check-in, probation D-7/D-75, PIP 14d-no-meeting");
+  console.log("  - Weekly PIP digest: Mondays at 09:00 IST → per-manager summary: last-week reviews/meetings/goals + next-7-day milestones");
   console.log("  - Recruiter activity nudge: Mon-Fri at 5:30 PM IST → in-app nudge to recruiters who haven't logged today");
   console.log("  - Ceipal morning reminder: daily at 8:30 AM IST → notifies recruiters with unresolved yesterday Ceipal commitments");
   console.log("  - Ceipal escalation sweep: Mon-Fri at 7:30 PM IST → manager alert on 2+ consecutive misses, flag on 5+ in 30 days");

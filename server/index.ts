@@ -2257,6 +2257,79 @@ async function ensureHealthcarePlansTables() {
     console.error("Healthcare plan tables migration error:", err);
   }
 
+  // ── Plan Meetings table (meeting log per plan) ──
+  try {
+    await db.execute(sql`
+      DO $$ BEGIN
+        CREATE TYPE plan_meeting_type AS ENUM(
+          'check_in','coaching','pip_review','probation_review','informal'
+        );
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+    `);
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS plan_meetings (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        plan_id VARCHAR NOT NULL,
+        logged_by VARCHAR NOT NULL REFERENCES admin_users(id),
+        meeting_date VARCHAR NOT NULL,
+        duration_minutes INTEGER,
+        meeting_type plan_meeting_type NOT NULL DEFAULT 'check_in',
+        attendees JSONB,
+        check_in_id VARCHAR,
+        notes TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        deleted_at TIMESTAMP
+      )
+    `);
+    // Add deleted_at to existing tables (idempotent)
+    await db.execute(sql`ALTER TABLE plan_meetings ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_plan_meetings_plan_id ON plan_meetings(plan_id)`);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_plan_meetings_date ON plan_meetings(meeting_date)`);
+    // FK: plan_id → employee_plans(id)
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TABLE plan_meetings ADD CONSTRAINT fk_plan_meetings_plan_id
+          FOREIGN KEY (plan_id) REFERENCES employee_plans(id) ON DELETE CASCADE;
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    `);
+    // FK: check_in_id → check_ins(id)
+    await db.execute(sql`
+      DO $$ BEGIN
+        ALTER TABLE plan_meetings ADD CONSTRAINT fk_plan_meetings_check_in_id
+          FOREIGN KEY (check_in_id) REFERENCES check_ins(id) ON DELETE SET NULL;
+      EXCEPTION WHEN duplicate_object THEN NULL; END $$
+    `);
+    log("plan_meetings table ensured");
+  } catch (err) {
+    console.error("plan_meetings table ensure error:", err);
+  }
+
+  // ── Scheduled Nudges table (proactive pre-milestone nudge dedup) ──
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS scheduled_nudges (
+        id VARCHAR PRIMARY KEY DEFAULT gen_random_uuid(),
+        plan_id VARCHAR NOT NULL,
+        nudge_type VARCHAR NOT NULL,
+        nudge_date VARCHAR NOT NULL,
+        check_in_id VARCHAR,
+        sent_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    // Add check_in_id column to existing tables (idempotent)
+    await db.execute(sql`ALTER TABLE scheduled_nudges ADD COLUMN IF NOT EXISTS check_in_id VARCHAR`);
+    // Drop old index and create new one that includes check_in_id for CI-level dedup
+    await db.execute(sql`DROP INDEX IF EXISTS uq_scheduled_nudges_plan_type_date`);
+    await db.execute(sql`
+      CREATE UNIQUE INDEX IF NOT EXISTS uq_scheduled_nudges_plan_type_ciid_date
+      ON scheduled_nudges(plan_id, nudge_type, nudge_date, COALESCE(check_in_id, ''))
+    `);
+    await db.execute(sql`CREATE INDEX IF NOT EXISTS idx_scheduled_nudges_plan_id ON scheduled_nudges(plan_id)`);
+    log("scheduled_nudges table ensured");
+  } catch (err) {
+    console.error("scheduled_nudges table ensure error:", err);
+  }
+
   // Seed plan_goal_templates for Healthcare roles — idempotent, never destructive.
   // Uses ON CONFLICT DO NOTHING so admin edits, custom templates, and deletions
   // are always preserved across restarts. Only truly missing rows are inserted.
