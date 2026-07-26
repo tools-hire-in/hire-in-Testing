@@ -7,6 +7,7 @@ import * as XLSX from "xlsx";
 import { storage } from "./storage";
 import { insertContactSchema, insertApplicationSchema, insertJobSchema, insertAdminUserSchema, insertHolidaySchema, insertLeaveTypeSchema, insertLeaveRequestSchema, insertTicketSchema, insertLetterTemplateSentenceSchema, type AdminUser, type InsertHrLetter, type Attendance, type OfferLetter, adminUsers, trackAssignments, trainingExtensionRequests, learningTracks, breakRecords, attendance, attendanceRegularizations, hrLetters, offerLetters, offerLetterAddendums, leaveBalances, leaveAdjustments, leaveTypes, leaveRequests, leaveAccruals, holidays, nightShiftConsents, trackCompletions, trackSections, sectionProgress, departments, shifts, salaryReportRuns, salarySlips, policyAcknowledgements, auditLogs, insertSopDocumentSchema, insertSopReviewAssignmentSchema, insertSopCommentSchema, insertSopAuditRecordSchema, insertSopAuditFindingSchema, sopDocuments, sopRoleAssignments, sopAuditRecords, sopEmployeeProgress, sopReviewAssignments, sopKnowledgeChecks, sopKnowledgeCheckOptions, type SopDocument, waveScheduledLaunches, waveReadinessSignals } from "@shared/schema";
 import { PERFORMANCE_BAND_SENTENCES, CONDUCT_BAND_SENTENCES, COMPLETION_BAND_SENTENCES, TEMPLATE_PREFIX_MAP as SHARED_TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
+import * as letterService from "./services/letterService";
 import { salaryStructures, salaryStructureRules, stateDeductions, establishmentCoverage, headcountHistory, salaryStructureHistory, payrollSettings, salaryRunPayments, salaryChanges } from "@shared/schema";
 import { getPortalBaseUrl } from "./portalUrl";
 import { companyProfileSchema, mergeCompanyProfile } from "@shared/companyProfile";
@@ -11718,13 +11719,11 @@ Canonical domain: ${BASE}
       const actorId = req.session.userId!;
       const letter = await storage.getOfferLetter(id);
       if (!letter) return res.status(404).json({ error: "Offer letter not found" });
-      if (letter.status !== "pending_approval") return res.status(400).json({ error: "Offer letter is not pending approval" });
 
-      await storage.updateOfferLetter(id, {
-        status: "sent",
-        approvedBy: actorId,
-        approvedAt: new Date(),
-      });
+      const approveResult = await letterService.approveOrReviseOfferLetter({ offerId: id, action: "approve", actorId });
+      if (letterService.isTransitionError(approveResult)) {
+        return res.status(letterService.transitionErrorStatus(approveResult)).json({ error: approveResult.message });
+      }
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host || "localhost";
@@ -11793,12 +11792,15 @@ Canonical domain: ${BASE}
       const actorId = req.session.userId!;
       const letter = await storage.getOfferLetter(id);
       if (!letter) return res.status(404).json({ error: "Offer letter not found" });
-      if (letter.status !== "pending_approval") return res.status(400).json({ error: "Offer letter is not pending approval" });
-
-      await storage.updateOfferLetter(id, {
-        status: "rejected",
-        approvalRejectionReason: reason || null,
+      const revisionResult = await letterService.approveOrReviseOfferLetter({
+        offerId: id,
+        action: "needs_revision",
+        actorId,
+        revisionReason: reason || undefined,
       });
+      if (letterService.isTransitionError(revisionResult)) {
+        return res.status(letterService.transitionErrorStatus(revisionResult)).json({ error: revisionResult.message });
+      }
 
       // Notify the creating manager
       const creator = await storage.getAdminUser(letter.createdBy);
@@ -11822,8 +11824,8 @@ Canonical domain: ${BASE}
             await storage.createNotification({
               userId: creator.id,
               type: "offer_letter_rejected",
-              title: "Offer Letter Rejected",
-              message: `Your offer letter for ${letter.candidateName} (${letter.designation}) was rejected.${reason ? ` Reason: ${reason}` : ""}`,
+              title: "Offer Letter Needs Revision",
+              message: `Your offer letter for ${letter.candidateName} (${letter.designation}) needs revision.${reason ? ` Reason: ${reason}` : ""}`,
               isRead: false,
               metadata: { offerId: id, candidateName: letter.candidateName, reason },
             });
@@ -11834,7 +11836,7 @@ Canonical domain: ${BASE}
       }
 
       await storage.createAuditLog({
-        action: "offer_letter_rejected",
+        action: "offer_letter_needs_revision",
         actorId,
         changes: { offerId: id, candidateName: letter.candidateName, reason },
       });
@@ -27794,18 +27796,6 @@ Return JSON with keys: linkedin, instagram, facebook.`;
           validatedAnnexures = rawAnnexures.map((a: any) => ({ title: String(a.title), body: String(a.body) }));
         }
 
-        const docData: AddendumData = {
-          candidateName: resolvedEmployeeName,
-          originalOfferDate: resolvedStartDate || effectiveDate,
-          originalDesignation: resolvedDesignation,
-          effectiveDate,
-          hrManagerName: signatoryName || "HR Manager",
-          addendumType: templateType as AddendumData["addendumType"],
-          ...metadata,
-          ...(validatedAnnexures ? { annexures: validatedAnnexures } : {}),
-        };
-        const docxBuffer = await generateAddendumDocx(docData);
-
         const letterData: InsertHrLetter = {
           templateType: templateType as InsertHrLetter["templateType"],
           employeeId: resolvedEmployeeId,
@@ -27825,75 +27815,39 @@ Return JSON with keys: linkedin, instagram, facebook.`;
           status: "draft",
         };
 
-        const letter = await storage.createHrLetter(letterData);
-
-        const prefix = TEMPLATE_PREFIX_MAP[letter.templateType] || "GEN";
-        const year = new Date().getFullYear();
-        const refPrefix = `RL/${prefix}/${year}/`;
-        const count = await storage.getHrLetterCountByPrefix(refPrefix);
-        const referenceNumber = generateRefNumber(prefix, year, count);
-        const { authCode, documentHash } = computeLetterAuthCode({ ...letter, issueDate });
-
-        const docDir = path.resolve("uploads/hr-letters");
-        if (!fs.existsSync(docDir)) fs.mkdirSync(docDir, { recursive: true });
-        const docFilename = `${referenceNumber.replace(/\//g, "-")}.docx`;
-        const docPath = path.join(docDir, docFilename);
-        fs.writeFileSync(docPath, docxBuffer);
-
-        const issuedRecord = await storage.updateHrLetter(letter.id, {
-          status: "issued",
-          referenceNumber,
-          authCode,
-          documentHash,
-          issuedBy: req.session.userId!,
-          issuedAt: new Date(),
-          issueDate,
-          pdfPath: `hr-letters/${docFilename}`,
-        });
-
-        await recordSignature({
-          documentType: "hr_letter",
-          documentId: letter.id,
-          referenceNumber,
-          signerName: letter.employeeName,
-          signerRole: "hr",
-          signerUserId: req.session.userId,
-          contentHash: documentHash,
-          authCode,
-          metadata: { templateType: letter.templateType },
-        });
+        const draft = await letterService.createDraft(letterData);
 
         await storage.createAuditLog({
           actorId: req.session.userId!,
           targetId: resolvedEmployeeId || req.session.userId!,
           action: "create_hr_letter",
-          changes: { templateType: letter.templateType, employeeName: letter.employeeName, letterId: letter.id, isManual },
+          changes: { templateType: draft.templateType, employeeName: draft.employeeName, letterId: draft.id, isManual },
         });
 
-        // Send email if requested
+        const issueResult = await letterService.issue(draft.id, req.session.userId!);
+        if (letterService.isTransitionError(issueResult)) {
+          return res.status(letterService.transitionErrorStatus(issueResult)).json({ error: issueResult.message });
+        }
+
         if (req.body.sendEmail && resolvedEmail) {
           try {
-            const verifyUrl = `${process.env.BASE_URL || "https://employee.hire-in.com"}/verify`;
+            const protocol = req.headers["x-forwarded-proto"] || "https";
+            const host = req.headers.host || "hire-in.com";
+            const verifyUrl = `${protocol}://${host}/verify`;
             const ccList = req.body.ccEmails
               ? String(req.body.ccEmails).split(",").map((e: string) => e.trim()).filter(Boolean)
               : [];
-            await sendHrLetterEmail({
-              to: resolvedEmail,
-              employeeName: resolvedEmployeeName,
-              letterType: letter.templateType,
-              referenceNumber,
-              authCode,
+            await letterService.dispatchEmail(issueResult.letter.id, req.session.userId!, {
+              recipientEmail: resolvedEmail,
+              ccEmails: ccList.length ? ccList : undefined,
               verifyUrl,
-              pdfBuffer: docxBuffer as Buffer,
-              pdfFilename: docFilename,
-              cc: ccList.length ? ccList : undefined,
             });
           } catch (emailErr) {
             console.error("Amendment letter email send error:", emailErr);
           }
         }
 
-        return res.status(201).json(issuedRecord);
+        return res.status(201).json(issueResult.letter);
       }
 
       // --- STANDARD LETTER PATH ---
@@ -27977,7 +27931,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         createdBy: req.session.userId!,
         status: "draft",
       };
-      const letter = await storage.createHrLetter(data);
+      const letter = await letterService.createDraft(data);
       await storage.createAuditLog({
         actorId: req.session.userId!,
         targetId: req.body.employeeId,
@@ -27993,61 +27947,11 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         });
       }
 
-      // Auto-issue on creation
-      const prefix = TEMPLATE_PREFIX_MAP[letter.templateType] || "GEN";
-      const year = new Date().getFullYear();
-      const refPrefix = `RL/${prefix}/${year}/`;
-      const count = await storage.getHrLetterCountByPrefix(refPrefix);
-      const referenceNumber = generateRefNumber(prefix, year, count);
-      const issueDate = letter.issueDate || new Date().toISOString().split("T")[0];
-      const tempLetter = { ...letter, issueDate };
-      const { authCode, documentHash } = computeLetterAuthCode(tempLetter);
-      const issuedLetter = { ...letter, referenceNumber, authCode, issueDate, status: "issued" as const };
-      const dbSentences = await storage.getLetterTemplateSentences();
-      const customSentences = dbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
-        if (!acc[s.category]) acc[s.category] = {};
-        acc[s.category][s.key] = s.sentence;
-        return acc;
-      }, {});
-      const pdfBuffer = await generateHrLetterPdf(issuedLetter, {
-        performance_band: customSentences["performance_band"],
-        conduct_band: customSentences["conduct_band"],
-        completion_band: customSentences["completion_band"],
-        closing_line: customSentences["closing_line"],
-      });
-      const pdfDir = path.resolve("uploads/hr-letters");
-      if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
-      const pdfFilename = `${referenceNumber.replace(/\//g, "-")}.pdf`;
-      const pdfPath = path.join(pdfDir, pdfFilename);
-      fs.writeFileSync(pdfPath, pdfBuffer);
-      const issuedRecord = await storage.updateHrLetter(letter.id, {
-        status: "issued",
-        referenceNumber,
-        authCode,
-        documentHash,
-        issuedBy: req.session.userId!,
-        issuedAt: new Date(),
-        issueDate,
-        pdfPath: `hr-letters/${pdfFilename}`,
-      });
-      await recordSignature({
-        documentType: "hr_letter",
-        documentId: letter.id,
-        referenceNumber,
-        signerName: letter.employeeName,
-        signerRole: "hr",
-        signerUserId: req.session.userId,
-        contentHash: documentHash,
-        authCode,
-        metadata: { templateType: letter.templateType },
-      });
-      await storage.createAuditLog({
-        actorId: req.session.userId!,
-        targetId: req.body.employeeId,
-        action: "issue_hr_letter",
-        changes: { referenceNumber, authCode, status: "issued", pdfPath: `hr-letters/${pdfFilename}` },
-      });
-      res.status(201).json(issuedRecord);
+      const issueResult = await letterService.issue(letter.id, req.session.userId!);
+      if (letterService.isTransitionError(issueResult)) {
+        return res.status(letterService.transitionErrorStatus(issueResult)).json({ error: issueResult.message });
+      }
+      res.status(201).json(issueResult.letter);
     } catch (error) {
       console.error("Create HR letter error:", error);
       res.status(500).json({ error: "Failed to create letter" });
@@ -28056,34 +27960,16 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   app.patch("/api/hr/letters/:id", requirePermission("hr.letters", "hr"), async (req, res) => {
     try {
-      const letter = await storage.getHrLetter(req.params.id);
-      if (!letter) return res.status(404).json({ error: "Letter not found" });
-      if (letter.status === "issued" || letter.status === "reissued" || letter.status === "revoked") {
-        return res.status(400).json({ error: "Cannot edit an issued, reissued, or revoked letter" });
+      const result = await letterService.updateLetter(
+        req.params.id,
+        req.body,
+        req.session.role!,
+        req.session.userId!,
+      );
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
       }
-      const userRole = req.session.role;
-      const isOverrideAllowed = userRole === "super_admin" || userRole === "admin";
-      const body = { ...req.body };
-      const hasOverrideChange = body.customOverrideText !== undefined && body.customOverrideText !== letter.customOverrideText;
-      if (!isOverrideAllowed) {
-        delete body.customOverrideText;
-        delete body.customOverrideBy;
-        delete body.customOverrideAt;
-      }
-      if (isOverrideAllowed && hasOverrideChange) {
-        body.customOverrideBy = req.session.userId!;
-        body.customOverrideAt = new Date();
-      }
-      const updated = await storage.updateHrLetter(req.params.id, body);
-      if (isOverrideAllowed && hasOverrideChange) {
-        await storage.createAuditLog({
-          actorId: req.session.userId!,
-          targetId: letter.id,
-          action: "hr_letter_custom_override",
-          changes: { before: letter.customOverrideText || null, after: body.customOverrideText, source: "update" },
-        });
-      }
-      res.json(updated);
+      res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Failed to update letter" });
     }
@@ -28114,105 +28000,110 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     }
   });
 
+  app.post("/api/hr/letters/:id/submit", requirePermission("hr.letters.submit", "hr"), async (req, res) => {
+    try {
+      const result = await letterService.submitForApproval(req.params.id, req.session.userId!);
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to submit letter" });
+    }
+  });
+
   app.post("/api/hr/letters/:id/approve", requirePermission("hr.letters.approve", "hr"), async (req, res) => {
     try {
-      const letter = await storage.getHrLetter(req.params.id);
-      if (!letter) return res.status(404).json({ error: "Letter not found" });
-      if (letter.status !== "draft" && letter.status !== "pending_approval") {
-        return res.status(400).json({ error: "Letter must be in draft or pending approval status" });
-      }
-      const updated = await storage.updateHrLetter(req.params.id, {
-        status: "approved",
-        approvedBy: req.session.userId!,
-        approvedAt: new Date(),
-      });
-      await storage.createAuditLog({
+      const result = await letterService.approveOrRevise({
+        letterId: req.params.id,
+        letterTableType: "hr_letter",
+        action: "approve",
         actorId: req.session.userId!,
-        targetId: letter.id,
-        action: "approve_hr_letter",
-        changes: { status: "approved" },
       });
-      res.json(updated);
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
+      }
+      res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Failed to approve letter" });
     }
   });
 
+  app.post("/api/hr/letters/:id/needs-revision", requirePermission("hr.letters.approve", "hr"), async (req, res) => {
+    try {
+      const { revisionReason } = req.body;
+      const result = await letterService.approveOrRevise({
+        letterId: req.params.id,
+        letterTableType: "hr_letter",
+        action: "needs_revision",
+        actorId: req.session.userId!,
+        revisionReason,
+      });
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to request revision" });
+    }
+  });
+
+  app.post("/api/hr/letters/:id/resubmit", requirePermission("hr.letters.submit", "hr"), async (req, res) => {
+    try {
+      const result = await letterService.resubmit({
+        letterId: req.params.id,
+        letterTableType: "hr_letter",
+        actorId: req.session.userId!,
+        note: req.body.note,
+      });
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to resubmit letter" });
+    }
+  });
+
+  app.post("/api/hr/letters/:id/withdraw", requirePermission("hr.letters.submit", "hr"), async (req, res) => {
+    try {
+      const result = await letterService.withdraw({
+        letterId: req.params.id,
+        letterTableType: "hr_letter",
+        actorId: req.session.userId!,
+        reason: req.body.reason,
+      });
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to withdraw letter" });
+    }
+  });
+
   app.post("/api/hr/letters/:id/issue", requirePermission("hr.letters.issue", "hr"), async (req, res) => {
     try {
-      const letter = await storage.getHrLetter(req.params.id);
-      if (!letter) return res.status(404).json({ error: "Letter not found" });
-      if (letter.status !== "approved") {
-        return res.status(400).json({ error: "Letter must be approved before issuing. Current status: " + letter.status });
+      const result = await letterService.issue(req.params.id, req.session.userId!);
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
       }
-
-      const prefix = TEMPLATE_PREFIX_MAP[letter.templateType] || "GEN";
-      const year = new Date().getFullYear();
-      const refPrefix = `RL/${prefix}/${year}/`;
-      const count = await storage.getHrLetterCountByPrefix(refPrefix);
-      const referenceNumber = generateRefNumber(prefix, year, count);
-
-      const issueDate = letter.issueDate || new Date().toISOString().split("T")[0];
-      const tempLetter = { ...letter, issueDate };
-      const { authCode, documentHash } = computeLetterAuthCode(tempLetter);
-
-      const issuedLetter = {
-        ...letter,
-        referenceNumber,
-        authCode,
-        issueDate,
-        status: "issued" as const,
-      };
-
-      const dbSentences = await storage.getLetterTemplateSentences();
-      const customSentences = dbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
-        if (!acc[s.category]) acc[s.category] = {};
-        acc[s.category][s.key] = s.sentence;
-        return acc;
-      }, {});
-      const pdfBuffer = await generateHrLetterPdf(issuedLetter, {
-        performance_band: customSentences["performance_band"],
-        conduct_band: customSentences["conduct_band"],
-        completion_band: customSentences["completion_band"],
-        closing_line: customSentences["closing_line"],
-      });
-      const pdfDir = path.resolve("uploads/hr-letters");
-      if (!fs.existsSync(pdfDir)) fs.mkdirSync(pdfDir, { recursive: true });
-      const pdfFilename = `${referenceNumber.replace(/\//g, "-")}.pdf`;
-      const pdfPath = path.join(pdfDir, pdfFilename);
-      fs.writeFileSync(pdfPath, pdfBuffer);
-
-      const updated = await storage.updateHrLetter(req.params.id, {
-        status: "issued",
-        referenceNumber,
-        authCode,
-        documentHash,
-        issuedBy: req.session.userId!,
-        issuedAt: new Date(),
-        issueDate,
-        pdfPath: `hr-letters/${pdfFilename}`,
-      });
-      await recordSignature({
-        documentType: "hr_letter",
-        documentId: letter.id,
-        referenceNumber,
-        signerName: letter.employeeName,
-        signerRole: "hr",
-        signerUserId: req.session.userId,
-        contentHash: documentHash,
-        authCode,
-        metadata: { templateType: letter.templateType },
-      });
-      await storage.createAuditLog({
-        actorId: req.session.userId!,
-        targetId: letter.id,
-        action: "issue_hr_letter",
-        changes: { referenceNumber, authCode, status: "issued", pdfPath: `hr-letters/${pdfFilename}` },
-      });
-      res.json(updated);
+      res.json(result.letter);
     } catch (error) {
       console.error("Issue HR letter error:", error);
       res.status(500).json({ error: "Failed to issue letter" });
+    }
+  });
+
+  app.patch("/api/hr/letters/:id/draft", requirePermission("hr.letters.create", "hr"), async (req, res) => {
+    try {
+      const result = await letterService.updateDraft(req.params.id, req.body, req.session.userId!);
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to save draft" });
     }
   });
 
@@ -28244,49 +28135,19 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         }
       }
 
-      // For amendment letters with no stored file, regenerate DOCX
-      if (isAmendment) {
-        const meta: Record<string, unknown> = (typeof letter.metadata === "object" && letter.metadata !== null ? letter.metadata : {}) as Record<string, unknown>;
-        const effectiveDateFromMeta = typeof meta.effectiveDate === "string" ? meta.effectiveDate : letter.startDate;
-        const storedAnnexures = Array.isArray((letter as any).annexureData) ? (letter as any).annexureData : undefined;
-        const docxBuffer = await generateAddendumDocx({
-          candidateName: letter.employeeName,
-          originalOfferDate: letter.startDate,
-          originalDesignation: letter.designation,
-          effectiveDate: effectiveDateFromMeta,
-          hrManagerName: letter.signatoryName || "HR Manager",
-          addendumType: letter.templateType as AddendumData["addendumType"],
-          ...meta,
-          ...(storedAnnexures ? { annexures: storedAnnexures } : {}),
-        });
-        res.setHeader("Content-Type", mimeType);
-        res.setHeader("Content-Disposition", disposition);
-        return res.send(docxBuffer);
-      }
-
-      const dbSentences = await storage.getLetterTemplateSentences();
-      const customSentences = dbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
-        if (!acc[s.category]) acc[s.category] = {};
-        acc[s.category][s.key] = s.sentence;
-        return acc;
-      }, {});
-      const pdfBuffer = await generateHrLetterPdf(letter, {
-        performance_band: customSentences["performance_band"],
-        conduct_band: customSentences["conduct_band"],
-        completion_band: customSentences["completion_band"],
-        closing_line: customSentences["closing_line"],
-      });
+      // No stored file — regenerate via the unified document generator
+      const { buffer: genBuffer, mimeType: genMime } = await letterService.generateDocument(letter);
       if (letter.pdfPath) {
         try {
           const filePath = path.resolve("uploads", letter.pdfPath);
           const dir = path.dirname(filePath);
           if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-          fs.writeFileSync(filePath, pdfBuffer);
+          fs.writeFileSync(filePath, genBuffer);
         } catch {}
       }
-      res.setHeader("Content-Type", "application/pdf");
+      res.setHeader("Content-Type", genMime);
       res.setHeader("Content-Disposition", disposition);
-      res.send(pdfBuffer);
+      res.send(genBuffer);
     } catch (error) {
       console.error("Download HR letter error:", error);
       res.status(500).json({ error: "Failed to download letter" });
@@ -28300,9 +28161,6 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       if (letter.status !== "issued") {
         return res.status(400).json({ error: "Letter must be issued before sending email" });
       }
-      if (!letter.referenceNumber || !letter.authCode) {
-        return res.status(400).json({ error: "Letter missing reference number or auth code" });
-      }
 
       const employee = letter.employeeId ? await storage.getAdminUser(letter.employeeId) : null;
       const recipientEmail = req.body.email || employee?.email;
@@ -28310,70 +28168,29 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         return res.status(400).json({ error: "No email address found for the employee" });
       }
       const rawCcEmails = req.body.ccEmails;
-      const parsedHrLetterCcEmails = Array.isArray(rawCcEmails)
+      const ccEmails = Array.isArray(rawCcEmails)
         ? rawCcEmails.filter(Boolean)
-        : (typeof rawCcEmails === "string" && rawCcEmails.trim() ? rawCcEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
-
-      let pdfBuffer: Buffer | undefined;
-      if (letter.pdfPath) {
-        const filePath = path.resolve("uploads", letter.pdfPath);
-        if (fs.existsSync(filePath)) {
-          pdfBuffer = fs.readFileSync(filePath);
-        }
-      }
-      if (!pdfBuffer) {
-        const dbSentences = await storage.getLetterTemplateSentences();
-        const customSentences = dbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
-          if (!acc[s.category]) acc[s.category] = {};
-          acc[s.category][s.key] = s.sentence;
-          return acc;
-        }, {});
-        pdfBuffer = await generateHrLetterPdf(letter, {
-          performance_band: customSentences["performance_band"],
-          conduct_band: customSentences["conduct_band"],
-          completion_band: customSentences["completion_band"],
-          closing_line: customSentences["closing_line"],
-        });
-        if (letter.pdfPath) {
-          try {
-            const filePath = path.resolve("uploads", letter.pdfPath);
-            const dir = path.dirname(filePath);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(filePath, pdfBuffer);
-          } catch {}
-        }
-      }
+        : (typeof rawCcEmails === "string" && rawCcEmails.trim()
+            ? rawCcEmails.split(",").map((e: string) => e.trim()).filter(Boolean)
+            : []);
 
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host || "hire-in.com";
       const verifyUrl = `${protocol}://${host}/verify`;
 
-      const result = await sendHrLetterEmail({
-        to: recipientEmail,
-        employeeName: letter.employeeName,
-        letterType: letter.templateType,
-        referenceNumber: letter.referenceNumber,
-        authCode: letter.authCode,
+      const result = await letterService.dispatchEmail(req.params.id, req.session.userId!, {
+        recipientEmail,
+        ccEmails: ccEmails.length ? ccEmails : undefined,
         verifyUrl,
-        pdfBuffer,
-        pdfFilename: `${letter.referenceNumber.replace(/\//g, "-")}.pdf`,
-        cc: parsedHrLetterCcEmails.length > 0 ? parsedHrLetterCcEmails : undefined,
       });
 
       if (!result.success) {
-        return res.status(500).json({ error: `Failed to send email: ${result.error}` });
+        return res.status(500).json({ error: result.error ?? "Failed to send email" });
       }
 
-      if (parsedHrLetterCcEmails.length > 0) {
-        await storage.updateHrLetter(letter.id, { ccEmails: parsedHrLetterCcEmails.join(",") });
+      if (ccEmails.length > 0) {
+        await storage.updateHrLetter(letter.id, { ccEmails: ccEmails.join(",") });
       }
-
-      await storage.createAuditLog({
-        actorId: req.session.userId!,
-        targetId: letter.id,
-        action: "email_hr_letter",
-        changes: { sentTo: recipientEmail, referenceNumber: letter.referenceNumber, cc: parsedHrLetterCcEmails.length > 0 ? parsedHrLetterCcEmails : undefined },
-      });
 
       res.json({ success: true, sentTo: recipientEmail });
     } catch (error) {
@@ -28389,9 +28206,6 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       if (!letter) return res.status(404).json({ error: "Letter not found" });
       if (letter.status !== "issued") {
         return res.status(400).json({ error: "Letter must be issued to resend" });
-      }
-      if (!letter.referenceNumber || !letter.authCode) {
-        return res.status(400).json({ error: "Letter missing reference number or auth code" });
       }
 
       const employee = letter.employeeId ? await storage.getAdminUser(letter.employeeId) : null;
@@ -28409,46 +28223,19 @@ Return JSON with keys: linkedin, instagram, facebook.`;
                 : []))
         : (letter.ccEmails ? letter.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean) : []);
 
-      let pdfBuffer: Buffer | undefined;
-      if (letter.pdfPath) {
-        const filePath = path.resolve("uploads", letter.pdfPath);
-        if (fs.existsSync(filePath)) {
-          pdfBuffer = fs.readFileSync(filePath);
-        }
-      }
-      if (!pdfBuffer) {
-        const dbSentences = await storage.getLetterTemplateSentences();
-        const customSentences = dbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
-          if (!acc[s.category]) acc[s.category] = {};
-          acc[s.category][s.key] = s.sentence;
-          return acc;
-        }, {});
-        pdfBuffer = await generateHrLetterPdf(letter, {
-          performance_band: customSentences["performance_band"],
-          conduct_band: customSentences["conduct_band"],
-          completion_band: customSentences["completion_band"],
-          closing_line: customSentences["closing_line"],
-        });
-      }
-
       const protocol = req.headers["x-forwarded-proto"] || "https";
       const host = req.headers.host || "hire-in.com";
       const verifyUrl = `${protocol}://${host}/verify`;
 
-      const result = await sendHrLetterEmail({
-        to: recipientEmail,
-        employeeName: letter.employeeName,
-        letterType: letter.templateType,
-        referenceNumber: letter.referenceNumber,
-        authCode: letter.authCode,
+      const result = await letterService.dispatchEmail(req.params.id, req.session.userId!, {
+        recipientEmail,
+        ccEmails: ccEmails.length ? ccEmails : undefined,
         verifyUrl,
-        pdfBuffer,
-        pdfFilename: `${letter.referenceNumber.replace(/\//g, "-")}.pdf`,
-        cc: ccEmails.length > 0 ? ccEmails : undefined,
+        resend: true,
       });
 
       if (!result.success) {
-        return res.status(500).json({ error: `Failed to resend email: ${result.error}` });
+        return res.status(500).json({ error: result.error ?? "Failed to resend email" });
       }
 
       await storage.createCommunicationLog({
@@ -28463,13 +28250,6 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         sentAt: new Date(),
       } as any);
 
-      await storage.createAuditLog({
-        actorId: req.session.userId!,
-        targetId: letter.id,
-        action: "resend_hr_letter",
-        changes: { sentTo: recipientEmail, referenceNumber: letter.referenceNumber, cc: ccEmails.length > 0 ? ccEmails : undefined },
-      });
-
       res.json({ success: true, sentTo: recipientEmail });
     } catch (error) {
       console.error("Resend HR letter error:", error);
@@ -28479,153 +28259,15 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   app.post("/api/hr/letters/:id/reissue", requirePermission("hr.letters.reissue", "hr"), async (req, res) => {
     try {
-      const originalLetter = await storage.getHrLetter(req.params.id);
-      if (!originalLetter) return res.status(404).json({ error: "Letter not found" });
-      if (originalLetter.status !== "issued" && originalLetter.status !== "reissued") {
-        return res.status(400).json({ error: "Can only reissue an issued letter" });
+      const result = await letterService.reissue(
+        req.params.id,
+        req.session.userId!,
+        req.body.reissueReason,
+      );
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
       }
-      const { reissueReason } = req.body;
-
-      // Fetch current employee data to capture any name/designation/department changes
-      const currentEmployee = await storage.getAdminUser(originalLetter.employeeId);
-      if (!currentEmployee) {
-        return res.status(400).json({ error: "Employee record not found. Cannot reissue letter." });
-      }
-
-      const currentFullName = `${currentEmployee.firstName} ${currentEmployee.lastName}`.trim();
-      const currentDesignation = currentEmployee.designation || originalLetter.designation || "";
-      let currentDepartment = originalLetter.department || "";
-      if (currentEmployee.departmentId) {
-        const dept = await storage.getDepartment(currentEmployee.departmentId);
-        if (dept?.name) currentDepartment = dept.name;
-      }
-
-      // Track what changed between the original letter and the current employee data
-      // Always record a field if the old and new values differ — including removals (empty/null)
-      const dataChanges: Record<string, { old: string | null; new: string | null }> = {};
-      const oldName = originalLetter.employeeName ?? null;
-      const newName = currentFullName || null;
-      if (oldName !== newName) {
-        dataChanges.employeeName = { old: oldName, new: newName };
-      }
-      const oldDesignation = originalLetter.designation ?? null;
-      const newDesignation = currentDesignation || null;
-      if (oldDesignation !== newDesignation) {
-        dataChanges.designation = { old: oldDesignation, new: newDesignation };
-      }
-      const oldDepartment = originalLetter.department || null;
-      const newDepartment = currentDepartment || null;
-      if (oldDepartment !== newDepartment) {
-        dataChanges.department = { old: oldDepartment, new: newDepartment };
-      }
-
-      // Mark original as reissued; restore on failure (compensating update)
-      await storage.updateHrLetter(req.params.id, { status: "reissued" });
-      let draftLetter: Awaited<ReturnType<typeof storage.createHrLetter>> | null = null;
-
-      try {
-        const newIssueDate = new Date().toISOString().split("T")[0];
-        draftLetter = await storage.createHrLetter({
-          templateType: originalLetter.templateType,
-          employeeId: originalLetter.employeeId,
-          employeeName: currentFullName || originalLetter.employeeName,
-          employeeCode: currentEmployee.employeeId || originalLetter.employeeCode,
-          designation: currentDesignation || originalLetter.designation,
-          department: currentDepartment,
-          employmentType: originalLetter.employmentType,
-          location: currentEmployee.location || originalLetter.location,
-          reportingManager: originalLetter.reportingManager,
-          startDate: originalLetter.startDate,
-          endDate: originalLetter.endDate,
-          lastWorkingDay: originalLetter.lastWorkingDay,
-          performanceBand: originalLetter.performanceBand,
-          conductBand: originalLetter.conductBand,
-          completionBand: originalLetter.completionBand,
-          closingLine: originalLetter.closingLine,
-          includeResponsibilities: originalLetter.includeResponsibilities,
-          responsibilitiesSummary: originalLetter.responsibilitiesSummary,
-          includeProject: originalLetter.includeProject,
-          projectName: originalLetter.projectName,
-          includeSeal: originalLetter.includeSeal,
-          signatoryId: originalLetter.signatoryId,
-          signatoryName: originalLetter.signatoryName,
-          signatoryDesignation: originalLetter.signatoryDesignation,
-          issueDate: newIssueDate,
-          customOverrideText: originalLetter.customOverrideText,
-          customOverrideBy: originalLetter.customOverrideBy,
-          customOverrideAt: originalLetter.customOverrideAt,
-          pdfPath: null,
-          status: "draft",
-          reissuedFromLetterId: originalLetter.id,
-          reissueReason: reissueReason || "Reissued with updated data",
-          createdBy: req.session.userId!,
-        });
-
-        // Auto-issue the new letter
-        const reissuePrefix = TEMPLATE_PREFIX_MAP[draftLetter.templateType] || "GEN";
-        const reissueYear = new Date().getFullYear();
-        const reissueRefPrefix = `RL/${reissuePrefix}/${reissueYear}/`;
-        const reissueCount = await storage.getHrLetterCountByPrefix(reissueRefPrefix);
-        const newReferenceNumber = generateRefNumber(reissuePrefix, reissueYear, reissueCount);
-        const tempNewLetter = { ...draftLetter, issueDate: newIssueDate };
-        const { authCode: newAuthCode, documentHash: newDocumentHash } = computeLetterAuthCode(tempNewLetter);
-        const issuedNewLetter = { ...draftLetter, referenceNumber: newReferenceNumber, authCode: newAuthCode, issueDate: newIssueDate, status: "issued" as const };
-
-        const reissueDbSentences = await storage.getLetterTemplateSentences();
-        const reissueCustomSentences = reissueDbSentences.reduce<Record<string, Record<string, string>>>((acc, s) => {
-          if (!acc[s.category]) acc[s.category] = {};
-          acc[s.category][s.key] = s.sentence;
-          return acc;
-        }, {});
-        const newPdfBuffer = await generateHrLetterPdf(issuedNewLetter, {
-          performance_band: reissueCustomSentences["performance_band"],
-          conduct_band: reissueCustomSentences["conduct_band"],
-          completion_band: reissueCustomSentences["completion_band"],
-          closing_line: reissueCustomSentences["closing_line"],
-        });
-        const newPdfDir = path.resolve("uploads/hr-letters");
-        if (!fs.existsSync(newPdfDir)) fs.mkdirSync(newPdfDir, { recursive: true });
-        const newPdfFilename = `${newReferenceNumber.replace(/\//g, "-")}.pdf`;
-        const newPdfPath = path.join(newPdfDir, newPdfFilename);
-        fs.writeFileSync(newPdfPath, newPdfBuffer);
-
-        const newLetter = await storage.updateHrLetter(draftLetter.id, {
-          status: "issued",
-          referenceNumber: newReferenceNumber,
-          authCode: newAuthCode,
-          documentHash: newDocumentHash,
-          issuedBy: req.session.userId!,
-          issuedAt: new Date(),
-          issueDate: newIssueDate,
-          pdfPath: `hr-letters/${newPdfFilename}`,
-        });
-
-        await storage.createAuditLog({
-          actorId: req.session.userId!,
-          targetId: newLetter!.id,
-          action: "reissue_hr_letter",
-          changes: {
-            originalId: originalLetter.id,
-            originalReference: originalLetter.referenceNumber,
-            newReference: newReferenceNumber,
-            reissueReason,
-            dataChanges: Object.keys(dataChanges).length > 0 ? dataChanges : null,
-          },
-        });
-
-        res.status(201).json(newLetter);
-      } catch (issuanceError) {
-        // Compensating update: restore the original letter's status so it is not left orphaned
-        try {
-          await storage.updateHrLetter(req.params.id, { status: originalLetter.status });
-          if (draftLetter) {
-            await storage.updateHrLetter(draftLetter.id, { status: "revoked" });
-          }
-        } catch (rollbackError) {
-          console.error("Reissue rollback failed:", rollbackError);
-        }
-        throw issuanceError;
-      }
+      res.status(201).json(result.newLetter);
     } catch (error) {
       console.error("Reissue HR letter error:", error);
       res.status(500).json({ error: "Failed to reissue letter" });
@@ -28634,25 +28276,15 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   app.post("/api/hr/letters/:id/revoke", requirePermission("hr.letters.revoke", "hr"), async (req, res) => {
     try {
-      const letter = await storage.getHrLetter(req.params.id);
-      if (!letter) return res.status(404).json({ error: "Letter not found" });
-      if (letter.status === "revoked") {
-        return res.status(400).json({ error: "Letter is already revoked" });
+      const result = await letterService.revoke(
+        req.params.id,
+        req.session.userId!,
+        req.body.revokeReason,
+      );
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
       }
-      const { revokeReason } = req.body;
-      const updated = await storage.updateHrLetter(req.params.id, {
-        status: "revoked",
-        revokedBy: req.session.userId!,
-        revokedAt: new Date(),
-        revokeReason: revokeReason || "Revoked",
-      });
-      await storage.createAuditLog({
-        actorId: req.session.userId!,
-        targetId: letter.id,
-        action: "revoke_hr_letter",
-        changes: { revokeReason, status: "revoked" },
-      });
-      res.json(updated);
+      res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Failed to revoke letter" });
     }
