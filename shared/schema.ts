@@ -4730,11 +4730,14 @@ export const vaults = pgTable("vaults", {
   createdBy: varchar("created_by").notNull().references(() => adminUsers.id),
   isPersonal: boolean("is_personal").notNull().default(false),
   ownerId: varchar("owner_id").references(() => adminUsers.id),
+  // scope: 'admin' (admin-managed), 'team' (employee-created), 'personal' (auto personal vault)
+  scope: varchar("scope", { length: 20 }).notNull().default("admin"),
   archivedAt: timestamp("archived_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (t) => ({
   nameIdx: index("vaults_name_idx").on(t.name),
+  scopeIdx: index("vaults_scope_idx").on(t.scope),
 }));
 
 export const vaultShares = pgTable("vault_shares", {
@@ -4742,6 +4745,8 @@ export const vaultShares = pgTable("vault_shares", {
   vaultId: varchar("vault_id").notNull().references(() => vaults.id),
   userId: varchar("user_id").notNull().references(() => adminUsers.id),
   role: varchar("role", { length: 20 }).notNull().default("viewer"),
+  // canEdit: true = Editor (add/edit secrets), false = Viewer (read/reveal only)
+  canEdit: boolean("can_edit").notNull().default(false),
   grantedBy: varchar("granted_by").notNull().references(() => adminUsers.id),
   grantedAt: timestamp("granted_at").defaultNow().notNull(),
   revokedAt: timestamp("revoked_at"),

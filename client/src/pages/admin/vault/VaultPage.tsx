@@ -23,7 +23,7 @@ import {
 import {
   KeyRound, Plus, Edit2, Archive, Eye, EyeOff, Copy, ChevronRight, AlertTriangle,
   Shield, ShieldAlert, ShieldCheck, Lock, RefreshCw, Users, ExternalLink,
-  MoreHorizontal, Trash2, Share2, Info, LogIn,
+  MoreHorizontal, Trash2, Share2, Info, LogIn, Folder,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Link } from "wouter";
@@ -43,7 +43,10 @@ const SENSITIVITY_META: Record<string, { label: string; color: string; icon: typ
   critical: { label: "Critical", color: "bg-red-100 text-red-800", icon: Lock, scrutiny: "Reason + TOTP, 30s auto-hide, indefinite logs" },
 };
 
-type Vault = { id: string; name: string; description?: string; category?: string; createdAt: string };
+type Vault = {
+  id: string; name: string; description?: string; category?: string; scope?: string;
+  ownerId?: string; ownerName?: string; createdAt: string;
+};
 type Secret = {
   id: string; vaultId: string; systemName: string; loginUrl?: string;
   sensitivity: string; rotationDueAt?: string; rotationRequired: boolean;
@@ -277,7 +280,7 @@ function ShareVaultDialog({ vault, onClose }: { vault: Vault; onClose: () => voi
         <div className="space-y-4">
           <div>
             <p className="text-sm text-muted-foreground mb-3">
-              Sharing a vault gives the recipient access to all its credentials. They'll appear in the recipient's "Shared With Me" list.
+              Sharing a vault gives the recipient access to all its credentials.
             </p>
 
             {sharesLoading ? (
@@ -355,7 +358,7 @@ function ShareVaultDialog({ vault, onClose }: { vault: Vault; onClose: () => voi
   );
 }
 
-function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean }) {
+function SecretsTable({ vaultId, isAdmin, isTeamVault }: { vaultId: string; isAdmin: boolean; isTeamVault?: boolean }) {
   const { toast } = useToast();
   const [secretFormOpen, setSecretFormOpen] = useState(false);
   const [editingSecret, setEditingSecret] = useState<Secret | null>(null);
@@ -476,9 +479,11 @@ function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean 
                         <DropdownMenuItem onClick={() => { setEditingSecret(s); setSecretFormOpen(true); }}>
                           <Edit2 className="h-4 w-4 mr-2" /> Edit
                         </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setGrantSecret(s)}>
-                          <Users className="h-4 w-4 mr-2" /> Manage Access
-                        </DropdownMenuItem>
+                        {!isTeamVault && (
+                          <DropdownMenuItem onClick={() => setGrantSecret(s)}>
+                            <Users className="h-4 w-4 mr-2" /> Manage Access
+                          </DropdownMenuItem>
+                        )}
                         <DropdownMenuItem className="text-red-600" onClick={() => { if (confirm("Archive this credential? It won't be deleted.")) archiveMutation.mutate(s.id); }}>
                           <Trash2 className="h-4 w-4 mr-2" /> Archive
                         </DropdownMenuItem>
@@ -525,6 +530,47 @@ function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean 
   );
 }
 
+// ── Team vault members panel (for admin view) ─────────────────────────────
+
+function TeamVaultMembersPanel({ vaultId }: { vaultId: string }) {
+  const { data: members = [], isLoading } = useQuery<any[]>({
+    queryKey: [`/api/team-vaults/${vaultId}/members`],
+  });
+
+  const activeMembers = members.filter((m: any) => !m.revokedAt);
+
+  if (isLoading) return <div className="py-4 text-center text-sm text-muted-foreground">Loading members…</div>;
+  if (!activeMembers.length) return <div className="py-4 text-center text-sm text-muted-foreground">No members invited yet.</div>;
+
+  return (
+    <Table>
+      <TableHeader>
+        <TableRow>
+          <TableHead>Member</TableHead>
+          <TableHead>Role</TableHead>
+          <TableHead>Added</TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {activeMembers.map((m: any) => (
+          <TableRow key={m.id} data-testid={`row-admin-member-${m.id}`}>
+            <TableCell>
+              <div className="font-medium">{m.user ? `${m.user.firstName} ${m.user.lastName}` : m.userId}</div>
+              {m.user && <div className="text-xs text-muted-foreground capitalize">{m.user.role}</div>}
+            </TableCell>
+            <TableCell>
+              <Badge variant="outline" className="text-xs">{m.canEdit ? "Editor" : "Viewer"}</Badge>
+            </TableCell>
+            <TableCell className="text-xs text-muted-foreground">
+              {new Date(m.grantedAt).toLocaleDateString()}
+            </TableCell>
+          </TableRow>
+        ))}
+      </TableBody>
+    </Table>
+  );
+}
+
 export default function VaultPage() {
   const { enabled: newLook } = useNewLook();
   const { user } = useAuth();
@@ -536,6 +582,7 @@ export default function VaultPage() {
   const [sharingVault, setSharingVault] = useState<Vault | null>(null);
   const [selectedVaultId, setSelectedVaultId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"vaults" | "my-access">("my-access");
+  const [vaultDetailTab, setVaultDetailTab] = useState<"credentials" | "members">("credentials");
 
   const { data: vaultList = [], isLoading: vaultsLoading } = useQuery<Vault[]>({
     queryKey: ["/api/vaults"],
@@ -547,6 +594,11 @@ export default function VaultPage() {
   });
 
   const selectedVault = vaultList.find(v => v.id === selectedVaultId) ?? null;
+  const isTeamVault = selectedVault?.scope === "team";
+
+  // Separate admin and team vaults for the sidebar
+  const adminVaults = vaultList.filter(v => v.scope !== "team");
+  const teamVaults = vaultList.filter(v => v.scope === "team");
 
   return (
     <AdminLayout>
@@ -605,24 +657,26 @@ export default function VaultPage() {
           {isAdmin && (
             <TabsContent value="vaults" className="mt-4">
               <div className="flex gap-6">
+                {/* Sidebar */}
                 <div className="w-64 shrink-0">
+                  {/* Admin-managed vaults */}
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-medium text-muted-foreground">Vaults</span>
+                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Admin Vaults</span>
                     <Button size="sm" variant="ghost" className="h-7 px-2" onClick={() => { setEditingVault(null); setVaultFormOpen(true); }} data-testid="button-new-vault">
                       <Plus className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                  <div className="space-y-1">
+                  <div className="space-y-1 mb-4">
                     {vaultsLoading ? (
                       <div className="text-xs text-muted-foreground py-2 px-2">Loading…</div>
-                    ) : !vaultList.length ? (
-                      <div className="text-xs text-muted-foreground py-2 px-2">No vaults yet. Create one →</div>
+                    ) : !adminVaults.length ? (
+                      <div className="text-xs text-muted-foreground py-2 px-2">No admin vaults yet.</div>
                     ) : (
-                      vaultList.map(v => (
+                      adminVaults.map(v => (
                         <button
                           key={v.id}
                           data-testid={`button-vault-${v.id}`}
-                          onClick={() => setSelectedVaultId(v.id)}
+                          onClick={() => { setSelectedVaultId(v.id); setVaultDetailTab("credentials"); }}
                           className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors text-left ${selectedVaultId === v.id ? "bg-accent font-medium" : "hover:bg-accent/60 text-muted-foreground hover:text-foreground"}`}
                         >
                           <KeyRound className="h-3.5 w-3.5 shrink-0" />
@@ -633,10 +687,35 @@ export default function VaultPage() {
                       ))
                     )}
                   </div>
+
+                  {/* Team vaults section */}
+                  {teamVaults.length > 0 && (
+                    <>
+                      <div className="mb-2">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Employee Team Vaults</span>
+                      </div>
+                      <div className="space-y-1">
+                        {teamVaults.map(v => (
+                          <button
+                            key={v.id}
+                            data-testid={`button-team-vault-${v.id}`}
+                            onClick={() => { setSelectedVaultId(v.id); setVaultDetailTab("credentials"); }}
+                            className={`w-full flex items-center gap-2 px-3 py-2 rounded-md text-sm transition-colors text-left ${selectedVaultId === v.id ? "bg-accent font-medium" : "hover:bg-accent/60 text-muted-foreground hover:text-foreground"}`}
+                          >
+                            <Folder className="h-3.5 w-3.5 shrink-0" />
+                            <span className="flex-1 truncate">{v.name}</span>
+                            <Badge className="text-[10px] px-1.5 py-0 bg-blue-100 text-blue-700 border-0">Team</Badge>
+                            <ChevronRight className="h-3 w-3 opacity-50" />
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <Separator orientation="vertical" className="h-auto" />
 
+                {/* Detail pane */}
                 <div className="flex-1">
                   {!selectedVault ? (
                     <div className="py-20 text-center text-muted-foreground text-sm">
@@ -645,21 +724,48 @@ export default function VaultPage() {
                     </div>
                   ) : (
                     <div>
-                      <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-start justify-between mb-4">
                         <div>
-                          <h2 className="font-semibold">{selectedVault.name}</h2>
+                          <div className="flex items-center gap-2">
+                            <h2 className="font-semibold">{selectedVault.name}</h2>
+                            {isTeamVault && (
+                              <Badge className="text-xs bg-blue-100 text-blue-700 border-0">Team</Badge>
+                            )}
+                          </div>
                           {selectedVault.description && <p className="text-xs text-muted-foreground">{selectedVault.description}</p>}
+                          {isTeamVault && selectedVault.ownerName && (
+                            <p className="text-xs text-muted-foreground mt-0.5">Created by {selectedVault.ownerName}</p>
+                          )}
                         </div>
-                        <div className="flex items-center gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setSharingVault(selectedVault)} data-testid="button-share-vault">
-                            <Share2 className="h-4 w-4 mr-1" /> Share Vault
-                          </Button>
-                          <Button size="sm" variant="outline" onClick={() => { setEditingVault(selectedVault); setVaultFormOpen(true); }} data-testid="button-edit-vault">
-                            <Edit2 className="h-4 w-4 mr-1" /> Edit Vault
-                          </Button>
-                        </div>
+                        {!isTeamVault && (
+                          <div className="flex items-center gap-2">
+                            <Button size="sm" variant="outline" onClick={() => setSharingVault(selectedVault)} data-testid="button-share-vault">
+                              <Share2 className="h-4 w-4 mr-1" /> Share Vault
+                            </Button>
+                            <Button size="sm" variant="outline" onClick={() => { setEditingVault(selectedVault); setVaultFormOpen(true); }} data-testid="button-edit-vault">
+                              <Edit2 className="h-4 w-4 mr-1" /> Edit Vault
+                            </Button>
+                          </div>
+                        )}
                       </div>
-                      <SecretsTable vaultId={selectedVault.id} isAdmin={isAdmin} />
+
+                      {isTeamVault ? (
+                        // Team vault: show credentials + members tabs for admin oversight
+                        <Tabs value={vaultDetailTab} onValueChange={v => setVaultDetailTab(v as any)}>
+                          <TabsList>
+                            <TabsTrigger value="credentials" data-testid="tab-admin-vault-credentials">Credentials</TabsTrigger>
+                            <TabsTrigger value="members" data-testid="tab-admin-vault-members">Members</TabsTrigger>
+                          </TabsList>
+                          <TabsContent value="credentials" className="mt-4">
+                            <SecretsTable vaultId={selectedVault.id} isAdmin={isAdmin} isTeamVault />
+                          </TabsContent>
+                          <TabsContent value="members" className="mt-4">
+                            <TeamVaultMembersPanel vaultId={selectedVault.id} />
+                          </TabsContent>
+                        </Tabs>
+                      ) : (
+                        <SecretsTable vaultId={selectedVault.id} isAdmin={isAdmin} />
+                      )}
                     </div>
                   )}
                 </div>

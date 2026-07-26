@@ -744,6 +744,12 @@ export default function VerifyLetter() {
                         <p className="text-muted-foreground">Issue Date</p>
                         <p className="font-medium">{formatDate(r.issueDate)}</p>
                       </div>
+                      {r.signatoryName && (
+                        <div>
+                          <p className="text-muted-foreground">Issued By</p>
+                          <p className="font-medium">{r.signatoryName}{r.signatoryDesignation ? ` · ${r.signatoryDesignation}` : ""}</p>
+                        </div>
+                      )}
                       <div>
                         <p className="text-muted-foreground">Reference</p>
                         <p className="font-mono text-xs">{r.referenceNumber}</p>
