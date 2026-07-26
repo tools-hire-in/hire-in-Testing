@@ -28085,6 +28085,14 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   app.post("/api/hr/letters/:id/resubmit", requirePermission("hr.letters.submit", "hr"), async (req, res) => {
     try {
+      const letterForOwnerCheck = await storage.getHrLetter(req.params.id);
+      if (!letterForOwnerCheck) return res.status(404).json({ error: "Letter not found" });
+      if (
+        letterForOwnerCheck.createdBy !== req.session.userId &&
+        !["super_admin", "admin"].includes(req.session.role!)
+      ) {
+        return res.status(403).json({ error: "You can only resubmit letters you created" });
+      }
       const result = await letterService.resubmit({
         letterId: req.params.id,
         letterTableType: "hr_letter",
@@ -28102,6 +28110,14 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   app.post("/api/hr/letters/:id/withdraw", requirePermission("hr.letters.submit", "hr"), async (req, res) => {
     try {
+      const letterForOwnerCheck = await storage.getHrLetter(req.params.id);
+      if (!letterForOwnerCheck) return res.status(404).json({ error: "Letter not found" });
+      if (
+        letterForOwnerCheck.createdBy !== req.session.userId &&
+        !["super_admin", "admin"].includes(req.session.role!)
+      ) {
+        return res.status(403).json({ error: "You can only withdraw letters you created" });
+      }
       const result = await letterService.withdraw({
         letterId: req.params.id,
         letterTableType: "hr_letter",
@@ -28322,6 +28338,81 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       res.json(result);
     } catch (error) {
       res.status(500).json({ error: "Failed to revoke letter" });
+    }
+  });
+
+  // Combined approve-or-revise endpoint — used by the ApprovalBar component.
+  // Wraps the two separate /approve and /needs-revision routes into one call
+  // and fires in-app notifications for the letter creator.
+  app.post("/api/hr/letters/:id/approve-or-revise", requirePermission("hr.letters.approve", "hr"), async (req, res) => {
+    try {
+      const { action, revisionReason } = req.body as { action: "approve" | "needs_revision"; revisionReason?: string };
+      if (action !== "approve" && action !== "needs_revision") {
+        return res.status(400).json({ error: "action must be 'approve' or 'needs_revision'" });
+      }
+      const result = await letterService.approveOrRevise({
+        letterId: req.params.id,
+        letterTableType: "hr_letter",
+        action,
+        actorId: req.session.userId!,
+        revisionReason,
+      });
+      if (letterService.isTransitionError(result)) {
+        return res.status(letterService.transitionErrorStatus(result)).json({ error: result.message });
+      }
+      res.json(result);
+    } catch (error) {
+      console.error("Approve-or-revise hr letter error:", error);
+      res.status(500).json({ error: "Failed to process approval decision" });
+    }
+  });
+
+  // Review history for a letter — returns all letter_review_cycles rows
+  // joined with reviewer name for display in the approval UI.
+  app.get("/api/hr/letters/:id/review-cycles", requirePermission("hr.letters", "hr"), async (req, res) => {
+    try {
+      const result = await pool.query(
+        `SELECT lrc.id, lrc.letter_id AS "letterId", lrc.letter_type AS "letterType",
+                lrc.round, lrc.action, lrc.reason, lrc.reviewed_by AS "reviewedBy",
+                lrc.reviewed_at AS "reviewedAt",
+                au.first_name AS "reviewerFirstName", au.last_name AS "reviewerLastName"
+         FROM letter_review_cycles lrc
+         LEFT JOIN admin_users au ON au.id = lrc.reviewed_by
+         WHERE lrc.letter_id = $1
+         ORDER BY lrc.round ASC, lrc.reviewed_at ASC`,
+        [req.params.id]
+      );
+      res.json(result.rows);
+    } catch (error) {
+      console.error("Review cycles fetch error:", error);
+      res.status(500).json({ error: "Failed to fetch review cycles" });
+    }
+  });
+
+  // Reopen a withdrawn letter as a draft so the creator can revise and resubmit.
+  app.post("/api/hr/letters/:id/reopen", requirePermission("hr.letters.submit", "hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      if (letter.status !== "withdrawn") {
+        return res.status(409).json({ error: `Cannot reopen a letter with status '${letter.status}'. Only withdrawn letters can be reopened.` });
+      }
+      if (
+        letter.createdBy !== req.session.userId &&
+        !["super_admin", "admin"].includes(req.session.role!)
+      ) {
+        return res.status(403).json({ error: "You can only reopen letters you created" });
+      }
+      const updated = await storage.updateHrLetter(req.params.id, { status: "draft" });
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: req.params.id,
+        action: "hr_letter_reopened",
+        changes: { fromStatus: "withdrawn", toStatus: "draft" },
+      });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to reopen letter" });
     }
   });
 

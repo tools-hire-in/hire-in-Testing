@@ -3,7 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   FileText, Loader2, Search, ChevronRight, ChevronLeft, Eye, CheckCircle,
   TrendingUp, Award, Layers, Laptop, Plus, Trash2, Mail, Cloud, CloudOff,
-  AlertTriangle, RotateCcw,
+  AlertTriangle, RotateCcw, AlertCircle,
 } from "lucide-react";
 import { useDraft } from "@/hooks/useDraft";
 import { AnnexureEditor, buildGoalsFromAnnexures, type AnnexureItem } from "./AnnexureEditor";
@@ -20,7 +20,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { LetterPreview, type LetterSentencesOverride } from "./LetterPreview";
-import type { AdminUser, RoleSummaryTemplate, LetterTemplateSentence } from "@shared/schema";
+import type { AdminUser, RoleSummaryTemplate, LetterTemplateSentence, HrLetter } from "@shared/schema";
 import {
   PERFORMANCE_BANDS,
   CONDUCT_BANDS,
@@ -155,6 +155,58 @@ const defaultAmendmentMeta: AmendmentMeta = {
   deviceItems: [{ description: "", serialNumber: "", assetTag: "", condition: "" }],
 };
 
+function buildFormFromLetter(letter: HrLetter): FormData {
+  return {
+    templateType: letter.templateType,
+    employeeId: letter.employeeId || "",
+    employeeName: letter.employeeName,
+    employeeCode: letter.employeeCode || "",
+    designation: letter.designation,
+    department: letter.department || "",
+    employmentType: letter.employmentType || "",
+    location: letter.location || "",
+    reportingManager: letter.reportingManager || "",
+    startDate: letter.startDate || "",
+    endDate: letter.endDate || "",
+    lastWorkingDay: letter.lastWorkingDay || "",
+    performanceBand: letter.performanceBand || "",
+    conductBand: letter.conductBand || "",
+    completionBand: letter.completionBand || "",
+    closingLine: letter.closingLine || "wish_success",
+    includeResponsibilities: letter.includeResponsibilities || false,
+    responsibilitiesSummary: letter.responsibilitiesSummary || "",
+    includeProject: letter.includeProject || false,
+    projectName: letter.projectName || "",
+    includeSeal: letter.includeSeal || false,
+    signatoryId: letter.signatoryId || "",
+    signatoryName: letter.signatoryName || "",
+    signatoryDesignation: letter.signatoryDesignation || "",
+    issueDate: letter.issueDate || new Date().toISOString().split("T")[0],
+    customOverrideText: letter.customOverrideText || "",
+  };
+}
+
+function buildAmendmentMetaFromLetter(letter: HrLetter): AmendmentMeta {
+  const meta = ((letter.metadata as Record<string, unknown>) || {}) as Record<string, unknown>;
+  return {
+    effectiveDate: (meta.effectiveDate as string) || new Date().toISOString().split("T")[0],
+    reason: (meta.reason as string) || "",
+    previousSalary: (meta.oldSalary as string) || "",
+    newSalary: (meta.newSalary as string) || "",
+    newSalaryInWords: (meta.newSalaryInWords as string) || "",
+    previousDesignation: (meta.oldDesignation as string) || "",
+    newDesignation: (meta.newDesignation as string) || "",
+    previousDepartment: (meta.oldDepartment as string) || "",
+    newDepartment: (meta.newDepartment as string) || "",
+    deviceItems: (meta.deviceItems as DeviceItem[]) || [{ description: "", serialNumber: "", assetTag: "", condition: "" }],
+  };
+}
+
+interface LetterGeneratorProps {
+  editingLetter?: HrLetter;
+  onResubmitted?: () => void;
+}
+
 function buildSentencesOverride(sentences: LetterTemplateSentence[]): LetterSentencesOverride {
   const override: LetterSentencesOverride = {
     performance_band: {},
@@ -171,12 +223,12 @@ function buildSentencesOverride(sentences: LetterTemplateSentence[]): LetterSent
   return override;
 }
 
-export function LetterGenerator() {
+export function LetterGenerator({ editingLetter, onResubmitted }: LetterGeneratorProps = {}) {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [step, setStep] = useState(0);
-  const [form, setForm] = useState<FormData>({ ...defaultForm });
-  const [amendmentMeta, setAmendmentMeta] = useState<AmendmentMeta>({ ...defaultAmendmentMeta });
+  const [step, setStep] = useState(editingLetter ? 1 : 0);
+  const [form, setForm] = useState<FormData>(editingLetter ? buildFormFromLetter(editingLetter) : { ...defaultForm });
+  const [amendmentMeta, setAmendmentMeta] = useState<AmendmentMeta>(editingLetter ? buildAmendmentMetaFromLetter(editingLetter) : { ...defaultAmendmentMeta });
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [manualEmployeeEmail, setManualEmployeeEmail] = useState("");
   const [sendEmail, setSendEmail] = useState(false);
@@ -360,6 +412,22 @@ export function LetterGenerator() {
     }
   }
 
+  const editMutation = useMutation({
+    mutationFn: async (data: Record<string, unknown>) => {
+      await apiRequest("PATCH", `/api/hr/letters/${editingLetter!.id}/draft`, data);
+      const res = await apiRequest("POST", `/api/hr/letters/${editingLetter!.id}/resubmit`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Letter resubmitted for approval" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
+      onResubmitted?.();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Error", description: err.message, variant: "destructive" });
+    },
+  });
+
   const createMutation = useMutation({
     mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/hr/letters", data);
@@ -516,6 +584,31 @@ export function LetterGenerator() {
   }
 
   function handleSubmit() {
+    if (editingLetter) {
+      const payload: Record<string, unknown> = { ...form };
+      if (isAmendmentType) {
+        const metadata: Record<string, unknown> = { effectiveDate: amendmentMeta.effectiveDate };
+        if (form.templateType === "salary_revision" || form.templateType === "combined") {
+          metadata.oldSalary = amendmentMeta.previousSalary;
+          metadata.newSalary = amendmentMeta.newSalary;
+          metadata.newSalaryInWords = amendmentMeta.newSalaryInWords;
+        }
+        if (form.templateType === "role_change" || form.templateType === "combined") {
+          metadata.oldDesignation = amendmentMeta.previousDesignation;
+          metadata.newDesignation = amendmentMeta.newDesignation;
+          metadata.oldDepartment = amendmentMeta.previousDepartment;
+          metadata.newDepartment = amendmentMeta.newDepartment;
+        }
+        if (form.templateType === "device_allocation") {
+          metadata.deviceItems = amendmentMeta.deviceItems.filter(d => d.description.trim());
+        }
+        if (amendmentMeta.reason) metadata.reason = amendmentMeta.reason;
+        payload.metadata = metadata;
+      }
+      editMutation.mutate(payload);
+      return;
+    }
+
     if (isAmendmentType) {
       const metadata: Record<string, unknown> = {
         effectiveDate: amendmentMeta.effectiveDate,
@@ -669,22 +762,24 @@ export function LetterGenerator() {
         <div className="flex items-center justify-between">
           <CardTitle className="flex items-center gap-2" data-testid="text-letter-generator-title">
             <FileText className="h-5 w-5" />
-            Letter Generator
+            {editingLetter ? "Edit & Resubmit Letter" : "Letter Generator"}
           </CardTitle>
-          <div className="flex items-center gap-3">
-            <SaveStateIndicator />
-            {draftId && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="text-xs text-muted-foreground h-7 px-2"
-                onClick={() => setShowDiscardDialog(true)}
-                data-testid="btn-discard-draft"
-              >
-                <RotateCcw className="h-3 w-3 mr-1" /> Discard Draft
-              </Button>
-            )}
-          </div>
+          {!editingLetter && (
+            <div className="flex items-center gap-3">
+              <SaveStateIndicator />
+              {draftId && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-xs text-muted-foreground h-7 px-2"
+                  onClick={() => setShowDiscardDialog(true)}
+                  data-testid="btn-discard-draft"
+                >
+                  <RotateCcw className="h-3 w-3 mr-1" /> Discard Draft
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       </CardHeader>
       <CardContent>
@@ -707,6 +802,15 @@ export function LetterGenerator() {
         {isRevisionMode && (
           <div className="mb-4 p-3 bg-muted border rounded-lg text-sm text-muted-foreground" data-testid="banner-revision-locked">
             You are editing a returned letter. Locked fields cannot be changed.
+          </div>
+        )}
+        {editingLetter && (editingLetter as any).revisionReason && (
+          <div className="mb-4 rounded-md border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800" data-testid="edit-revision-reason-banner">
+            <p className="font-semibold mb-1 flex items-center gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0" />
+              Returned for revision
+            </p>
+            <p>{(editingLetter as any).revisionReason}</p>
           </div>
         )}
         <div className="flex gap-2 mb-6">
@@ -1394,7 +1498,12 @@ export function LetterGenerator() {
         )}
 
         <div className="flex justify-between mt-6">
-          <Button variant="outline" onClick={() => { setStep(s => s - 1); setFieldErrors({}); }} disabled={step === 0} data-testid="btn-prev-step">
+          <Button
+            variant="outline"
+            onClick={() => { setStep(s => s - 1); setFieldErrors({}); }}
+            disabled={step === 0 || (!!editingLetter && step === 1)}
+            data-testid="btn-prev-step"
+          >
             <ChevronLeft className="h-4 w-4 mr-1" /> Back
           </Button>
           {step < steps.length - 1 ? (
@@ -1402,9 +1511,13 @@ export function LetterGenerator() {
               Next <ChevronRight className="h-4 w-4 ml-1" />
             </Button>
           ) : (
-            <Button onClick={handleSubmit} disabled={!canNext() || createMutation.isPending} data-testid="btn-create-letter">
-              {createMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              {isAmendmentType ? "Generate DOCX" : "Create Letter"}
+            <Button
+              onClick={handleSubmit}
+              disabled={!canNext() || createMutation.isPending || editMutation.isPending}
+              data-testid="btn-create-letter"
+            >
+              {(createMutation.isPending || editMutation.isPending) && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              {editingLetter ? "Resubmit Letter" : (isAmendmentType ? "Generate DOCX" : "Create Letter")}
             </Button>
           )}
         </div>

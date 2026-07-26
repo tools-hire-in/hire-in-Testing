@@ -103,7 +103,7 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
     label: "Documents & letters",
     description: "Document reminders, offer letters and HR letters.",
     category: "hr",
-    typePrefixes: ["document_", "offer_letter_"],
+    typePrefixes: ["document_", "offer_letter_", "hr_letter_"],
   },
   {
     key: "hr_onboarding",

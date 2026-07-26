@@ -23,8 +23,9 @@ import { signHrLetter as _signHrLetter } from "../documentSigningService";
 import { generateHrLetterPdf } from "../hrLetterPdf";
 import { generateAddendumDocx, type AddendumData } from "../offerLetterAddendum";
 import { sendHrLetterEmail } from "../email";
-import { TEMPLATE_PREFIX_MAP } from "@shared/hrLetterConstants";
+import { TEMPLATE_PREFIX_MAP, TEMPLATE_LABELS } from "@shared/hrLetterConstants";
 import type { HrLetter, InsertHrLetter } from "@shared/schema";
+import { notifyUser } from "../notifications";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -466,6 +467,29 @@ export async function approveOrRevise(
       revisionReason: params.revisionReason ?? null,
     },
   });
+
+  // Notify the letter creator (fire-and-forget — must not fail the transition).
+  if (letter.createdBy) {
+    const letterTypeLabel = (TEMPLATE_LABELS as Record<string, string>)[letter.templateType] ?? letter.templateType;
+    if (params.action === "needs_revision") {
+      const reasonExcerpt = (params.revisionReason ?? "").slice(0, 120);
+      notifyUser({
+        userId: letter.createdBy,
+        type: "hr_letter_needs_revision",
+        title: "Letter returned for revision",
+        message: `Your ${letterTypeLabel} for ${letter.employeeName} was returned for revision${reasonExcerpt ? `: ${reasonExcerpt}` : "."}`,
+        metadata: { letterId: params.letterId, revisionRound: newRound },
+      }).catch(() => {/* non-fatal */});
+    } else {
+      notifyUser({
+        userId: letter.createdBy,
+        type: "hr_letter_approved",
+        title: "Letter approved",
+        message: `Your ${letterTypeLabel} for ${letter.employeeName} was approved.`,
+        metadata: { letterId: params.letterId },
+      }).catch(() => {/* non-fatal */});
+    }
+  }
 
   return updated!;
 }
