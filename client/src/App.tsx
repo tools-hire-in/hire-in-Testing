@@ -131,6 +131,7 @@ const MyVaultPage = lazy(() => import("@/pages/admin/vault/MyVaultPage"));
 const BulkPayrollRun = lazy(() => import("@/pages/admin/payroll/BulkPayrollRun"));
 const ExecutiveDashboard = lazy(() => import("@/pages/admin/payroll/ExecutiveDashboard"));
 const PayrollSetup = lazy(() => import("@/pages/admin/payroll/PayrollSetup"));
+const BDPipeline = lazy(() => import("@/pages/admin/bd/BDPipeline"));
 const CompetitiveAudit = lazy(() => import("@/pages/admin/CompetitiveAudit"));
 const CeoGuide = lazy(() => import("@/pages/admin/CeoGuide"));
 const HelpGuides = lazy(() => import("@/pages/admin/HelpGuides"));
@@ -533,6 +534,9 @@ function PublicRouter() {
       {/* Manager Command Card */}
       <Route path="/admin/command-card">{() => <Suspense fallback={<AdminFallback />}><ManagerCommandCardPage /></Suspense>}</Route>
 
+      {/* BD Pipeline */}
+      <Route path="/admin/bd/pipeline">{() => <Suspense fallback={<AdminFallback />}><BDPipeline /></Suspense>}</Route>
+
       {/* Integrations Hub */}
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>
 
@@ -770,6 +774,9 @@ function EmployeeRouter() {
 
       {/* Manager Command Card */}
       <Route path="/admin/command-card">{() => <Suspense fallback={<AdminFallback />}><ManagerCommandCardPage /></Suspense>}</Route>
+
+      {/* BD Pipeline */}
+      <Route path="/admin/bd/pipeline">{() => <Suspense fallback={<AdminFallback />}><BDPipeline /></Suspense>}</Route>
 
       {/* Integrations Hub */}
       <Route path="/admin/integrations">{() => <Suspense fallback={<AdminFallback />}><Integrations /></Suspense>}</Route>

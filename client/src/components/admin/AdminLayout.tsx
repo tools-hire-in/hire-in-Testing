@@ -63,6 +63,7 @@ import {
   BarChart2,
   Telescope,
   Phone,
+  TrendingUp,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -2286,6 +2287,20 @@ function AdminLayoutInner({ children }: AdminLayoutProps) {
                           <Link href={`${STUDIO_BASE}/bd-guide`} className="flex items-center gap-2 w-full">
                             <BookOpen className="h-4 w-4 shrink-0" />
                             <span className="group-data-[collapsible=icon]:hidden">BD Guide</span>
+                          </Link>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          asChild
+                          isActive={location.startsWith("/admin/bd/pipeline")}
+                          tooltip="BD Pipeline"
+                          data-testid="nav-item-bd-pipeline"
+                          className={isComplianceLocked ? "opacity-40 pointer-events-none" : ""}
+                        >
+                          <Link href="/admin/bd/pipeline" className="flex items-center gap-2 w-full">
+                            <TrendingUp className="h-4 w-4 shrink-0" />
+                            <span className="group-data-[collapsible=icon]:hidden">Pipeline</span>
                           </Link>
                         </SidebarMenuButton>
                       </SidebarMenuItem>

@@ -5141,6 +5141,86 @@ export const bdDeckAuditLog = pgTable("bd_deck_audit_log", {
 export type BdDeckAuditLog = typeof bdDeckAuditLog.$inferSelect;
 
 // ---------------------------------------------------------------------------
+// BD Pipeline — Prospects, Deals & Activities
+// Pre-sales CRM layer connecting outreach to contracts.
+// Applied via scripts/apply-bd-pipeline-tables.ts (direct SQL, not drizzle-kit push).
+// ---------------------------------------------------------------------------
+
+export const bdProspects = pgTable("bd_prospects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyName: varchar("company_name", { length: 300 }).notNull(),
+  contactName: varchar("contact_name", { length: 200 }),
+  contactEmail: varchar("contact_email", { length: 200 }),
+  contactPhone: varchar("contact_phone", { length: 50 }),
+  industry: varchar("industry", { length: 100 }),
+  source: varchar("source", { length: 100 }),
+  status: varchar("status", { length: 50 }).notNull().default("new"),
+  icpScore: integer("icp_score"),
+  assignedTo: varchar("assigned_to").references(() => adminUsers.id, { onDelete: "set null" }),
+  linkedClientId: varchar("linked_client_id").references(() => contractClients.id, { onDelete: "set null" }),
+  notes: text("notes"),
+  lastActivityAt: timestamp("last_activity_at"),
+  createdBy: varchar("created_by").references(() => adminUsers.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("bd_prospects_status_idx").on(t.status),
+  index("bd_prospects_assigned_to_idx").on(t.assignedTo),
+  index("bd_prospects_last_activity_idx").on(t.lastActivityAt),
+]);
+
+export const bdDeals = pgTable("bd_deals", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  prospectId: varchar("prospect_id").notNull().references(() => bdProspects.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 300 }).notNull(),
+  stage: varchar("stage", { length: 50 }).notNull().default("discovery"),
+  dealValue: numeric("deal_value", { precision: 15, scale: 2 }),
+  headcount: integer("headcount"),
+  specialty: varchar("specialty", { length: 100 }),
+  probability: integer("probability"),
+  expectedCloseDate: date("expected_close_date"),
+  wonAt: timestamp("won_at"),
+  lostAt: timestamp("lost_at"),
+  lostReason: text("lost_reason"),
+  assignedTo: varchar("assigned_to").references(() => adminUsers.id, { onDelete: "set null" }),
+  createdBy: varchar("created_by").references(() => adminUsers.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => [
+  index("bd_deals_prospect_id_idx").on(t.prospectId),
+  index("bd_deals_stage_idx").on(t.stage),
+]);
+
+export const bdActivities = pgTable("bd_activities", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  prospectId: varchar("prospect_id").references(() => bdProspects.id, { onDelete: "cascade" }),
+  dealId: varchar("deal_id").references(() => bdDeals.id, { onDelete: "set null" }),
+  activityType: varchar("activity_type", { length: 50 }).notNull(),
+  subject: varchar("subject", { length: 300 }).notNull(),
+  body: text("body"),
+  durationMinutes: integer("duration_minutes"),
+  outcome: varchar("outcome", { length: 50 }),
+  activityDate: date("activity_date").notNull(),
+  loggedBy: varchar("logged_by").references(() => adminUsers.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => [
+  index("bd_activities_prospect_id_idx").on(t.prospectId),
+  index("bd_activities_deal_id_idx").on(t.dealId),
+  index("bd_activities_activity_date_idx").on(t.activityDate),
+]);
+
+export const insertBdProspectSchema = createInsertSchema(bdProspects).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertBdDealSchema = createInsertSchema(bdDeals).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertBdActivitySchema = createInsertSchema(bdActivities).omit({ id: true, createdAt: true });
+
+export type BdProspect = typeof bdProspects.$inferSelect;
+export type InsertBdProspect = z.infer<typeof insertBdProspectSchema>;
+export type BdDeal = typeof bdDeals.$inferSelect;
+export type InsertBdDeal = z.infer<typeof insertBdDealSchema>;
+export type BdActivity = typeof bdActivities.$inferSelect;
+export type InsertBdActivity = z.infer<typeof insertBdActivitySchema>;
+
+// ---------------------------------------------------------------------------
 // Governance Controls
 // Shared obligation tracking table — every governed action (goal review,
 // check-in, training deadline, SOP ack, probation milestone, PIP checkpoint)

@@ -146,6 +146,7 @@ import { registerRecognitionRoutes } from "./recognitionRoutes";
 import { registerPolicySigningRoutes } from "./policySigningRoutes";
 import { registerAttendanceReportRoutes } from "./attendanceReportRoutes";
 import { registerBdDecksRoutes } from "./bdDecksRoutes";
+import { registerBdPipelineRoutes, getBdPipelineSummaryData } from "./bdPipelineRoutes";
 import { registerAgentFeedbackRoutes } from "./agentFeedbackRoutes";
 import { recordContentOutcome } from "./services/agentFeedbackService";
 import { registerReleaseNotesRoutes } from "./releaseNotesRoutes";
@@ -31386,11 +31387,79 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       const contextMessages = history.reverse() as { role: "user" | "assistant"; content: string }[];
 
       const convDomain = (conv as any).domain ?? "general";
-      const relatedBlock = await buildRelatedContentBlock(normalizeDomain(convDomain)).catch(() => "");
+      const [relatedBlock, pipelineSummary] = await Promise.all([
+        buildRelatedContentBlock(normalizeDomain(convDomain)).catch(() => ""),
+        getBdPipelineSummaryData().catch(() => null),
+      ]);
+
+      // Build structured pipeline context block for the BD Agent
+      let pipelineContextBlock = "";
+      if (pipelineSummary) {
+        try {
+          const lines: string[] = ["═══════════════════════════════════════════════════════════",
+            "LIVE PIPELINE CONTEXT (from Hire'in CRM — retrieved just now)",
+            "═══════════════════════════════════════════════════════════"];
+
+          const pt = pipelineSummary.pipelineTotal as any;
+          lines.push(`\nOPEN PIPELINE TOTALS:`);
+          lines.push(`  Open deals: ${pt.open_deal_count ?? 0} | Total value: $${Number(pt.total_pipeline_value ?? 0).toLocaleString()} | Weighted (prob-adjusted): $${Number(pt.weighted_pipeline_value ?? 0).toLocaleString()}`);
+
+          if (Array.isArray(pipelineSummary.dealsByStage) && pipelineSummary.dealsByStage.length > 0) {
+            lines.push(`\nDEALS BY STAGE:`);
+            for (const row of pipelineSummary.dealsByStage as any[]) {
+              lines.push(`  ${row.stage}: ${row.deal_count} deal(s), $${Number(row.total_value).toLocaleString()} total, ${Math.round(Number(row.avg_probability))}% avg probability`);
+            }
+          }
+
+          if (Array.isArray(pipelineSummary.staleProspects) && pipelineSummary.staleProspects.length > 0) {
+            lines.push(`\nPROSPECTS NOT CONTACTED IN 14+ DAYS (${pipelineSummary.staleProspects.length} total):`);
+            for (const p of (pipelineSummary.staleProspects as any[]).slice(0, 8)) {
+              const last = p.last_activity_at ? new Date(p.last_activity_at).toLocaleDateString("en-US", { month: "short", day: "numeric" }) : "Never";
+              lines.push(`  • ${p.company_name} (${p.status}) — last contact: ${last}${p.assigned_to_name ? `, assigned to ${p.assigned_to_name}` : ""}`);
+            }
+          }
+
+          if (Array.isArray(pipelineSummary.expiringContracts) && pipelineSummary.expiringContracts.length > 0) {
+            lines.push(`\nCONTRACTS EXPIRING IN 90 DAYS (renewal watchlist):`);
+            for (const c of (pipelineSummary.expiringContracts as any[]).slice(0, 8)) {
+              const endDate = c.end_date ? new Date(c.end_date).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "unknown";
+              lines.push(`  • ${c.client_name} — expires ${endDate}${c.bill_rate ? ` @ $${c.bill_rate}/hr` : ""}`);
+            }
+          }
+
+          if (Array.isArray(pipelineSummary.overdueInvoices) && pipelineSummary.overdueInvoices.length > 0) {
+            lines.push(`\nOVERDUE INVOICES (payment health):`);
+            for (const inv of (pipelineSummary.overdueInvoices as any[]).slice(0, 6)) {
+              lines.push(`  • ${inv.client_name} — $${Number(inv.amount ?? 0).toLocaleString()} overdue by ${inv.days_overdue} day(s)`);
+            }
+          }
+
+          if (Array.isArray(pipelineSummary.lapsedClients) && pipelineSummary.lapsedClients.length > 0) {
+            lines.push(`\nLAPSED CLIENTS (no active contract for 90+ days):`);
+            for (const lc of (pipelineSummary.lapsedClients as any[]).slice(0, 6)) {
+              const lastEnd = lc.last_contract_end ? new Date(lc.last_contract_end).toLocaleDateString("en-US", { month: "short", year: "numeric" }) : "unknown";
+              lines.push(`  • ${lc.client_name} — last contract ended ${lastEnd}`);
+            }
+          }
+
+          if (Array.isArray(pipelineSummary.revenueBySpecialty) && pipelineSummary.revenueBySpecialty.length > 0) {
+            lines.push(`\nREVENUE BY SPECIALTY (active contracts — bill rate × 40h/week):`);
+            for (const rs of pipelineSummary.revenueBySpecialty as any[]) {
+              const weekly = Number(rs.est_weekly_revenue ?? 0);
+              const avgRate = Number(rs.avg_bill_rate ?? 0).toFixed(0);
+              lines.push(`  ${rs.specialty}: ${rs.active_contract_count} contract(s), avg $${avgRate}/hr, est. $${(weekly).toLocaleString()}/week`);
+            }
+          }
+
+          lines.push("\n[End of pipeline context]");
+          pipelineContextBlock = lines.join("\n");
+        } catch { /* non-fatal — proceed without pipeline context */ }
+      }
+
       const result = await runBdAgentChat(contextMessages, {
         brandVoiceContext: bvContext || undefined,
         domain: convDomain,
-        relatedContentBlock: relatedBlock || undefined,
+        relatedContentBlock: [relatedBlock, pipelineContextBlock].filter(Boolean).join("\n\n") || undefined,
       });
 
       // Persist assistant reply
@@ -31467,6 +31536,8 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   // BD Pitch Deck Library routes
   registerBdDecksRoutes(app);
+  // BD Pipeline — Prospects, Deals & Activities (Task #1699)
+  registerBdPipelineRoutes(app);
   registerAgentFeedbackRoutes(app);
 
   // POST /api/studio/bd/save-as-idea — save BD output as a Studio content idea
