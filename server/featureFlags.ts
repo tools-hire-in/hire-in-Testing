@@ -68,7 +68,8 @@ export async function getAllFeatureFlags(): Promise<Record<string, boolean>> {
     const flags = (setting?.value as Record<string, boolean>) ?? {};
     _cache = { flags, expiresAt: now + CACHE_TTL_MS };
     return flags;
-  } catch {
+  } catch (err) {
+    console.error("[featureFlags] getAllFeatureFlags DB read failed (returning stale/empty):", err);
     return _cache?.flags ?? {};
   }
 }

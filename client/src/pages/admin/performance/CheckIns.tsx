@@ -1185,6 +1185,7 @@ interface CheckInsProps {
 
 export default function CheckIns({ mode }: CheckInsProps = {}) {
   const { user } = useAuth();
+  const { enabled: newLook } = useNewLook();
   const { toast } = useToast();
   const [tab, setTab] = useState("upcoming");
   const [createOpen, setCreateOpen] = useState(false);
