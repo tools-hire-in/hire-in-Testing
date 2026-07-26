@@ -27720,6 +27720,41 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     }
   });
 
+  app.post("/api/hr/letters/new-draft", requirePermission("hr.letters.create", "hr"), async (req, res) => {
+    try {
+      const { templateType } = req.body;
+      const VALID_TEMPLATES = ["experience", "internship_completion", "internship_certificate", "relieving", "salary_revision", "role_change", "combined", "device_allocation"];
+      if (!templateType || !VALID_TEMPLATES.includes(templateType)) {
+        return res.status(400).json({ error: "Invalid template type" });
+      }
+      const draft = await storage.createHrLetter({
+        templateType,
+        status: "draft",
+        employeeName: "",
+        designation: "",
+        startDate: "",
+        createdBy: req.session.userId!,
+      } as any);
+      res.json({ id: draft.id });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to create draft" });
+    }
+  });
+
+  app.delete("/api/hr/letters/:id", requirePermission("hr.letters.create", "hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      if (letter.status !== "draft") {
+        return res.status(409).json({ error: "Only draft letters can be deleted." });
+      }
+      await storage.updateHrLetter(req.params.id, { status: "withdrawn" as any });
+      res.json({ success: true });
+    } catch (error) {
+      res.status(500).json({ error: "Failed to delete draft" });
+    }
+  });
+
   app.post("/api/hr/letters", requirePermission("hr.letters", "hr"), async (req, res) => {
     try {
       const templateType = req.body.templateType;

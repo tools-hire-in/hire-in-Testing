@@ -1,9 +1,11 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   FileText, Loader2, Search, ChevronRight, ChevronLeft, Eye, CheckCircle,
-  TrendingUp, Award, Layers, Laptop, Plus, Trash2, Mail,
+  TrendingUp, Award, Layers, Laptop, Plus, Trash2, Mail, Cloud, CloudOff,
+  AlertTriangle, RotateCcw,
 } from "lucide-react";
+import { useDraft } from "@/hooks/useDraft";
 import { AnnexureEditor, buildGoalsFromAnnexures, type AnnexureItem } from "./AnnexureEditor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -183,9 +185,49 @@ export function LetterGenerator() {
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [annexures, setAnnexures] = useState<AnnexureItem[]>([]);
   const [amendmentPolicyAnnexures, setAmendmentPolicyAnnexures] = useState<string[]>([]);
+  const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+
+  const { draftId, saveState, rehydratedLetter, isRehydrating, saveDraft, discardDraft, clearDraft } = useDraft();
+  const rehydrated = useRef(false);
+
+  const isRevisionMode = !!(rehydratedLetter && ["needs_revision", "resubmitted"].includes(rehydratedLetter.status));
 
   const isAdmin = user?.role === "super_admin" || user?.role === "admin";
   const isAmendmentType = (AMENDMENT_TEMPLATE_TYPES as readonly string[]).includes(form.templateType);
+
+  // Rehydrate form state from server draft on mount (only once)
+  useEffect(() => {
+    if (!rehydratedLetter || rehydrated.current) return;
+    rehydrated.current = true;
+    const d = rehydratedLetter.draftData as Record<string, unknown> | null;
+    if (!d) {
+      if (rehydratedLetter.templateType) {
+        setForm(prev => ({ ...prev, templateType: rehydratedLetter.templateType }));
+      }
+      return;
+    }
+    if (d.form) setForm(prev => ({ ...prev, ...(d.form as Partial<FormData>) }));
+    if (d.amendmentMeta) setAmendmentMeta(prev => ({ ...prev, ...(d.amendmentMeta as Partial<AmendmentMeta>) }));
+    if (typeof d.isManualEntry === "boolean") setIsManualEntry(d.isManualEntry);
+    if (typeof d.manualEmployeeEmail === "string") setManualEmployeeEmail(d.manualEmployeeEmail);
+    if (Array.isArray(d.annexures)) setAnnexures(d.annexures as AnnexureItem[]);
+    if (Array.isArray(d.amendmentPolicyAnnexures)) setAmendmentPolicyAnnexures(d.amendmentPolicyAnnexures as string[]);
+    if (typeof d._step === "number") setStep(d._step);
+  }, [rehydratedLetter]);
+
+  // Auto-save: debounced PATCH on every meaningful state change
+  useEffect(() => {
+    if (!form.templateType) return;
+    if (isRehydrating) return;
+    saveDraft(form.templateType, {
+      form,
+      amendmentMeta,
+      isManualEntry,
+      manualEmployeeEmail,
+      annexures,
+      amendmentPolicyAnnexures,
+    }, step);
+  }, [form, amendmentMeta, isManualEntry, manualEmployeeEmail, annexures, amendmentPolicyAnnexures, step]);
 
   const { data: usersData } = useQuery<{ users: AdminUser[]; counts?: Record<string, number> } | AdminUser[]>({
     queryKey: ["/api/admin/users", "all_non_deleted"],
@@ -342,6 +384,8 @@ export function LetterGenerator() {
         );
       }
       toast({ title: "Letter created", description: isAmendment ? "DOCX downloaded successfully." : "Letter has been generated successfully." });
+      clearDraft();
+      rehydrated.current = false;
       queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/users"] });
       setForm({ ...defaultForm });
@@ -571,15 +615,100 @@ export function LetterGenerator() {
     ? manualEmployeeEmail
     : employees.find(e => e.id === form.employeeId)?.email || "";
 
+  function SaveStateIndicator() {
+    if (!draftId && saveState === "idle") return null;
+    if (saveState === "saving") return (
+      <span className="flex items-center gap-1 text-xs text-muted-foreground" data-testid="text-draft-saving">
+        <Loader2 className="h-3 w-3 animate-spin" /> Saving…
+      </span>
+    );
+    if (saveState === "saved") return (
+      <span className="flex items-center gap-1 text-xs text-green-600 dark:text-green-400" data-testid="text-draft-saved">
+        <Cloud className="h-3 w-3" /> Draft saved
+      </span>
+    );
+    if (saveState === "error") return (
+      <span className="flex items-center gap-1 text-xs text-destructive" data-testid="text-draft-error">
+        <CloudOff className="h-3 w-3" /> Save failed
+      </span>
+    );
+    return null;
+  }
+
   return (
+    <>
+    {showDiscardDialog && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" data-testid="dialog-discard-draft">
+        <div className="bg-background rounded-lg border shadow-lg p-6 max-w-sm w-full mx-4">
+          <div className="flex items-center gap-2 mb-3">
+            <AlertTriangle className="h-5 w-5 text-destructive" />
+            <h3 className="font-semibold">Discard Draft?</h3>
+          </div>
+          <p className="text-sm text-muted-foreground mb-4">This will permanently delete the saved draft and reset the form. This cannot be undone.</p>
+          <div className="flex gap-2 justify-end">
+            <Button variant="outline" size="sm" onClick={() => setShowDiscardDialog(false)} data-testid="btn-cancel-discard">Cancel</Button>
+            <Button variant="destructive" size="sm" data-testid="btn-confirm-discard" onClick={async () => {
+              setShowDiscardDialog(false);
+              await discardDraft();
+              rehydrated.current = false;
+              setForm({ ...defaultForm });
+              setAmendmentMeta({ ...defaultAmendmentMeta });
+              setIsManualEntry(false);
+              setManualEmployeeEmail("");
+              setSendEmail(false);
+              setAnnexures([]);
+              setAmendmentPolicyAnnexures([]);
+              setStep(0);
+            }}>Discard</Button>
+          </div>
+        </div>
+      </div>
+    )}
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2" data-testid="text-letter-generator-title">
-          <FileText className="h-5 w-5" />
-          Letter Generator
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="flex items-center gap-2" data-testid="text-letter-generator-title">
+            <FileText className="h-5 w-5" />
+            Letter Generator
+          </CardTitle>
+          <div className="flex items-center gap-3">
+            <SaveStateIndicator />
+            {draftId && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-xs text-muted-foreground h-7 px-2"
+                onClick={() => setShowDiscardDialog(true)}
+                data-testid="btn-discard-draft"
+              >
+                <RotateCcw className="h-3 w-3 mr-1" /> Discard Draft
+              </Button>
+            )}
+          </div>
+        </div>
       </CardHeader>
       <CardContent>
+        {isRehydrating && (
+          <div className="flex items-center gap-2 text-sm text-muted-foreground mb-4 p-3 bg-muted rounded-lg" data-testid="text-draft-loading">
+            <Loader2 className="h-4 w-4 animate-spin" /> Restoring your draft…
+          </div>
+        )}
+        {isRevisionMode && rehydratedLetter?.revisionReason && (
+          <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-lg" data-testid="banner-revision-reason">
+            <div className="flex items-start gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 flex-shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-amber-800 dark:text-amber-200">Returned for Revision</p>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-0.5">{rehydratedLetter.revisionReason}</p>
+              </div>
+            </div>
+          </div>
+        )}
+        {isRevisionMode && (
+          <div className="mb-4 p-3 bg-muted border rounded-lg text-sm text-muted-foreground" data-testid="banner-revision-locked">
+            You are editing a returned letter. Locked fields cannot be changed.
+          </div>
+        )}
         <div className="flex gap-2 mb-6">
           {steps.map((s, i) => (
             <div key={i} className={`flex-1 text-center p-2 rounded text-sm ${i === step ? "bg-primary text-primary-foreground" : i < step ? "bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200" : "bg-muted text-muted-foreground"}`}>
@@ -598,8 +727,9 @@ export function LetterGenerator() {
                   <button
                     key={type}
                     data-testid={`btn-template-${type}`}
-                    onClick={() => setForm(prev => ({ ...prev, templateType: type }))}
-                    className={`p-4 rounded-lg border text-left transition-colors ${form.templateType === type ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                    disabled={isRevisionMode}
+                    onClick={() => !isRevisionMode && setForm(prev => ({ ...prev, templateType: type }))}
+                    className={`p-4 rounded-lg border text-left transition-colors ${isRevisionMode ? "opacity-50 cursor-not-allowed" : ""} ${form.templateType === type ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
                   >
                     <div className="font-medium">{TEMPLATE_LABELS[type]}</div>
                   </button>
@@ -616,8 +746,9 @@ export function LetterGenerator() {
                     <button
                       key={cfg.value}
                       data-testid={`btn-template-${cfg.value}`}
-                      onClick={() => setForm(prev => ({ ...prev, templateType: cfg.value }))}
-                      className={`p-4 rounded-lg border text-left transition-colors ${form.templateType === cfg.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
+                      disabled={isRevisionMode}
+                      onClick={() => !isRevisionMode && setForm(prev => ({ ...prev, templateType: cfg.value }))}
+                      className={`p-4 rounded-lg border text-left transition-colors ${isRevisionMode ? "opacity-50 cursor-not-allowed" : ""} ${form.templateType === cfg.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
                     >
                       <div className="flex items-center gap-2 mb-1">
                         <Icon className="h-4 w-4 text-primary" />
@@ -638,15 +769,17 @@ export function LetterGenerator() {
               <div className="flex gap-3 p-1 bg-muted rounded-lg">
                 <button
                   data-testid="toggle-system-employee"
-                  onClick={() => { setIsManualEntry(false); setForm(prev => ({ ...prev, employeeId: "", employeeName: "", employeeCode: "", designation: "", department: "", startDate: "" })); setManualEmployeeEmail(""); }}
-                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${!isManualEntry ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  disabled={isRevisionMode}
+                  onClick={() => { if (isRevisionMode) return; setIsManualEntry(false); setForm(prev => ({ ...prev, employeeId: "", employeeName: "", employeeCode: "", designation: "", department: "", startDate: "" })); setManualEmployeeEmail(""); }}
+                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${isRevisionMode ? "opacity-50 cursor-not-allowed" : ""} ${!isManualEntry ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   System Employee
                 </button>
                 <button
                   data-testid="toggle-manual-entry"
-                  onClick={() => { setIsManualEntry(true); setForm(prev => ({ ...prev, employeeId: "", employeeCode: "" })); setEmployeeSearch(""); }}
-                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${isManualEntry ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  disabled={isRevisionMode}
+                  onClick={() => { if (isRevisionMode) return; setIsManualEntry(true); setForm(prev => ({ ...prev, employeeId: "", employeeCode: "" })); setEmployeeSearch(""); }}
+                  className={`flex-1 py-2 rounded-md text-sm font-medium transition-colors ${isRevisionMode ? "opacity-50 cursor-not-allowed" : ""} ${isManualEntry ? "bg-background shadow text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                 >
                   Manual Entry
                 </button>
@@ -660,9 +793,10 @@ export function LetterGenerator() {
                   <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search by name, ID, or email..."
-                    value={employeeSearch}
+                    value={isRevisionMode ? "" : employeeSearch}
+                    disabled={isRevisionMode}
                     onChange={e => { setEmployeeSearch(e.target.value); setFieldErrors(prev => ({ ...prev, employeeSearch: "" })); }}
-                    className={`pl-9 ${fieldErrors.employeeSearch ? "border-destructive" : ""}`}
+                    className={`pl-9 ${fieldErrors.employeeSearch ? "border-destructive" : ""} ${isRevisionMode ? "bg-muted cursor-not-allowed" : ""}`}
                     data-testid="input-employee-search"
                   />
                 </div>
@@ -694,10 +828,11 @@ export function LetterGenerator() {
                 <Label>Full Name *</Label>
                 <Input
                   value={form.employeeName}
-                  onChange={e => { setForm(prev => ({ ...prev, employeeName: e.target.value })); setFieldErrors(prev => ({ ...prev, employeeName: "" })); }}
+                  onChange={e => { if (isRevisionMode) return; setForm(prev => ({ ...prev, employeeName: e.target.value })); setFieldErrors(prev => ({ ...prev, employeeName: "" })); }}
                   placeholder="Enter full name"
                   data-testid="input-employee-name"
-                  className={fieldErrors.employeeName ? "border-destructive" : ""}
+                  disabled={isRevisionMode}
+                  className={`${fieldErrors.employeeName ? "border-destructive" : ""} ${isRevisionMode ? "opacity-50 cursor-not-allowed bg-muted" : ""}`}
                 />
                 {fieldErrors.employeeName && <p className="text-xs text-destructive mt-1" data-testid="error-employee-name">{fieldErrors.employeeName}</p>}
               </div>
@@ -725,10 +860,11 @@ export function LetterGenerator() {
                 <Label>Current Designation *</Label>
                 <Input
                   value={form.designation}
-                  onChange={e => { setForm(prev => ({ ...prev, designation: e.target.value })); setFieldErrors(prev => ({ ...prev, designation: "" })); }}
+                  onChange={e => { if (isRevisionMode) return; setForm(prev => ({ ...prev, designation: e.target.value })); setFieldErrors(prev => ({ ...prev, designation: "" })); }}
                   placeholder="e.g. Software Engineer"
                   data-testid="input-designation"
-                  className={fieldErrors.designation ? "border-destructive" : ""}
+                  disabled={isRevisionMode}
+                  className={`${fieldErrors.designation ? "border-destructive" : ""} ${isRevisionMode ? "opacity-50 cursor-not-allowed bg-muted" : ""}`}
                 />
                 {fieldErrors.designation && <p className="text-xs text-destructive mt-1" data-testid="error-designation">{fieldErrors.designation}</p>}
               </div>
@@ -737,10 +873,11 @@ export function LetterGenerator() {
                 <Label>Department {!isAmendmentType && <span className="text-destructive">*</span>}</Label>
                 <Input
                   value={form.department}
-                  onChange={e => { setForm(prev => ({ ...prev, department: e.target.value })); setFieldErrors(prev => ({ ...prev, department: "" })); }}
+                  onChange={e => { if (isRevisionMode) return; setForm(prev => ({ ...prev, department: e.target.value })); setFieldErrors(prev => ({ ...prev, department: "" })); }}
                   placeholder="e.g. Engineering"
                   data-testid="input-department"
-                  className={fieldErrors.department ? "border-destructive" : ""}
+                  disabled={isRevisionMode}
+                  className={`${fieldErrors.department ? "border-destructive" : ""} ${isRevisionMode ? "opacity-50 cursor-not-allowed bg-muted" : ""}`}
                 />
                 {fieldErrors.department && <p className="text-xs text-destructive mt-1" data-testid="error-department">{fieldErrors.department}</p>}
               </div>
@@ -1285,6 +1422,7 @@ export function LetterGenerator() {
         </Sheet>
       </CardContent>
     </Card>
+    </>
   );
 }
 

@@ -4499,10 +4499,22 @@ export function OfferLettersDashboard() {
   );
 }
 
+const LS_DRAFT_KEY = "hr_letter_draft_id";
+
 export default function HRTools() {
   const { enabled: newLook } = useNewLook();
   const [, setLocation] = useLocation();
   const { isAuthenticated, isLoading: authLoading, user } = useAuth();
+
+  const [activeTab, setActiveTab] = useState<string>(() => {
+    try {
+      const tab = new URLSearchParams(window.location.search).get("tab");
+      if (tab) return tab;
+    } catch {}
+    return "salary-slip";
+  });
+  const [discardPendingTab, setDiscardPendingTab] = useState<string | null>(null);
+  const [isDiscardingDraft, setIsDiscardingDraft] = useState(false);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -4542,12 +4554,40 @@ export default function HRTools() {
     if (tab && validTabs.includes(tab)) initialTab = tab;
   } catch {}
 
-  const handleTabChange = (value: string) => {
+  const navigateToTab = (value: string) => {
     try {
       const url = new URL(window.location.href);
       url.searchParams.set("tab", value);
+      url.searchParams.delete("draftId");
       window.history.replaceState({}, "", url.toString());
     } catch {}
+    setActiveTab(value);
+  };
+
+  const handleTabChange = (value: string) => {
+    if (value === "letter-generator" && value !== activeTab) {
+      const existingDraftId = localStorage.getItem(LS_DRAFT_KEY);
+      if (existingDraftId) {
+        setDiscardPendingTab(value);
+        return;
+      }
+    }
+    navigateToTab(value);
+  };
+
+  const handleDiscardAndNavigate = async () => {
+    const draftId = localStorage.getItem(LS_DRAFT_KEY);
+    setIsDiscardingDraft(true);
+    if (draftId) {
+      try {
+        await fetch(`/api/hr/letters/${draftId}`, { method: "DELETE", credentials: "include" });
+      } catch {}
+      localStorage.removeItem(LS_DRAFT_KEY);
+    }
+    setIsDiscardingDraft(false);
+    const pending = discardPendingTab;
+    setDiscardPendingTab(null);
+    if (pending) navigateToTab(pending);
   };
 
   return (
@@ -4562,7 +4602,7 @@ export default function HRTools() {
           </div>
         )}
 
-        <Tabs defaultValue={initialTab} onValueChange={handleTabChange} className="space-y-6">
+        <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList data-testid="tabs-hr-tools" className="flex-wrap h-auto gap-1">
             <TabsTrigger value="salary-slip" data-testid="tab-salary-slip">
               <Receipt className="h-4 w-4 mr-2" />
@@ -4611,6 +4651,37 @@ export default function HRTools() {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={!!discardPendingTab} onOpenChange={(open) => { if (!open) setDiscardPendingTab(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Unsaved Draft</DialogTitle>
+            <DialogDescription>
+              You have an unsaved letter draft. Would you like to continue editing it, or discard it and start a new letter?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="flex-col sm:flex-row gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setDiscardPendingTab(null);
+                navigateToTab("letter-generator");
+              }}
+              data-testid="button-continue-draft"
+            >
+              Continue Draft
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleDiscardAndNavigate}
+              disabled={isDiscardingDraft}
+              data-testid="button-discard-draft-new-letter"
+            >
+              {isDiscardingDraft ? "Discarding…" : "Discard & Start New"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </AdminLayout>
   );
 }
