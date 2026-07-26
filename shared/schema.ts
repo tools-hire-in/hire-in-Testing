@@ -4760,7 +4760,7 @@ export const vaultSecrets = pgTable("vault_secrets", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   vaultId: varchar("vault_id").notNull().references(() => vaults.id),
   systemName: varchar("system_name", { length: 120 }).notNull(),
-  loginUrl: varchar("login_url", { length: 512 }),
+  loginUrl: text("login_url"),
   usernameEnc: text("username_enc"),
   passwordEnc: text("password_enc"),
   notesEnc: text("notes_enc"),

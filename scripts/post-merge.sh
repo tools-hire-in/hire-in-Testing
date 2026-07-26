@@ -53,6 +53,11 @@ fi
 npm run db:push -- --force
 # -----------------------------------------------------------------------------
 
+# Widen vault_secrets.login_url from varchar(512) to text (idempotent on text columns).
+# OAuth/SSO URLs regularly exceed 512 chars; ALTER TYPE text is a no-op if already text.
+echo "Widening vault_secrets.login_url to text..."
+npx tsx scripts/widen-vault-login-url.ts || echo "[post-merge] widen-vault-login-url note: will be applied on next server startup (non-fatal)"
+
 # Seed the 22nd Century Healthcare SSA contract template (idempotent).
 # This ensures prod deployments have the template even before the first server restart.
 echo "Seeding contract templates..."

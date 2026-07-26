@@ -7554,7 +7554,10 @@ Canonical domain: ${BASE}
   // ==========================================
 
   // Count pending-approval runs (for nav badge)
-  app.get("/api/hr/reports/salary/runs/pending-count", requireAuth, requirePermission("hr.reports.salary.approve", "super_admin", "admin", "executive"), async (req: Request, res: Response) => {
+  // Non-privileged roles receive { count: 0 } instead of 403 to prevent sidebar badge spam.
+  app.get("/api/hr/reports/salary/runs/pending-count", requireAuth, async (req: Request, res: Response) => {
+    const ALLOWED = ["super_admin", "admin", "executive"];
+    if (!ALLOWED.includes(req.session.role || "")) return res.json({ count: 0 });
     try {
       const runs = await db.select({ id: salaryReportRuns.id })
         .from(salaryReportRuns)
@@ -19623,7 +19626,9 @@ Canonical domain: ${BASE}
   });
 
   // Count of communications awaiting approval (for the sidebar/landing badge).
-  app.get("/api/admin/communications/count", requireSuperAdmin, async (_req: Request, res: Response) => {
+  // Non-privileged roles receive { count: 0 } instead of 403 to prevent sidebar badge spam.
+  app.get("/api/admin/communications/count", requireAuth, async (req: Request, res: Response) => {
+    if (req.session.role !== "super_admin") return res.json({ count: 0 });
     try {
       const count = await storage.countCommunications("held");
       res.json({ count });
@@ -25950,11 +25955,13 @@ Canonical domain: ${BASE}
   // ---- CM Review queue ----
 
   // Count of articles pending CM review (for sidebar badge).
+  // Non-privileged roles receive { count: 0 } instead of 403 to prevent sidebar badge spam.
   app.get(
     "/api/admin/studio/cm-review/count",
     requireAuth,
-    requirePermission("studio.cm_review", "super_admin", "admin", "hr", "content_manager"),
-    async (_req: Request, res: Response) => {
+    async (req: Request, res: Response) => {
+      const ALLOWED = ["super_admin", "admin", "hr", "content_manager"];
+      if (!ALLOWED.includes(req.session.role || "")) return res.json({ count: 0 });
       try {
         const items = await storage.getStudioApprovalQueue(["pending_cm_review"]);
         res.json({ count: items.length });
@@ -29657,7 +29664,9 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       next();
     }
 
-    app.get("/api/admin/blasts/pending-count", requireAuth, requireBlastAccess, async (_req: Request, res: Response) => {
+    app.get("/api/admin/blasts/pending-count", requireAuth, async (req: Request, res: Response) => {
+      // Non-privileged roles receive { pending_count: 0 } instead of 403 to prevent sidebar badge spam.
+      if (!["super_admin", "admin"].includes(req.session.role || "")) return res.json({ pending_count: 0 });
       try {
         const rows = await db.select({ id: peb.id }).from(peb).where(eq(peb.status, "pending"));
         res.json({ pending_count: rows.length });

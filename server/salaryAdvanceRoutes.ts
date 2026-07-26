@@ -338,6 +338,11 @@ export function registerSalaryAdvanceRoutes(app: Express) {
       if (FLAG_OFF_MANAGER_READ_ROLES.includes(role) && isManagerReadRequest(req.method, req.path)) {
         return next();
       }
+      // Stats endpoint is a sidebar badge count — all authenticated users receive
+      // their own role-scoped stats (zeros for most) instead of a 403.
+      if (req.method === "GET" && req.path === "/stats" && req.session?.userId) {
+        return next();
+      }
     } catch {
       // fall through to disabled response
     }
