@@ -1,12 +1,13 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, FileText, X, DollarSign } from "lucide-react";
+import { Loader2, Upload, FileText, X, DollarSign, Info, TrendingUp } from "lucide-react";
 import type { ContractClient } from "@shared/schema";
 
 interface Props {
@@ -15,11 +16,54 @@ interface Props {
   onCreated: () => void;
 }
 
+type ContractType = "contract_hourly" | "permanent_placement" | "contract_to_hire";
+
+const CONTRACT_TYPE_LABELS: Record<ContractType, string> = {
+  contract_hourly: "Contract / Hourly",
+  permanent_placement: "Permanent Placement",
+  contract_to_hire: "Contract-to-Hire",
+};
+
 const SPECIALTIES = ["Healthcare", "IT", "Engineering", "Professional Services", "Other"];
+const CURRENCIES = ["USD", "CAD", "GBP", "EUR", "INR"];
+
+interface MarginPreview {
+  grossMargin: number | null;
+  referralFee: number | null;
+  netMargin: number | null;
+}
+
+function fmt(v: number | null, currency = "USD"): string {
+  if (v == null) return "—";
+  return new Intl.NumberFormat("en-US", { style: "currency", currency, minimumFractionDigits: 2 }).format(v);
+}
+
+function CalcBadge({ label, value, tooltip, currency }: { label: string; value: number | null; tooltip: string; currency?: string }) {
+  return (
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div className="rounded-lg bg-slate-50 border px-3 py-2 flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs text-muted-foreground font-medium">{label}</span>
+              <Info className="h-3.5 w-3.5 text-muted-foreground" />
+            </div>
+            <span className={`text-sm font-semibold tabular-nums ${value != null && value < 0 ? "text-red-600" : "text-slate-800"}`}>
+              {fmt(value, currency)}
+            </span>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="max-w-[200px] text-xs">{tooltip}</TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
+  );
+}
 
 export default function ImportContract({ clients, onClose, onCreated }: Props) {
   const { toast } = useToast();
   const fileRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const [file, setFile] = useState<File | null>(null);
   const [clientId, setClientId] = useState("");
   const [clientName, setClientName] = useState("");
@@ -27,14 +71,30 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
   const [candidateRole, setCandidateRole] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
-  const [margin, setMargin] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
   const [billingFreq, setBillingFreq] = useState("");
   const [notes, setNotes] = useState("");
   const [specialty, setSpecialty] = useState("");
+  const [currency, setCurrency] = useState("USD");
+  const [loading, setLoading] = useState(false);
+
+  const [contractType, setContractType] = useState<ContractType>("contract_hourly");
+
   const [billRate, setBillRate] = useState("");
   const [payRate, setPayRate] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [passthroughFee, setPassthroughFee] = useState("");
+
+  const [referralFeeFlat, setReferralFeeFlat] = useState("");
+  const [referralFeeMode, setReferralFeeMode] = useState<"flat" | "pct">("flat");
+  const [referralFeePct, setReferralFeePct] = useState("");
+  const [candidateAnnualSalary, setCandidateAnnualSalary] = useState("");
+  const [businessMarketingCost, setBusinessMarketingCost] = useState("");
+
+  const [preview, setPreview] = useState<MarginPreview | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+
+  const isHourly = contractType === "contract_hourly" || contractType === "contract_to_hire";
+  const isPerm = contractType === "permanent_placement";
 
   const handleClientChange = (id: string) => {
     setClientId(id);
@@ -42,21 +102,48 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
     if (client) setClientName(client.name);
   };
 
-  // Auto-calculate margin when both rates are entered
-  const handleBillRateChange = (val: string) => {
-    setBillRate(val);
-    if (val && payRate) {
-      const calc = parseFloat(val) - parseFloat(payRate);
-      if (!isNaN(calc) && calc >= 0) setMargin(calc.toFixed(2));
+  const fetchPreview = useCallback(async () => {
+    const body: Record<string, any> = { contractType, currency, businessMarketingCost: businessMarketingCost || null };
+    if (isHourly) {
+      body.billRate = billRate || null;
+      body.payRate = payRate || null;
+      body.passthroughFee = passthroughFee || null;
+    } else {
+      body.passthroughFee = passthroughFee || null;
+      if (referralFeeMode === "flat") {
+        body.referralFeeFlat = referralFeeFlat || null;
+      } else {
+        body.referralFeePct = referralFeePct || null;
+        body.candidateAnnualSalary = candidateAnnualSalary || null;
+      }
     }
-  };
-  const handlePayRateChange = (val: string) => {
-    setPayRate(val);
-    if (billRate && val) {
-      const calc = parseFloat(billRate) - parseFloat(val);
-      if (!isNaN(calc) && calc >= 0) setMargin(calc.toFixed(2));
-    }
-  };
+
+    const hasInput = isHourly
+      ? (billRate || payRate)
+      : (referralFeeMode === "flat" ? referralFeeFlat : (referralFeePct && candidateAnnualSalary));
+    if (!hasInput) { setPreview(null); return; }
+
+    setPreviewLoading(true);
+    try {
+      const res = await fetch("/api/contracts/calculate-margins", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(body),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setPreview(data);
+      }
+    } catch { /* non-fatal */ }
+    setPreviewLoading(false);
+  }, [contractType, billRate, payRate, passthroughFee, referralFeeFlat, referralFeeMode, referralFeePct, candidateAnnualSalary, businessMarketingCost, isHourly]);
+
+  useEffect(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(fetchPreview, 500);
+    return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
+  }, [fetchPreview]);
 
   const handleSubmit = async () => {
     if (!file) return toast({ title: "Please select a file", variant: "destructive" });
@@ -67,18 +154,31 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
       const formData = new FormData();
       formData.append("file", file);
       formData.append("clientName", clientName);
+      formData.append("contractType", contractType);
+      formData.append("currency", currency);
       if (clientId) formData.append("clientId", clientId);
       if (candidateName) formData.append("candidateName", candidateName);
       if (candidateRole) formData.append("candidateRole", candidateRole);
       if (startDate) formData.append("contractStartDate", startDate);
       if (endDate) formData.append("contractEndDate", endDate);
-      if (margin) formData.append("marginPerHour", margin);
       if (paymentTerms) formData.append("paymentTermsDays", paymentTerms);
       if (billingFreq) formData.append("billingFrequency", billingFreq);
       if (notes) formData.append("notes", notes);
       if (specialty) formData.append("specialty", specialty);
-      if (billRate) formData.append("billRate", billRate);
-      if (payRate) formData.append("payRate", payRate);
+      if (businessMarketingCost) formData.append("businessMarketingCost", businessMarketingCost);
+      if (isHourly) {
+        if (billRate) formData.append("billRate", billRate);
+        if (payRate) formData.append("payRate", payRate);
+        if (passthroughFee) formData.append("passthroughFee", passthroughFee);
+      } else {
+        if (passthroughFee) formData.append("passthroughFee", passthroughFee);
+        if (referralFeeMode === "flat") {
+          if (referralFeeFlat) formData.append("referralFeeFlat", referralFeeFlat);
+        } else {
+          if (referralFeePct) formData.append("referralFeePct", referralFeePct);
+          if (candidateAnnualSalary) formData.append("candidateAnnualSalary", candidateAnnualSalary);
+        }
+      }
 
       const res = await fetch("/api/contracts/import", {
         method: "POST",
@@ -108,7 +208,7 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 py-2">
+        <div className="space-y-5 py-2">
           {/* File drop zone */}
           <div
             className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
@@ -147,6 +247,22 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
             data-testid="input-file-upload"
           />
 
+          {/* ── Step 1: Contract type ─── */}
+          <div className="space-y-1.5">
+            <Label className="text-sm font-semibold">Contract Type *</Label>
+            <Select value={contractType} onValueChange={v => { setContractType(v as ContractType); setPreview(null); }}>
+              <SelectTrigger data-testid="select-contract-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="contract_hourly">Contract / Hourly — ongoing bill & pay rate</SelectItem>
+                <SelectItem value="permanent_placement">Permanent Placement — one-time referral fee</SelectItem>
+                <SelectItem value="contract_to_hire">Contract-to-Hire — hourly now, converts to perm</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* ── Step 2: Client & candidate ─── */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Client (from registry)</Label>
@@ -187,7 +303,6 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
               />
             </div>
 
-            {/* Specialty — key for rate intelligence */}
             <div className="space-y-1.5 col-span-2">
               <Label className="flex items-center gap-1.5">
                 Specialty / Department
@@ -202,71 +317,195 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
                 </SelectContent>
               </Select>
             </div>
+          </div>
 
-            {/* Rate fields */}
+          {/* ── Step 3: Financial fields (type-conditional) ─── */}
+          <div className="rounded-lg border bg-slate-50/50 p-4 space-y-4">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold text-slate-800 flex items-center gap-1.5">
+                <TrendingUp className="h-4 w-4 text-primary" />
+                Financial Details — {CONTRACT_TYPE_LABELS[contractType]}
+              </p>
+              <Select value={currency} onValueChange={setCurrency}>
+                <SelectTrigger className="w-24 h-7 text-xs" data-testid="select-currency">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {CURRENCIES.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {isHourly ? (
+              <div className="grid grid-cols-3 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1 text-xs">
+                    <DollarSign className="h-3.5 w-3.5 text-green-600" />
+                    Bill Rate ({currency}/hr) *
+                  </Label>
+                  <Input
+                    type="number" step="0.01" placeholder="150.00"
+                    value={billRate}
+                    onChange={e => setBillRate(e.target.value)}
+                    data-testid="input-bill-rate-import"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="flex items-center gap-1 text-xs">
+                    <DollarSign className="h-3.5 w-3.5 text-blue-600" />
+                    Pay Rate ({currency}/hr) *
+                  </Label>
+                  <Input
+                    type="number" step="0.01" placeholder="120.00"
+                    value={payRate}
+                    onChange={e => setPayRate(e.target.value)}
+                    data-testid="input-pay-rate-import"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Passthrough Fee ({currency}/hr)</Label>
+                  <Input
+                    type="number" step="0.01" placeholder="e.g. 5.00"
+                    value={passthroughFee}
+                    onChange={e => setPassthroughFee(e.target.value)}
+                    data-testid="input-passthrough-fee-import"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {/* Referral fee entry mode */}
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Referral Fee as:</span>
+                  <div className="inline-flex rounded-md border overflow-hidden text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setReferralFeeMode("flat")}
+                      className={`px-3 py-1.5 transition-colors ${referralFeeMode === "flat" ? "bg-primary text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                      data-testid="btn-referral-mode-flat"
+                    >
+                      Flat Amount
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setReferralFeeMode("pct")}
+                      className={`px-3 py-1.5 border-l transition-colors ${referralFeeMode === "pct" ? "bg-primary text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                      data-testid="btn-referral-mode-pct"
+                    >
+                      % of Salary
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  {referralFeeMode === "flat" ? (
+                    <div className="space-y-1.5">
+                      <Label className="flex items-center gap-1 text-xs">
+                        <DollarSign className="h-3.5 w-3.5 text-green-600" />
+                        Referral Fee ({currency}) *
+                      </Label>
+                      <Input
+                        type="number" step="0.01" placeholder="e.g. 15000.00"
+                        value={referralFeeFlat}
+                        onChange={e => setReferralFeeFlat(e.target.value)}
+                        data-testid="input-referral-fee-flat-import"
+                      />
+                    </div>
+                  ) : (
+                    <>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">
+                          Referral Fee % *
+                        </Label>
+                        <Input
+                          type="number" step="0.1" min="0" max="100" placeholder="e.g. 20"
+                          value={referralFeePct}
+                          onChange={e => setReferralFeePct(e.target.value)}
+                          data-testid="input-referral-fee-pct-import"
+                        />
+                        <p className="text-[10px] text-muted-foreground">% of candidate annual salary</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Candidate Annual Salary ({currency}) *</Label>
+                        <Input
+                          type="number" step="1" placeholder="e.g. 75000"
+                          value={candidateAnnualSalary}
+                          onChange={e => setCandidateAnnualSalary(e.target.value)}
+                          data-testid="input-candidate-salary-import"
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Passthrough Fee ({currency}, flat)</Label>
+                    <Input
+                      type="number" step="0.01" placeholder="e.g. 2000.00"
+                      value={passthroughFee}
+                      onChange={e => setPassthroughFee(e.target.value)}
+                      data-testid="input-passthrough-fee-perm-import"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+
             <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-green-600" />
-                Bill Rate ($/hr)
-              </Label>
+              <Label className="text-xs text-muted-foreground">Business Marketing Cost ({currency}, flat)</Label>
               <Input
-                type="number"
-                step="0.01"
-                placeholder="e.g. 150.00"
-                value={billRate}
-                onChange={e => handleBillRateChange(e.target.value)}
-                data-testid="input-bill-rate-import"
+                type="number" step="0.01" placeholder="e.g. 500.00"
+                value={businessMarketingCost}
+                onChange={e => setBusinessMarketingCost(e.target.value)}
+                data-testid="input-bmc-import"
+                className="max-w-xs"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label className="flex items-center gap-1.5">
-                <DollarSign className="h-3.5 w-3.5 text-blue-600" />
-                Pay Rate ($/hr)
-              </Label>
-              <Input
-                type="number"
-                step="0.01"
-                placeholder="e.g. 120.00"
-                value={payRate}
-                onChange={e => handlePayRateChange(e.target.value)}
-                data-testid="input-pay-rate-import"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Margin Per Hour ($)</Label>
-              <Input
-                type="number"
-                step="0.01"
-                placeholder="Auto-calculated from rates"
-                value={margin}
-                onChange={e => setMargin(e.target.value)}
-                data-testid="input-margin-import"
-              />
-              {billRate && payRate && (
-                <p className="text-[11px] text-muted-foreground">Auto-calculated from bill − pay rate</p>
-              )}
-            </div>
+
+            {/* Live calculated preview */}
+            {(preview || previewLoading) && (
+              <div className="space-y-2 pt-1">
+                <p className="text-[11px] text-muted-foreground font-medium uppercase tracking-wide">
+                  {previewLoading ? "Calculating…" : "Calculated (server-side)"}
+                </p>
+                {!previewLoading && preview && (
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {isHourly && (
+                      <CalcBadge
+                        label="Gross Margin / hr"
+                        value={preview.grossMargin}
+                        tooltip="Bill Rate − Pay Rate"
+                        currency={currency}
+                      />
+                    )}
+                    <CalcBadge
+                      label={isHourly ? "Referral Fee / hr" : "Referral Fee"}
+                      value={preview.referralFee}
+                      tooltip={isHourly ? "Gross Margin − Passthrough Fee" : "Entered directly"}
+                      currency={currency}
+                    />
+                    <CalcBadge
+                      label={isHourly ? "Net Margin / hr" : "Net Margin"}
+                      value={preview.netMargin}
+                      tooltip={isHourly ? "Referral Fee − Business Marketing Cost" : "Referral Fee − Passthrough − Business Marketing Cost"}
+                      currency={currency}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* ── Step 4: Contract dates & billing ─── */}
+          <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Payment Terms (days)</Label>
               <Input
-                type="number"
-                placeholder="e.g. 30"
+                type="number" placeholder="e.g. 30"
                 value={paymentTerms}
                 onChange={e => setPaymentTerms(e.target.value)}
                 data-testid="input-payment-terms-import"
               />
             </div>
-
             <div className="space-y-1.5">
-              <Label>Contract Start Date</Label>
-              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} data-testid="input-start-date-import" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Contract End Date</Label>
-              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid="input-end-date-import" />
-            </div>
-
-            <div className="space-y-1.5 col-span-2">
               <Label>Billing Frequency</Label>
               <Select value={billingFreq} onValueChange={setBillingFreq}>
                 <SelectTrigger data-testid="select-billing-freq-import">
@@ -277,9 +516,19 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
                   <SelectItem value="bi_weekly">Bi-Weekly</SelectItem>
                   <SelectItem value="monthly">Monthly</SelectItem>
                   <SelectItem value="milestone">Milestone</SelectItem>
+                  <SelectItem value="one_time">One-Time</SelectItem>
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label>Contract Start Date</Label>
+              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} data-testid="input-start-date-import" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Contract End Date</Label>
+              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid="input-end-date-import" />
+            </div>
+
             <div className="space-y-1.5 col-span-2">
               <Label>Internal Notes</Label>
               <Textarea

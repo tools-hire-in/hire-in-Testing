@@ -1858,6 +1858,12 @@ export const contractSourceEnum = pgEnum("contract_source", [
   "imported",
 ]);
 
+export const contractTypeEnum = pgEnum("contract_type", [
+  "contract_hourly",
+  "permanent_placement",
+  "contract_to_hire",
+]);
+
 export const invoiceStatusEnum = pgEnum("invoice_status", [
   "scheduled",
   "sent",
@@ -1922,6 +1928,17 @@ export const contracts = pgTable("contracts", {
   specialty: varchar("specialty"), // Healthcare | IT | Engineering | Professional Services | Other
   billRate: numeric("bill_rate"), // $/hr bill rate
   payRate: numeric("pay_rate"),   // $/hr pay rate (optional)
+  // Contract type & financial model
+  contractType: contractTypeEnum("contract_type").notNull().default("contract_hourly"),
+  currency: varchar("currency").notNull().default("USD"),
+  passthroughFee: numeric("passthrough_fee"),          // $/hr for hourly; flat for perm
+  referralFee: numeric("referral_fee"),                // derived (hourly) or entered (perm)
+  grossMargin: numeric("gross_margin"),                // bill_rate - pay_rate (hourly only)
+  businessMarketingCost: numeric("business_marketing_cost"), // flat, nullable, both types
+  netMargin: numeric("net_margin"),                    // referral_fee - bmc
+  // Contract-to-hire future conversion fields (UI not yet built)
+  contractToHireConversionDate: date("contract_to_hire_conversion_date"),
+  conversionFee: numeric("conversion_fee"),
   notes: text("notes"),
   status: contractStatusEnum("status").notNull().default("draft"),
   signingToken: varchar("signing_token").unique(),

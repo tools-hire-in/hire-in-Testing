@@ -11,6 +11,8 @@ import { searchCeipalCandidates } from "./ceipalService";
 import { resolveRoles } from "@shared/accessControl";
 import { z } from "zod";
 import { tokenLookupLimiter } from "./rateLimits";
+import { calculateMargins, validateMarginInputs, MarginValidationError } from "./services/contractMarginService";
+import type { ContractType } from "./services/contractMarginService";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } });
 const objectStorageService = new ObjectStorageService();
@@ -151,6 +153,31 @@ export function registerContractRoutes(app: Express) {
     res.status(405).json({ error: "Hard deletion of clients is disabled. Use PATCH /status to deactivate." });
   });
 
+  // ─── MARGIN DRY-RUN ──────────────────────────────────────────────────────────
+  // POST /api/contracts/calculate-margins — no DB write, returns derived values.
+  // Returns partial nulls for incomplete inputs (safe for live preview).
+  app.post("/api/contracts/calculate-margins", requireAuth, (req, res) => {
+    try {
+      const {
+        contractType, billRate, payRate, passthroughFee,
+        referralFeeFlat, referralFeePct, candidateAnnualSalary,
+        businessMarketingCost,
+      } = req.body;
+      if (!contractType) return res.status(400).json({ error: "contractType required" });
+      const result = calculateMargins({
+        contractType: contractType as ContractType,
+        billRate: billRate != null ? Number(billRate) : null,
+        payRate: payRate != null ? Number(payRate) : null,
+        passthroughFee: passthroughFee != null ? Number(passthroughFee) : null,
+        referralFeeFlat: referralFeeFlat != null ? Number(referralFeeFlat) : null,
+        referralFeePct: referralFeePct != null ? Number(referralFeePct) : null,
+        candidateAnnualSalary: candidateAnnualSalary != null ? Number(candidateAnnualSalary) : null,
+        businessMarketingCost: businessMarketingCost != null ? Number(businessMarketingCost) : null,
+      });
+      res.json(result);
+    } catch (e: any) { res.status(400).json({ error: e.message }); }
+  });
+
   // ─── CONTRACT GENERATION ─────────────────────────────────────────────────────
   app.get("/api/contracts", requireAuth, async (req, res) => {
     try {
@@ -176,6 +203,8 @@ export function registerContractRoutes(app: Express) {
         candidates, variableValues,
         agreementDate, paymentTermsDays, billingFrequency,
         notes, templateName,
+        contractType, billRate, payRate, passthroughFee,
+        referralFeeFlat, businessMarketingCost, currency,
       } = req.body;
 
       if (!clientName) return res.status(400).json({ error: "Client name required" });
@@ -303,6 +332,25 @@ export function registerContractRoutes(app: Express) {
         await dbStorage.incrementContractTemplateUsage(templateId);
       }
 
+      const resolvedContractType: ContractType = (contractType as ContractType) || "contract_hourly";
+      const marginInputs = {
+        contractType: resolvedContractType,
+        billRate: billRate ? Number(billRate) : null,
+        payRate: payRate ? Number(payRate) : null,
+        passthroughFee: passthroughFee ? Number(passthroughFee) : null,
+        referralFeeFlat: (req.body.referralFeeFlat) ? Number(req.body.referralFeeFlat) : null,
+        referralFeePct: (req.body.referralFeePct) ? Number(req.body.referralFeePct) : null,
+        candidateAnnualSalary: (req.body.candidateAnnualSalary) ? Number(req.body.candidateAnnualSalary) : null,
+        businessMarketingCost: businessMarketingCost ? Number(businessMarketingCost) : null,
+      };
+
+      try { validateMarginInputs(marginInputs); } catch (e) {
+        if (e instanceof MarginValidationError) return res.status(400).json({ error: e.message });
+        throw e;
+      }
+
+      const margins = calculateMargins(marginInputs);
+
       const contract = await dbStorage.createContract({
         source: "generated",
         templateId: templateId || null,
@@ -319,7 +367,16 @@ export function registerContractRoutes(app: Express) {
         billingFrequency: billingFrequency || null,
         notes: notes || null,
         createdBy: req.session!.userId,
-      });
+        contractType: resolvedContractType,
+        currency: currency || "USD",
+        billRate: billRate || null,
+        payRate: payRate || null,
+        passthroughFee: passthroughFee ? String(passthroughFee) : null,
+        referralFee: margins.referralFee != null ? String(margins.referralFee) : null,
+        grossMargin: margins.grossMargin != null ? String(margins.grossMargin) : null,
+        businessMarketingCost: businessMarketingCost ? String(businessMarketingCost) : null,
+        netMargin: margins.netMargin != null ? String(margins.netMargin) : null,
+      } as any);
 
       res.status(201).json(contract);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -329,11 +386,35 @@ export function registerContractRoutes(app: Express) {
   app.post("/api/contracts/import", requirePermission("contracts.import", "hr", "operations", "manager"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
-      const { clientName, clientId, candidateName, candidateRole,
+      const {
+        clientName, clientId, candidateName, candidateRole,
         paymentTermsDays, billingFrequency, notes,
         specialty, billRate, payRate,
-        contractStartDate, contractEndDate } = req.body;
+        contractStartDate, contractEndDate,
+        contractType, passthroughFee, referralFeeFlat, businessMarketingCost,
+        currency,
+      } = req.body;
       if (!clientName) return res.status(400).json({ error: "Client name required" });
+
+      const resolvedContractType: ContractType = (contractType as ContractType) || "contract_hourly";
+
+      const marginInputs = {
+        contractType: resolvedContractType,
+        billRate: billRate ? Number(billRate) : null,
+        payRate: payRate ? Number(payRate) : null,
+        passthroughFee: passthroughFee ? Number(passthroughFee) : null,
+        referralFeeFlat: referralFeeFlat ? Number(referralFeeFlat) : null,
+        referralFeePct: req.body.referralFeePct ? Number(req.body.referralFeePct) : null,
+        candidateAnnualSalary: req.body.candidateAnnualSalary ? Number(req.body.candidateAnnualSalary) : null,
+        businessMarketingCost: businessMarketingCost ? Number(businessMarketingCost) : null,
+      };
+
+      try { validateMarginInputs(marginInputs); } catch (e) {
+        if (e instanceof MarginValidationError) return res.status(400).json({ error: e.message });
+        throw e;
+      }
+
+      const margins = calculateMargins(marginInputs);
 
       const ext = path.extname(req.file.originalname).toLowerCase();
       const mimeType = ext === ".pdf" ? "application/pdf"
@@ -358,16 +439,21 @@ export function registerContractRoutes(app: Express) {
         uploadedDocPath,
         contractStartDate: contractStartDate || null,
         contractEndDate: contractEndDate || null,
-        netMarginPerContract: req.body.marginPerHour ? Number(req.body.marginPerHour) : null,
         paymentTermsDays: paymentTermsDays ? Number(paymentTermsDays) : null,
         billingFrequency: billingFrequency || null,
         notes: notes || null,
         status: "countersigned",
         createdBy: req.session!.userId,
-        // Rate intelligence fields
-        ...(specialty ? { specialty } : {}),
-        ...(billRate ? { billRate: billRate } : {}),
-        ...(payRate ? { payRate: payRate } : {}),
+        contractType: resolvedContractType,
+        currency: currency || "USD",
+        specialty: specialty || null,
+        billRate: billRate ? billRate : null,
+        payRate: payRate ? payRate : null,
+        passthroughFee: passthroughFee ? String(passthroughFee) : null,
+        referralFee: margins.referralFee != null ? String(margins.referralFee) : null,
+        grossMargin: margins.grossMargin != null ? String(margins.grossMargin) : null,
+        businessMarketingCost: businessMarketingCost ? String(businessMarketingCost) : null,
+        netMargin: margins.netMargin != null ? String(margins.netMargin) : null,
       } as any);
 
       res.status(201).json(contract);

@@ -897,7 +897,7 @@ export default function ContractsHub() {
       {/* Contract detail dialog */}
       {selectedContract && (
         <Dialog open onOpenChange={() => setSelectedContract(null)}>
-          <DialogContent className="max-w-lg">
+          <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
             <DialogHeader>
               <DialogTitle>Contract Details</DialogTitle>
             </DialogHeader>
@@ -906,18 +906,103 @@ export default function ContractsHub() {
                 <div><span className="text-muted-foreground">Client</span><p className="font-medium">{selectedContract.clientName}</p></div>
                 <div><span className="text-muted-foreground">Candidate</span><p className="font-medium">{selectedContract.candidateName || "—"}</p></div>
                 <div><span className="text-muted-foreground">Role</span><p>{selectedContract.candidateRole || "—"}</p></div>
-                <div><span className="text-muted-foreground">Status</span>
+                <div>
+                  <span className="text-muted-foreground">Status</span>
                   <Badge className={`text-xs mt-0.5 ${STATUS_COLORS[selectedContract.status] || "bg-slate-100 text-slate-700"}`}>
                     {STATUS_LABELS[selectedContract.status] || selectedContract.status}
                   </Badge>
                 </div>
                 <div><span className="text-muted-foreground">Start Date</span><p>{selectedContract.contractStartDate ? new Date(selectedContract.contractStartDate).toLocaleDateString() : "—"}</p></div>
                 <div><span className="text-muted-foreground">End Date</span><p>{selectedContract.contractEndDate ? new Date(selectedContract.contractEndDate).toLocaleDateString() : "—"}</p></div>
-                <div><span className="text-muted-foreground">Margin / hr</span><p>{selectedContract.marginPerHour ? `$${selectedContract.marginPerHour}` : "—"}</p></div>
                 <div><span className="text-muted-foreground">Payment Terms</span><p>{selectedContract.paymentTermsDays ? `Net ${selectedContract.paymentTermsDays}` : "—"}</p></div>
                 <div><span className="text-muted-foreground">Billing Freq.</span><p className="capitalize">{selectedContract.billingFrequency?.replace(/_/g, " ") || "—"}</p></div>
                 <div><span className="text-muted-foreground">Source</span><p>{SOURCE_LABELS[selectedContract.source || "generated"]}</p></div>
+                <div>
+                  <span className="text-muted-foreground">Contract Type</span>
+                  <p>
+                    {(selectedContract as any).contractType === "permanent_placement" ? "Permanent Placement"
+                      : (selectedContract as any).contractType === "contract_to_hire" ? "Contract-to-Hire"
+                      : "Contract / Hourly"}
+                  </p>
+                </div>
               </div>
+
+              {/* ── Financial Summary ── */}
+              {(() => {
+                const c = selectedContract as any;
+                const isPerm = c.contractType === "permanent_placement";
+                const cur: string = c.currency || "USD";
+                const fmt = (v: string | number | null) =>
+                  v == null ? "—" : new Intl.NumberFormat("en-US", { style: "currency", currency: cur, minimumFractionDigits: 2 }).format(Number(v));
+                const hasFinancial = c.billRate != null || c.referralFee != null || c.netMargin != null;
+                if (!hasFinancial) return null;
+                return (
+                  <div className="rounded-lg border bg-slate-50 px-4 py-3 space-y-2">
+                    <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">Financial Summary ({cur})</p>
+                    {!isPerm && (
+                      <>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Bill Rate / hr</span>
+                          <span className="font-medium tabular-nums">{fmt(c.billRate)}</span>
+                        </div>
+                        <div className="flex justify-between items-center">
+                          <span className="text-muted-foreground">Pay Rate / hr</span>
+                          <span className="font-medium tabular-nums">{fmt(c.payRate)}</span>
+                        </div>
+                        {c.passthroughFee != null && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Passthrough Fee / hr</span>
+                            <span className="font-medium tabular-nums">{fmt(c.passthroughFee)}</span>
+                          </div>
+                        )}
+                        <div className="flex justify-between items-center rounded bg-slate-100 px-2 py-1">
+                          <span className="text-slate-600 text-xs font-medium flex items-center gap-1">
+                            Gross Margin / hr
+                            <span className="text-[10px] bg-slate-200 rounded px-1 text-slate-500 ml-1">calculated</span>
+                          </span>
+                          <span className="font-semibold tabular-nums">{fmt(c.grossMargin)}</span>
+                        </div>
+                      </>
+                    )}
+                    {isPerm && (
+                      <>
+                        {c.passthroughFee != null && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Passthrough Fee</span>
+                            <span className="font-medium tabular-nums">{fmt(c.passthroughFee)}</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    <div className="flex justify-between items-center rounded bg-slate-100 px-2 py-1">
+                      <span className="text-slate-600 text-xs font-medium flex items-center gap-1">
+                        {isPerm ? "Referral Fee" : "Referral Fee / hr"}
+                        {!isPerm && <span className="text-[10px] bg-slate-200 rounded px-1 text-slate-500 ml-1">calculated</span>}
+                      </span>
+                      <span className="font-semibold tabular-nums" title={isPerm ? "Entered directly" : "Gross Margin − Passthrough Fee"}>{fmt(c.referralFee)}</span>
+                    </div>
+                    {c.businessMarketingCost != null && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Business Marketing Cost</span>
+                        <span className="font-medium tabular-nums">{fmt(c.businessMarketingCost)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center rounded bg-primary/8 border border-primary/20 px-2 py-1.5">
+                      <span className="text-primary text-xs font-semibold flex items-center gap-1">
+                        {isPerm ? "Net Margin" : "Net Margin / hr"}
+                        <span className="text-[10px] bg-primary/10 rounded px-1 ml-1">calculated</span>
+                      </span>
+                      <span
+                        className={`font-bold tabular-nums ${c.netMargin != null && Number(c.netMargin) < 0 ? "text-red-600" : "text-green-700"}`}
+                        title={isPerm ? "Referral Fee − Passthrough − Business Marketing Cost" : "Referral Fee − Business Marketing Cost"}
+                        data-testid="text-net-margin-detail"
+                      >
+                        {fmt(c.netMargin)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
               {selectedContract.notes && (
                 <div>
                   <span className="text-muted-foreground">Notes</span>

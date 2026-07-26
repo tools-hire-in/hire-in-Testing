@@ -11,7 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import {
   Loader2, ChevronRight, ChevronLeft, Wand2, Search, User, X, Info,
-  AlertCircle, Plus, Building2, CheckCircle2, ExternalLink, Trash2
+  AlertCircle, Plus, Building2, CheckCircle2, ExternalLink, Trash2, DollarSign
 } from "lucide-react";
 import type { ContractClient, ContractTemplate, InsertContractClient } from "@shared/schema";
 
@@ -102,6 +102,21 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
   const [paymentTerms, setPaymentTerms] = useState("60");
   const [billingFreq, setBillingFreq] = useState("monthly");
   const [notes, setNotes] = useState("");
+
+  // Step 2 — Financial terms (new — required for server validation)
+  const [contractType, setContractType] = useState<"contract_hourly" | "permanent_placement" | "contract_to_hire">("contract_hourly");
+  const [currency, setCurrency] = useState("USD");
+  const [billRate, setBillRate] = useState("");
+  const [payRate, setPayRate] = useState("");
+  const [passthroughFee, setPassthroughFee] = useState("");
+  const [referralFeeMode, setReferralFeeMode] = useState<"flat" | "pct">("flat");
+  const [referralFeeFlat, setReferralFeeFlat] = useState("");
+  const [referralFeePct, setReferralFeePct] = useState("");
+  const [candidateAnnualSalary, setCandidateAnnualSalary] = useState("");
+  const [businessMarketingCost, setBusinessMarketingCost] = useState("");
+
+  const isHourlyGen = contractType === "contract_hourly" || contractType === "contract_to_hire";
+  const isPermGen = contractType === "permanent_placement";
 
   // Step 3 — Template variable fill
   const [fields, setFields] = useState<TemplateField[]>([]);
@@ -264,6 +279,24 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
       fields.forEach(f => { variableValues[f.key] = f.value; });
       const candidatesPayload = buildCandidatesPayload();
       const first = candidatesPayload[0];
+      const financialPayload: Record<string, any> = {
+        contractType,
+        currency,
+        businessMarketingCost: businessMarketingCost || undefined,
+      };
+      if (isHourlyGen) {
+        financialPayload.billRate = billRate || undefined;
+        financialPayload.payRate = payRate || undefined;
+        financialPayload.passthroughFee = passthroughFee || undefined;
+      } else {
+        financialPayload.passthroughFee = passthroughFee || undefined;
+        if (referralFeeMode === "flat") {
+          financialPayload.referralFeeFlat = referralFeeFlat || undefined;
+        } else {
+          financialPayload.referralFeePct = referralFeePct || undefined;
+          financialPayload.candidateAnnualSalary = candidateAnnualSalary || undefined;
+        }
+      }
       return apiRequest("POST", "/api/contracts", {
         templateId: templateId || null,
         clientId: clientId || null,
@@ -277,6 +310,7 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
         billingFrequency: billingFreq || null,
         notes: notes || null,
         templateName: selectedTemplate?.name || null,
+        ...financialPayload,
       });
     },
     onSuccess: () => {
@@ -755,6 +789,128 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
               <div className="space-y-1.5 col-span-2">
                 <Label>Internal Notes</Label>
                 <Textarea placeholder="Any internal notes..." value={notes} onChange={e => setNotes(e.target.value)} rows={2} data-testid="textarea-notes" />
+              </div>
+            </div>
+
+            {/* ── Financial Terms ────────────────────────────────────────── */}
+            <div className="space-y-3 pt-2 border-t">
+              <h4 className="font-semibold text-sm flex items-center gap-2">
+                <DollarSign className="h-4 w-4 text-green-600" />
+                Financial Terms
+              </h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Contract Type *</Label>
+                  <Select value={contractType} onValueChange={(v: any) => { setContractType(v); setReferralFeeMode("flat"); }}>
+                    <SelectTrigger data-testid="select-contract-type-gen">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="contract_hourly">Contract / Hourly</SelectItem>
+                      <SelectItem value="contract_to_hire">Contract-to-Hire</SelectItem>
+                      <SelectItem value="permanent_placement">Permanent Placement</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Currency</Label>
+                  <Select value={currency} onValueChange={setCurrency}>
+                    <SelectTrigger data-testid="select-currency-gen">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="USD">USD</SelectItem>
+                      <SelectItem value="CAD">CAD</SelectItem>
+                      <SelectItem value="GBP">GBP</SelectItem>
+                      <SelectItem value="EUR">EUR</SelectItem>
+                      <SelectItem value="INR">INR</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {isHourlyGen && (
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Bill Rate ({currency}/hr) *</Label>
+                    <Input type="number" step="0.01" placeholder="e.g. 85.00"
+                      value={billRate} onChange={e => setBillRate(e.target.value)}
+                      data-testid="input-bill-rate-gen" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Pay Rate ({currency}/hr) *</Label>
+                    <Input type="number" step="0.01" placeholder="e.g. 65.00"
+                      value={payRate} onChange={e => setPayRate(e.target.value)}
+                      data-testid="input-pay-rate-gen" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Passthrough Fee ({currency}/hr)</Label>
+                    <Input type="number" step="0.01" placeholder="e.g. 5.00"
+                      value={passthroughFee} onChange={e => setPassthroughFee(e.target.value)}
+                      data-testid="input-passthrough-fee-gen" />
+                  </div>
+                </div>
+              )}
+
+              {isPermGen && (
+                <div className="space-y-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground">Referral Fee as:</span>
+                    <div className="inline-flex rounded-md border overflow-hidden text-xs">
+                      <button type="button"
+                        onClick={() => setReferralFeeMode("flat")}
+                        className={`px-3 py-1.5 transition-colors ${referralFeeMode === "flat" ? "bg-primary text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                        data-testid="btn-referral-mode-flat-gen">
+                        Flat Amount
+                      </button>
+                      <button type="button"
+                        onClick={() => setReferralFeeMode("pct")}
+                        className={`px-3 py-1.5 border-l transition-colors ${referralFeeMode === "pct" ? "bg-primary text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                        data-testid="btn-referral-mode-pct-gen">
+                        % of Salary
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    {referralFeeMode === "flat" ? (
+                      <div className="space-y-1.5">
+                        <Label className="text-xs">Referral Fee ({currency}) *</Label>
+                        <Input type="number" step="0.01" placeholder="e.g. 15000.00"
+                          value={referralFeeFlat} onChange={e => setReferralFeeFlat(e.target.value)}
+                          data-testid="input-referral-fee-flat-gen" />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Referral Fee % *</Label>
+                          <Input type="number" step="0.1" min="0" max="100" placeholder="e.g. 20"
+                            value={referralFeePct} onChange={e => setReferralFeePct(e.target.value)}
+                            data-testid="input-referral-fee-pct-gen" />
+                          <p className="text-[10px] text-muted-foreground">% of candidate annual salary</p>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Candidate Annual Salary ({currency}) *</Label>
+                          <Input type="number" step="1" placeholder="e.g. 75000"
+                            value={candidateAnnualSalary} onChange={e => setCandidateAnnualSalary(e.target.value)}
+                            data-testid="input-candidate-salary-gen" />
+                        </div>
+                      </>
+                    )}
+                    <div className="space-y-1.5">
+                      <Label className="text-xs text-muted-foreground">Passthrough Fee ({currency}, flat)</Label>
+                      <Input type="number" step="0.01" placeholder="e.g. 2000.00"
+                        value={passthroughFee} onChange={e => setPassthroughFee(e.target.value)}
+                        data-testid="input-passthrough-fee-perm-gen" />
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-1.5 max-w-xs">
+                <Label className="text-xs text-muted-foreground">Business Marketing Cost ({currency}, flat)</Label>
+                <Input type="number" step="0.01" placeholder="e.g. 500.00"
+                  value={businessMarketingCost} onChange={e => setBusinessMarketingCost(e.target.value)}
+                  data-testid="input-bmc-gen" />
               </div>
             </div>
           </div>
