@@ -748,29 +748,15 @@ export default function VerifyLetter() {
                         <p className="text-muted-foreground">Reference</p>
                         <p className="font-mono text-xs">{r.referenceNumber}</p>
                       </div>
+                      {r.signatoryName && (
+                        <div>
+                          <p className="text-muted-foreground">Issued By</p>
+                          <p className="font-medium">{r.signatoryName}{r.signatoryDesignation ? ` · ${r.signatoryDesignation}` : ""}</p>
+                        </div>
+                      )}
                     </div>
-                  )}
-                  {!(AMENDMENT_TEMPLATE_TYPES as readonly string[]).includes((result as HrLetterVerifyResult).templateType) && (
-                    <div>
-                      <p className="text-muted-foreground">Tenure</p>
-                      <p className="font-medium">{formatDate((result as HrLetterVerifyResult).startDate)} — {formatDate((result as HrLetterVerifyResult).endDate)}</p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-muted-foreground">Issue Date</p>
-                    <p className="font-medium">{formatDate((result as HrLetterVerifyResult).issueDate)}</p>
-                  </div>
-                  {(result as HrLetterVerifyResult).signatoryName && (
-                    <div>
-                      <p className="text-muted-foreground">Issued By</p>
-                      <p className="font-medium">{(result as HrLetterVerifyResult).signatoryName}{(result as HrLetterVerifyResult).signatoryDesignation ? ` · ${(result as HrLetterVerifyResult).signatoryDesignation}` : ""}</p>
-                    </div>
-                  )}
-                  <div>
-                    <p className="text-muted-foreground">Reference</p>
-                    <p className="font-mono text-xs">{(result as HrLetterVerifyResult).referenceNumber}</p>
-                  </div>
-                </div>
+                  );
+                })()
               )}
             </CardContent>
           </Card>

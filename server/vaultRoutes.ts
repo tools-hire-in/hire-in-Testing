@@ -684,6 +684,7 @@ export function registerVaultRoutes(app: Express): void {
       if (!secret.passwordEnc) return res.status(400).json({ error: "No password stored" });
 
       const plaintext = decryptVaultField(secret.passwordEnc);
+      const usernameValue = secret.usernameEnc ? decryptVaultField(secret.usernameEnc) : undefined;
 
       await logVaultAudit({
         actorId: userId, secretId: id, vaultId: secret.vaultId,
@@ -692,7 +693,7 @@ export function registerVaultRoutes(app: Express): void {
       });
 
       res.set("Cache-Control", "no-store, no-cache, must-revalidate, private");
-      res.json({ value: plaintext, sensitivity: secret.sensitivity });
+      res.json({ value: plaintext, sensitivity: secret.sensitivity, username: usernameValue });
     } catch (err) {
       console.error("[Vault] reveal:", err);
       res.status(500).json({ error: "Failed to reveal password" });

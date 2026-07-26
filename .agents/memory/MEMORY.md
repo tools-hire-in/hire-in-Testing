@@ -60,3 +60,4 @@
 - [Email env guard](email-env-guard.md) — all non-prod email suppression lives in the SendGrid client factory (single choke point); scheduler suspension alone leaks via direct calls/tests.
 - [SOP A/R/C training levels](sop-arc-training-levels.md) — role-group resolver, level params, quiz filtering, evidence flow, seeder update; ensureSopArcSchema must run before seedUniversalPolicies.
 - [Pending plan engine](pending-plan-engine.md) — plans start as pending (NULL dates) until manager activates; check-ins/governance/goal dates set at activation, not at doc signing; idempotency by offer_letter_id first then legacy date-window.
+- [VerifyLetter IIFE dead-code trap](verify-letter-iife.md) — JSX added after IIFE's return(…) closes is dead code that crashes Babel; always add new grid items INSIDE the return's JSX, then close with })().

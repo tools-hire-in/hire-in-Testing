@@ -23,7 +23,7 @@ import {
 import {
   KeyRound, Plus, Edit2, Archive, Eye, EyeOff, Copy, ChevronRight, AlertTriangle,
   Shield, ShieldAlert, ShieldCheck, Lock, RefreshCw, Users, ExternalLink,
-  MoreHorizontal, Trash2, Share2, Info,
+  MoreHorizontal, Trash2, Share2, Info, LogIn,
 } from "lucide-react";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Link } from "wouter";
@@ -34,6 +34,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import RevealSecretDialog from "./RevealSecretDialog";
 import GrantAccessDialog from "./GrantAccessDialog";
+import InlineSignInPanel from "./InlineSignInPanel";
 
 const SENSITIVITY_META: Record<string, { label: string; color: string; icon: typeof Shield; scrutiny: string }> = {
   low: { label: "Low", color: "bg-green-100 text-green-800", icon: Shield, scrutiny: "Click to reveal — no reason required" },
@@ -360,6 +361,7 @@ function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean 
   const [editingSecret, setEditingSecret] = useState<Secret | null>(null);
   const [revealSecret, setRevealSecret] = useState<Secret | null>(null);
   const [grantSecret, setGrantSecret] = useState<Secret | null>(null);
+  const [openSignInId, setOpenSignInId] = useState<string | null>(null);
 
   const { data: secrets = [], isLoading } = useQuery<Secret[]>({
     queryKey: [`/api/vaults/${vaultId}/secrets`],
@@ -415,6 +417,7 @@ function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean 
         </TableHeader>
         <TableBody>
           {secrets.map(s => (
+            <>
             <TableRow key={s.id} data-testid={`row-secret-${s.id}`}>
               <TableCell>
                 <div className="font-medium">{s.systemName}</div>
@@ -434,7 +437,21 @@ function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean 
                 {s.rotationDueAt ? new Date(s.rotationDueAt).toLocaleDateString() : "—"}
               </TableCell>
               <TableCell>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {s.loginUrl && s.canReveal && (
+                    <Button
+                      size="sm"
+                      variant={openSignInId === s.id ? "default" : "outline"}
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        if (openSignInId === s.id) { setOpenSignInId(null); }
+                        else { window.open(s.loginUrl!, "_blank", "noopener"); setOpenSignInId(s.id); }
+                      }}
+                      data-testid={`button-open-signin-${s.id}`}
+                    >
+                      <LogIn className="h-3 w-3 mr-1" /> Open &amp; sign in
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => copyValue(s.id, "username")} data-testid={`button-copy-username-${s.id}`}>
                     <Copy className="h-3 w-3 mr-1" /> Username
                   </Button>
@@ -471,6 +488,18 @@ function SecretsTable({ vaultId, isAdmin }: { vaultId: string; isAdmin: boolean 
                 </div>
               </TableCell>
             </TableRow>
+            {openSignInId === s.id && s.loginUrl && (
+              <TableRow key={`${s.id}-signin`}>
+                <TableCell colSpan={4} className="pt-0 pb-3">
+                  <InlineSignInPanel
+                    secretId={s.id}
+                    sensitivity={s.sensitivity}
+                    onClose={() => setOpenSignInId(null)}
+                  />
+                </TableCell>
+              </TableRow>
+            )}
+            </>
           ))}
         </TableBody>
       </Table>
@@ -656,6 +685,7 @@ export default function VaultPage() {
 function MyAccessTable({ secrets }: { secrets: any[] }) {
   const { toast } = useToast();
   const [revealSecret, setRevealSecret] = useState<any | null>(null);
+  const [openSignInId, setOpenSignInId] = useState<string | null>(null);
 
   const copyValue = async (secretId: string, type: "username" | "password") => {
     try {
@@ -682,6 +712,7 @@ function MyAccessTable({ secrets }: { secrets: any[] }) {
         </TableHeader>
         <TableBody>
           {secrets.map(s => (
+            <>
             <TableRow key={s.id} data-testid={`row-access-${s.id}`}>
               <TableCell>
                 <div className="font-medium">{s.systemName}</div>
@@ -697,7 +728,21 @@ function MyAccessTable({ secrets }: { secrets: any[] }) {
                 {s.rotationDueAt ? new Date(s.rotationDueAt).toLocaleDateString() : "—"}
               </TableCell>
               <TableCell>
-                <div className="flex items-center gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {s.loginUrl && s.canReveal && (
+                    <Button
+                      size="sm"
+                      variant={openSignInId === s.id ? "default" : "outline"}
+                      className="h-7 px-2 text-xs"
+                      onClick={() => {
+                        if (openSignInId === s.id) { setOpenSignInId(null); }
+                        else { window.open(s.loginUrl!, "_blank", "noopener"); setOpenSignInId(s.id); }
+                      }}
+                      data-testid={`button-access-open-signin-${s.id}`}
+                    >
+                      <LogIn className="h-3 w-3 mr-1" /> Open &amp; sign in
+                    </Button>
+                  )}
                   <Button size="sm" variant="outline" className="h-7 px-2 text-xs" onClick={() => copyValue(s.id, "username")} data-testid={`button-access-copy-username-${s.id}`}>
                     <Copy className="h-3 w-3 mr-1" /> Username
                   </Button>
@@ -714,6 +759,18 @@ function MyAccessTable({ secrets }: { secrets: any[] }) {
                 </div>
               </TableCell>
             </TableRow>
+            {openSignInId === s.id && s.loginUrl && (
+              <TableRow key={`${s.id}-signin`}>
+                <TableCell colSpan={5} className="pt-0 pb-3">
+                  <InlineSignInPanel
+                    secretId={s.id}
+                    sensitivity={s.sensitivity}
+                    onClose={() => setOpenSignInId(null)}
+                  />
+                </TableCell>
+              </TableRow>
+            )}
+            </>
           ))}
         </TableBody>
       </Table>
