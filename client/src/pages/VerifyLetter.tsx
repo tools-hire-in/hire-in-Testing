@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { TEMPLATE_LABELS } from "@shared/hrLetterConstants";
+import { TEMPLATE_LABELS, AMENDMENT_TEMPLATE_TYPES } from "@shared/hrLetterConstants";
 import {
   inferDocType, refMatchesDocType, AUTH_CODE_EXAMPLE,
   type AllowedDocType,
@@ -17,7 +17,7 @@ import {
 const rayomindLogoPath = "/rayomind-logo.png";
 
 const DOC_TYPE_LABELS: Record<AllowedDocType, string> = {
-  hr_letter: "HR Letter (Experience, Internship, Relieving)",
+  hr_letter: "HR / Amendment Letter (Experience, Relieving, Salary Revision, etc.)",
   contract: "Staffing Services Agreement (Contract)",
   offer_letter: "Offer Letter",
   addendum: "Amendment / Addendum Letter",
@@ -25,7 +25,7 @@ const DOC_TYPE_LABELS: Record<AllowedDocType, string> = {
 };
 
 const REF_PLACEHOLDERS: Record<AllowedDocType, string> = {
-  hr_letter: "e.g. RL/EXP/2026/0001",
+  hr_letter: "e.g. RL/EXP/2026/0001 or RL/SAL/2026/0001",
   contract: "e.g. CTR/2026/ABCD1234",
   offer_letter: "e.g. OL/2026/0042",
   addendum: "e.g. AM/SAL/2026/0007",
@@ -43,6 +43,8 @@ interface HrLetterVerifyResult {
   issueDate: string | null;
   referenceNumber: string;
   status: string;
+  signatoryName: string | null;
+  signatoryDesignation: string | null;
   verified: boolean;
   warning?: string;
 }
@@ -684,14 +686,22 @@ export default function VerifyLetter() {
                       <p className="font-medium">{(result as HrLetterVerifyResult).department}</p>
                     </div>
                   )}
-                  <div>
-                    <p className="text-muted-foreground">Tenure</p>
-                    <p className="font-medium">{formatDate((result as HrLetterVerifyResult).startDate)} — {formatDate((result as HrLetterVerifyResult).endDate)}</p>
-                  </div>
+                  {!(AMENDMENT_TEMPLATE_TYPES as readonly string[]).includes((result as HrLetterVerifyResult).templateType) && (
+                    <div>
+                      <p className="text-muted-foreground">Tenure</p>
+                      <p className="font-medium">{formatDate((result as HrLetterVerifyResult).startDate)} — {formatDate((result as HrLetterVerifyResult).endDate)}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-muted-foreground">Issue Date</p>
                     <p className="font-medium">{formatDate((result as HrLetterVerifyResult).issueDate)}</p>
                   </div>
+                  {(result as HrLetterVerifyResult).signatoryName && (
+                    <div>
+                      <p className="text-muted-foreground">Issued By</p>
+                      <p className="font-medium">{(result as HrLetterVerifyResult).signatoryName}{(result as HrLetterVerifyResult).signatoryDesignation ? ` · ${(result as HrLetterVerifyResult).signatoryDesignation}` : ""}</p>
+                    </div>
+                  )}
                   <div>
                     <p className="text-muted-foreground">Reference</p>
                     <p className="font-mono text-xs">{(result as HrLetterVerifyResult).referenceNumber}</p>

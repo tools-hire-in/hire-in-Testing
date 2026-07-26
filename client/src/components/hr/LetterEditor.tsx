@@ -36,7 +36,6 @@ import {
 import type { TemplateConfig } from "@shared/letterRenderer";
 import { hrLetterConfig, HR_LETTER_BAND_VISIBILITY } from "@shared/letterTemplates/hrLetter";
 import { amendmentConfig } from "@shared/letterTemplates/amendment";
-import { useDraftLetter } from "@/hooks/use-draft-letter";
 
 const ALL_STANDARD_TEMPLATE_TYPES = ["experience", "internship_completion", "internship_certificate", "relieving"];
 
@@ -238,6 +237,7 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
   const [isManualEntry, setIsManualEntry] = useState(false);
   const [manualEmployeeEmail, setManualEmployeeEmail] = useState("");
   const [sendEmail, setSendEmail] = useState(false);
+  const [ccEmails, setCcEmails] = useState((editingLetter as any)?.ccEmails || "");
   const [showPreview, setShowPreview] = useState(false);
   const [employeeSearch, setEmployeeSearch] = useState("");
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -293,6 +293,7 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
     if (typeof d.manualEmployeeEmail === "string") setManualEmployeeEmail(d.manualEmployeeEmail);
     if (Array.isArray(d.annexures)) setAnnexures(d.annexures as AnnexureItem[]);
     if (Array.isArray(d.amendmentPolicyAnnexures)) setAmendmentPolicyAnnexures(d.amendmentPolicyAnnexures as string[]);
+    if (typeof d.ccEmails === "string") setCcEmails(d.ccEmails);
     if (typeof d._step === "number") setStep(d._step);
     if (typeof d.appliedTemplateId === "number") setAppliedTemplateId(d.appliedTemplateId);
   }, [rehydratedLetter]);
@@ -335,8 +336,9 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
       annexures,
       amendmentPolicyAnnexures,
       appliedTemplateId,
+      ccEmails,
     }, step);
-  }, [form, amendmentMeta, isManualEntry, manualEmployeeEmail, annexures, amendmentPolicyAnnexures, appliedTemplateId, step]);
+  }, [form, amendmentMeta, isManualEntry, manualEmployeeEmail, annexures, amendmentPolicyAnnexures, appliedTemplateId, ccEmails, step]);
 
   const { data: usersData } = useQuery<{ users: AdminUser[]; counts?: Record<string, number> } | AdminUser[]>({
     queryKey: ["/api/admin/users", "all_non_deleted"],
@@ -776,6 +778,7 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
         isManualEntry,
         manualEmployeeEmail: manualEmployeeEmail || undefined,
         sendEmail,
+        ccEmails: ccEmails.trim() || undefined,
         metadata,
         annexureData: annexures.length > 0 ? annexures : undefined,
       };
@@ -800,6 +803,7 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
       if (!payload.employeeId) delete payload.employeeId;
       if (annexures.length > 0) payload.annexureData = annexures;
       if (appliedTemplateId) payload.fromTemplateId = appliedTemplateId;
+      payload.ccEmails = ccEmails.trim() || undefined;
       createMutation.mutate(payload);
     }
   }
@@ -1679,6 +1683,17 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
                 )}
               </div>
             )}
+
+            <div className="space-y-1">
+              <Label>CC Recipients <span className="text-muted-foreground font-normal text-xs">(optional)</span></Label>
+              <Input
+                value={ccEmails}
+                onChange={e => setCcEmails(e.target.value)}
+                placeholder="manager@hire-in.com, ceo@hire-in.com"
+                data-testid="input-cc-emails"
+              />
+              <p className="text-xs text-muted-foreground">Separate multiple emails with commas</p>
+            </div>
 
             {!isAmendmentType && (
               <Button variant="outline" onClick={() => setShowPreview(true)} data-testid="btn-preview-letter">

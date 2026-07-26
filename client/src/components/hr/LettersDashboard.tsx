@@ -20,7 +20,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { LetterPreview } from "./LetterPreview";
-import { LetterGenerator } from "./LetterGenerator";
+import { LetterEditor } from "./LetterEditor";
 import { TEMPLATE_LABELS } from "@shared/hrLetterConstants";
 import type { HrLetter } from "@shared/schema";
 import type { LucideIcon } from "lucide-react";
@@ -259,6 +259,8 @@ export function LettersDashboard() {
   const [reissueReason, setReissueReason] = useState("");
   const [emailCcDialog, setEmailCcDialog] = useState<HrLetter | null>(null);
   const [emailCcInput, setEmailCcInput] = useState("");
+  const [editCcDialog, setEditCcDialog] = useState<HrLetter | null>(null);
+  const [editCcInput, setEditCcInput] = useState("");
   const [withdrawDialog, setWithdrawDialog] = useState<HrLetter | null>(null);
   const [editSheet, setEditSheet] = useState<HrLetter | null>(null);
 
@@ -301,6 +303,24 @@ export function LettersDashboard() {
       toast({ title: "Email sent", description: `Letter emailed to ${data.sentTo}` });
       setEmailCcDialog(null);
       setEmailCcInput("");
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const updateCcMutation = useMutation({
+    mutationFn: async ({ id, ccEmails }: { id: string; ccEmails: string }) => {
+      const res = await apiRequest("PATCH", `/api/hr/letters/${id}/cc`, { ccEmails: ccEmails.trim() || null });
+      return res.json();
+    },
+    onSuccess: (_data, variables) => {
+      toast({ title: "CC recipients updated" });
+      queryClient.invalidateQueries({ queryKey: ["/api/hr/letters"] });
+      const newCcList = variables.ccEmails.trim()
+        ? variables.ccEmails.split(",").map(e => e.trim()).filter(Boolean)
+        : [];
+      setSelectedLetter(prev => prev ? { ...prev, ccEmails: variables.ccEmails.trim() || null, ccRecipients: newCcList } as any : prev);
+      setEditCcDialog(null);
+      setEditCcInput("");
     },
     onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -447,7 +467,7 @@ export function LettersDashboard() {
 
                           {/* Email */}
                           {["issued", "reissued"].includes(letter.status) && (
-                            <Button variant="ghost" size="sm" onClick={() => { setEmailCcDialog(letter); setEmailCcInput(""); }} disabled={emailMutation.isPending} data-testid={`btn-email-letter-${letter.id}`}>
+                            <Button variant="ghost" size="sm" onClick={() => { setEmailCcDialog(letter); setEmailCcInput((letter as any).ccEmails || ""); }} disabled={emailMutation.isPending} data-testid={`btn-email-letter-${letter.id}`}>
                               <Mail className="h-4 w-4 text-blue-600" />
                             </Button>
                           )}
@@ -554,6 +574,42 @@ export function LettersDashboard() {
 
               <LetterPreview letter={selectedLetter} />
 
+              {/* CC Recipients display — prefer ccRecipients JSONB array, fall back to ccEmails text */}
+              {(() => {
+                const raw = (selectedLetter as any);
+                const ccList: string[] = Array.isArray(raw.ccRecipients) && raw.ccRecipients.length > 0
+                  ? raw.ccRecipients.map((e: unknown) => String(e).trim()).filter(Boolean)
+                  : (raw.ccEmails ? String(raw.ccEmails).split(",").map((e: string) => e.trim()).filter(Boolean) : []);
+                const storedCcText = Array.isArray(raw.ccRecipients) && raw.ccRecipients.length > 0
+                  ? raw.ccRecipients.join(", ")
+                  : (raw.ccEmails || "");
+                return (
+                  <div className="rounded-md border border-slate-200 bg-slate-50 px-4 py-3 text-sm">
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs text-muted-foreground font-medium uppercase tracking-wide">CC Recipients</p>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-5 px-2 text-xs"
+                        onClick={() => { setEditCcDialog(selectedLetter); setEditCcInput(storedCcText); }}
+                        data-testid="btn-edit-cc-recipients"
+                      >
+                        Edit
+                      </Button>
+                    </div>
+                    {ccList.length > 0 ? (
+                      <div className="flex flex-wrap gap-1">
+                        {ccList.map((email, i) => (
+                          <span key={i} className="inline-flex items-center rounded-full bg-blue-100 px-2.5 py-0.5 text-xs font-medium text-blue-800">{email}</span>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground text-xs italic">None</p>
+                    )}
+                  </div>
+                );
+              })()}
+
               <Separator />
 
               <ReviewHistoryPanel letterId={selectedLetter.id} />
@@ -561,6 +617,49 @@ export function LettersDashboard() {
           )}
         </SheetContent>
       </Sheet>
+
+      {/* ─── Edit CC Dialog ───────────────────────────────────────────────────── */}
+      <Dialog open={!!editCcDialog} onOpenChange={(open) => { if (!open) { setEditCcDialog(null); setEditCcInput(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Mail className="h-4 w-4 text-blue-600" />
+              Edit CC Recipients
+            </DialogTitle>
+            <DialogDescription>
+              Update the CC recipients for this letter. Changes apply to future email sends.
+            </DialogDescription>
+          </DialogHeader>
+          {editCcDialog && (
+            <div className="space-y-3">
+              <div className="rounded-md bg-slate-50 border px-3 py-2 text-sm">
+                <p className="font-medium">{editCcDialog.employeeName}</p>
+                <p className="text-xs text-muted-foreground">{(editCcDialog as any).referenceNumber || "Draft"}</p>
+              </div>
+              <div>
+                <Label>CC Recipients <span className="text-muted-foreground font-normal">(comma-separated)</span></Label>
+                <Input
+                  value={editCcInput}
+                  onChange={e => setEditCcInput(e.target.value)}
+                  placeholder="manager@example.com, hr@example.com"
+                  data-testid="input-edit-cc-emails"
+                />
+              </div>
+            </div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setEditCcDialog(null); setEditCcInput(""); }}>Cancel</Button>
+            <Button
+              onClick={() => editCcDialog && updateCcMutation.mutate({ id: editCcDialog.id, ccEmails: editCcInput })}
+              disabled={updateCcMutation.isPending}
+              data-testid="btn-confirm-edit-cc"
+            >
+              {updateCcMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Save CC Recipients
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ─── Revoke Dialog ────────────────────────────────────────────────────── */}
       <Dialog open={!!revokeDialog} onOpenChange={() => { setRevokeDialog(null); setRevokeReason(""); }}>
@@ -692,7 +791,7 @@ export function LettersDashboard() {
         </DialogContent>
       </Dialog>
 
-      {/* ─── Edit & Resubmit Sheet (LetterGenerator in edit mode) ─────────────── */}
+      {/* ─── Edit & Resubmit Sheet ──────────────────────────────────────────── */}
       <Sheet open={!!editSheet} onOpenChange={(open) => { if (!open) setEditSheet(null); }}>
         <SheetContent className="w-full sm:max-w-3xl overflow-y-auto" data-testid="sheet-edit-letter">
           <SheetHeader>
@@ -706,7 +805,7 @@ export function LettersDashboard() {
           </SheetHeader>
           {editSheet && (
             <div className="mt-4">
-              <LetterGenerator
+              <LetterEditor
                 editingLetter={editSheet}
                 onResubmitted={() => {
                   setEditSheet(null);

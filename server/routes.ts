@@ -28029,6 +28029,19 @@ Return JSON with keys: linkedin, instagram, facebook.`;
           manualEmployeeEmail: resolvedEmail || null,
           metadata,
           annexureData: validatedAnnexures || null,
+          ccEmails: req.body.ccEmails
+            ? (Array.isArray(req.body.ccEmails)
+                ? req.body.ccEmails.filter(Boolean).join(",")
+                : String(req.body.ccEmails).trim() || null)
+            : null,
+          ccRecipients: (() => {
+            const raw = req.body.ccEmails;
+            if (!raw) return null;
+            const arr = Array.isArray(raw)
+              ? raw.filter(Boolean)
+              : String(raw).split(",").map((e: string) => e.trim()).filter(Boolean);
+            return arr.length ? arr : null;
+          })() as any,
           createdBy: req.session.userId!,
           status: "draft",
           fromTemplateId,
@@ -28191,6 +28204,13 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         await storage.updateAdminUser(req.body.employeeId, profileUpdates);
       }
       const stdFromTemplateId = req.body.fromTemplateId ? parseInt(req.body.fromTemplateId, 10) || null : null;
+      // Normalize CC — write both ccEmails (text) and ccRecipients (JSONB) for consistency
+      const rawCcStd = req.body.ccEmails;
+      const parsedCcStd: string[] = Array.isArray(rawCcStd)
+        ? rawCcStd.filter(Boolean)
+        : (typeof rawCcStd === "string" && rawCcStd.trim()
+            ? rawCcStd.split(",").map((e: string) => e.trim()).filter(Boolean)
+            : []);
       const data = {
         ...body,
         employeeName: resolvedEmployeeName,
@@ -28198,6 +28218,8 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         designation: resolvedDesignation,
         department: resolvedDepartment,
         location: req.body.location || employee.location || "",
+        ccEmails: parsedCcStd.length ? parsedCcStd.join(",") : null,
+        ccRecipients: parsedCcStd.length ? parsedCcStd as any : null,
         createdBy: req.session.userId!,
         status: "draft",
         fromTemplateId: stdFromTemplateId,
@@ -28476,13 +28498,44 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       }
 
       if (ccEmails.length > 0) {
-        await storage.updateHrLetter(letter.id, { ccEmails: ccEmails.join(",") });
+        await storage.updateHrLetter(letter.id, {
+          ccEmails: ccEmails.join(","),
+          ccRecipients: ccEmails as any,
+        });
       }
 
       res.json({ success: true, sentTo: recipientEmail });
     } catch (error) {
       console.error("Email HR letter error:", error);
       res.status(500).json({ error: "Failed to send letter email" });
+    }
+  });
+
+  // Update CC recipients on an issued letter without resending
+  app.patch("/api/hr/letters/:id/cc", requirePermission("hr.letters.email", "hr"), async (req, res) => {
+    try {
+      const letter = await storage.getHrLetter(req.params.id);
+      if (!letter) return res.status(404).json({ error: "Letter not found" });
+      const rawCc = req.body.ccEmails;
+      const ccEmails = Array.isArray(rawCc)
+        ? rawCc.filter(Boolean)
+        : (typeof rawCc === "string" && rawCc.trim()
+            ? rawCc.split(",").map((e: string) => e.trim()).filter(Boolean)
+            : []);
+      const updated = await storage.updateHrLetter(req.params.id, {
+        ccEmails: ccEmails.length ? ccEmails.join(",") : null,
+        ccRecipients: ccEmails.length ? (ccEmails as any) : null,
+      } as any);
+      await storage.createAuditLog({
+        actorId: req.session.userId!,
+        targetId: req.params.id,
+        action: "hr_letter_cc_updated",
+        changes: { ccEmails },
+      });
+      res.json(updated);
+    } catch (error) {
+      console.error("Update letter CC error:", error);
+      res.status(500).json({ error: "Failed to update CC recipients" });
     }
   });
 
@@ -28885,7 +28938,10 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         });
       }
 
-      // ── HR letter verification branch ───────────────────────────────────────
+      // ── HR letter verification branch (covers standard AND amendment types) ─
+      // getHrLetterByRef queries hrLetters without a letter_type filter, so
+      // amendment letters (RL/SAL/, RL/ROL/, RL/CMB/, RL/DEV/ prefixes) are
+      // found here alongside standard HR letters (RL/EXP/, RL/INT/, etc.).
       const letter = await storage.getHrLetterByRef(ref);
       if (!letter) {
         return res.status(404).json({ error: "Document not found or auth code does not match" });
@@ -28939,6 +28995,8 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         issueDate: letter.issueDate,
         referenceNumber: letter.referenceNumber,
         status: letter.status,
+        signatoryName: letter.signatoryName ?? null,
+        signatoryDesignation: letter.signatoryDesignation ?? null,
         verified: !tamperDetected,
         ...(tamperDetected ? { warning: "Document content may have been modified after issuance" } : {}),
       });

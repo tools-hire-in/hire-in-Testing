@@ -854,6 +854,14 @@ export async function dispatchEmail(
   const ext = isAmendment ? "docx" : "pdf";
   const docFilename = `${letter.referenceNumber.replace(/\//g, "-")}.${ext}`;
 
+  // Only fall back to stored CC when caller did NOT provide ccEmails at all (undefined).
+  // An explicitly empty array means "send with no CC" and must not be overridden.
+  const resolvedCc = opts.ccEmails !== undefined
+    ? (opts.ccEmails.length ? opts.ccEmails : undefined)
+    : (letter.ccEmails
+        ? letter.ccEmails.split(",").map((e: string) => e.trim()).filter(Boolean)
+        : undefined);
+
   const result = await sendHrLetterEmail({
     to: opts.recipientEmail,
     employeeName: letter.employeeName,
@@ -863,7 +871,7 @@ export async function dispatchEmail(
     verifyUrl: opts.verifyUrl,
     pdfBuffer: buffer,
     pdfFilename: docFilename,
-    cc: opts.ccEmails?.length ? opts.ccEmails : undefined,
+    cc: resolvedCc?.length ? resolvedCc : undefined,
   });
 
   if (result.success) {
@@ -874,7 +882,7 @@ export async function dispatchEmail(
       changes: {
         sentTo: opts.recipientEmail,
         referenceNumber: letter.referenceNumber,
-        cc: opts.ccEmails?.length ? opts.ccEmails : undefined,
+        cc: resolvedCc?.length ? resolvedCc : undefined,
         isAmendment,
       },
     });
