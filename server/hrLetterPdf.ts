@@ -3,15 +3,10 @@ import fs from "fs";
 import path from "path";
 import type { HrLetter } from "@shared/schema";
 import type { AnnexureItem } from "./offerLetterAddendum";
+import { renderLetter, flattenPara, type LetterRenderData } from "@shared/letterRenderer";
 
 const DANCING_SCRIPT_PATH = path.resolve("server/fonts/DancingScript.ttf");
 const hasCursiveFont = fs.existsSync(DANCING_SCRIPT_PATH);
-import {
-  PERFORMANCE_BAND_SENTENCES as DEFAULT_PERFORMANCE_SENTENCES,
-  CONDUCT_BAND_SENTENCES as DEFAULT_CONDUCT_SENTENCES,
-  COMPLETION_BAND_SENTENCES as DEFAULT_COMPLETION_PHRASES,
-  CLOSING_LINE_SENTENCES as DEFAULT_CLOSING_SENTENCES,
-} from "@shared/hrLetterConstants";
 
 export interface HrLetterSentences {
   performance_band?: Record<string, string>;
@@ -20,32 +15,41 @@ export interface HrLetterSentences {
   closing_line?: Record<string, string>;
 }
 
-const TEMPLATE_TITLES: Record<string, string> = {
-  experience: "EXPERIENCE LETTER",
-  internship_completion: "INTERNSHIP COMPLETION LETTER",
-  internship_certificate: "INTERNSHIP CERTIFICATE",
-  relieving: "RELIEVING LETTER",
-};
-
-function formatDate(dateStr?: string | null): string {
-  if (!dateStr) return "—";
-  const d = new Date(dateStr + "T00:00:00");
-  return d.toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" });
-}
-
-function interpolate(sentence: string, letter: HrLetter): string {
-  return sentence
-    .replace(/\[Name\]/g, letter.employeeName)
-    .replace(/\[Company\]/g, "Rayomind Solutions LLP")
-    .replace(/\[Role\]/g, letter.designation)
-    .replace(/\[Department\]/g, letter.department || "the assigned");
-}
-
 export async function generateHrLetterPdf(letter: HrLetter, customSentences?: HrLetterSentences): Promise<Buffer> {
-  const PERFORMANCE_SENTENCES = { ...DEFAULT_PERFORMANCE_SENTENCES, ...(customSentences?.performance_band || {}) };
-  const CONDUCT_SENTENCES = { ...DEFAULT_CONDUCT_SENTENCES, ...(customSentences?.conduct_band || {}) };
-  const COMPLETION_PHRASES = { ...DEFAULT_COMPLETION_PHRASES, ...(customSentences?.completion_band || {}) };
-  const CLOSING_SENTENCES = { ...DEFAULT_CLOSING_SENTENCES, ...(customSentences?.closing_line || {}) };
+  const renderData: LetterRenderData = {
+    templateType: letter.templateType,
+    employeeName: letter.employeeName,
+    employeeCode: letter.employeeCode,
+    designation: letter.designation,
+    department: letter.department,
+    startDate: letter.startDate,
+    endDate: letter.endDate,
+    lastWorkingDay: letter.lastWorkingDay,
+    performanceBand: letter.performanceBand,
+    conductBand: letter.conductBand,
+    completionBand: letter.completionBand,
+    closingLine: letter.closingLine,
+    includeResponsibilities: letter.includeResponsibilities,
+    responsibilitiesSummary: letter.responsibilitiesSummary,
+    includeProject: letter.includeProject,
+    projectName: letter.projectName,
+    customOverrideText: letter.customOverrideText,
+    signatoryName: letter.signatoryName,
+    signatoryDesignation: letter.signatoryDesignation,
+    issueDate: letter.issueDate,
+    referenceNumber: letter.referenceNumber,
+    authCode: letter.authCode,
+    includeSeal: letter.includeSeal,
+    sentencesOverride: customSentences ? {
+      performance_band: customSentences.performance_band,
+      conduct_band: customSentences.conduct_band,
+      completion_band: customSentences.completion_band,
+      closing_line: customSentences.closing_line,
+    } : undefined,
+  };
+
+  const rendered = renderLetter(renderData);
+
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({
       size: "A4",
@@ -89,15 +93,12 @@ export async function generateHrLetterPdf(letter: HrLetter, customSentences?: Hr
     y += 20;
 
     doc.fontSize(9).font("Helvetica").fillColor(mutedColor);
-    const refText = letter.referenceNumber ? `Ref: ${letter.referenceNumber}` : "Draft";
-    const dateText = `Date: ${formatDate(letter.issueDate)}`;
-    doc.text(refText, doc.page.margins.left, y);
-    doc.text(dateText, doc.page.margins.left, y, { align: "right", width: pageWidth });
+    doc.text(rendered.refText, doc.page.margins.left, y);
+    doc.text(rendered.dateText, doc.page.margins.left, y, { align: "right", width: pageWidth });
     y += 30;
 
-    const title = TEMPLATE_TITLES[letter.templateType] || "HR LETTER";
     doc.fontSize(16).font("Helvetica-Bold").fillColor(textColor);
-    doc.text(title, doc.page.margins.left, y, { align: "center", width: pageWidth, underline: true });
+    doc.text(rendered.title, doc.page.margins.left, y, { align: "center", width: pageWidth, underline: true });
     y += 35;
 
     doc.fontSize(11).font("Helvetica").fillColor(textColor);
@@ -109,58 +110,10 @@ export async function generateHrLetterPdf(letter: HrLetter, customSentences?: Hr
       y = doc.y + (opts?.spacing || 12);
     }
 
-    addParagraph("To Whom It May Concern,", { spacing: 20 });
+    addParagraph(rendered.greeting, { spacing: 20 });
 
-    if (letter.templateType === "experience") {
-      addParagraph(
-        `This is to certify that ${letter.employeeName}${letter.employeeCode ? ` (Employee ID: ${letter.employeeCode})` : ""} was employed with Rayomind Solutions LLP as ${letter.designation}${letter.department ? ` in the ${letter.department} department` : ""} from ${formatDate(letter.startDate)} to ${formatDate(letter.endDate)}.`
-      );
-      if (letter.performanceBand && PERFORMANCE_SENTENCES[letter.performanceBand]) {
-        addParagraph(interpolate(PERFORMANCE_SENTENCES[letter.performanceBand], letter));
-      }
-      if (letter.conductBand && CONDUCT_SENTENCES[letter.conductBand]) {
-        addParagraph(interpolate(CONDUCT_SENTENCES[letter.conductBand], letter));
-      }
-    } else if (letter.templateType === "internship_completion") {
-      const completionPhrase = letter.completionBand ? COMPLETION_PHRASES[letter.completionBand] || "completed" : "completed";
-      addParagraph(
-        `This is to certify that ${letter.employeeName}${letter.employeeCode ? ` (Intern ID: ${letter.employeeCode})` : ""} has ${completionPhrase} an internship with Rayomind Solutions LLP${letter.department ? ` in the ${letter.department} department` : ""} from ${formatDate(letter.startDate)} to ${formatDate(letter.endDate)}.`
-      );
-      if (letter.includeProject && letter.projectName) {
-        addParagraph(`During the internship, the intern worked on the project: ${letter.projectName}.`);
-      }
-      if (letter.performanceBand && PERFORMANCE_SENTENCES[letter.performanceBand]) {
-        addParagraph(interpolate(PERFORMANCE_SENTENCES[letter.performanceBand], letter));
-      }
-      addParagraph("This letter is issued for academic/employment/record purposes.");
-    } else if (letter.templateType === "internship_certificate") {
-      const completionPhrase = letter.completionBand ? COMPLETION_PHRASES[letter.completionBand] || "completed" : "completed";
-      addParagraph(
-        `This is to certify that ${letter.employeeName} has ${completionPhrase} an internship with Rayomind Solutions LLP${letter.department ? ` in the ${letter.department} department` : ""} as ${letter.designation} from ${formatDate(letter.startDate)} to ${formatDate(letter.endDate)}.`
-      );
-    } else if (letter.templateType === "relieving") {
-      addParagraph(
-        `This is to confirm that ${letter.employeeName}${letter.employeeCode ? ` (Employee ID: ${letter.employeeCode})` : ""} was employed with Rayomind Solutions LLP as ${letter.designation}${letter.department ? ` in the ${letter.department} department` : ""} from ${formatDate(letter.startDate)}.`
-      );
-      addParagraph(
-        `The resignation submitted has been accepted and ${letter.employeeName} has duly served the notice period and has been relieved from duties effective ${formatDate(letter.lastWorkingDay || letter.endDate)}.`
-      );
-      addParagraph("All company dues have been settled and all company property has been returned.");
-      addParagraph(`The company has no objection to ${letter.employeeName} seeking employment elsewhere.`);
-      addParagraph("This letter is issued at the request of the employee for record and employment/background verification purposes.");
-    }
-
-    if (letter.includeResponsibilities && letter.responsibilitiesSummary) {
-      addParagraph(letter.responsibilitiesSummary);
-    }
-
-    if (letter.customOverrideText) {
-      addParagraph(letter.customOverrideText);
-    }
-
-    if (letter.closingLine && CLOSING_SENTENCES[letter.closingLine]) {
-      y += 10;
-      addParagraph(interpolate(CLOSING_SENTENCES[letter.closingLine], letter));
+    for (const para of rendered.body) {
+      addParagraph(flattenPara(para));
     }
 
     y += 30;
@@ -173,7 +126,7 @@ export async function generateHrLetterPdf(letter: HrLetter, customSentences?: Hr
 
     if (hasCursiveFont) {
       doc.font("DancingScript").fontSize(32).fillColor("#1a1a2e");
-      doc.text(letter.signatoryName || "Authorized Signatory", sigX, y, { width: 220 });
+      doc.text(rendered.signatoryName, sigX, y, { width: 220 });
       y += 36;
     } else {
       y += 30;
@@ -182,12 +135,12 @@ export async function generateHrLetterPdf(letter: HrLetter, customSentences?: Hr
     doc.moveTo(sigX, y).lineTo(sigX + 180, y).lineWidth(0.5).strokeColor("#999999").stroke();
     y += 6;
     doc.font("Helvetica-Bold").fontSize(10).fillColor(textColor);
-    doc.text(letter.signatoryName || "Authorized Signatory", sigX, y);
+    doc.text(rendered.signatoryName, sigX, y);
     y += 14;
     doc.font("Helvetica").fontSize(9).fillColor(mutedColor);
-    doc.text(letter.signatoryDesignation || "Authorized Signatory", sigX, y);
+    doc.text(rendered.signatoryDesignation, sigX, y);
 
-    if (letter.includeSeal) {
+    if (rendered.includeSeal) {
       const sealY = y - 50;
       const cx = sealX + 40;
       const cy = sealY + 40;
@@ -210,11 +163,11 @@ export async function generateHrLetterPdf(letter: HrLetter, customSentences?: Hr
     doc.fontSize(7).font("Helvetica").fillColor("#999999");
     doc.text("Digitally Generated Document — No physical signature required", doc.page.margins.left, y, { width: pageWidth * 0.5 });
 
-    if (letter.referenceNumber && letter.authCode) {
+    if (rendered.referenceNumber && rendered.authCode) {
       doc.font("Courier").fontSize(7).fillColor("#666666");
-      doc.text(`Ref: ${letter.referenceNumber}`, doc.page.margins.left + pageWidth * 0.55, y, { width: pageWidth * 0.45, align: "right" });
+      doc.text(`Ref: ${rendered.referenceNumber}`, doc.page.margins.left + pageWidth * 0.55, y, { width: pageWidth * 0.45, align: "right" });
       y += 10;
-      doc.text(`Auth: ${letter.authCode}`, doc.page.margins.left + pageWidth * 0.55, y, { width: pageWidth * 0.45, align: "right" });
+      doc.text(`Auth: ${rendered.authCode}`, doc.page.margins.left + pageWidth * 0.55, y, { width: pageWidth * 0.45, align: "right" });
       y += 12;
       doc.fontSize(7).font("Helvetica-Oblique").fillColor("#AAAAAA");
       doc.text("Verify authenticity at hire-in.com/verify using the reference and auth code above", doc.page.margins.left, y, { align: "center", width: pageWidth });
@@ -224,7 +177,6 @@ export async function generateHrLetterPdf(letter: HrLetter, customSentences?: Hr
       doc.text("Draft — cryptographic verification will be assigned upon issuance", doc.page.margins.left, y, { align: "center", width: pageWidth });
     }
 
-    // Append user-defined annexures as new pages
     const annexures = (letter as any).annexureData;
     if (Array.isArray(annexures) && annexures.length > 0) {
       const LABELS = ["A", "B", "C", "D", "E"];

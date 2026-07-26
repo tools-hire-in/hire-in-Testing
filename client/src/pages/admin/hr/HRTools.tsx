@@ -25,7 +25,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { StepIndicator } from "@/components/ui/step-indicator";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetFooter, SheetDescription } from "@/components/ui/sheet";
 import { OfferLetterBody } from "@/components/OfferLetterBody";
-import { LetterGenerator } from "@/components/hr/LetterGenerator";
+import { LetterEditor } from "@/components/hr/LetterEditor";
 import { LetterPreview } from "@/components/hr/LetterPreview";
 import { LettersDashboard } from "@/components/hr/LettersDashboard";
 import { LetterTemplatesSection } from "@/components/hr/LetterTemplatesSection";
@@ -4633,7 +4633,7 @@ export default function HRTools() {
           </TabsContent>
 
           <TabsContent value="letter-generator">
-            <LetterGenerator />
+            <LetterEditor />
           </TabsContent>
 
           {isAdmin && (
