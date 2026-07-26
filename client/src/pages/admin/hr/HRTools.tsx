@@ -29,6 +29,7 @@ import { LetterEditor } from "@/components/hr/LetterEditor";
 import { LetterPreview } from "@/components/hr/LetterPreview";
 import { LettersDashboard } from "@/components/hr/LettersDashboard";
 import { LetterTemplatesSection } from "@/components/hr/LetterTemplatesSection";
+import { TemplateLibrary } from "@/components/hr/TemplateLibrary";
 import { AnnexureEditor, buildGoalsFromAnnexures, type AnnexureItem } from "@/components/hr/AnnexureEditor";
 import { useAuth } from "@/hooks/use-auth";
 import { useToast } from "@/hooks/use-toast";
@@ -4515,6 +4516,7 @@ export default function HRTools() {
   });
   const [discardPendingTab, setDiscardPendingTab] = useState<string | null>(null);
   const [isDiscardingDraft, setIsDiscardingDraft] = useState(false);
+  const [pendingTemplateId, setPendingTemplateId] = useState<number | undefined>(undefined);
 
   useEffect(() => {
     if (!authLoading && !isAuthenticated) {
@@ -4546,8 +4548,10 @@ export default function HRTools() {
   }
 
   const isAdmin = ["super_admin", "admin"].includes(user?.role || "");
+  const isHrOrAdmin = ["super_admin", "admin", "hr"].includes(user?.role || "");
+  const canSeeTemplatesTab = isHrOrAdmin || user?.role === "manager";
 
-  const validTabs = ["salary-slip", "letter-generator", "letters", "policy-signoffs", ...(isAdmin ? ["templates"] : [])];
+  const validTabs = ["salary-slip", "letter-generator", "letters", "policy-signoffs", ...(canSeeTemplatesTab ? ["templates"] : [])];
   let initialTab = "salary-slip";
   try {
     const tab = new URLSearchParams(window.location.search).get("tab");
@@ -4612,7 +4616,7 @@ export default function HRTools() {
               <ScrollText className="h-4 w-4 mr-2" />
               Letter Generator
             </TabsTrigger>
-            {isAdmin && (
+            {canSeeTemplatesTab && (
               <TabsTrigger value="templates" data-testid="tab-templates">
                 <FileText className="h-4 w-4 mr-2" />
                 Templates
@@ -4633,12 +4637,33 @@ export default function HRTools() {
           </TabsContent>
 
           <TabsContent value="letter-generator">
-            <LetterEditor />
+            <LetterEditor initialTemplateId={pendingTemplateId} />
           </TabsContent>
 
-          {isAdmin && (
+          {canSeeTemplatesTab && (
             <TabsContent value="templates">
-              <LetterTemplatesSection />
+              <div className="space-y-6">
+                <Tabs defaultValue="library">
+                  <TabsList className="mb-4">
+                    <TabsTrigger value="library" data-testid="tab-template-library">
+                      Template Library
+                    </TabsTrigger>
+                    {isHrOrAdmin && (
+                      <TabsTrigger value="sentences" data-testid="tab-template-sentences">
+                        Clause Sentences
+                      </TabsTrigger>
+                    )}
+                  </TabsList>
+                  <TabsContent value="library">
+                    <TemplateLibrary onUseTemplate={(id, _letterType) => { setPendingTemplateId(id); navigateToTab("letter-generator"); }} />
+                  </TabsContent>
+                  {isHrOrAdmin && (
+                    <TabsContent value="sentences">
+                      <LetterTemplatesSection />
+                    </TabsContent>
+                  )}
+                </Tabs>
+              </div>
             </TabsContent>
           )}
 

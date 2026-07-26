@@ -908,6 +908,7 @@ export const hrLetters = pgTable("hr_letters", {
   revisionRound: integer("revision_round").notNull().default(0),
   revisionReason: text("revision_reason"),
   ccRecipients: jsonb("cc_recipients"),
+  fromTemplateId: integer("from_template_id"),
 }, (table) => [
   uniqueIndex("hr_letters_reference_number_idx").on(table.referenceNumber),
 ]);
@@ -952,6 +953,35 @@ export const insertLetterReviewCycleSchema = createInsertSchema(letterReviewCycl
 });
 export type InsertLetterReviewCycle = z.infer<typeof insertLetterReviewCycleSchema>;
 export type LetterReviewCycle = typeof letterReviewCycles.$inferSelect;
+
+// ==========================================
+// LETTER TEMPLATE LIBRARY
+// ==========================================
+
+export const letterTemplates = pgTable("letter_templates", {
+  id: integer("id").primaryKey().generatedAlwaysAsIdentity(),
+  name: varchar("name").notNull(),
+  description: text("description"),
+  letterType: varchar("letter_type").notNull(),
+  templateData: jsonb("template_data").notNull().default({}),
+  isSystem: boolean("is_system").notNull().default(false),
+  isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by").references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  usageCount: integer("usage_count").notNull().default(0),
+}, (table) => [
+  unique("letter_templates_name_type_unique").on(table.name, table.letterType),
+]);
+
+export const insertLetterTemplateSchema = createInsertSchema(letterTemplates).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  usageCount: true,
+});
+export type InsertLetterTemplate = z.infer<typeof insertLetterTemplateSchema>;
+export type LetterTemplate = typeof letterTemplates.$inferSelect;
 
 // ==========================================
 // PERFORMANCE MANAGEMENT SYSTEM

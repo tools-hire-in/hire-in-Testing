@@ -70,6 +70,7 @@ export const TEMPLATE_LABELS: Record<string, string> = {
   role_change: "Designation / Promotion Letter",
   combined: "Salary + Designation (Combined)",
   device_allocation: "Device Allocation Letter",
+  offer_letter: "Offer Letter",
 };
 
 export const AMENDMENT_TEMPLATE_TYPES = ["salary_revision", "role_change", "combined", "device_allocation"] as const;

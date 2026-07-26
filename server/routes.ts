@@ -27695,6 +27695,187 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     }
   });
 
+  // ─── Letter Template Library CRUD ────────────────────────────────────────────
+  // These routes MUST be declared before /api/hr/letters/:id to avoid
+  // the param-catching that route from matching "letter-templates".
+
+  app.get("/api/hr/templates", requirePermission("hr.letters", "hr", "manager"), async (req, res) => {
+    try {
+      const { letterType, system } = req.query;
+      const rows = await db.execute(sql`
+        SELECT lt.*, au.first_name, au.last_name
+        FROM letter_templates lt
+        LEFT JOIN admin_users au ON au.id = lt.created_by
+        WHERE lt.is_active = true
+          ${letterType ? sql`AND lt.letter_type = ${letterType as string}` : sql``}
+          ${system === "true" ? sql`AND lt.is_system = true` : system === "false" ? sql`AND lt.is_system = false` : sql``}
+        ORDER BY lt.is_system DESC, lt.usage_count DESC, lt.created_at DESC
+      `);
+      res.json(rows.rows);
+    } catch (err) {
+      console.error("GET /api/hr/templates error:", err);
+      res.status(500).json({ error: "Failed to fetch templates" });
+    }
+  });
+
+  app.get("/api/hr/templates/:id", requirePermission("hr.letters", "hr", "manager"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid template id" });
+      const rows = await db.execute(sql`SELECT * FROM letter_templates WHERE id = ${id}`);
+      const tpl = rows.rows[0];
+      if (!tpl) return res.status(404).json({ error: "Template not found" });
+      res.json(tpl);
+    } catch (err) {
+      res.status(500).json({ error: "Failed to fetch template" });
+    }
+  });
+
+  app.post("/api/hr/templates", requirePermission("hr.letters.create", "hr"), async (req, res) => {
+    try {
+      const { name, description, letterType, templateData } = req.body;
+      if (!name?.trim()) return res.status(400).json({ error: "name is required" });
+      if (!letterType?.trim()) return res.status(400).json({ error: "letterType is required" });
+      const rows = await db.execute(sql`
+        INSERT INTO letter_templates (name, description, letter_type, template_data, is_system, is_active, created_by)
+        VALUES (${name.trim()}, ${description?.trim() ?? null}, ${letterType.trim()},
+                ${JSON.stringify(templateData ?? {})}::jsonb, false, true, ${req.session.userId!})
+        RETURNING *
+      `);
+      res.status(201).json(rows.rows[0]);
+    } catch (err: any) {
+      if (err?.code === "23505") {
+        return res.status(409).json({ error: "A template with this name and letter type already exists." });
+      }
+      console.error("POST /api/hr/templates error:", err);
+      res.status(500).json({ error: "Failed to create template" });
+    }
+  });
+
+  app.patch("/api/hr/templates/:id", requirePermission("hr.letters.create", "hr"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid template id" });
+      const existing = await db.execute(sql`SELECT * FROM letter_templates WHERE id = ${id}`);
+      const tpl = existing.rows[0] as any;
+      if (!tpl) return res.status(404).json({ error: "Template not found" });
+      if (tpl.is_system) return res.status(403).json({ error: "System templates cannot be edited directly. Duplicate it first." });
+      const { name, description, templateData } = req.body;
+      // Apply each field individually to avoid embedded ::jsonb inside parameter string
+      if (name?.trim()) {
+        await db.execute(sql`UPDATE letter_templates SET name = ${name.trim()}, updated_at = NOW() WHERE id = ${id}`);
+      }
+      if (description !== undefined) {
+        await db.execute(sql`UPDATE letter_templates SET description = ${description?.trim() ?? null}, updated_at = NOW() WHERE id = ${id}`);
+      }
+      if (templateData !== undefined) {
+        const tdJson = JSON.stringify(templateData);
+        await db.execute(sql`UPDATE letter_templates SET template_data = ${tdJson}::jsonb, updated_at = NOW() WHERE id = ${id}`);
+      }
+      const rows = await db.execute(sql`SELECT * FROM letter_templates WHERE id = ${id}`);
+      res.json(rows.rows[0]);
+    } catch (err) {
+      console.error("PATCH /api/hr/templates/:id error:", err);
+      res.status(500).json({ error: "Failed to update template" });
+    }
+  });
+
+  app.post("/api/hr/templates/:id/duplicate", requirePermission("hr.letters.create", "hr"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid template id" });
+      const existing = await db.execute(sql`SELECT * FROM letter_templates WHERE id = ${id}`);
+      const tpl = existing.rows[0] as any;
+      if (!tpl) return res.status(404).json({ error: "Template not found" });
+      const baseName = `${tpl.name} (Copy)`;
+      let name = baseName;
+      let suffix = 2;
+      while (true) {
+        const conflict = await db.execute(sql`SELECT 1 FROM letter_templates WHERE name = ${name} AND letter_type = ${tpl.letter_type}`);
+        if (conflict.rows.length === 0) break;
+        name = `${baseName} ${suffix++}`;
+      }
+      const rows = await db.execute(sql`
+        INSERT INTO letter_templates (name, description, letter_type, template_data, is_system, is_active, created_by)
+        VALUES (${name}, ${tpl.description}, ${tpl.letter_type}, ${JSON.stringify(tpl.template_data)}::jsonb, false, true, ${req.session.userId!})
+        RETURNING *
+      `);
+      res.status(201).json(rows.rows[0]);
+    } catch (err) {
+      console.error("POST /api/hr/templates/:id/duplicate error:", err);
+      res.status(500).json({ error: "Failed to duplicate template" });
+    }
+  });
+
+  app.patch("/api/hr/templates/:id/archive", requirePermission("hr.letters.create", "hr"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid template id" });
+      const existing = await db.execute(sql`SELECT * FROM letter_templates WHERE id = ${id}`);
+      const tpl = existing.rows[0] as any;
+      if (!tpl) return res.status(404).json({ error: "Template not found" });
+      if (tpl.is_system) return res.status(403).json({ error: "System templates cannot be archived." });
+      await db.execute(sql`UPDATE letter_templates SET is_active = false, updated_at = NOW() WHERE id = ${id}`);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ error: "Failed to archive template" });
+    }
+  });
+
+  // Preview data: returns template fields with placeholder substitution for preview rendering
+  app.get("/api/hr/templates/:id/preview-data", requirePermission("hr.letters", "hr", "manager"), async (req, res) => {
+    try {
+      const id = parseInt(req.params.id, 10);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid template id" });
+      const result = await db.execute(sql`SELECT * FROM letter_templates WHERE id = ${id} AND is_active = true`);
+      const tpl = result.rows[0] as any;
+      if (!tpl) return res.status(404).json({ error: "Template not found" });
+      const td = (typeof tpl.template_data === "string" ? JSON.parse(tpl.template_data) : tpl.template_data) || {};
+      const AMENDMENT_TYPES = ["salary_revision", "role_change", "combined", "device_allocation"];
+      const isAmendment = AMENDMENT_TYPES.includes(tpl.letter_type);
+      // Build placeholder-substituted preview fields
+      const previewFields: Record<string, string> = {
+        employeeName: "[Employee Name]",
+        employeeCode: "[EMP-001]",
+        designation: "[Designation]",
+        department: "[Department]",
+        startDate: "[Date of Joining]",
+        endDate: "[Last Working Day]",
+        signatoryDesignation: td.signatoryDesignation || "HR Manager",
+        signatoryName: td.defaultSignatoryName || "[Signatory Name]",
+      };
+      if (td.performanceBand) previewFields.performanceBand = td.performanceBand;
+      if (td.conductBand) previewFields.conductBand = td.conductBand;
+      if (td.completionBand) previewFields.completionBand = td.completionBand;
+      if (td.closingLine) previewFields.closingLine = td.closingLine;
+      if (td.customIntroText) previewFields.customIntroText = td.customIntroText;
+      if (td.customBodyText) previewFields.customBodyText = td.customBodyText;
+      // Amendment-specific placeholders
+      if (isAmendment) {
+        previewFields.effectiveDate = "[Effective Date]";
+        previewFields.previousSalary = "[Previous CTC]";
+        previewFields.newSalary = "[Revised CTC]";
+        previewFields.previousDesignation = "[Previous Designation]";
+        previewFields.newDesignation = "[New Designation]";
+      }
+      res.json({
+        id: tpl.id,
+        name: tpl.name,
+        description: tpl.description,
+        letter_type: tpl.letter_type,
+        is_system: tpl.is_system,
+        template_data: td,
+        preview_fields: previewFields,
+        is_amendment: isAmendment,
+      });
+    } catch (err) {
+      console.error("GET /api/hr/templates/:id/preview-data error:", err);
+      res.status(500).json({ error: "Failed to fetch template preview data" });
+    }
+  });
+
+  // ─────────────────────────────────────────────────────────────────────────────
+
   app.get("/api/hr/letters", requirePermission("hr.letters", "hr"), async (req, res) => {
     try {
       const { templateType, status, search } = req.query;
@@ -27831,6 +28012,8 @@ Return JSON with keys: linkedin, instagram, facebook.`;
           validatedAnnexures = rawAnnexures.map((a: any) => ({ title: String(a.title), body: String(a.body) }));
         }
 
+        const fromTemplateId = req.body.fromTemplateId ? parseInt(req.body.fromTemplateId, 10) || null : null;
+
         const letterData: InsertHrLetter = {
           templateType: templateType as InsertHrLetter["templateType"],
           employeeId: resolvedEmployeeId,
@@ -27848,6 +28031,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
           annexureData: validatedAnnexures || null,
           createdBy: req.session.userId!,
           status: "draft",
+          fromTemplateId,
         };
 
         const draft = await letterService.createDraft(letterData);
@@ -28006,6 +28190,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       if (Object.keys(profileUpdates).length > 0) {
         await storage.updateAdminUser(req.body.employeeId, profileUpdates);
       }
+      const stdFromTemplateId = req.body.fromTemplateId ? parseInt(req.body.fromTemplateId, 10) || null : null;
       const data = {
         ...body,
         employeeName: resolvedEmployeeName,
@@ -28015,6 +28200,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         location: req.body.location || employee.location || "",
         createdBy: req.session.userId!,
         status: "draft",
+        fromTemplateId: stdFromTemplateId,
       };
       const letter = await letterService.createDraft(data);
       await storage.createAuditLog({

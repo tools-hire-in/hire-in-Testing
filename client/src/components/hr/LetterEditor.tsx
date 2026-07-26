@@ -4,9 +4,11 @@ import {
   FileText, Loader2, Search, ChevronRight, ChevronLeft, Eye, CheckCircle,
   TrendingUp, Award, Layers, Laptop, Plus, Trash2, Mail,
   Cloud, CloudOff, AlertTriangle, RotateCcw, AlertCircle,
+  LayoutTemplate, Star, ChevronDown as ChevronDownIcon,
 } from "lucide-react";
 import { AnnexureEditor, buildGoalsFromAnnexures, type AnnexureItem } from "./AnnexureEditor";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -224,9 +226,10 @@ export interface LetterEditorProps {
   config?: TemplateConfig;
   editingLetter?: HrLetter;
   onResubmitted?: () => void;
+  initialTemplateId?: number;
 }
 
-export function LetterEditor({ letterType = "all", config, editingLetter, onResubmitted }: LetterEditorProps) {
+export function LetterEditor({ letterType = "all", config, editingLetter, onResubmitted, initialTemplateId }: LetterEditorProps) {
   const { user } = useAuth();
   const { toast } = useToast();
   const [step, setStep] = useState(editingLetter ? 1 : 0);
@@ -241,6 +244,8 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
   const [annexures, setAnnexures] = useState<AnnexureItem[]>([]);
   const [amendmentPolicyAnnexures, setAmendmentPolicyAnnexures] = useState<string[]>([]);
   const [showDiscardDialog, setShowDiscardDialog] = useState(false);
+  const [appliedTemplateId, setAppliedTemplateId] = useState<number | null>(null);
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
   const effectiveConfig: TemplateConfig = config ?? (
     letterType === "hr_letter"  ? hrLetterConfig  :
@@ -289,7 +294,33 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
     if (Array.isArray(d.annexures)) setAnnexures(d.annexures as AnnexureItem[]);
     if (Array.isArray(d.amendmentPolicyAnnexures)) setAmendmentPolicyAnnexures(d.amendmentPolicyAnnexures as string[]);
     if (typeof d._step === "number") setStep(d._step);
+    if (typeof d.appliedTemplateId === "number") setAppliedTemplateId(d.appliedTemplateId);
   }, [rehydratedLetter]);
+
+  // Auto-apply initialTemplateId from template library "Use" action
+  const initialTemplateApplied = useRef(false);
+  useEffect(() => {
+    if (!initialTemplateId || initialTemplateApplied.current) return;
+    if (letterTemplates.length === 0) return;
+    const tpl = letterTemplates.find((t) => t.id === initialTemplateId);
+    if (!tpl) return;
+    initialTemplateApplied.current = true;
+    const td = tpl.template_data || {};
+    setForm((prev) => ({
+      ...prev,
+      templateType: tpl.letter_type,
+      performanceBand: (td.performanceBand as string) || prev.performanceBand,
+      conductBand: (td.conductBand as string) || prev.conductBand,
+      completionBand: (td.completionBand as string) || prev.completionBand,
+      closingLine: (td.closingLine as string) || prev.closingLine,
+      signatoryDesignation: (td.signatoryDesignation as string) || prev.signatoryDesignation,
+      signatoryName: (td.defaultSignatoryName as string) || prev.signatoryName,
+      customOverrideText: (td.customBodyText as string) || prev.customOverrideText,
+    }));
+    setAppliedTemplateId(tpl.id);
+    setShowTemplatePicker(false);
+    setStep(1);
+  }, [initialTemplateId, letterTemplates]);
 
   // Auto-save: debounced PATCH on every meaningful state change
   useEffect(() => {
@@ -303,8 +334,9 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
       manualEmployeeEmail,
       annexures,
       amendmentPolicyAnnexures,
+      appliedTemplateId,
     }, step);
-  }, [form, amendmentMeta, isManualEntry, manualEmployeeEmail, annexures, amendmentPolicyAnnexures, step]);
+  }, [form, amendmentMeta, isManualEntry, manualEmployeeEmail, annexures, amendmentPolicyAnnexures, appliedTemplateId, step]);
 
   const { data: usersData } = useQuery<{ users: AdminUser[]; counts?: Record<string, number> } | AdminUser[]>({
     queryKey: ["/api/admin/users", "all_non_deleted"],
@@ -337,6 +369,19 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
     const merged = { ...CLOSING_LINE_SENTENCES, ...(sentencesOverride.closing_line || {}) };
     return merged;
   }, [sentencesOverride]);
+
+  const { data: letterTemplates = [] } = useQuery<Array<{
+    id: number; name: string; description: string | null; letter_type: string;
+    template_data: Record<string, unknown>; is_system: boolean; usage_count: number;
+  }>>({
+    queryKey: ["/api/hr/templates"],
+    queryFn: async () => {
+      const res = await fetch("/api/hr/templates", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    staleTime: 60000,
+  });
 
   const { data: allDbRoles = [] } = useQuery<RoleSummaryTemplate[]>({
     queryKey: ["/api/hr/letter-templates/roles"],
@@ -739,7 +784,7 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
         payload.employeeId = form.employeeId;
         payload.employeeCode = form.employeeCode;
       }
-
+      if (appliedTemplateId) payload.fromTemplateId = appliedTemplateId;
       createMutation.mutate(payload);
     } else {
       const payload: Record<string, unknown> = { ...form };
@@ -754,6 +799,7 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
       if (!payload.signatoryId) delete payload.signatoryId;
       if (!payload.employeeId) delete payload.employeeId;
       if (annexures.length > 0) payload.annexureData = annexures;
+      if (appliedTemplateId) payload.fromTemplateId = appliedTemplateId;
       createMutation.mutate(payload);
     }
   }
@@ -909,7 +955,12 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
                       key={type}
                       data-testid={`btn-template-${type}`}
                       disabled={isRevisionMode}
-                      onClick={() => !isRevisionMode && setForm(prev => ({ ...prev, templateType: type }))}
+                      onClick={() => {
+                        if (isRevisionMode) return;
+                        setForm(prev => ({ ...prev, templateType: type }));
+                        setAppliedTemplateId(null);
+                        setShowTemplatePicker(false);
+                      }}
                       className={`p-4 rounded-lg border text-left transition-colors ${isRevisionMode ? "opacity-50 cursor-not-allowed" : ""} ${form.templateType === type ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
                     >
                       <div className="font-medium">{TEMPLATE_LABELS[type]}</div>
@@ -930,7 +981,12 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
                         key={cfg.value}
                         data-testid={`btn-template-${cfg.value}`}
                         disabled={isRevisionMode}
-                        onClick={() => !isRevisionMode && setForm(prev => ({ ...prev, templateType: cfg.value }))}
+                        onClick={() => {
+                          if (isRevisionMode) return;
+                          setForm(prev => ({ ...prev, templateType: cfg.value }));
+                          setAppliedTemplateId(null);
+                          setShowTemplatePicker(false);
+                        }}
                         className={`p-4 rounded-lg border text-left transition-colors ${isRevisionMode ? "opacity-50 cursor-not-allowed" : ""} ${form.templateType === cfg.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/50"}`}
                       >
                         <div className="flex items-center gap-2 mb-1">
@@ -944,6 +1000,71 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
                 </div>
               </div>
             )}
+
+            {/* Template picker — shown when a letter type is selected */}
+            {form.templateType && !isRevisionMode && (() => {
+              const typeTemplates = letterTemplates.filter(t => t.letter_type === form.templateType);
+              if (typeTemplates.length === 0) return null;
+              return (
+                <div className="border rounded-lg overflow-hidden" data-testid="template-picker-section">
+                  <button
+                    className="w-full flex items-center justify-between px-4 py-3 bg-muted/40 hover:bg-muted/60 transition-colors text-sm font-medium"
+                    onClick={() => setShowTemplatePicker(v => !v)}
+                    data-testid="btn-toggle-template-picker"
+                  >
+                    <div className="flex items-center gap-2">
+                      <LayoutTemplate className="h-4 w-4 text-primary" />
+                      {appliedTemplateId
+                        ? <span>Template applied: <span className="text-primary">{typeTemplates.find(t => t.id === appliedTemplateId)?.name}</span></span>
+                        : <span>Start from a saved template <span className="text-muted-foreground font-normal">({typeTemplates.length} available)</span></span>
+                      }
+                    </div>
+                    <ChevronDownIcon className={`h-4 w-4 text-muted-foreground transition-transform ${showTemplatePicker ? "rotate-180" : ""}`} />
+                  </button>
+                  {showTemplatePicker && (
+                    <div className="divide-y">
+                      {typeTemplates.map(tpl => (
+                        <button
+                          key={tpl.id}
+                          className={`w-full flex items-start justify-between px-4 py-3 text-left hover:bg-muted/30 transition-colors gap-3 ${appliedTemplateId === tpl.id ? "bg-primary/5 border-l-2 border-primary" : ""}`}
+                          onClick={() => {
+                            const td = tpl.template_data || {};
+                            setForm(prev => ({
+                              ...prev,
+                              performanceBand: (td.performanceBand as string) || prev.performanceBand,
+                              conductBand: (td.conductBand as string) || prev.conductBand,
+                              completionBand: (td.completionBand as string) || prev.completionBand,
+                              closingLine: (td.closingLine as string) || prev.closingLine,
+                              signatoryDesignation: (td.signatoryDesignation as string) || prev.signatoryDesignation,
+                              signatoryName: (td.defaultSignatoryName as string) || prev.signatoryName,
+                              customOverrideText: (td.customBodyText as string) || prev.customOverrideText,
+                            }));
+                            setAppliedTemplateId(tpl.id);
+                            setShowTemplatePicker(false);
+                          }}
+                          data-testid={`btn-apply-template-${tpl.id}`}
+                        >
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium truncate">{tpl.name}</span>
+                              {tpl.is_system && (
+                                <Badge variant="secondary" className="text-xs flex items-center gap-1 bg-amber-50 text-amber-700 border-amber-200 shrink-0">
+                                  <Star className="h-2.5 w-2.5" /> System
+                                </Badge>
+                              )}
+                            </div>
+                            {tpl.description && <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{tpl.description}</p>}
+                          </div>
+                          {appliedTemplateId === tpl.id && (
+                            <CheckCircle className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
           </div>
         )}
 

@@ -16,6 +16,7 @@ import crypto from "crypto";
 import fs from "fs";
 import path from "path";
 import { db } from "../db";
+import { sql } from "drizzle-orm";
 import { hrLetters, letterReviewCycles, offerLetters } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import { storage } from "../storage";
@@ -633,6 +634,13 @@ export async function issue(
     action: "issue_hr_letter",
     changes: { referenceNumber, authCode, status: "issued", pdfPath: storedPath },
   });
+
+  // Increment template usage_count when letter was created from a template
+  const fromTemplateId = (letter as any).fromTemplateId ?? null;
+  if (fromTemplateId) {
+    db.execute(sql`UPDATE letter_templates SET usage_count = usage_count + 1, updated_at = NOW() WHERE id = ${fromTemplateId}`)
+      .catch(() => {});
+  }
 
   const mimeType = ext === "pdf"
     ? "application/pdf"

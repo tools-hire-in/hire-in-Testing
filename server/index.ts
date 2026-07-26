@@ -479,6 +479,97 @@ async function ensureHrLetterAmendmentTypes() {
   }
 }
 
+async function ensureLetterTemplatesTable() {
+  try {
+    await db.execute(sql`
+      CREATE TABLE IF NOT EXISTS letter_templates (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR NOT NULL,
+        description TEXT,
+        letter_type VARCHAR NOT NULL,
+        template_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+        is_system BOOLEAN NOT NULL DEFAULT false,
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        created_by VARCHAR REFERENCES admin_users(id) ON DELETE SET NULL,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        usage_count INTEGER NOT NULL DEFAULT 0,
+        UNIQUE(name, letter_type)
+      )
+    `);
+    await db.execute(sql`ALTER TABLE hr_letters ADD COLUMN IF NOT EXISTS from_template_id INTEGER REFERENCES letter_templates(id) ON DELETE SET NULL`);
+    log("letter_templates table and hr_letters.from_template_id ensured");
+
+    const systemTemplates = [
+      {
+        name: "Standard Experience Letter",
+        description: "Default template for employee experience certificates. Includes performance and conduct bands.",
+        letter_type: "experience",
+        template_data: JSON.stringify({ performanceBand: "good", conductBand: "good", closingLine: "wish_success", signatoryDesignation: "HR Manager" }),
+      },
+      {
+        name: "Standard Relieving Letter",
+        description: "Default template for full & final relieving letters.",
+        letter_type: "relieving",
+        template_data: JSON.stringify({ closingLine: "wish_success", signatoryDesignation: "HR Manager" }),
+      },
+      {
+        name: "Standard Internship Completion Letter",
+        description: "Default template for internship completion letters.",
+        letter_type: "internship_completion",
+        template_data: JSON.stringify({ performanceBand: "good", completionBand: "successfully_completed", closingLine: "wish_success", signatoryDesignation: "HR Manager" }),
+      },
+      {
+        name: "Standard Internship Certificate",
+        description: "Default template for internship certificates.",
+        letter_type: "internship_certificate",
+        template_data: JSON.stringify({ completionBand: "successfully_completed", signatoryDesignation: "HR Manager" }),
+      },
+      {
+        name: "Standard Salary Revision Letter",
+        description: "Default amendment template for salary revision letters.",
+        letter_type: "salary_revision",
+        template_data: JSON.stringify({ signatoryDesignation: "HR Manager" }),
+      },
+      {
+        name: "Standard Designation / Promotion Letter",
+        description: "Default amendment template for designation or promotion change letters.",
+        letter_type: "role_change",
+        template_data: JSON.stringify({ signatoryDesignation: "HR Manager" }),
+      },
+      {
+        name: "Standard Salary + Designation (Combined)",
+        description: "Default amendment template combining salary revision with designation change.",
+        letter_type: "combined",
+        template_data: JSON.stringify({ signatoryDesignation: "HR Manager" }),
+      },
+      {
+        name: "Standard Device Allocation Letter",
+        description: "Default amendment template for company device allocation.",
+        letter_type: "device_allocation",
+        template_data: JSON.stringify({ signatoryDesignation: "HR Manager" }),
+      },
+      {
+        name: "Standard Offer Letter",
+        description: "Default system template for new-hire offer letters.",
+        letter_type: "offer_letter",
+        template_data: JSON.stringify({ signatoryDesignation: "HR Manager" }),
+      },
+    ];
+
+    for (const t of systemTemplates) {
+      await db.execute(sql`
+        INSERT INTO letter_templates (name, description, letter_type, template_data, is_system, is_active)
+        VALUES (${t.name}, ${t.description}, ${t.letter_type}, ${t.template_data}::jsonb, true, true)
+        ON CONFLICT (name, letter_type) DO NOTHING
+      `);
+    }
+    log("System letter templates seeded");
+  } catch (err) {
+    console.error("letter_templates ensure/seed error:", err);
+  }
+}
+
 async function ensureContentStudioTables() {
   try {
     log("Ensuring Content Studio enum, tables, indexes, and seed project...");
@@ -3386,6 +3477,7 @@ async function runStartupTasks() {
   await ensureGoalMilestonesAndLinks();
   await ensureHrLettersTables();
   await ensureHrLetterAmendmentTypes();
+  await ensureLetterTemplatesTable();
   try {
     await db.execute(sql`ALTER TABLE salary_slips ADD COLUMN IF NOT EXISTS lop_leaves numeric DEFAULT '0'`);
   } catch (err) {
