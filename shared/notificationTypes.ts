@@ -227,6 +227,14 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
     category: "hr",
     typePrefixes: ["recognition_certificate_", "recognition_issued", "recognition_returned", "recognition_rejected", "recognition_"],
   },
+  // ── Contracts ─────────────────────────────────────────────────────────────
+  {
+    key: "contract_submissions",
+    label: "Contract submissions",
+    description: "Notifications when a manager or director submits a contract for review, or when their submission is approved/sent back.",
+    category: "hr",
+    typePrefixes: ["contract_submission_"],
+  },
   // ── System ────────────────────────────────────────────────────────────────
   {
     key: "system_general",

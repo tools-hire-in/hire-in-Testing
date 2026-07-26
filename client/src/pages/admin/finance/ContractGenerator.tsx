@@ -115,6 +115,14 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
   const [candidateAnnualSalary, setCandidateAnnualSalary] = useState("");
   const [businessMarketingCost, setBusinessMarketingCost] = useState("");
 
+  // Contractor details (optional)
+  const [showContractorDetails, setShowContractorDetails] = useState(false);
+  const [contractorName, setContractorName] = useState("");
+  const [contractorType, setContractorType] = useState("");
+  const [contractorEmail, setContractorEmail] = useState("");
+  const [contractorPhone, setContractorPhone] = useState("");
+  const [contractorCompany, setContractorCompany] = useState("");
+
   const isHourlyGen = contractType === "contract_hourly" || contractType === "contract_to_hire";
   const isPermGen = contractType === "permanent_placement";
 
@@ -297,6 +305,13 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
           financialPayload.candidateAnnualSalary = candidateAnnualSalary || undefined;
         }
       }
+      const contractorDetails: Record<string, string> = {};
+      if (contractorName) contractorDetails.name = contractorName;
+      if (contractorType) contractorDetails.contractorType = contractorType;
+      if (contractorEmail) contractorDetails.email = contractorEmail;
+      if (contractorPhone) contractorDetails.phone = contractorPhone;
+      if (contractorCompany) contractorDetails.companyAgency = contractorCompany;
+
       return apiRequest("POST", "/api/contracts", {
         templateId: templateId || null,
         clientId: clientId || null,
@@ -310,6 +325,7 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
         billingFrequency: billingFreq || null,
         notes: notes || null,
         templateName: selectedTemplate?.name || null,
+        ...(Object.keys(contractorDetails).length > 0 ? { contractorDetails } : {}),
         ...financialPayload,
       });
     },
@@ -912,6 +928,52 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
                   value={businessMarketingCost} onChange={e => setBusinessMarketingCost(e.target.value)}
                   data-testid="input-bmc-gen" />
               </div>
+            </div>
+
+            {/* ── Contractor Details (optional) ─── */}
+            <div className="rounded-lg border bg-slate-50/50 overflow-hidden">
+              <button
+                type="button"
+                className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100/50 transition-colors"
+                onClick={() => setShowContractorDetails(v => !v)}
+                data-testid="button-toggle-contractor-details-gen"
+              >
+                <span>Contractor / Candidate Details <span className="text-xs font-normal text-muted-foreground">(optional)</span></span>
+                <span className="text-muted-foreground text-xs">{showContractorDetails ? "▲ Hide" : "▼ Show"}</span>
+              </button>
+              {showContractorDetails && (
+                <div className="px-4 pb-4 pt-2 grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Contractor Name</Label>
+                    <Input placeholder="Full name" value={contractorName} onChange={e => setContractorName(e.target.value)} data-testid="input-contractor-name-gen" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Contractor Type</Label>
+                    <Select value={contractorType} onValueChange={setContractorType}>
+                      <SelectTrigger data-testid="select-contractor-type-gen">
+                        <SelectValue placeholder="Select type..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="external_contractor">External Contractor</SelectItem>
+                        <SelectItem value="internal_employee">Internal Employee</SelectItem>
+                        <SelectItem value="sub_vendor">Sub-Vendor</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Email</Label>
+                    <Input type="email" placeholder="contractor@email.com" value={contractorEmail} onChange={e => setContractorEmail(e.target.value)} data-testid="input-contractor-email-gen" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Phone</Label>
+                    <Input placeholder="+1 555 000 0000" value={contractorPhone} onChange={e => setContractorPhone(e.target.value)} data-testid="input-contractor-phone-gen" />
+                  </div>
+                  <div className="space-y-1.5 col-span-2">
+                    <Label className="text-xs">Company / Agency</Label>
+                    <Input placeholder="Agency or employer name" value={contractorCompany} onChange={e => setContractorCompany(e.target.value)} data-testid="input-contractor-company-gen" />
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         )}

@@ -1858,6 +1858,8 @@ export const contractStatusEnum = pgEnum("contract_status", [
   "client_signed",
   "countersigned",
   "cancelled",
+  "pending_review",
+  "needs_revision",
 ]);
 
 export const contractSourceEnum = pgEnum("contract_source", [
@@ -1964,6 +1966,11 @@ export const contracts = pgTable("contracts", {
   dispatchMethod: varchar("dispatch_method"), // esign_link | presigned_pdf | both
   dispatchRecipientEmail: varchar("dispatch_recipient_email"), // stored at request-for-approval time
   createdBy: varchar("created_by").references(() => adminUsers.id),
+  // Contractor details for manager/director submissions (separate from candidates JSONB)
+  // Shape: { name, contractorType, email, phone, companyAgency, candidateAnnualSalary }
+  contractorDetails: jsonb("contractor_details"),
+  // Reason supplied by admin/ops when sending a submission back for revision
+  submissionRevisionReason: text("submission_revision_reason"),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });

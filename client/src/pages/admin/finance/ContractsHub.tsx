@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { AdminLayout } from "@/components/admin/AdminLayout";
@@ -17,7 +17,7 @@ import {
   FileText, Plus, Search, Download, Send, CheckCircle, Upload,
   Building2, FileUp, Eye, Clock, XCircle, PenLine, FilePlus,
   ReceiptText, Calendar, DollarSign, RefreshCw, AlertCircle, X,
-  Loader2, ShieldCheck, Users, Globe, User, ScrollText
+  Loader2, ShieldCheck, Users, Globe, User, ScrollText, ClipboardList, ThumbsUp, RotateCcw
 } from "lucide-react";
 import type { Contract, ContractClient } from "@shared/schema";
 import { V2PageHeader } from "@/components/admin/V2PageHeader";
@@ -36,6 +36,8 @@ const STATUS_COLORS: Record<string, string> = {
   client_signed: "bg-amber-100 text-amber-700",
   countersigned: "bg-green-100 text-green-700",
   cancelled: "bg-red-100 text-red-700",
+  pending_review: "bg-amber-100 text-amber-800",
+  needs_revision: "bg-red-100 text-red-700",
 };
 
 const STATUS_LABELS: Record<string, string> = {
@@ -45,6 +47,8 @@ const STATUS_LABELS: Record<string, string> = {
   client_signed: "Client Signed",
   countersigned: "Countersigned",
   cancelled: "Cancelled",
+  pending_review: "Pending Review",
+  needs_revision: "Needs Revision",
 };
 
 const SOURCE_LABELS: Record<string, string> = {
@@ -109,12 +113,37 @@ export default function ContractsHub() {
 
   const isSuperAdmin = user?.role === "super_admin" || user?.role === "architect";
   const canManage = ["super_admin", "admin", "hr", "operations"].includes(user?.role || "");
+  const canCreate = ["super_admin", "admin", "hr", "operations", "manager", "director"].includes(user?.role || "");
+  const isSubmitter = user?.role === "manager" || user?.role === "director";
+
   const canDispatch = ["super_admin", "admin", "hr", "operations", "manager"].includes(user?.role || "");
   const canCountersign = ["super_admin", "admin", "hr"].includes(user?.role || "");
   const canApproveDispatch = isSuperAdmin;
+  const canReviewSubmissions = ["super_admin", "admin", "operations"].includes(user?.role || "");
+
+  useEffect(() => {
+    if (isSubmitter && tab === "contracts") {
+      setTab("my-submissions");
+    }
+  }, [isSubmitter]);
+
+  // Review modal state
+  const [reviewContract, setReviewContract] = useState<Contract | null>(null);
+  const [revisionReason, setRevisionReason] = useState("");
+  const [showRevisionModal, setShowRevisionModal] = useState(false);
 
   const { data: contracts = [], isLoading } = useQuery<Contract[]>({
     queryKey: ["/api/contracts"],
+  });
+
+  const { data: mySubmissions = [], isLoading: mySubLoading } = useQuery<Contract[]>({
+    queryKey: ["/api/contracts/my-submissions"],
+    enabled: isSubmitter,
+  });
+
+  const { data: pendingSubmissions = [] } = useQuery<Contract[]>({
+    queryKey: ["/api/contracts/pending-submissions"],
+    enabled: canReviewSubmissions,
   });
 
   const { data: clients = [] } = useQuery<ContractClient[]>({
@@ -173,6 +202,31 @@ export default function ContractsHub() {
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
 
+  const approveSubmissionMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/contracts/${id}/approve-submission`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts/pending-submissions"] });
+      toast({ title: "Contract approved and added to live ledger" });
+    },
+    onError: (e: any) => toast({ title: "Approval failed", description: e.message, variant: "destructive" }),
+  });
+
+  const reviseSubmissionMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) =>
+      apiRequest("POST", `/api/contracts/${id}/revise-submission`, { reason }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts/pending-submissions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts/my-submissions"] });
+      setShowRevisionModal(false);
+      setReviewContract(null);
+      setRevisionReason("");
+      toast({ title: "Revision requested — submitter has been notified" });
+    },
+    onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
+  });
+
   const filtered = contracts.filter(c => {
     const matchSearch = !search ||
       c.clientName.toLowerCase().includes(search.toLowerCase()) ||
@@ -188,10 +242,15 @@ export default function ContractsHub() {
     active: contracts.filter(c => c.status === "countersigned").length,
     pending: contracts.filter(c => ["sent", "client_signed"].includes(c.status)).length,
     pendingApproval: pendingApproval.length,
+    pendingReview: pendingSubmissions.length,
   };
 
-  const handleDownload = async (contract: Contract) => {
+  const handleDownload = (contract: Contract) => {
     window.open(`/api/contracts/${contract.id}/download`, "_blank");
+  };
+
+  const handleView = (contract: Contract) => {
+    window.open(`/api/contracts/${contract.id}/view`, "_blank");
   };
 
   function resetDispatchForm() {
@@ -267,16 +326,18 @@ export default function ContractsHub() {
             title="Finance & Contracts"
             subtitle="Manage client contracts, compliance documents, and invoice tracking"
             testId="text-contracts-hub-title"
-            actions={canManage ? (
+            actions={canCreate ? (
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setShowImport(true)} data-testid="button-import-contract" className="bg-white/10 border-white/30 text-white hover:bg-white/20">
-                  <Upload className="h-4 w-4 mr-2" /> Import
+                  <Upload className="h-4 w-4 mr-2" /> {isSubmitter ? "Upload Contract" : "Import"}
                 </Button>
-                <Button variant="outline" onClick={() => setShowMsaBuilder(true)} data-testid="button-new-msa" className="bg-white/10 border-white/30 text-white hover:bg-white/20">
-                  <ScrollText className="h-4 w-4 mr-2" /> New MSA
-                </Button>
+                {!isSubmitter && (
+                  <Button variant="outline" onClick={() => setShowMsaBuilder(true)} data-testid="button-new-msa" className="bg-white/10 border-white/30 text-white hover:bg-white/20">
+                    <ScrollText className="h-4 w-4 mr-2" /> New MSA
+                  </Button>
+                )}
                 <Button onClick={() => setShowGenerator(true)} data-testid="button-new-contract" className="bg-white/20 border-white/30 text-white hover:bg-white/30">
-                  <Plus className="h-4 w-4 mr-2" /> Generate
+                  <Plus className="h-4 w-4 mr-2" /> {isSubmitter ? "Submit Contract" : "Generate"}
                 </Button>
               </div>
             ) : undefined}
@@ -287,16 +348,18 @@ export default function ContractsHub() {
               <h1 className="text-2xl font-bold text-slate-900" data-testid="text-contracts-hub-title">Finance & Contracts</h1>
               <p className="text-sm text-muted-foreground mt-0.5">Manage client contracts, compliance documents, and invoice tracking</p>
             </div>
-            {canManage && (
+            {canCreate && (
               <div className="flex gap-2">
                 <Button variant="outline" onClick={() => setShowImport(true)} data-testid="button-import-contract">
-                  <Upload className="h-4 w-4 mr-2" /> Import Contract
+                  <Upload className="h-4 w-4 mr-2" /> {isSubmitter ? "Upload Contract" : "Import Contract"}
                 </Button>
-                <Button variant="outline" onClick={() => setShowMsaBuilder(true)} data-testid="button-new-msa">
-                  <ScrollText className="h-4 w-4 mr-2" /> New MSA (Freeform)
-                </Button>
+                {!isSubmitter && (
+                  <Button variant="outline" onClick={() => setShowMsaBuilder(true)} data-testid="button-new-msa">
+                    <ScrollText className="h-4 w-4 mr-2" /> New MSA (Freeform)
+                  </Button>
+                )}
                 <Button onClick={() => setShowGenerator(true)} data-testid="button-new-contract">
-                  <Plus className="h-4 w-4 mr-2" /> Generate Contract
+                  <Plus className="h-4 w-4 mr-2" /> {isSubmitter ? "Submit Contract" : "Generate Contract"}
                 </Button>
               </div>
             )}
@@ -310,6 +373,7 @@ export default function ContractsHub() {
             { label: "Active (Signed)", value: stats.active, icon: CheckCircle, color: "text-green-600" },
             { label: "Pending Signature", value: stats.pending, icon: Clock, color: "text-amber-600" },
             { label: "Awaiting Approval", value: stats.pendingApproval, icon: AlertCircle, color: "text-violet-600" },
+            ...(canReviewSubmissions ? [{ label: "Pending Review", value: stats.pendingReview, icon: ClipboardList, color: "text-amber-600" }] : []),
           ].map(s => (
             <Card key={s.label} className="border shadow-sm">
               <CardContent className="p-4 flex items-center gap-3">
@@ -325,10 +389,26 @@ export default function ContractsHub() {
 
         {/* Tabs */}
         <Tabs value={tab} onValueChange={setTab}>
-          <TabsList className="h-10">
-            <TabsTrigger value="contracts" data-testid="tab-contracts">
-              <FileText className="h-4 w-4 mr-1.5" /> Contracts
-            </TabsTrigger>
+          <TabsList className="h-10 flex-wrap">
+            {!isSubmitter && (
+              <TabsTrigger value="contracts" data-testid="tab-contracts">
+                <FileText className="h-4 w-4 mr-1.5" /> Contracts
+              </TabsTrigger>
+            )}
+            {isSubmitter && (
+              <TabsTrigger value="my-submissions" data-testid="tab-my-submissions">
+                <ClipboardList className="h-4 w-4 mr-1.5" /> My Submissions
+              </TabsTrigger>
+            )}
+            {canReviewSubmissions && pendingSubmissions.length > 0 && (
+              <TabsTrigger value="review-queue" data-testid="tab-review-queue">
+                <ClipboardList className="h-4 w-4 mr-1.5 text-amber-600" />
+                Review Queue
+                <Badge className="ml-1.5 h-5 px-1.5 text-[10px] bg-amber-100 text-amber-800 border-amber-200">
+                  {pendingSubmissions.length}
+                </Badge>
+              </TabsTrigger>
+            )}
             {canApproveDispatch && pendingApproval.length > 0 && (
               <TabsTrigger value="pending-approval" data-testid="tab-pending-approval">
                 <AlertCircle className="h-4 w-4 mr-1.5 text-violet-600" />
@@ -338,15 +418,19 @@ export default function ContractsHub() {
                 </Badge>
               </TabsTrigger>
             )}
-            <TabsTrigger value="invoices" data-testid="tab-invoices">
-              <ReceiptText className="h-4 w-4 mr-1.5" /> Invoices
-            </TabsTrigger>
-            <TabsTrigger value="clients" data-testid="tab-clients">
-              <Building2 className="h-4 w-4 mr-1.5" /> Client Registry
-            </TabsTrigger>
-            <TabsTrigger value="templates" data-testid="tab-templates">
-              <FilePlus className="h-4 w-4 mr-1.5" /> Templates
-            </TabsTrigger>
+            {!isSubmitter && (
+              <>
+                <TabsTrigger value="invoices" data-testid="tab-invoices">
+                  <ReceiptText className="h-4 w-4 mr-1.5" /> Invoices
+                </TabsTrigger>
+                <TabsTrigger value="clients" data-testid="tab-clients">
+                  <Building2 className="h-4 w-4 mr-1.5" /> Client Registry
+                </TabsTrigger>
+                <TabsTrigger value="templates" data-testid="tab-templates">
+                  <FilePlus className="h-4 w-4 mr-1.5" /> Templates
+                </TabsTrigger>
+              </>
+            )}
           </TabsList>
 
           {/* ── Contracts Tab ─────────────────────────── */}
@@ -440,14 +524,24 @@ export default function ContractsHub() {
                         <td className="px-4 py-3">
                           <div className="flex items-center justify-end gap-1">
                             {(contract.docxPath || contract.uploadedDocPath) && (
-                              <Button
-                                variant="ghost" size="sm"
-                                onClick={() => handleDownload(contract)}
-                                data-testid={`button-download-${contract.id}`}
-                                title="Download document"
-                              >
-                                <Download className="h-4 w-4" />
-                              </Button>
+                              <>
+                                <Button
+                                  variant="ghost" size="sm"
+                                  onClick={() => handleView(contract)}
+                                  data-testid={`button-view-doc-${contract.id}`}
+                                  title="View document"
+                                >
+                                  <FileText className="h-4 w-4" />
+                                </Button>
+                                <Button
+                                  variant="ghost" size="sm"
+                                  onClick={() => handleDownload(contract)}
+                                  data-testid={`button-download-${contract.id}`}
+                                  title="Download document"
+                                >
+                                  <Download className="h-4 w-4" />
+                                </Button>
+                              </>
                             )}
                             {canDispatch && contract.source !== "imported" && ["draft", "pending_dispatch_approval"].includes(contract.status) && (
                               <Button
@@ -499,6 +593,199 @@ export default function ContractsHub() {
               </div>
             )}
           </TabsContent>
+
+          {/* ── My Submissions Tab (manager/director only) ──────────── */}
+          {isSubmitter && (
+            <TabsContent value="my-submissions" className="mt-4 space-y-4">
+              {mySubLoading ? (
+                <div className="text-center py-12 text-muted-foreground">Loading submissions...</div>
+              ) : mySubmissions.length === 0 ? (
+                <div className="text-center py-16 text-muted-foreground">
+                  <ClipboardList className="h-12 w-12 mx-auto mb-3 opacity-30" />
+                  <p className="font-medium">No submissions yet</p>
+                  <p className="text-sm mt-1">Use the buttons above to upload or generate a contract.</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-muted/50 border-b">
+                      <tr>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Candidate / Role</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Status</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Source</th>
+                        <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {mySubmissions.map(contract => (
+                        <tr key={contract.id} className="hover:bg-muted/30 transition-colors" data-testid={`row-my-submission-${contract.id}`}>
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-slate-900">{contract.clientName}</div>
+                            {contract.templateName && <div className="text-xs text-muted-foreground">{contract.templateName}</div>}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div>{contract.candidateName || "—"}</div>
+                            <div className="text-xs text-muted-foreground">{contract.candidateRole || ""}</div>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center gap-1.5">
+                              <Badge className={`text-xs ${STATUS_COLORS[contract.status] || "bg-slate-100 text-slate-700"}`}>
+                                {STATUS_LABELS[contract.status] || contract.status}
+                              </Badge>
+                            </div>
+                            {contract.status === "needs_revision" && (contract as any).submissionRevisionReason && (
+                              <div className="mt-1 text-xs text-red-600 bg-red-50 rounded px-2 py-1 max-w-xs">
+                                {(contract as any).submissionRevisionReason}
+                              </div>
+                            )}
+                          </td>
+                          <td className="px-4 py-3">
+                            <Badge variant="outline" className="text-xs">
+                              {SOURCE_LABELS[contract.source || "generated"]}
+                            </Badge>
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-1">
+                              {(contract.docxPath || contract.uploadedDocPath) && (
+                                <>
+                                  <Button variant="ghost" size="sm" onClick={() => handleView(contract)} title="View document" data-testid={`button-view-my-${contract.id}`}>
+                                    <FileText className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => handleDownload(contract)} title="Download" data-testid={`button-download-my-${contract.id}`}>
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
+                              {contract.status === "needs_revision" && (
+                                <Button
+                                  variant="outline" size="sm"
+                                  className="text-amber-700 border-amber-300 hover:bg-amber-50 text-xs"
+                                  onClick={() => {
+                                    // Resubmit via PATCH (backend auto-promotes needs_revision → pending_review)
+                                    apiRequest("PATCH", `/api/contracts/${contract.id}`, {}).then(() => {
+                                      queryClient.invalidateQueries({ queryKey: ["/api/contracts/my-submissions"] });
+                                      toast({ title: "Resubmitted for review" });
+                                    }).catch((e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }));
+                                  }}
+                                  data-testid={`button-resubmit-${contract.id}`}
+                                >
+                                  <RotateCcw className="h-3.5 w-3.5 mr-1" /> Resubmit
+                                </Button>
+                              )}
+                              <Button variant="ghost" size="sm" onClick={() => setSelectedContract(contract)} data-testid={`button-view-my-${contract.id}`} title="View details">
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+          )}
+
+          {/* ── Review Queue Tab (admin/ops/super_admin) ─────────────── */}
+          {canReviewSubmissions && (
+            <TabsContent value="review-queue" className="mt-4 space-y-4">
+              {pendingSubmissions.length === 0 ? (
+                <div className="text-center py-12 text-muted-foreground">
+                  <ThumbsUp className="h-10 w-10 mx-auto mb-3 opacity-30" />
+                  <p>No contracts pending review</p>
+                </div>
+              ) : (
+                <div className="border rounded-lg overflow-hidden">
+                  <table className="w-full text-sm">
+                    <thead className="bg-amber-50 border-b">
+                      <tr>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Client</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Candidate / Role</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Notes / Reason</th>
+                        <th className="text-left px-4 py-3 font-medium text-muted-foreground">Submitted By</th>
+                        <th className="text-right px-4 py-3 font-medium text-muted-foreground">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y">
+                      {pendingSubmissions.map(contract => (
+                        <tr key={contract.id} className="hover:bg-muted/30" data-testid={`row-review-${contract.id}`}>
+                          <td className="px-4 py-3">
+                            <div className="font-medium text-slate-900">{contract.clientName}</div>
+                            {contract.templateName && <div className="text-xs text-muted-foreground">{contract.templateName}</div>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {(() => {
+                              const cands: any[] = (contract as any).candidates || [];
+                              if (cands.filter((c: any) => c.name).length > 1) {
+                                return (
+                                  <div>
+                                    {cands.filter((c: any) => c.name).map((c: any, i: number) => (
+                                      <div key={i} className="text-sm">{c.name}{c.role ? <span className="text-xs text-muted-foreground"> · {c.role}</span> : null}</div>
+                                    ))}
+                                  </div>
+                                );
+                              }
+                              return (
+                                <>
+                                  <div>{contract.candidateName || "—"}</div>
+                                  <div className="text-xs text-muted-foreground">{contract.candidateRole || ""}</div>
+                                </>
+                              );
+                            })()}
+                          </td>
+                          <td className="px-4 py-3 max-w-[220px]">
+                            {(contract as any).notes ? (
+                              <p className="text-xs text-slate-600 line-clamp-3">{(contract as any).notes}</p>
+                            ) : (
+                              <span className="text-xs text-muted-foreground">—</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-muted-foreground text-xs">
+                            {(contract as any).submitterName || (contract as any).createdBy || "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex items-center justify-end gap-2">
+                              {(contract.docxPath || contract.uploadedDocPath) && (
+                                <>
+                                  <Button variant="ghost" size="sm" onClick={() => handleView(contract)} title="View document" data-testid={`button-view-doc-review-${contract.id}`}>
+                                    <FileText className="h-4 w-4" />
+                                  </Button>
+                                  <Button variant="ghost" size="sm" onClick={() => handleDownload(contract)} title="Download document" data-testid={`button-download-review-${contract.id}`}>
+                                    <Download className="h-4 w-4" />
+                                  </Button>
+                                </>
+                              )}
+                              <Button variant="ghost" size="sm" onClick={() => setSelectedContract(contract)} title="View details" data-testid={`button-view-review-${contract.id}`}>
+                                <Eye className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="outline" size="sm"
+                                className="text-green-700 border-green-300 hover:bg-green-50"
+                                onClick={() => approveSubmissionMutation.mutate(contract.id)}
+                                disabled={approveSubmissionMutation.isPending}
+                                data-testid={`button-approve-submission-${contract.id}`}
+                              >
+                                <CheckCircle className="h-3.5 w-3.5 mr-1" /> Approve
+                              </Button>
+                              <Button
+                                variant="outline" size="sm"
+                                className="text-red-700 border-red-300 hover:bg-red-50"
+                                onClick={() => { setReviewContract(contract); setRevisionReason(""); setShowRevisionModal(true); }}
+                                data-testid={`button-send-back-${contract.id}`}
+                              >
+                                <RotateCcw className="h-3.5 w-3.5 mr-1" /> Send Back
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </TabsContent>
+          )}
 
           {/* ── Pending Approval Tab (super_admin only) ──────────────── */}
           {canApproveDispatch && (
@@ -894,6 +1181,44 @@ export default function ContractsHub() {
         </Dialog>
       )}
 
+      {/* Send Back (revision request) modal */}
+      {showRevisionModal && reviewContract && (
+        <Dialog open onOpenChange={() => { setShowRevisionModal(false); setReviewContract(null); setRevisionReason(""); }}>
+          <DialogContent className="max-w-sm">
+            <DialogHeader>
+              <DialogTitle>Request Revision</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3 py-2">
+              <p className="text-sm text-muted-foreground">
+                The submitter will be notified and the contract returned to <strong>Needs Revision</strong> status.
+              </p>
+              <div className="space-y-1.5">
+                <Label>Reason for revision *</Label>
+                <Textarea
+                  placeholder="Describe what needs to be corrected or clarified..."
+                  value={revisionReason}
+                  onChange={e => setRevisionReason(e.target.value)}
+                  rows={3}
+                  data-testid="textarea-revision-reason"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setShowRevisionModal(false); setReviewContract(null); setRevisionReason(""); }}>Cancel</Button>
+              <Button
+                variant="destructive"
+                onClick={() => reviseSubmissionMutation.mutate({ id: reviewContract.id, reason: revisionReason })}
+                disabled={!revisionReason.trim() || reviseSubmissionMutation.isPending}
+                data-testid="button-confirm-revision"
+              >
+                {reviseSubmissionMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Send Back
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Contract detail dialog */}
       {selectedContract && (
         <Dialog open onOpenChange={() => setSelectedContract(null)}>
@@ -926,6 +1251,42 @@ export default function ContractsHub() {
                   </p>
                 </div>
               </div>
+
+              {/* ── Candidates ── */}
+              {(() => {
+                const cands: any[] = (selectedContract as any).candidates || [];
+                const named = cands.filter((c: any) => c.name);
+                if (named.length === 0 && !selectedContract.candidateName) return null;
+                return (
+                  <div className="rounded-lg border bg-slate-50 px-4 py-3 space-y-2">
+                    <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide mb-2">
+                      Candidates ({named.length || 1})
+                    </p>
+                    {named.length > 0 ? named.map((c: any, i: number) => (
+                      <div key={i} className="flex items-start gap-3 py-1 border-b last:border-0">
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">{c.name}</p>
+                          {c.role && <p className="text-xs text-muted-foreground">{c.role}</p>}
+                          {c.location && <p className="text-xs text-muted-foreground">{c.location}</p>}
+                        </div>
+                      </div>
+                    )) : (
+                      <div>
+                        <p className="font-medium text-sm">{selectedContract.candidateName}</p>
+                        {selectedContract.candidateRole && <p className="text-xs text-muted-foreground">{selectedContract.candidateRole}</p>}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* ── Submission Notes ── */}
+              {(selectedContract as any).notes && (
+                <div className="rounded-lg border bg-amber-50 border-amber-200 px-4 py-3">
+                  <p className="text-xs font-semibold text-amber-800 uppercase tracking-wide mb-1.5">Submission Notes / Reason</p>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap">{(selectedContract as any).notes}</p>
+                </div>
+              )}
 
               {/* ── Financial Summary ── */}
               {(() => {
@@ -1062,9 +1423,14 @@ export default function ContractsHub() {
             </div>
             <DialogFooter>
               {(selectedContract.docxPath || selectedContract.uploadedDocPath) && (
-                <Button variant="outline" onClick={() => handleDownload(selectedContract)}>
-                  <Download className="h-4 w-4 mr-2" /> Download
-                </Button>
+                <>
+                  <Button variant="outline" onClick={() => handleView(selectedContract)} data-testid="button-view-detail">
+                    <FileText className="h-4 w-4 mr-2" /> View
+                  </Button>
+                  <Button variant="outline" onClick={() => handleDownload(selectedContract)} data-testid="button-download-detail">
+                    <Download className="h-4 w-4 mr-2" /> Download
+                  </Button>
+                </>
               )}
               <Button onClick={() => setSelectedContract(null)}>Close</Button>
             </DialogFooter>

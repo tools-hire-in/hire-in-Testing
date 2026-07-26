@@ -7,8 +7,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, FileText, X, DollarSign, Info, TrendingUp } from "lucide-react";
+import { Loader2, Upload, FileText, X, DollarSign, Info, TrendingUp, Plus, Trash2 } from "lucide-react";
 import type { ContractClient } from "@shared/schema";
+
+interface CandidateEntry {
+  name: string;
+  role: string;
+  location: string;
+}
+
+const EMPTY_CANDIDATE: CandidateEntry = { name: "", role: "", location: "" };
 
 interface Props {
   clients: ContractClient[];
@@ -67,8 +75,14 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
   const [file, setFile] = useState<File | null>(null);
   const [clientId, setClientId] = useState("");
   const [clientName, setClientName] = useState("");
-  const [candidateName, setCandidateName] = useState("");
-  const [candidateRole, setCandidateRole] = useState("");
+  const [candidates, setCandidates] = useState<CandidateEntry[]>([{ ...EMPTY_CANDIDATE }]);
+
+  const updateCandidate = (idx: number, patch: Partial<CandidateEntry>) =>
+    setCandidates(prev => prev.map((c, i) => i === idx ? { ...c, ...patch } : c));
+  const addCandidate = () => setCandidates(prev => [...prev, { ...EMPTY_CANDIDATE }]);
+  const removeCandidate = (idx: number) =>
+    setCandidates(prev => prev.length > 1 ? prev.filter((_, i) => i !== idx) : prev);
+  const [agreementDate, setAgreementDate] = useState("");
   const [startDate, setStartDate] = useState("");
   const [endDate, setEndDate] = useState("");
   const [paymentTerms, setPaymentTerms] = useState("");
@@ -89,6 +103,14 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
   const [referralFeePct, setReferralFeePct] = useState("");
   const [candidateAnnualSalary, setCandidateAnnualSalary] = useState("");
   const [businessMarketingCost, setBusinessMarketingCost] = useState("");
+
+  // Contractor details
+  const [showContractorDetails, setShowContractorDetails] = useState(false);
+  const [contractorName, setContractorName] = useState("");
+  const [contractorType, setContractorType] = useState("");
+  const [contractorEmail, setContractorEmail] = useState("");
+  const [contractorPhone, setContractorPhone] = useState("");
+  const [contractorCompany, setContractorCompany] = useState("");
 
   const [preview, setPreview] = useState<MarginPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
@@ -157,8 +179,13 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
       formData.append("contractType", contractType);
       formData.append("currency", currency);
       if (clientId) formData.append("clientId", clientId);
-      if (candidateName) formData.append("candidateName", candidateName);
-      if (candidateRole) formData.append("candidateRole", candidateRole);
+      const filledCandidates = candidates.filter(c => c.name.trim() || c.role.trim());
+      if (filledCandidates.length > 0) {
+        formData.append("candidateName", filledCandidates[0].name || "");
+        formData.append("candidateRole", filledCandidates[0].role || "");
+        formData.append("candidates", JSON.stringify(filledCandidates));
+      }
+      if (agreementDate) formData.append("agreementDate", agreementDate);
       if (startDate) formData.append("contractStartDate", startDate);
       if (endDate) formData.append("contractEndDate", endDate);
       if (paymentTerms) formData.append("paymentTermsDays", paymentTerms);
@@ -178,6 +205,17 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
           if (referralFeePct) formData.append("referralFeePct", referralFeePct);
           if (candidateAnnualSalary) formData.append("candidateAnnualSalary", candidateAnnualSalary);
         }
+      }
+
+      // Contractor details (if any filled)
+      const cdFields: Record<string, string> = {};
+      if (contractorName) cdFields.name = contractorName;
+      if (contractorType) cdFields.contractorType = contractorType;
+      if (contractorEmail) cdFields.email = contractorEmail;
+      if (contractorPhone) cdFields.phone = contractorPhone;
+      if (contractorCompany) cdFields.companyAgency = contractorCompany;
+      if (Object.keys(cdFields).length > 0) {
+        formData.append("contractorDetails", JSON.stringify(cdFields));
       }
 
       const res = await fetch("/api/contracts/import", {
@@ -262,7 +300,7 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
             </Select>
           </div>
 
-          {/* ── Step 2: Client & candidate ─── */}
+          {/* ── Step 2: Client ─── */}
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label>Client (from registry)</Label>
@@ -284,24 +322,6 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
                 data-testid="input-client-name-import"
               />
             </div>
-            <div className="space-y-1.5">
-              <Label>Candidate Name</Label>
-              <Input
-                value={candidateName}
-                onChange={e => setCandidateName(e.target.value)}
-                placeholder='Name or "Multiple" for MSA'
-                data-testid="input-candidate-name-import"
-              />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Candidate Role</Label>
-              <Input
-                value={candidateRole}
-                onChange={e => setCandidateRole(e.target.value)}
-                placeholder="e.g. Registered Nurse"
-                data-testid="input-candidate-role-import"
-              />
-            </div>
 
             <div className="space-y-1.5 col-span-2">
               <Label className="flex items-center gap-1.5">
@@ -316,6 +336,79 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
                   {SPECIALTIES.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+          </div>
+
+          {/* ── Candidates ─── */}
+          <div className="rounded-lg border bg-slate-50/50 overflow-hidden">
+            <div className="flex items-center justify-between px-4 py-3 border-b bg-white">
+              <p className="text-sm font-semibold text-slate-800">
+                Candidates
+                <span className="ml-2 text-xs font-normal text-muted-foreground">({candidates.length} added — all entered manually by your team)</span>
+              </p>
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 text-xs gap-1"
+                onClick={addCandidate}
+                data-testid="button-add-candidate-import"
+              >
+                <Plus className="h-3.5 w-3.5" /> Add Candidate
+              </Button>
+            </div>
+            <div className="divide-y">
+              {candidates.map((cand, idx) => (
+                <div key={idx} className="px-4 py-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <p className="text-xs font-medium text-slate-600">Candidate {idx + 1}</p>
+                    {candidates.length > 1 && (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                        onClick={() => removeCandidate(idx)}
+                        data-testid={`button-remove-candidate-import-${idx}`}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <div className="space-y-1">
+                      <Label className="text-xs">Name</Label>
+                      <Input
+                        className="h-8 text-sm"
+                        placeholder="Full name"
+                        value={cand.name}
+                        onChange={e => updateCandidate(idx, { name: e.target.value })}
+                        data-testid={`input-candidate-name-import-${idx}`}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Role / Title</Label>
+                      <Input
+                        className="h-8 text-sm"
+                        placeholder="e.g. Registered Nurse"
+                        value={cand.role}
+                        onChange={e => updateCandidate(idx, { role: e.target.value })}
+                        data-testid={`input-candidate-role-import-${idx}`}
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label className="text-xs">Location (optional)</Label>
+                      <Input
+                        className="h-8 text-sm"
+                        placeholder="City, State"
+                        value={cand.location}
+                        onChange={e => updateCandidate(idx, { location: e.target.value })}
+                        data-testid={`input-candidate-location-import-${idx}`}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 
@@ -494,8 +587,84 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
             )}
           </div>
 
+          {/* ── Contractor Details (optional collapsible) ─── */}
+          <div className="rounded-lg border bg-slate-50/50 overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-100/50 transition-colors"
+              onClick={() => setShowContractorDetails(v => !v)}
+              data-testid="button-toggle-contractor-details"
+            >
+              <span className="flex items-center gap-2">
+                <User className="h-4 w-4 text-muted-foreground" />
+                Contractor / Candidate Details <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+              </span>
+              <span className="text-muted-foreground text-xs">{showContractorDetails ? "▲ Hide" : "▼ Show"}</span>
+            </button>
+            {showContractorDetails && (
+              <div className="px-4 pb-4 pt-2 grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Contractor Name</Label>
+                  <Input placeholder="Full name" value={contractorName} onChange={e => setContractorName(e.target.value)} data-testid="input-contractor-name" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Contractor Type</Label>
+                  <Select value={contractorType} onValueChange={setContractorType}>
+                    <SelectTrigger data-testid="select-contractor-type">
+                      <SelectValue placeholder="Select type..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="external_contractor">External Contractor</SelectItem>
+                      <SelectItem value="internal_employee">Internal Employee</SelectItem>
+                      <SelectItem value="sub_vendor">Sub-Vendor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Email</Label>
+                  <Input type="email" placeholder="contractor@email.com" value={contractorEmail} onChange={e => setContractorEmail(e.target.value)} data-testid="input-contractor-email" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Phone</Label>
+                  <Input placeholder="+1 555 000 0000" value={contractorPhone} onChange={e => setContractorPhone(e.target.value)} data-testid="input-contractor-phone" />
+                </div>
+                <div className="space-y-1.5 col-span-2">
+                  <Label className="text-xs">Company / Agency</Label>
+                  <Input placeholder="Agency or employer name" value={contractorCompany} onChange={e => setContractorCompany(e.target.value)} data-testid="input-contractor-company" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ── Submission Notes / Reason ─── */}
+          <div className="space-y-1.5">
+            <Label className="font-semibold flex items-center gap-1.5">
+              Submission Notes / Reason for Upload
+              <span className="text-[10px] font-normal text-muted-foreground bg-amber-50 border border-amber-200 rounded px-1.5 py-0.5">Visible to admin reviewers</span>
+            </Label>
+            <Textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Explain the context — e.g. 'New contract with Sunrise Health for 3 travel nurses starting June. Rates agreed verbally, uploading signed copy for records.'"
+              rows={3}
+              data-testid="textarea-notes-import"
+            />
+          </div>
+
           {/* ── Step 4: Contract dates & billing ─── */}
           <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label>Agreement / Signing Date</Label>
+              <Input type="date" value={agreementDate} onChange={e => setAgreementDate(e.target.value)} data-testid="input-agreement-date-import" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Contract Start Date</Label>
+              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} data-testid="input-start-date-import" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Contract End Date</Label>
+              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid="input-end-date-import" />
+            </div>
             <div className="space-y-1.5">
               <Label>Payment Terms (days)</Label>
               <Input
@@ -505,7 +674,7 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
                 data-testid="input-payment-terms-import"
               />
             </div>
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 col-span-2">
               <Label>Billing Frequency</Label>
               <Select value={billingFreq} onValueChange={setBillingFreq}>
                 <SelectTrigger data-testid="select-billing-freq-import">
@@ -519,25 +688,6 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
                   <SelectItem value="one_time">One-Time</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
-            <div className="space-y-1.5">
-              <Label>Contract Start Date</Label>
-              <Input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} data-testid="input-start-date-import" />
-            </div>
-            <div className="space-y-1.5">
-              <Label>Contract End Date</Label>
-              <Input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} data-testid="input-end-date-import" />
-            </div>
-
-            <div className="space-y-1.5 col-span-2">
-              <Label>Internal Notes</Label>
-              <Textarea
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                placeholder="e.g. Legacy contract signed March 2023, uploaded for record-keeping"
-                rows={2}
-                data-testid="textarea-notes-import"
-              />
             </div>
           </div>
         </div>

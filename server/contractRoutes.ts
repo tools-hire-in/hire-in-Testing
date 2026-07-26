@@ -182,8 +182,97 @@ export function registerContractRoutes(app: Express) {
   app.get("/api/contracts", requireAuth, async (req, res) => {
     try {
       const { clientId, status, search } = req.query as Record<string, string>;
-      const list = await dbStorage.getContracts({ clientId, status, search });
+      const role = req.session!.role;
+      const userId = req.session!.userId;
+      let list = await dbStorage.getContracts({ clientId, status, search });
+
+      // Managers see only their own non-submission contracts in the main list
+      if (role === "manager") {
+        list = list.filter(c => c.createdBy === userId && !["pending_review", "needs_revision"].includes(c.status));
+      } else if (role === "director") {
+        // Directors see all contracts except other people's submissions
+        list = list.filter(c => !["pending_review", "needs_revision"].includes(c.status) || c.createdBy === userId);
+      }
+
       res.json(list);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── MY SUBMISSIONS (manager / director only) ─────────────────────────────
+  app.get("/api/contracts/my-submissions", requireAuth, async (req, res) => {
+    try {
+      const role = req.session!.role;
+      const userId = req.session!.userId;
+      if (!["manager", "director"].includes(role!)) {
+        return res.status(403).json({ error: "Only managers and directors have submissions" });
+      }
+      const all = await dbStorage.getContracts({});
+      const submissions = all.filter(c => c.createdBy === userId);
+      res.json(submissions);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── PENDING SUBMISSIONS QUEUE (admin / ops / super_admin) ───────────────
+  app.get("/api/contracts/pending-submissions", requirePermission("contracts.review", "admin", "operations"), async (req, res) => {
+    try {
+      const list = await dbStorage.getContracts({ status: "pending_review" });
+      res.json(list);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── APPROVE SUBMISSION ───────────────────────────────────────────────────
+  app.post("/api/contracts/:id/approve-submission", requirePermission("contracts.review", "admin", "operations"), async (req, res) => {
+    try {
+      const contract = await dbStorage.getContract(req.params.id);
+      if (!contract) return res.status(404).json({ error: "Contract not found" });
+      if (contract.status !== "pending_review") {
+        return res.status(400).json({ error: `Contract is not pending review (status: ${contract.status})` });
+      }
+      const updated = await dbStorage.updateContract(req.params.id, {
+        status: "draft",
+        submissionRevisionReason: null,
+      } as any);
+
+      if (contract.createdBy) {
+        const { notifyUser } = await import("./notifications");
+        await notifyUser({
+          userId: contract.createdBy,
+          type: "contract_submission_approved",
+          title: "Contract submission approved",
+          message: `Your contract submission for ${contract.clientName} has been approved and entered the live ledger.`,
+          metadata: { contractId: contract.id },
+        });
+      }
+      res.json(updated);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── REVISE SUBMISSION (send back with reason) ────────────────────────────
+  app.post("/api/contracts/:id/revise-submission", requirePermission("contracts.review", "admin", "operations"), async (req, res) => {
+    try {
+      const { reason } = req.body;
+      if (!reason?.trim()) return res.status(400).json({ error: "Revision reason is required" });
+      const contract = await dbStorage.getContract(req.params.id);
+      if (!contract) return res.status(404).json({ error: "Contract not found" });
+      if (contract.status !== "pending_review") {
+        return res.status(400).json({ error: `Contract is not pending review (status: ${contract.status})` });
+      }
+      const updated = await dbStorage.updateContract(req.params.id, {
+        status: "needs_revision",
+        submissionRevisionReason: reason,
+      } as any);
+
+      if (contract.createdBy) {
+        const { notifyUser } = await import("./notifications");
+        await notifyUser({
+          userId: contract.createdBy,
+          type: "contract_submission_revision_requested",
+          title: "Contract submission needs revision",
+          message: `Your contract submission for ${contract.clientName} was sent back for revision: ${reason}`,
+          metadata: { contractId: contract.id, reason },
+        });
+      }
+      res.json(updated);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
@@ -196,7 +285,7 @@ export function registerContractRoutes(app: Express) {
   });
 
   // Generate a contract from a template
-  app.post("/api/contracts", requirePermission("contracts.post", "hr", "operations", "manager"), async (req, res) => {
+  app.post("/api/contracts", requirePermission("contracts.post", "hr", "operations", "manager", "director"), async (req, res) => {
     try {
       const {
         templateId, clientId, clientName, candidateName, candidateRole,
@@ -351,6 +440,9 @@ export function registerContractRoutes(app: Express) {
 
       const margins = calculateMargins(marginInputs);
 
+      const submitterRole = req.session!.role;
+      const isSubmissionRole = submitterRole === "manager" || submitterRole === "director";
+
       const contract = await dbStorage.createContract({
         source: "generated",
         templateId: templateId || null,
@@ -376,25 +468,59 @@ export function registerContractRoutes(app: Express) {
         grossMargin: margins.grossMargin != null ? String(margins.grossMargin) : null,
         businessMarketingCost: businessMarketingCost ? String(businessMarketingCost) : null,
         netMargin: margins.netMargin != null ? String(margins.netMargin) : null,
+        ...(isSubmissionRole ? { status: "pending_review" } : {}),
+        ...(req.body.contractorDetails ? { contractorDetails: req.body.contractorDetails } : {}),
       } as any);
+
+      // Notify admin/operations of new submission
+      if (isSubmissionRole) {
+        try {
+          const { notifyUser } = await import("./notifications");
+          const submitter = await dbStorage.getAdminUser(req.session!.userId);
+          const submitterName = submitter ? `${submitter.firstName} ${submitter.lastName}` : "A manager";
+          const allUsers = await dbStorage.getAdminUsers();
+          const reviewers = allUsers.filter(u => ["admin", "operations", "super_admin"].includes(u.role));
+          for (const reviewer of reviewers) {
+            await notifyUser({
+              userId: reviewer.id,
+              type: "contract_submission_new",
+              title: "Contract submission pending review",
+              message: `${submitterName} submitted a contract for ${clientName} — pending your review.`,
+              metadata: { contractId: contract.id },
+            });
+          }
+        } catch { /* non-fatal */ }
+      }
 
       res.status(201).json(contract);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
 
   // Upload an existing/imported contract
-  app.post("/api/contracts/import", requirePermission("contracts.import", "hr", "operations", "manager"), upload.single("file"), async (req, res) => {
+  app.post("/api/contracts/import", requirePermission("contracts.import", "hr", "operations", "manager", "director"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file uploaded" });
       const {
         clientName, clientId, candidateName, candidateRole,
         paymentTermsDays, billingFrequency, notes,
         specialty, billRate, payRate,
-        contractStartDate, contractEndDate,
+        contractStartDate, contractEndDate, agreementDate,
         contractType, passthroughFee, referralFeeFlat, businessMarketingCost,
         currency,
       } = req.body;
       if (!clientName) return res.status(400).json({ error: "Client name required" });
+
+      // Parse multi-candidate JSON if present
+      let candidatesArray: Array<{ name: string; role: string; location: string }> = [];
+      if (req.body.candidates) {
+        try { candidatesArray = JSON.parse(req.body.candidates); } catch { candidatesArray = []; }
+      }
+      // Fall back to legacy single-candidate fields
+      if (candidatesArray.length === 0 && (candidateName || candidateRole)) {
+        candidatesArray = [{ name: candidateName || "", role: candidateRole || "", location: "" }];
+      }
+      const resolvedCandidateName = candidatesArray[0]?.name || candidateName || null;
+      const resolvedCandidateRole = candidatesArray[0]?.role || candidateRole || null;
 
       const resolvedContractType: ContractType = (contractType as ContractType) || "contract_hourly";
 
@@ -416,6 +542,9 @@ export function registerContractRoutes(app: Express) {
 
       const margins = calculateMargins(marginInputs);
 
+      const importerRole = req.session!.role;
+      const isImportSubmission = importerRole === "manager" || importerRole === "director";
+
       const ext = path.extname(req.file.originalname).toLowerCase();
       const mimeType = ext === ".pdf" ? "application/pdf"
         : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
@@ -432,17 +561,18 @@ export function registerContractRoutes(app: Express) {
         clientId: clientId || null,
         templateName: null,
         clientName,
-        candidateName: candidateName || null,
-        candidateRole: candidateRole || null,
+        candidateName: resolvedCandidateName,
+        candidateRole: resolvedCandidateRole,
+        candidates: candidatesArray,
         variableValues: {},
         docxPath: null,
         uploadedDocPath,
+        agreementDate: agreementDate || null,
         contractStartDate: contractStartDate || null,
         contractEndDate: contractEndDate || null,
         paymentTermsDays: paymentTermsDays ? Number(paymentTermsDays) : null,
         billingFrequency: billingFrequency || null,
         notes: notes || null,
-        status: "countersigned",
         createdBy: req.session!.userId,
         contractType: resolvedContractType,
         currency: currency || "USD",
@@ -454,7 +584,29 @@ export function registerContractRoutes(app: Express) {
         grossMargin: margins.grossMargin != null ? String(margins.grossMargin) : null,
         businessMarketingCost: businessMarketingCost ? String(businessMarketingCost) : null,
         netMargin: margins.netMargin != null ? String(margins.netMargin) : null,
+        ...(isImportSubmission ? { status: "pending_review" } : { status: "countersigned" }),
+        ...(req.body.contractorDetails ? { contractorDetails: JSON.parse(req.body.contractorDetails) } : {}),
       } as any);
+
+      // Notify admin/ops of new submission
+      if (isImportSubmission) {
+        try {
+          const { notifyUser } = await import("./notifications");
+          const submitter = await dbStorage.getAdminUser(req.session!.userId);
+          const submitterName = submitter ? `${submitter.firstName} ${submitter.lastName}` : "A manager";
+          const allUsers = await dbStorage.getAdminUsers();
+          const reviewers = allUsers.filter(u => ["admin", "operations", "super_admin"].includes(u.role));
+          for (const reviewer of reviewers) {
+            await notifyUser({
+              userId: reviewer.id,
+              type: "contract_submission_new",
+              title: "Contract submission pending review",
+              message: `${submitterName} submitted a contract for ${clientName} — pending your review.`,
+              metadata: { contractId: contract.id },
+            });
+          }
+        } catch { /* non-fatal */ }
+      }
 
       res.status(201).json(contract);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
@@ -477,6 +629,24 @@ export function registerContractRoutes(app: Express) {
 
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.setHeader("Content-Type", mime);
+      res.send(buffer);
+    } catch (e: any) { res.status(500).json({ error: e.message }); }
+  });
+
+  // View contract inline in browser (PDF only — DOCX falls back to download)
+  app.get("/api/contracts/:id/view", requireAuth, async (req, res) => {
+    try {
+      const contract = await dbStorage.getContract(req.params.id);
+      if (!contract) return res.status(404).json({ error: "Not found" });
+      const filePath = contract.uploadedDocPath || contract.docxPath;
+      if (!filePath) return res.status(404).json({ error: "No document available" });
+      if (!filePath.toLowerCase().endsWith(".pdf")) {
+        return res.redirect(`/api/contracts/${req.params.id}/download`);
+      }
+      const buffer = await objectStorageService.downloadBuffer(filePath);
+      const filename = `${contract.clientName.replace(/\s+/g, "_")}.pdf`;
+      res.setHeader("Content-Disposition", `inline; filename="${filename}"`);
+      res.setHeader("Content-Type", "application/pdf");
       res.send(buffer);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
@@ -677,8 +847,51 @@ export function registerContractRoutes(app: Express) {
   });
 
   // Update contract metadata
-  app.patch("/api/contracts/:id", requirePermission("contracts.patch", "hr", "operations"), async (req, res) => {
+  // manager/director can edit their own pending_review/needs_revision contracts; hr/ops can edit any
+  app.patch("/api/contracts/:id", requireAuth, async (req, res) => {
     try {
+      const role = req.session!.role;
+      const userId = req.session!.userId;
+      const allowed = ["hr", "operations", "super_admin", "admin", "manager", "director"];
+      if (!allowed.includes(role!)) return res.status(403).json({ error: "Insufficient permissions" });
+
+      if (role === "manager" || role === "director") {
+        const existing = await dbStorage.getContract(req.params.id);
+        if (!existing) return res.status(404).json({ error: "Not found" });
+        if (existing.createdBy !== userId) return res.status(403).json({ error: "You can only edit your own submissions" });
+        if (!["pending_review", "needs_revision"].includes(existing.status)) {
+          return res.status(403).json({ error: "You can only edit contracts in pending_review or needs_revision status" });
+        }
+        // Resubmit: if needs_revision → pending_review
+        const updates = { ...req.body };
+        if (existing.status === "needs_revision") {
+          updates.status = "pending_review";
+          updates.submissionRevisionReason = null;
+        }
+        const contract = await dbStorage.updateContract(req.params.id, updates);
+        if (!contract) return res.status(404).json({ error: "Not found" });
+
+        // Notify reviewers on resubmit
+        try {
+          const { notifyUser } = await import("./notifications");
+          const submitter = await dbStorage.getAdminUser(userId);
+          const submitterName = submitter ? `${submitter.firstName} ${submitter.lastName}` : "A manager";
+          const allUsers = await dbStorage.getAdminUsers();
+          const reviewers = allUsers.filter(u => ["admin", "operations", "super_admin"].includes(u.role));
+          for (const reviewer of reviewers) {
+            await notifyUser({
+              userId: reviewer.id,
+              type: "contract_submission_new",
+              title: "Contract submission resubmitted",
+              message: `${submitterName} resubmitted a contract for ${contract.clientName} — pending your review.`,
+              metadata: { contractId: contract.id },
+            });
+          }
+        } catch { /* non-fatal */ }
+
+        return res.json(contract);
+      }
+
       const contract = await dbStorage.updateContract(req.params.id, req.body);
       if (!contract) return res.status(404).json({ error: "Not found" });
       res.json(contract);
