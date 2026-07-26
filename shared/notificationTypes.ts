@@ -235,6 +235,13 @@ export const NOTIFICATION_TYPES: NotificationTypeDef[] = [
     category: "hr",
     typePrefixes: ["contract_submission_"],
   },
+  {
+    key: "contract_billing",
+    label: "Contract billing reminders",
+    description: "Upcoming invoice reminders, overdue billing escalations, and placement fee reminders.",
+    category: "system",
+    typePrefixes: ["contract_billing_"],
+  },
   // ── System ────────────────────────────────────────────────────────────────
   {
     key: "system_general",

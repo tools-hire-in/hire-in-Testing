@@ -17,7 +17,7 @@ import {
   FileText, Plus, Search, Download, Send, CheckCircle, Upload,
   Building2, FileUp, Eye, Clock, XCircle, PenLine, FilePlus,
   ReceiptText, Calendar, DollarSign, RefreshCw, AlertCircle, X,
-  Loader2, ShieldCheck, Users, Globe, User, ScrollText, ClipboardList, ThumbsUp, RotateCcw
+  Loader2, ShieldCheck, Users, Globe, User, ScrollText, ClipboardList, ThumbsUp, RotateCcw, Bell, Pencil
 } from "lucide-react";
 import type { Contract, ContractClient } from "@shared/schema";
 import { V2PageHeader } from "@/components/admin/V2PageHeader";
@@ -107,6 +107,17 @@ export default function ContractsHub() {
   const [approvalDeliveryMethod, setApprovalDeliveryMethod] = useState<"esign_link" | "presigned_pdf" | "both">("esign_link");
   const [approvalRecipientEmail, setApprovalRecipientEmail] = useState("");
 
+  // Escalation config edit state
+  const [editEscalationContract, setEditEscalationContract] = useState<Contract | null>(null);
+  const [escBillingStart, setEscBillingStart] = useState("");
+  const [escReminderDays, setEscReminderDays] = useState("2");
+  const [escPrimaryId, setEscPrimaryId] = useState("");
+  const [escFallbackId, setEscFallbackId] = useState("");
+  const [escTimesheetId, setEscTimesheetId] = useState(""); // dedicated timesheet hours contact
+  const [escFallbackHours, setEscFallbackHours] = useState("24");
+  const [escCc, setEscCc] = useState<string[]>([]);
+  const [escBillingType, setEscBillingType] = useState("recurring");
+
   // Employee CC picker state
   const [ccEmployeeSearch, setCcEmployeeSearch] = useState("");
   const [showEmployeePicker, setShowEmployeePicker] = useState(false);
@@ -151,7 +162,7 @@ export default function ContractsHub() {
   });
 
   const { data: adminUsers = [] } = useQuery<any[]>({
-    queryKey: ["/api/admin-users"],
+    queryKey: ["/api/admin/users"],
   });
 
   const dispatchMutation = useMutation({
@@ -226,6 +237,39 @@ export default function ContractsHub() {
     },
     onError: (e: any) => toast({ title: "Failed", description: e.message, variant: "destructive" }),
   });
+
+  const escalationConfigMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Record<string, any> }) =>
+      apiRequest("PATCH", `/api/contracts/${id}/escalation-config`, data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      setEditEscalationContract(null);
+      toast({ title: "Billing & escalation config updated" });
+    },
+    onError: (e: any) => toast({ title: "Update failed", description: e.message, variant: "destructive" }),
+  });
+
+  const confirmTimesheetMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("PATCH", `/api/contracts/${id}/confirm-timesheet`, {}),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/contracts"] });
+      toast({ title: "Timesheet hours confirmed" });
+    },
+    onError: (e: any) => toast({ title: "Failed to confirm timesheet", description: e.message, variant: "destructive" }),
+  });
+
+  function openEscalationEdit(c: Contract) {
+    const ec = (c as any).escalationConfig || {};
+    setEscBillingStart((c as any).billingStartDate || "");
+    setEscReminderDays(String((c as any).billingReminderDaysBefore ?? 2));
+    setEscPrimaryId(ec.primary_recipient_id || "");
+    setEscFallbackId(ec.fallback_recipient_id || "");
+    setEscTimesheetId(ec.timesheet_recipient_id || "");
+    setEscFallbackHours(String(ec.fallback_after_hours ?? 24));
+    setEscCc(Array.isArray(ec.cc_on_escalation) ? ec.cc_on_escalation : []);
+    setEscBillingType((c as any).billingType || "recurring");
+    setEditEscalationContract(c);
+  }
 
   const filtered = contracts.filter(c => {
     const matchSearch = !search ||
@@ -1376,6 +1420,111 @@ export default function ContractsHub() {
                   <p className="text-sm text-red-800">{(selectedContract as any).rejectionReason}</p>
                 </div>
               )}
+              {/* ── Billing & Escalation Config ── */}
+              {(() => {
+                const c = selectedContract as any;
+                const ec = c.escalationConfig || {};
+                const hasBilling = c.billingStartDate || c.nextBillingDate || ec.fallback_recipient_id;
+                if (!hasBilling) return (
+                  <div className="rounded-lg border border-dashed bg-slate-50 px-4 py-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2 text-muted-foreground text-xs">
+                      <Bell className="h-4 w-4" />
+                      No billing reminders configured
+                    </div>
+                    {canManage && (
+                      <Button variant="outline" size="sm" onClick={() => openEscalationEdit(selectedContract)} data-testid="button-edit-escalation">
+                        <Pencil className="h-3.5 w-3.5 mr-1" /> Configure
+                      </Button>
+                    )}
+                  </div>
+                );
+                const primaryUser = adminUsers.find((u: any) => u.id === ec.primary_recipient_id);
+                const fallbackUser = adminUsers.find((u: any) => u.id === ec.fallback_recipient_id);
+                const ccUsers = (ec.cc_on_escalation || []).map((id: string) => adminUsers.find((u: any) => u.id === id)).filter(Boolean);
+                const isHourly = c.contractType === "contract_hourly" || c.contractType === "contract_to_hire";
+                return (
+                  <div className="rounded-lg border bg-slate-50 px-4 py-3 space-y-2">
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-slate-700 uppercase tracking-wide flex items-center gap-1.5">
+                        <Bell className="h-3.5 w-3.5" />
+                        Billing &amp; Escalation
+                      </p>
+                      {canManage && (
+                        <Button variant="ghost" size="sm" className="h-7 px-2" onClick={() => openEscalationEdit(selectedContract)} data-testid="button-edit-escalation">
+                          <Pencil className="h-3.5 w-3.5 mr-1" /> Edit
+                        </Button>
+                      )}
+                    </div>
+                    {isHourly && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Timesheet</span>
+                        <span>
+                          {(c as any).timesheetConfirmedAt ? (
+                            <span className="text-green-600 text-xs flex items-center gap-1">
+                              <CheckCircle className="h-3.5 w-3.5" />
+                              Confirmed {new Date((c as any).timesheetConfirmedAt).toLocaleDateString()}
+                            </span>
+                          ) : (
+                            <Button size="sm" variant="outline" className="h-7 text-xs px-2"
+                              onClick={() => confirmTimesheetMutation.mutate(selectedContract.id)}
+                              disabled={confirmTimesheetMutation.isPending}
+                              data-testid="button-confirm-timesheet"
+                            >
+                              Confirm Hours
+                            </Button>
+                          )}
+                        </span>
+                      </div>
+                    )}
+                    {primaryUser && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Primary Recipient</span>
+                        <span className="font-medium">{primaryUser.firstName} {primaryUser.lastName}</span>
+                      </div>
+                    )}
+                    {c.billingStartDate && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Billing Start</span>
+                        <span className="font-medium">{new Date(c.billingStartDate).toLocaleDateString()}</span>
+                      </div>
+                    )}
+                    {c.nextBillingDate && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Next Billing Date</span>
+                        <span className={`font-medium ${new Date(c.nextBillingDate) < new Date() ? "text-red-600" : ""}`}>
+                          {new Date(c.nextBillingDate).toLocaleDateString()}
+                          {new Date(c.nextBillingDate) < new Date() && " ⚠"}
+                        </span>
+                      </div>
+                    )}
+                    {c.billingReminderDaysBefore != null && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Remind</span>
+                        <span>{c.billingReminderDaysBefore} day{c.billingReminderDaysBefore !== 1 ? "s" : ""} before due</span>
+                      </div>
+                    )}
+                    {fallbackUser && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Fallback Recipient</span>
+                        <span className="font-medium">{fallbackUser.firstName} {fallbackUser.lastName}</span>
+                      </div>
+                    )}
+                    {ec.fallback_after_hours && (
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground">Escalate After</span>
+                        <span>{ec.fallback_after_hours}h</span>
+                      </div>
+                    )}
+                    {ccUsers.length > 0 && (
+                      <div className="flex justify-between items-start text-sm">
+                        <span className="text-muted-foreground">CC on Escalation</span>
+                        <span className="text-right">{ccUsers.map((u: any) => `${u.firstName} ${u.lastName}`).join(", ")}</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
               {selectedContract.authCode && (
                 <div className="bg-green-50 border border-green-200 rounded p-3">
                   <p className="text-xs text-muted-foreground">Verification Auth Code</p>
@@ -1433,6 +1582,173 @@ export default function ContractsHub() {
                 </>
               )}
               <Button onClick={() => setSelectedContract(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+      {/* ── Escalation Config Edit Modal ──────────────────────────────────────── */}
+      {editEscalationContract && (
+        <Dialog open onOpenChange={() => setEditEscalationContract(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Bell className="h-4 w-4" />
+                Billing &amp; Escalation Config
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-2">
+              <p className="text-xs text-muted-foreground">
+                <span className="font-medium text-slate-700">{editEscalationContract.clientName}</span>
+                {(editEscalationContract as any).candidateName && ` — ${(editEscalationContract as any).candidateName}`}
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Billing Start Date</Label>
+                  <input
+                    type="date"
+                    value={escBillingStart}
+                    onChange={e => setEscBillingStart(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                    data-testid="input-esc-billing-start"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm">Remind (days before)</Label>
+                  <input
+                    type="number" min="1" max="14"
+                    value={escReminderDays}
+                    onChange={e => setEscReminderDays(e.target.value)}
+                    className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm"
+                    data-testid="input-esc-reminder-days"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">Billing Type</Label>
+                <Select value={escBillingType} onValueChange={setEscBillingType}>
+                  <SelectTrigger data-testid="select-esc-billing-type">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="recurring">Recurring (weekly / bi-weekly / monthly)</SelectItem>
+                    <SelectItem value="one_time">One-Time (placement fee)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">Timesheet Contact <span className="text-xs text-muted-foreground">(hourly — who confirms hours)</span></Label>
+                <Select value={escTimesheetId} onValueChange={setEscTimesheetId}>
+                  <SelectTrigger data-testid="select-esc-timesheet">
+                    <SelectValue placeholder="Same as billing contact" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__owner__">Same as billing contact</SelectItem>
+                    {adminUsers.filter((u: any) => u.isActive && !u.deletedAt).map((u: any) => (
+                      <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">Primary Recipient</Label>
+                <Select value={escPrimaryId} onValueChange={setEscPrimaryId}>
+                  <SelectTrigger data-testid="select-esc-primary">
+                    <SelectValue placeholder="Contract owner (default)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__owner__">Contract owner (default)</SelectItem>
+                    {adminUsers.filter((u: any) => u.isActive && !u.deletedAt).map((u: any) => (
+                      <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">Fallback Recipient (Escalation)</Label>
+                <Select value={escFallbackId} onValueChange={setEscFallbackId}>
+                  <SelectTrigger data-testid="select-esc-fallback">
+                    <SelectValue placeholder="Select admin..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="__none__">None</SelectItem>
+                    {adminUsers.filter((u: any) => u.isActive && !u.deletedAt).map((u: any) => (
+                      <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-sm">Escalate After</Label>
+                <Select value={escFallbackHours} onValueChange={setEscFallbackHours}>
+                  <SelectTrigger data-testid="select-esc-fallback-hours">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="24">24 hours</SelectItem>
+                    <SelectItem value="48">48 hours</SelectItem>
+                    <SelectItem value="72">72 hours</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              {adminUsers.filter((u: any) => u.isActive && !u.deletedAt).length > 0 && (
+                <div className="space-y-1.5">
+                  <Label className="text-sm">CC on Escalation</Label>
+                  <div className="flex flex-wrap gap-2">
+                    {adminUsers.filter((u: any) => u.isActive && !u.deletedAt).map((u: any) => {
+                      const selected = escCc.includes(u.id);
+                      return (
+                        <button
+                          key={u.id}
+                          type="button"
+                          onClick={() => setEscCc(prev =>
+                            prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id],
+                          )}
+                          className={`text-xs rounded-full border px-3 py-1 transition-colors ${
+                            selected
+                              ? "bg-primary text-primary-foreground border-primary"
+                              : "bg-white text-slate-700 border-slate-300 hover:border-primary/50"
+                          }`}
+                          data-testid={`esc-cc-toggle-${u.id}`}
+                        >
+                          {u.firstName} {u.lastName}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setEditEscalationContract(null)}>Cancel</Button>
+              <Button
+                onClick={() => escalationConfigMutation.mutate({
+                  id: editEscalationContract.id,
+                  data: {
+                    billingStartDate: escBillingStart || null,
+                    billingReminderDaysBefore: Number(escReminderDays) || 2,
+                    billingType: escBillingType,
+                    escalationConfig: (() => {
+                      // Normalize sentinel values — Radix Select disallows empty-string values
+                      const primaryId = (escPrimaryId && escPrimaryId !== "__owner__") ? escPrimaryId : undefined;
+                      const fallbackId = (escFallbackId && escFallbackId !== "__none__") ? escFallbackId : undefined;
+                      const timesheetId = (escTimesheetId && escTimesheetId !== "__owner__") ? escTimesheetId : undefined;
+                      if (!primaryId && !fallbackId && !timesheetId) return null;
+                      return {
+                        primary_recipient_id: primaryId,
+                        fallback_recipient_id: fallbackId,
+                        fallback_after_hours: Number(escFallbackHours),
+                        cc_on_escalation: escCc,
+                        timesheet_recipient_id: timesheetId,
+                      };
+                    })(),
+                  },
+                })}
+                disabled={escalationConfigMutation.isPending}
+                data-testid="button-save-escalation"
+              >
+                {escalationConfigMutation.isPending && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                Save
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

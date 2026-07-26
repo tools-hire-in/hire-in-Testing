@@ -1965,6 +1965,16 @@ export const contracts = pgTable("contracts", {
   rejectionReason: text("rejection_reason"),
   dispatchMethod: varchar("dispatch_method"), // esign_link | presigned_pdf | both
   dispatchRecipientEmail: varchar("dispatch_recipient_email"), // stored at request-for-approval time
+  // Billing cycle & reminder fields
+  billingStartDate: date("billing_start_date"),
+  nextBillingDate: date("next_billing_date"),
+  billingReminderDaysBefore: integer("billing_reminder_days_before").default(2),
+  // escalation_config JSONB: { primary_recipient_id, fallback_recipient_id, fallback_after_hours, cc_on_escalation[] }
+  escalationConfig: jsonb("escalation_config"),
+  // billing_type: 'recurring' (default) | 'one_time' (permanent placement)
+  billingType: varchar("billing_type").default("recurring"),
+  // nullable: records when manager acknowledged the timesheet for the billing period
+  timesheetConfirmedAt: timestamp("timesheet_confirmed_at"),
   createdBy: varchar("created_by").references(() => adminUsers.id),
   // Contractor details for manager/director submissions (separate from candidates JSONB)
   // Shape: { name, contractorType, email, phone, companyAgency, candidateAnnualSalary }
@@ -1993,6 +2003,15 @@ export const contractInvoices = pgTable("contract_invoices", {
   createdBy: varchar("created_by").references(() => adminUsers.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Billing reminder audit log — prevents duplicate sends per day per type
+export const contractReminderLog = pgTable("contract_reminder_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  contractId: varchar("contract_id").notNull().references(() => contracts.id, { onDelete: "cascade" }),
+  reminderType: varchar("reminder_type").notNull(), // upcoming_billing | missed_billing_escalation | one_time_reminder | timesheet_request
+  sentTo: varchar("sent_to").notNull(), // admin user id
+  sentAt: timestamp("sent_at").defaultNow(),
 });
 
 export const insertContractClientSchema = createInsertSchema(contractClients).omit({

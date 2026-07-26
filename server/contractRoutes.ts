@@ -3,6 +3,8 @@ import multer from "multer";
 import crypto from "crypto";
 import path from "path";
 import fs from "fs";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 import { storage as dbStorage } from "./storage";
 import { ObjectStorageService } from "./replit_integrations/object_storage/objectStorage";
 import { extractPlaceholders, renderTemplate } from "./contractTemplateEngine";
@@ -294,7 +296,19 @@ export function registerContractRoutes(app: Express) {
         notes, templateName,
         contractType, billRate, payRate, passthroughFee,
         referralFeeFlat, businessMarketingCost, currency,
+        // Billing reminder config
+        billingStartDate, billingReminderDaysBefore, escalationConfig, billingType,
       } = req.body;
+
+      // Validation: recurring billing requires a fallback (escalation) recipient
+      if (billingStartDate && (billingType || "recurring") !== "one_time") {
+        const ec = typeof escalationConfig === "string" ? JSON.parse(escalationConfig || "{}") : (escalationConfig || {});
+        if (!ec?.fallback_recipient_id) {
+          return res.status(400).json({
+            error: "A fallback escalation recipient is required when configuring billing reminders for recurring contracts.",
+          });
+        }
+      }
 
       if (!clientName) return res.status(400).json({ error: "Client name required" });
 
@@ -443,6 +457,10 @@ export function registerContractRoutes(app: Express) {
       const submitterRole = req.session!.role;
       const isSubmissionRole = submitterRole === "manager" || submitterRole === "director";
 
+      const resolvedEscalationConfig = escalationConfig
+        ? (typeof escalationConfig === "string" ? JSON.parse(escalationConfig) : escalationConfig)
+        : null;
+
       const contract = await dbStorage.createContract({
         source: "generated",
         templateId: templateId || null,
@@ -467,6 +485,12 @@ export function registerContractRoutes(app: Express) {
         referralFee: margins.referralFee != null ? String(margins.referralFee) : null,
         grossMargin: margins.grossMargin != null ? String(margins.grossMargin) : null,
         businessMarketingCost: businessMarketingCost ? String(businessMarketingCost) : null,
+        // Billing reminders — nextBillingDate is seeded from billingStartDate; server manages advances
+        billingStartDate: billingStartDate || null,
+        nextBillingDate: billingStartDate || null,
+        billingReminderDaysBefore: billingReminderDaysBefore ? Number(billingReminderDaysBefore) : 2,
+        billingType: billingType || (resolvedContractType === "permanent_placement" ? "one_time" : "recurring"),
+        escalationConfig: resolvedEscalationConfig,
         netMargin: margins.netMargin != null ? String(margins.netMargin) : null,
         ...(isSubmissionRole ? { status: "pending_review" } : {}),
         ...(req.body.contractorDetails ? { contractorDetails: req.body.contractorDetails } : {}),
@@ -507,6 +531,7 @@ export function registerContractRoutes(app: Express) {
         contractStartDate, contractEndDate, agreementDate,
         contractType, passthroughFee, referralFeeFlat, businessMarketingCost,
         currency,
+        billingStartDate, nextBillingDate, billingReminderDaysBefore, escalationConfig, billingType,
       } = req.body;
       if (!clientName) return res.status(400).json({ error: "Client name required" });
 
@@ -523,6 +548,17 @@ export function registerContractRoutes(app: Express) {
       const resolvedCandidateRole = candidatesArray[0]?.role || candidateRole || null;
 
       const resolvedContractType: ContractType = (contractType as ContractType) || "contract_hourly";
+
+      // Validate: recurring billing contracts require a fallback escalation recipient
+      const resolvedBillingType = billingType || (resolvedContractType === "permanent_placement" ? "one_time" : "recurring");
+      const parsedEscConfig = escalationConfig
+        ? (typeof escalationConfig === "string" ? JSON.parse(escalationConfig) : escalationConfig)
+        : null;
+      if (billingStartDate && resolvedBillingType !== "one_time" && !parsedEscConfig?.fallback_recipient_id) {
+        return res.status(400).json({
+          error: "A fallback escalation recipient is required when importing a contract with recurring billing reminders.",
+        });
+      }
 
       const marginInputs = {
         contractType: resolvedContractType,
@@ -586,6 +622,13 @@ export function registerContractRoutes(app: Express) {
         netMargin: margins.netMargin != null ? String(margins.netMargin) : null,
         ...(isImportSubmission ? { status: "pending_review" } : { status: "countersigned" }),
         ...(req.body.contractorDetails ? { contractorDetails: JSON.parse(req.body.contractorDetails) } : {}),
+        billingStartDate: billingStartDate || null,
+        nextBillingDate: nextBillingDate || null,
+        billingReminderDaysBefore: billingReminderDaysBefore ? Number(billingReminderDaysBefore) : 2,
+        billingType: billingType || (resolvedContractType === "permanent_placement" ? "one_time" : "recurring"),
+        escalationConfig: escalationConfig
+          ? (typeof escalationConfig === "string" ? JSON.parse(escalationConfig) : escalationConfig)
+          : null,
       } as any);
 
       // Notify admin/ops of new submission
@@ -822,11 +865,16 @@ export function registerContractRoutes(app: Express) {
         });
       }
 
-      await dbStorage.updateContract(contract.id, {
+      const countersignUpdates: Record<string, any> = {
         status: "countersigned",
         countersignedBy: req.session!.userId,
         countersignedAt: new Date(),
-      });
+      };
+      // Auto-seed next_billing_date from billing_start_date if not yet set
+      if ((contract as any).billingStartDate && !(contract as any).nextBillingDate) {
+        countersignUpdates.nextBillingDate = (contract as any).billingStartDate;
+      }
+      await dbStorage.updateContract(contract.id, countersignUpdates);
 
       // Try to send confirmation email
       try {
@@ -925,11 +973,113 @@ export function registerContractRoutes(app: Express) {
 
   app.patch("/api/contracts/invoices/:id", requirePermission("contracts.invoices", "hr", "operations"), async (req, res) => {
     try {
+      // Fetch the old invoice status BEFORE updating so we only advance on a real transition
+      const oldInvoiceRes = await db.execute(
+        sql`SELECT status FROM contract_invoices WHERE id = ${req.params.id} LIMIT 1`
+      );
+      const oldStatus: string = oldInvoiceRes.rows.length > 0 ? (oldInvoiceRes.rows[0] as any).status : "";
+
       const invoice = await dbStorage.updateContractInvoice(req.params.id, req.body);
       if (!invoice) return res.status(404).json({ error: "Not found" });
+
+      // Only advance next_billing_date when the status transitions INTO sent/paid (not when re-saving an already-billed invoice)
+      const wasAlreadyBilled = ["sent", "paid"].includes(oldStatus);
+      if (!wasAlreadyBilled && ["sent", "paid"].includes(invoice.status)) {
+        try {
+          const contract = await dbStorage.getContract(invoice.contractId);
+          if (contract && (contract as any).nextBillingDate && (contract as any).billingFrequency &&
+              !["milestone", "one_time"].includes((contract as any).billingFrequency) &&
+              (contract as any).billingType !== "one_time") {
+            const { advanceBillingDate, toDateString } = await import("./services/contractBillingService");
+            const nextDate = advanceBillingDate(
+              new Date((contract as any).nextBillingDate),
+              (contract as any).billingFrequency,
+            );
+            await dbStorage.updateContract(invoice.contractId, { nextBillingDate: toDateString(nextDate) } as any);
+          }
+        } catch (advErr) {
+          console.error("[contracts] Failed to advance next_billing_date:", advErr);
+        }
+      }
+
       res.json(invoice);
     } catch (e: any) { res.status(500).json({ error: e.message }); }
   });
+
+  // ── TIMESHEET CONFIRMATION ────────────────────────────────────────────────
+  // PATCH /api/contracts/:id/confirm-timesheet — marks contractor hours as confirmed for
+  // the current billing cycle. Restricted to users who are a designated contact on the
+  // contract (primary, fallback, or creator) or are super_admin/admin.
+  app.patch("/api/contracts/:id/confirm-timesheet",
+    requirePermission("contracts.patch", "super_admin", "admin", "hr", "operations", "manager"),
+    async (req, res) => {
+      try {
+        const contract = await dbStorage.getContract(req.params.id);
+        if (!contract) return res.status(404).json({ error: "Not found" });
+
+        // Scope check: only responsible users may confirm hours.
+        const userId = req.session!.userId;
+        const role = req.session!.role;
+        const isPrivileged = role === "super_admin" || role === "admin";
+        if (!isPrivileged) {
+          const esc = (contract as any).escalationConfig as Record<string, unknown> | null;
+          const allowedIds = [
+            (contract as any).createdBy,
+            esc?.primary_recipient_id,
+            esc?.fallback_recipient_id,
+            esc?.timesheet_recipient_id,
+          ].filter(Boolean);
+          if (!allowedIds.includes(userId)) {
+            return res.status(403).json({ error: "Only the contract's designated billing or timesheet contacts may confirm hours." });
+          }
+        }
+
+        await dbStorage.updateContract(req.params.id, { timesheetConfirmedAt: new Date() } as any);
+        res.json({ success: true });
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    },
+  );
+
+  // ── ESCALATION CONFIG ─────────────────────────────────────────────────────
+  // PATCH /api/contracts/:id/escalation-config — update billing reminder & escalation settings
+  // Restricted to admin/super_admin — escalation recipients are security-sensitive.
+  app.patch("/api/contracts/:id/escalation-config",
+    requirePermission("contracts.patch", "super_admin", "admin"),
+    async (req, res) => {
+      try {
+        const { billingStartDate, billingReminderDaysBefore, escalationConfig, billingType } = req.body;
+        // NOTE: nextBillingDate is NOT accepted from the client — it is server-managed.
+
+        // Validation: recurring billing requires a fallback recipient
+        if (billingStartDate && (billingType || "recurring") !== "one_time") {
+          const ec = typeof escalationConfig === "object" ? escalationConfig : {};
+          if (!ec?.fallback_recipient_id) {
+            return res.status(400).json({
+              error: "A fallback escalation recipient is required when configuring billing reminders for recurring contracts.",
+            });
+          }
+        }
+
+        const updates: Record<string, unknown> = {};
+        if (billingStartDate !== undefined) {
+          updates.billingStartDate = billingStartDate || null;
+          // Server-managed: seed nextBillingDate from billingStartDate only if it is not yet set
+          if (billingStartDate) {
+            const existing = await dbStorage.getContract(req.params.id);
+            if (existing && !(existing as any).nextBillingDate) {
+              updates.nextBillingDate = billingStartDate;
+            }
+          }
+        }
+        if (billingReminderDaysBefore !== undefined) updates.billingReminderDaysBefore = Number(billingReminderDaysBefore) || 2;
+        if (escalationConfig !== undefined) updates.escalationConfig = escalationConfig;
+        if (billingType !== undefined) updates.billingType = billingType || "recurring";
+        const contract = await dbStorage.updateContract(req.params.id, updates as any);
+        if (!contract) return res.status(404).json({ error: "Not found" });
+        res.json(contract);
+      } catch (e: any) { res.status(500).json({ error: e.message }); }
+    },
+  );
 
   app.delete("/api/contracts/invoices/:id", requirePermission("contracts.invoices", "hr", "operations"), async (req, res) => {
     try {

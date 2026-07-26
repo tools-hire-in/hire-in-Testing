@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Bell, Check, CheckCheck } from "lucide-react";
+import { Bell, CheckCheck, ClipboardCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,6 +27,7 @@ interface Notification {
 export function NotificationBell() {
   const [open, setOpen] = useState(false);
   const [, setLocation] = useLocation();
+  const [confirmedTimesheets, setConfirmedTimesheets] = useState<Set<string>>(new Set());
 
   const { data: notifications = [] } = useQuery<Notification[]>({
     queryKey: ["/api/notifications"],
@@ -52,6 +52,21 @@ export function NotificationBell() {
       return res.json();
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
+    },
+  });
+
+  // Confirm contractor hours directly from the notification — avoids having
+  // to navigate to the Contracts Hub to complete this action.
+  const confirmTimesheetMutation = useMutation({
+    mutationFn: async ({ contractId, notificationId }: { contractId: string; notificationId: string }) => {
+      await apiRequest("PATCH", `/api/contracts/${contractId}/confirm-timesheet`, {});
+      if (!notifications.find(n => n.id === notificationId)?.isRead) {
+        await apiRequest("PATCH", `/api/notifications/${notificationId}/read`);
+      }
+    },
+    onSuccess: (_data, { notificationId, contractId }) => {
+      setConfirmedTimesheets(prev => new Set(prev).add(contractId));
       queryClient.invalidateQueries({ queryKey: ["/api/notifications"] });
     },
   });
@@ -124,42 +139,66 @@ export function NotificationBell() {
             No notifications
           </div>
         ) : (
-          notifications.slice(0, 20).map((n) => (
-            <DropdownMenuItem
-              key={n.id}
-              className={`flex flex-col items-start gap-1 px-3 py-2 cursor-pointer ${
-                !n.isRead ? "bg-blue-50 dark:bg-blue-950/20" : ""
-              }`}
-              onClick={() => {
-                if (!n.isRead) {
-                  markReadMutation.mutate(n.id);
-                }
-                const link = (n.metadata as Record<string, unknown> | null)?.link;
-                if (typeof link === "string" && link) {
-                  setOpen(false);
-                  setLocation(link);
-                }
-              }}
-              data-testid={`notification-item-${n.id}`}
-            >
-              <div className="flex items-center justify-between w-full gap-2">
-                <span className={`text-sm ${!n.isRead ? "font-semibold" : "font-normal"}`}>
-                  {n.title}
-                </span>
-                <div className="flex items-center gap-1 shrink-0">
-                  <span className="text-[10px] text-muted-foreground">
-                    {formatTime(n.createdAt)}
+          notifications.slice(0, 20).map((n) => {
+            const meta = n.metadata as Record<string, unknown> | null;
+            const link = meta?.link;
+            const isTimesheetRequest = n.type === "contract_billing_timesheet_request";
+            const contractId = isTimesheetRequest ? (meta?.contractId as string | undefined) : undefined;
+            const timesheetAlreadyConfirmed = contractId ? confirmedTimesheets.has(contractId) : false;
+
+            return (
+              <DropdownMenuItem
+                key={n.id}
+                className={`flex flex-col items-start gap-1 px-3 py-2 cursor-pointer ${
+                  !n.isRead ? "bg-blue-50 dark:bg-blue-950/20" : ""
+                }`}
+                onClick={() => {
+                  if (isTimesheetRequest) return; // action button handles this type
+                  if (!n.isRead) markReadMutation.mutate(n.id);
+                  if (typeof link === "string" && link) {
+                    setOpen(false);
+                    setLocation(link);
+                  }
+                }}
+                data-testid={`notification-item-${n.id}`}
+              >
+                <div className="flex items-center justify-between w-full gap-2">
+                  <span className={`text-sm ${!n.isRead ? "font-semibold" : "font-normal"}`}>
+                    {n.title}
                   </span>
-                  {!n.isRead && (
-                    <span className="w-2 h-2 rounded-full bg-blue-500" />
-                  )}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <span className="text-[10px] text-muted-foreground">
+                      {formatTime(n.createdAt)}
+                    </span>
+                    {!n.isRead && (
+                      <span className="w-2 h-2 rounded-full bg-blue-500" />
+                    )}
+                  </div>
                 </div>
-              </div>
-              <span className="text-xs text-muted-foreground line-clamp-2">
-                {n.message}
-              </span>
-            </DropdownMenuItem>
-          ))
+                <span className="text-xs text-muted-foreground line-clamp-2">
+                  {n.message}
+                </span>
+                {isTimesheetRequest && contractId && (
+                  <Button
+                    size="sm"
+                    variant={timesheetAlreadyConfirmed ? "outline" : "default"}
+                    className="mt-1 h-7 text-xs gap-1"
+                    disabled={timesheetAlreadyConfirmed || confirmTimesheetMutation.isPending}
+                    data-testid={`button-confirm-hours-${n.id}`}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (!timesheetAlreadyConfirmed) {
+                        confirmTimesheetMutation.mutate({ contractId, notificationId: n.id });
+                      }
+                    }}
+                  >
+                    <ClipboardCheck className="h-3 w-3" />
+                    {timesheetAlreadyConfirmed ? "Hours confirmed" : "Confirm hours"}
+                  </Button>
+                )}
+              </DropdownMenuItem>
+            );
+          })
         )}
         <DropdownMenuSeparator />
         <DropdownMenuItem

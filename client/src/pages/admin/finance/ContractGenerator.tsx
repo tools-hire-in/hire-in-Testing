@@ -103,6 +103,14 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
   const [billingFreq, setBillingFreq] = useState("monthly");
   const [notes, setNotes] = useState("");
 
+  // Step 2 — Billing reminders
+  const [billingStartDate, setBillingStartDate] = useState("");
+  const [billingReminderDays, setBillingReminderDays] = useState("2");
+  const [billingPrimaryId, setBillingPrimaryId] = useState("");
+  const [billingFallbackId, setBillingFallbackId] = useState("");
+  const [billingTimesheetId, setBillingTimesheetId] = useState(""); // timesheet hours contact (may differ from billing contact)
+  const [billingFallbackHours, setBillingFallbackHours] = useState("24");
+
   // Step 2 — Financial terms (new — required for server validation)
   const [contractType, setContractType] = useState<"contract_hourly" | "permanent_placement" | "contract_to_hire">("contract_hourly");
   const [currency, setCurrency] = useState("USD");
@@ -132,6 +140,10 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
   // Own clients query so inline creation refreshes the dropdown
   const { data: clients = [] } = useQuery<ContractClient[]>({
     queryKey: ["/api/contracts/clients"],
+  });
+
+  const { data: adminUsers = [] } = useQuery<any[]>({
+    queryKey: ["/api/admin/users"],
   });
 
   const { data: templates = [] } = useQuery<ContractTemplate[]>({
@@ -326,6 +338,22 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
         notes: notes || null,
         templateName: selectedTemplate?.name || null,
         ...(Object.keys(contractorDetails).length > 0 ? { contractorDetails } : {}),
+        // Billing reminders — nextBillingDate is server-managed (seeded from billingStartDate server-side)
+        billingStartDate: billingStartDate || null,
+        billingReminderDaysBefore: Number(billingReminderDays) || 2,
+        escalationConfig: (() => {
+          // Normalize sentinel values — Radix Select disallows empty-string values
+          const primaryId = (billingPrimaryId && billingPrimaryId !== "__owner__") ? billingPrimaryId : undefined;
+          const fallbackId = (billingFallbackId && billingFallbackId !== "__none__") ? billingFallbackId : undefined;
+          const timesheetId = (billingTimesheetId && billingTimesheetId !== "__owner__") ? billingTimesheetId : undefined;
+          if (!primaryId && !fallbackId && !timesheetId) return null;
+          return {
+            primary_recipient_id: primaryId,
+            fallback_recipient_id: fallbackId,
+            fallback_after_hours: Number(billingFallbackHours) || 24,
+            timesheet_recipient_id: timesheetId,
+          };
+        })(),
         ...financialPayload,
       });
     },
@@ -927,6 +955,82 @@ export default function ContractGenerator({ onClose, onCreated, onGoToClientsTab
                 <Input type="number" step="0.01" placeholder="e.g. 500.00"
                   value={businessMarketingCost} onChange={e => setBusinessMarketingCost(e.target.value)}
                   data-testid="input-bmc-gen" />
+              </div>
+            </div>
+
+            {/* ── Billing Reminders ──────────────────────────────────────── */}
+            <div className="space-y-3 pt-2 border-t">
+              <h4 className="font-semibold text-sm text-slate-700">Billing Reminders <span className="font-normal text-muted-foreground text-xs">(optional)</span></h4>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Billing Start Date</Label>
+                  <Input type="date" value={billingStartDate} onChange={e => setBillingStartDate(e.target.value)} data-testid="input-billing-start-gen" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Remind (days before due)</Label>
+                  <Input type="number" min="1" max="14" value={billingReminderDays} onChange={e => setBillingReminderDays(e.target.value)} data-testid="input-reminder-days-gen" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Timesheet Contact <span className="text-slate-400">(hourly — who confirms hours)</span></Label>
+                  <Select value={billingTimesheetId} onValueChange={setBillingTimesheetId}>
+                    <SelectTrigger data-testid="select-billing-timesheet-gen">
+                      <SelectValue placeholder="Same as billing contact" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__owner__">Same as billing contact</SelectItem>
+                      {(adminUsers as any[]).filter((u: any) => u.isActive && !u.deletedAt).map((u: any) => (
+                        <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Primary Billing Recipient</Label>
+                  <Select value={billingPrimaryId} onValueChange={setBillingPrimaryId}>
+                    <SelectTrigger data-testid="select-billing-primary-gen">
+                      <SelectValue placeholder="Contract owner (default)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__owner__">Contract owner (default)</SelectItem>
+                      {(adminUsers as any[]).filter((u: any) => u.isActive && !u.deletedAt).map((u: any) => (
+                        <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label className="text-xs text-muted-foreground">Fallback (Escalation) Recipient</Label>
+                  <Select value={billingFallbackId} onValueChange={setBillingFallbackId}>
+                    <SelectTrigger data-testid="select-billing-fallback-gen">
+                      <SelectValue placeholder="None" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="__none__">None</SelectItem>
+                      {(adminUsers as any[]).filter((u: any) => u.isActive && !u.deletedAt).map((u: any) => (
+                        <SelectItem key={u.id} value={u.id}>{u.firstName} {u.lastName}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                {billingFallbackId && billingFallbackId !== "__none__" && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground">Escalate After (hours)</Label>
+                    <Select value={billingFallbackHours} onValueChange={setBillingFallbackHours}>
+                      <SelectTrigger data-testid="select-billing-fallback-hours-gen">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="24">24 hours</SelectItem>
+                        <SelectItem value="48">48 hours</SelectItem>
+                        <SelectItem value="72">72 hours</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
               </div>
             </div>
 

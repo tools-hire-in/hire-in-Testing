@@ -7,7 +7,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useToast } from "@/hooks/use-toast";
-import { Loader2, Upload, FileText, X, DollarSign, Info, TrendingUp, Plus, Trash2 } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Loader2, Upload, FileText, X, DollarSign, Info, TrendingUp, Plus, Trash2, ChevronDown, ChevronUp, Bell } from "lucide-react";
 import type { ContractClient } from "@shared/schema";
 
 interface CandidateEntry {
@@ -115,8 +116,20 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
   const [preview, setPreview] = useState<MarginPreview | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
 
+  // Escalation & reminder fields
+  const [billingStartDate, setBillingStartDate] = useState("");
+  const [billingReminderDays, setBillingReminderDays] = useState("2");
+  const [fallbackRecipientId, setFallbackRecipientId] = useState("");
+  const [fallbackAfterHours, setFallbackAfterHours] = useState("24");
+  const [ccOnEscalation, setCcOnEscalation] = useState<string[]>([]);
+  const [showEscalation, setShowEscalation] = useState(false);
+
   const isHourly = contractType === "contract_hourly" || contractType === "contract_to_hire";
   const isPerm = contractType === "permanent_placement";
+
+  // Load admin users for escalation recipient pickers
+  const { data: adminUsers = [] } = useQuery<any[]>({ queryKey: ["/api/admin/users"] });
+  const activeAdmins = adminUsers.filter((u: any) => u.isActive && !u.deletedAt);
 
   const handleClientChange = (id: string) => {
     setClientId(id);
@@ -205,6 +218,20 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
           if (referralFeePct) formData.append("referralFeePct", referralFeePct);
           if (candidateAnnualSalary) formData.append("candidateAnnualSalary", candidateAnnualSalary);
         }
+      }
+      // Billing reminder & escalation config
+      if (billingStartDate) {
+        formData.append("billingStartDate", billingStartDate);
+        formData.append("nextBillingDate", billingStartDate);
+      }
+      if (billingReminderDays) formData.append("billingReminderDaysBefore", billingReminderDays);
+      if (isPerm) formData.append("billingType", "one_time");
+      if (fallbackRecipientId) {
+        formData.append("escalationConfig", JSON.stringify({
+          fallback_recipient_id: fallbackRecipientId,
+          fallback_after_hours: Number(fallbackAfterHours),
+          cc_on_escalation: ccOnEscalation,
+        }));
       }
 
       // Contractor details (if any filled)
@@ -689,6 +716,111 @@ export default function ImportContract({ clients, onClose, onCreated }: Props) {
                 </SelectContent>
               </Select>
             </div>
+          </div>
+
+          {/* ── Escalation & Reminders ─── */}
+          <div className="border rounded-lg overflow-hidden">
+            <button
+              type="button"
+              className="w-full flex items-center justify-between px-4 py-3 bg-slate-50 hover:bg-slate-100 transition-colors text-sm font-medium text-slate-700"
+              onClick={() => setShowEscalation(v => !v)}
+              data-testid="toggle-escalation-section"
+            >
+              <span className="flex items-center gap-2">
+                <Bell className="h-4 w-4 text-slate-500" />
+                Escalation &amp; Reminders <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+              </span>
+              {showEscalation ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+            </button>
+            {showEscalation && (
+              <div className="px-4 py-4 space-y-4 border-t">
+                <p className="text-xs text-muted-foreground">
+                  Configure automatic billing reminders and escalation routing for this contract.
+                </p>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <Label>Billing Start Date</Label>
+                    <Input
+                      type="date"
+                      value={billingStartDate}
+                      onChange={e => setBillingStartDate(e.target.value)}
+                      data-testid="input-billing-start-date"
+                    />
+                    <p className="text-xs text-muted-foreground">First date a billing reminder should fire.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Remind (days before due)</Label>
+                    <Input
+                      type="number"
+                      min="1"
+                      max="14"
+                      value={billingReminderDays}
+                      onChange={e => setBillingReminderDays(e.target.value)}
+                      data-testid="input-billing-reminder-days"
+                    />
+                    <p className="text-xs text-muted-foreground">How many days before billing to send a reminder.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Escalate After (hours)</Label>
+                    <Select value={fallbackAfterHours} onValueChange={setFallbackAfterHours}>
+                      <SelectTrigger data-testid="select-fallback-after-hours">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="24">24 hours</SelectItem>
+                        <SelectItem value="48">48 hours</SelectItem>
+                        <SelectItem value="72">72 hours</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Escalate to fallback if no invoice is raised after this long.</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Fallback Recipient</Label>
+                    <Select value={fallbackRecipientId} onValueChange={setFallbackRecipientId}>
+                      <SelectTrigger data-testid="select-fallback-recipient">
+                        <SelectValue placeholder="Select admin..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {activeAdmins.map((u: any) => (
+                          <SelectItem key={u.id} value={u.id}>
+                            {u.firstName} {u.lastName}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">Who gets the escalation if billing is missed.</p>
+                  </div>
+                </div>
+                {activeAdmins.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label>CC on Escalation</Label>
+                    <div className="flex flex-wrap gap-2">
+                      {activeAdmins.map((u: any) => {
+                        const selected = ccOnEscalation.includes(u.id);
+                        return (
+                          <button
+                            key={u.id}
+                            type="button"
+                            onClick={() => setCcOnEscalation(prev =>
+                              prev.includes(u.id) ? prev.filter(id => id !== u.id) : [...prev, u.id],
+                            )}
+                            className={`text-xs rounded-full border px-3 py-1 transition-colors ${
+                              selected
+                                ? "bg-primary text-primary-foreground border-primary"
+                                : "bg-white text-slate-700 border-slate-300 hover:border-primary/50"
+                            }`}
+                            data-testid={`cc-escalation-toggle-${u.id}`}
+                          >
+                            {u.firstName} {u.lastName}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-xs text-muted-foreground">These users will be CC'd on escalation emails.</p>
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </div>
 

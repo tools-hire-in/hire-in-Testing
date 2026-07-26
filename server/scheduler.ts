@@ -380,6 +380,18 @@ export function startScheduler() {
     label: "Zoom Daily Comms Sync",
     schedule: "Daily 02:00 UTC (6 PM PST)",
   });
+  JOB_REGISTRY.set("contract_billing_reminder_sweep", {
+    name: "contract_billing_reminder_sweep",
+    label: "Contract Billing Reminder & Escalation Sweep",
+    schedule: "Daily 8 AM IST",
+    handler: async () => {
+      const { runContractBillingReminderSweep } = await import("./services/contractBillingService");
+      const result = await runContractBillingReminderSweep();
+      console.log(
+        `[scheduler] Contract billing sweep: upcoming=${result.upcomingFired}, escalations=${result.escalationFired}, oneTime=${result.oneTimeFired}, timesheet=${result.timesheetFired}, errors=${result.errors}`,
+      );
+    },
+  });
 
   // Salary report: last day of month at 6 PM CST — generate and hold for approval
   cron.schedule("0 18 28-31 * *", async () => {
@@ -845,6 +857,28 @@ export function startScheduler() {
   }, {
     timezone: "Asia/Kolkata",
   });
+
+  // Contract Billing Reminder & Escalation Sweep: runs at 8 AM IST daily.
+  // Sends upcoming billing reminders, missed billing escalations, and one-time placement fee reminders.
+  cron.schedule("0 8 * * *", async () => {
+    const _envMode = await getEnvMode();
+    if (_envMode !== "production") {
+      console.log(`[scheduler] [SUSPENDED] contract_billing_reminder_sweep — env_mode=${_envMode}`);
+      return;
+    }
+    const _entry = JOB_REGISTRY.get("contract_billing_reminder_sweep");
+    if (_entry) { _entry.lastTriggeredAt = new Date(); _entry.lastTriggeredBy = "scheduler"; }
+    console.log("[scheduler] Running contract billing reminder sweep...");
+    try {
+      const { runContractBillingReminderSweep } = await import("./services/contractBillingService");
+      const result = await runContractBillingReminderSweep();
+      console.log(
+        `[scheduler] Contract billing sweep: upcoming=${result.upcomingFired}, escalations=${result.escalationFired}, oneTime=${result.oneTimeFired}, timesheet=${result.timesheetFired}, errors=${result.errors}`,
+      );
+    } catch (error) {
+      console.error("[scheduler] Contract billing reminder sweep failed:", error);
+    }
+  }, { timezone: "Asia/Kolkata" });
 
   // Goal Auto-Progress Engine: runs at 7:00 AM IST daily, before the 8:30 AM absent sweep.
   // Calculates actual progress for all auto-trackable active plan goals and updates the DB.
