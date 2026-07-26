@@ -9711,10 +9711,10 @@ Canonical domain: ${BASE}
       }
       const [offers, addendums] = await Promise.all([storage.getOfferLetters(), storage.getAllAddendums()]);
       const offerOptions = offers
-        .filter(o => (o as any).resultingUserId === employeeId)
+        .filter(o => String((o as any).resultingUserId) === employeeId)
         .map(o => ({ type: "offer_letter", id: o.id, label: `Offer • ${(o as any).referenceNumber || o.id}`, salary: (o as any).salary ?? null }));
       const addendumOptions = addendums
-        .filter(a => (a as any).forEmployeeId === employeeId)
+        .filter(a => String((a as any).forEmployeeId) === employeeId)
         .map(a => ({ type: "addendum", id: a.id, label: `Addendum • ${(a as any).addendumType || ""} ${(a as any).referenceNumber || a.id}`.trim(), salary: (a as any).newSalary ?? null }));
       res.json([...addendumOptions, ...offerOptions]);
     } catch (error) {
