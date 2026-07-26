@@ -3851,6 +3851,13 @@ export function OfferLettersDashboard() {
               Look up an existing employee to auto-fill their details (so goals can be attached), or enter details manually for a legacy employee with no offer letter in the system.
             </DialogDescription>
           </DialogHeader>
+          <div className="mx-6 mt-1 mb-0 flex items-start gap-2 rounded-md border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20 px-3 py-2 text-sm">
+            <AlertTriangle className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+            <span className="text-amber-800 dark:text-amber-300">
+              <strong>Deprecated.</strong> Amendment letters are now managed through the unified{" "}
+              <strong>Letter Generator</strong> (HR Tools → Letter Generator → Amendment type). This form still works for legacy/manual-entry use.
+            </span>
+          </div>
           <DialogBody>
           <div className="space-y-4 py-2">
             <div className="border rounded-lg p-4 space-y-3 bg-purple-50/30 border-purple-100">

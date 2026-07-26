@@ -16,6 +16,13 @@ import {
 
 const rayomindLogoPath = "/rayomind-logo.png";
 
+function maskSalary(v: string | number | null | undefined): string {
+  if (!v) return "—";
+  const str = String(Math.round(Number(v)));
+  if (str.length <= 4) return `₹ ${str}`;
+  return `₹ ${"*".repeat(str.length - 4)}${str.slice(-4)}`;
+}
+
 const DOC_TYPE_LABELS: Record<AllowedDocType, string> = {
   hr_letter: "HR / Amendment Letter (Experience, Relieving, Salary Revision, etc.)",
   contract: "Staffing Services Agreement (Contract)",
@@ -47,6 +54,12 @@ interface HrLetterVerifyResult {
   signatoryDesignation: string | null;
   verified: boolean;
   warning?: string;
+  amendmentSubtype?: string | null;
+  effectiveDate?: string | null;
+  oldSalary?: string | null;
+  newSalary?: string | null;
+  oldDesignation?: string | null;
+  newDesignation?: string | null;
 }
 
 interface ContractVerifyResult {
@@ -661,29 +674,80 @@ export default function VerifyLetter() {
                   )}
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
-                  <div>
-                    <p className="text-muted-foreground">Document Type</p>
-                    <p className="font-medium">{TEMPLATE_LABELS[(result as HrLetterVerifyResult).templateType] || (result as HrLetterVerifyResult).templateType}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Status</p>
-                    <Badge variant={result.status === "revoked" ? "destructive" : "default"} data-testid="badge-verify-status">
-                      {result.status === "revoked" ? "Revoked" : "Issued"}
-                    </Badge>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Employee Name</p>
-                    <p className="font-medium" data-testid="text-verify-name">{(result as HrLetterVerifyResult).employeeName}</p>
-                  </div>
-                  <div>
-                    <p className="text-muted-foreground">Designation</p>
-                    <p className="font-medium">{(result as HrLetterVerifyResult).designation}</p>
-                  </div>
-                  {(result as HrLetterVerifyResult).department && (
-                    <div>
-                      <p className="text-muted-foreground">Department</p>
-                      <p className="font-medium">{(result as HrLetterVerifyResult).department}</p>
+                (() => {
+                  const r = result as HrLetterVerifyResult;
+                  const AMENDMENT_TYPES = new Set(["salary_revision", "role_change", "combined", "device_allocation"]);
+                  const isAmendment = AMENDMENT_TYPES.has(r.templateType);
+                  return (
+                    <div className="grid grid-cols-2 gap-y-3 gap-x-4 text-sm">
+                      <div>
+                        <p className="text-muted-foreground">Document Type</p>
+                        <p className="font-medium">{TEMPLATE_LABELS[r.templateType] || r.templateType}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Status</p>
+                        <Badge variant={result.status === "revoked" ? "destructive" : "default"} data-testid="badge-verify-status">
+                          {result.status === "revoked" ? "Revoked" : "Issued"}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Employee Name</p>
+                        <p className="font-medium" data-testid="text-verify-name">{r.employeeName}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Designation</p>
+                        <p className="font-medium">{r.designation}</p>
+                      </div>
+                      {r.department && (
+                        <div>
+                          <p className="text-muted-foreground">Department</p>
+                          <p className="font-medium">{r.department}</p>
+                        </div>
+                      )}
+                      {isAmendment ? (
+                        <>
+                          {r.effectiveDate && (
+                            <div>
+                              <p className="text-muted-foreground">Effective Date</p>
+                              <p className="font-medium">{formatDate(r.effectiveDate)}</p>
+                            </div>
+                          )}
+                          {(r.oldSalary || r.newSalary) && (
+                            <div className="col-span-2 border rounded-md p-3 bg-muted/30 space-y-1">
+                              <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Salary Change</p>
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm font-mono">{r.oldSalary ? maskSalary(r.oldSalary) : "—"}</span>
+                                <span className="text-muted-foreground">→</span>
+                                <span className="text-sm font-mono font-semibold text-green-700">{r.newSalary ? maskSalary(r.newSalary) : "—"}</span>
+                              </div>
+                              <p className="text-xs text-muted-foreground">Salary figures are partially masked for privacy</p>
+                            </div>
+                          )}
+                          {(r.oldDesignation || r.newDesignation) && (
+                            <div className="col-span-2 border rounded-md p-3 bg-muted/30 space-y-1">
+                              <p className="text-muted-foreground text-xs font-medium uppercase tracking-wide">Designation Change</p>
+                              <div className="flex items-center gap-3">
+                                <span className="text-sm">{r.oldDesignation || "—"}</span>
+                                <span className="text-muted-foreground">→</span>
+                                <span className="text-sm font-semibold">{r.newDesignation || "—"}</span>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div>
+                          <p className="text-muted-foreground">Tenure</p>
+                          <p className="font-medium">{formatDate(r.startDate)} — {formatDate(r.endDate)}</p>
+                        </div>
+                      )}
+                      <div>
+                        <p className="text-muted-foreground">Issue Date</p>
+                        <p className="font-medium">{formatDate(r.issueDate)}</p>
+                      </div>
+                      <div>
+                        <p className="text-muted-foreground">Reference</p>
+                        <p className="font-mono text-xs">{r.referenceNumber}</p>
+                      </div>
                     </div>
                   )}
                   {!(AMENDMENT_TEMPLATE_TYPES as readonly string[]).includes((result as HrLetterVerifyResult).templateType) && (

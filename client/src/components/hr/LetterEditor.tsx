@@ -323,6 +323,37 @@ export function LetterEditor({ letterType = "all", config, editingLetter, onResu
     setStep(1);
   }, [initialTemplateId, letterTemplates]);
 
+  // Prefill from banner navigation (sessionStorage handoff) — run once on mount, skip if editing existing letter
+  useEffect(() => {
+    if (editingLetter) return;
+    try {
+      const raw = sessionStorage.getItem("letter_editor_prefill");
+      if (!raw) return;
+      sessionStorage.removeItem("letter_editor_prefill");
+      const p = JSON.parse(raw) as {
+        templateType?: string;
+        employeeId?: string;
+        effectiveDate?: string;
+        newSalary?: string;
+        oldSalary?: string;
+        newDesignation?: string;
+        oldDesignation?: string;
+      };
+      if (p.templateType) {
+        setForm(prev => ({ ...prev, templateType: p.templateType! }));
+      }
+      setAmendmentMeta(prev => ({
+        ...prev,
+        ...(p.effectiveDate ? { effectiveDate: p.effectiveDate } : {}),
+        ...(p.newSalary ? { newSalary: p.newSalary } : {}),
+        ...(p.oldSalary ? { previousSalary: p.oldSalary } : {}),
+        ...(p.newDesignation ? { newDesignation: p.newDesignation } : {}),
+        ...(p.oldDesignation ? { oldDesignation: p.oldDesignation } : {}),
+      }));
+    } catch {}
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Auto-save: debounced PATCH on every meaningful state change
   useEffect(() => {
     if (!form.templateType) return;

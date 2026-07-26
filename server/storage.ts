@@ -524,7 +524,9 @@ export interface IStorage {
   createHrLetter(data: InsertHrLetter): Promise<HrLetter>;
   getHrLetter(id: string): Promise<HrLetter | undefined>;
   updateHrLetter(id: string, updates: Partial<HrLetter>): Promise<HrLetter | undefined>;
-  getHrLetters(filters?: { templateType?: string; status?: string; search?: string }): Promise<HrLetter[]>;
+  getHrLetters(filters?: { templateType?: string; status?: string; search?: string; employeeId?: string }): Promise<HrLetter[]>;
+  createDesignationChange(data: { employeeId: string; oldDesignation?: string | null; newDesignation: string; oldDepartment?: string | null; newDepartment?: string | null; effectiveDate: string; sourceType?: string; sourceDocumentId?: string | null; sourceDocumentType?: string | null; reason?: string | null; initiatedBy?: string | null }): Promise<{ id: string }>;
+  getDesignationChangesForEmployee(employeeId: string): Promise<Array<{ id: string; oldDesignation: string | null; newDesignation: string; oldDepartment: string | null; newDepartment: string | null; effectiveDate: string; sourceType: string; sourceDocumentId: string | null; sourceDocumentType: string | null; reason: string | null; createdAt: Date | null }>>;
   getHrLetterByRef(referenceNumber: string): Promise<HrLetter | undefined>;
   getHrLetterByRefAndAuth(referenceNumber: string, authCode: string): Promise<HrLetter | undefined>;
   getHrLetterCountByPrefix(prefix: string): Promise<number>;
@@ -3568,13 +3570,16 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getHrLetters(filters?: { templateType?: string; status?: string; search?: string }): Promise<HrLetter[]> {
+  async getHrLetters(filters?: { templateType?: string; status?: string; search?: string; employeeId?: string }): Promise<HrLetter[]> {
     const conditions: ReturnType<typeof eq>[] = [];
     if (filters?.templateType) {
       conditions.push(sql`${hrLetters.templateType} = ${filters.templateType}`);
     }
     if (filters?.status) {
       conditions.push(sql`${hrLetters.status} = ${filters.status}`);
+    }
+    if (filters?.employeeId) {
+      conditions.push(eq(hrLetters.employeeId, filters.employeeId));
     }
     let results = conditions.length > 0
       ? await db.select().from(hrLetters).where(and(...conditions)).orderBy(desc(hrLetters.createdAt))
@@ -3588,6 +3593,37 @@ export class DatabaseStorage implements IStorage {
       );
     }
     return results;
+  }
+
+  async createDesignationChange(data: { employeeId: string; oldDesignation?: string | null; newDesignation: string; oldDepartment?: string | null; newDepartment?: string | null; effectiveDate: string; sourceType?: string; sourceDocumentId?: string | null; sourceDocumentType?: string | null; reason?: string | null; initiatedBy?: string | null }): Promise<{ id: string }> {
+    const result = await db.execute(sql`
+      INSERT INTO designation_changes
+        (employee_id, old_designation, new_designation, old_department, new_department, effective_date, source_type, source_document_id, source_document_type, reason, initiated_by)
+      VALUES
+        (${data.employeeId}, ${data.oldDesignation ?? null}, ${data.newDesignation}, ${data.oldDepartment ?? null}, ${data.newDepartment ?? null}, ${data.effectiveDate}, ${data.sourceType ?? "manual"}, ${data.sourceDocumentId ?? null}, ${data.sourceDocumentType ?? null}, ${data.reason ?? null}, ${data.initiatedBy ?? null})
+      RETURNING id
+    `);
+    return { id: (result.rows[0] as any).id as string };
+  }
+
+  async getDesignationChangesForEmployee(employeeId: string): Promise<Array<{ id: string; oldDesignation: string | null; newDesignation: string; oldDepartment: string | null; newDepartment: string | null; effectiveDate: string; sourceType: string; sourceDocumentId: string | null; sourceDocumentType: string | null; reason: string | null; createdAt: Date | null }>> {
+    const rows = await db.execute(sql`
+      SELECT id, old_designation, new_designation, old_department, new_department, effective_date, source_type, source_document_id, source_document_type, reason, created_at
+      FROM designation_changes WHERE employee_id = ${employeeId} ORDER BY created_at DESC
+    `);
+    return rows.rows.map((r: any) => ({
+      id: r.id,
+      oldDesignation: r.old_designation ?? null,
+      newDesignation: r.new_designation,
+      oldDepartment: r.old_department ?? null,
+      newDepartment: r.new_department ?? null,
+      effectiveDate: r.effective_date,
+      sourceType: r.source_type,
+      sourceDocumentId: r.source_document_id ?? null,
+      sourceDocumentType: r.source_document_type ?? null,
+      reason: r.reason ?? null,
+      createdAt: r.created_at ? new Date(r.created_at) : null,
+    }));
   }
 
   async getHrLetterByRef(referenceNumber: string): Promise<HrLetter | undefined> {

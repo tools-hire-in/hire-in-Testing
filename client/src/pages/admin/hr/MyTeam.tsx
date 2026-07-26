@@ -41,7 +41,10 @@ import {
   ShieldCheck,
   Radar,
   AlertCircle,
+  FolderOpen,
+  Download,
 } from "lucide-react";
+import { AmendmentSuggestionBanner } from "@/components/AmendmentSuggestionBanner";
 import { AdminLayout } from "@/components/admin/AdminLayout";
 import { V2PageHeader } from "@/components/admin/V2PageHeader";
 import { useNewLook } from "@/hooks/use-new-look";
@@ -665,6 +668,9 @@ function EmployeeDetailView({
           <TabsTrigger data-testid="tab-governance" value="governance" className="gap-1">
             <ShieldCheck className="h-4 w-4" /> Governance
           </TabsTrigger>
+          <TabsTrigger data-testid="tab-documents" value="documents" className="gap-1">
+            <FolderOpen className="h-4 w-4" /> Documents
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="profile">
@@ -712,6 +718,10 @@ function EmployeeDetailView({
         </TabsContent>
         <TabsContent value="governance">
           <GovernanceControlsTab employeeId={userId} canClose={true} />
+        </TabsContent>
+
+        <TabsContent value="documents">
+          <DocumentsTab employeeId={userId} />
         </TabsContent>
 
         <TabsContent value="compliance">
@@ -790,6 +800,163 @@ interface ShiftInfo {
   istStart: string;
   istEnd: string;
   isDst: boolean;
+}
+
+const AMENDMENT_TEMPLATE_TYPES = new Set(["salary_revision", "role_change", "combined", "device_allocation"]);
+const DOC_TEMPLATE_LABELS: Record<string, string> = {
+  experience: "Experience Letter",
+  internship_completion: "Internship Completion",
+  internship_certificate: "Internship Certificate",
+  relieving: "Relieving Letter",
+  salary_revision: "Salary Revision Letter",
+  role_change: "Role / Designation Change",
+  combined: "Combined Amendment",
+  device_allocation: "Device Allocation",
+};
+
+
+interface TimelineDoc {
+  kind: "hr_letter" | "addendum";
+  id: string;
+  offerLetterId?: string | null;
+  templateType: string;
+  amendmentSubtype: string | null;
+  status: string;
+  referenceNumber: string | null;
+  effectiveDate: string | null;
+  oldSalary: string | null;
+  newSalary: string | null;
+  oldDesignation: string | null;
+  newDesignation: string | null;
+  employeeName: string;
+  issuedAt: string | null;
+  createdAt: string | null;
+  pdfPath: string | null;
+  legacy?: boolean;
+}
+
+function DocumentsTab({ employeeId }: { employeeId: string }) {
+  const lettersQuery = useQuery<TimelineDoc[]>({
+    queryKey: ["/api/hr/documents/timeline", employeeId],
+    queryFn: async () => {
+      const res = await fetch(`/api/hr/documents/timeline/${encodeURIComponent(employeeId)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const letters = lettersQuery.data || [];
+  const issued = letters.filter(l => l.status === "issued" || l.status === "revoked" || l.status === "counter_signed" || l.status === "accepted");
+  const inProgress = letters.filter(l => !issued.find(i => i.id === l.id) && l.status !== "withdrawn");
+
+  if (lettersQuery.isLoading) {
+    return <Skeleton className="h-40 w-full" />;
+  }
+
+  if (letters.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-12 text-center text-muted-foreground">
+          <FolderOpen className="h-10 w-10 mx-auto mb-3 opacity-40" />
+          No HR letters found for this employee.
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {inProgress.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2"><FileText className="h-4 w-4" /> In Progress</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="divide-y">
+              {inProgress.map(l => (
+                <div key={l.id} className="py-3 flex items-center justify-between gap-3" data-testid={`row-doc-inprogress-${l.id}`}>
+                  <div className="min-w-0 flex items-center gap-2">
+                    <p className="font-medium text-sm">{DOC_TEMPLATE_LABELS[l.templateType] || l.templateType}</p>
+                    {l.legacy && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-medium">Legacy</span>}
+                  </div>
+                  <p className="text-xs text-muted-foreground capitalize">{l.status.replace(/_/g, " ")}</p>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2"><FolderOpen className="h-4 w-4" /> Issued Letters</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {issued.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">No issued letters yet.</p>
+          ) : (
+            <div className="divide-y">
+              {issued.map(l => {
+                const isAmendment = AMENDMENT_TEMPLATE_TYPES.has(l.templateType);
+                return (
+                  <div key={l.id} className="py-3 space-y-1" data-testid={`row-doc-issued-${l.id}`}>
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="font-medium text-sm">{DOC_TEMPLATE_LABELS[l.templateType] || l.templateType}</p>
+                          {l.legacy && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 font-medium">Legacy</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground font-mono">{l.referenceNumber || "No ref"}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${l.status === "revoked" ? "bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400" : "bg-green-100 text-green-700 dark:bg-green-900/20 dark:text-green-400"}`}>
+                          {l.status}
+                        </span>
+                        {l.pdfPath && (
+                          <a
+                            href={`/api/hr/letters/${l.id}/download`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                            data-testid={`link-doc-download-${l.id}`}
+                          >
+                            <Download className="h-3 w-3" /> Download
+                          </a>
+                        )}
+                        {l.kind === "addendum" && l.offerLetterId && (
+                          <a
+                            href={`/api/hr/tools/offer-letters/${l.offerLetterId}/addendums/${l.id}/download`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
+                            data-testid={`link-addendum-download-${l.id}`}
+                          >
+                            <Download className="h-3 w-3" /> Download
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    {isAmendment && (
+                      <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+                        {l.effectiveDate && <span>Effective: <span className="font-medium text-foreground">{l.effectiveDate}</span></span>}
+                        {l.oldSalary && l.newSalary && (
+                          <span>Salary: <span className="line-through">{Number(l.oldSalary).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })}</span> → <span className="font-medium text-green-700">{Number(l.newSalary).toLocaleString("en-IN", { style: "currency", currency: "INR", maximumFractionDigits: 0 })}</span></span>
+                        )}
+                        {l.oldDesignation && l.newDesignation && (
+                          <span>Designation: <span className="line-through">{l.oldDesignation}</span> → <span className="font-medium">{l.newDesignation}</span></span>
+                        )}
+                      </div>
+                    )}
+                    {l.issuedAt && <p className="text-xs text-muted-foreground">Issued: {new Date(l.issuedAt).toLocaleDateString("en-IN")}</p>}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
 }
 
 function ShiftTab({ userId }: { userId: string }) {
@@ -1050,7 +1217,7 @@ const salaryStatusStyles: Record<string, string> = {
   rejected: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300",
 };
 
-function SalaryChangeDialog({ employeeId, currentSalary, open, onOpenChange }: { employeeId: string; currentSalary: string | null; open: boolean; onOpenChange: (o: boolean) => void }) {
+function SalaryChangeDialog({ employeeId, currentSalary, open, onOpenChange, onAmendmentSuggested }: { employeeId: string; currentSalary: string | null; open: boolean; onOpenChange: (o: boolean) => void; onAmendmentSuggested?: (d: { effectiveDate: string; newSalary: number; oldSalary: number | null }) => void }) {
   const { toast } = useToast();
   const [newSalary, setNewSalary] = useState("");
   const [effectiveDate, setEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
@@ -1086,6 +1253,13 @@ function SalaryChangeDialog({ employeeId, currentSalary, open, onOpenChange }: {
           ? "The new salary has been applied."
           : "A Super Admin must approve this change before it takes effect.",
       });
+      if (body?.amendmentSuggested && onAmendmentSuggested) {
+        onAmendmentSuggested({
+          effectiveDate,
+          newSalary: Number(newSalary),
+          oldSalary: body?.amendmentPrefill?.oldSalary ?? null,
+        });
+      }
       onOpenChange(false);
       setNewSalary(""); setReason(""); setProofRef("none");
     },
@@ -1154,6 +1328,7 @@ function SalaryChangeDialog({ employeeId, currentSalary, open, onOpenChange }: {
 
 function SalaryTab({ salary, employeeId }: { salary: EmployeeDetails["salary"]; employeeId: string }) {
   const [editOpen, setEditOpen] = useState(false);
+  const [amendmentSuggestion, setAmendmentSuggestion] = useState<{ effectiveDate: string; newSalary: number; oldSalary: number | null } | null>(null);
   const { can } = usePermissions();
   const { user } = useAuth();
   const canEdit = can("payroll.employee.flags");
@@ -1193,7 +1368,21 @@ function SalaryTab({ salary, employeeId }: { salary: EmployeeDetails["salary"]; 
         )}
       </div>
 
-      <SalaryChangeDialog employeeId={employeeId} currentSalary={salary.currentSalary} open={editOpen} onOpenChange={setEditOpen} />
+      <SalaryChangeDialog
+        employeeId={employeeId}
+        currentSalary={salary.currentSalary}
+        open={editOpen}
+        onOpenChange={setEditOpen}
+        onAmendmentSuggested={setAmendmentSuggestion}
+      />
+      {amendmentSuggestion && (
+        <AmendmentSuggestionBanner
+          employeeId={employeeId}
+          changeType="salary_revision"
+          effectiveDate={amendmentSuggestion.effectiveDate}
+          prefill={{ oldSalary: amendmentSuggestion.oldSalary, newSalary: amendmentSuggestion.newSalary }}
+        />
+      )}
 
       <Card>
         <CardHeader>
@@ -4795,15 +4984,25 @@ export default function MyTeam() {
     },
   });
 
+  const [designationAmendmentSuggestion, setDesignationAmendmentSuggestion] = useState<{ employeeId: string; oldDesignation?: string; newDesignation?: string } | null>(null);
+
   const editProfileMutation = useMutation({
     mutationFn: async (data: { designation?: string; departmentId?: string; hierarchyLevel?: string; gender?: string; employmentType?: string; attendanceExempt?: boolean; trainingExempt?: boolean; maternityLeaveEligible?: boolean; note: string }) => {
-      await apiRequest("PATCH", `/api/admin/my-team/${selectedUserId}/profile`, data);
+      const res = await apiRequest("PATCH", `/api/admin/my-team/${selectedUserId}/profile`, data);
+      return res.json().catch(() => ({}));
     },
-    onSuccess: () => {
+    onSuccess: (body: any) => {
       toast({ title: "Profile updated successfully" });
       setEditProfileOpen(false);
       resetForm();
       invalidateDetails();
+      if (body?.amendmentSuggested && selectedUserId) {
+        setDesignationAmendmentSuggestion({
+          employeeId: selectedUserId,
+          oldDesignation: body?.amendmentPrefill?.oldDesignation,
+          newDesignation: body?.amendmentPrefill?.newDesignation,
+        });
+      }
     },
     onError: (err: Error) => {
       toast({ title: "Failed to update profile", description: err.message, variant: "destructive" });
@@ -5012,9 +5211,22 @@ export default function MyTeam() {
   if (selectedUserId) {
     return (
       <AdminLayout>
+        {designationAmendmentSuggestion && designationAmendmentSuggestion.employeeId === selectedUserId && (
+          <div className="mx-6 mt-4">
+            <AmendmentSuggestionBanner
+              employeeId={selectedUserId}
+              changeType="role_change"
+              effectiveDate={new Date().toISOString().slice(0, 10)}
+              prefill={{
+                oldDesignation: designationAmendmentSuggestion.oldDesignation,
+                newDesignation: designationAmendmentSuggestion.newDesignation,
+              }}
+            />
+          </div>
+        )}
         <EmployeeDetailView
           userId={selectedUserId}
-          onBack={() => setSelectedUserId(null)}
+          onBack={() => { setSelectedUserId(null); setDesignationAmendmentSuggestion(null); }}
           onEditProfile={openEditProfile}
           onEditPayroll={canEditPayroll ? openPayrollConfig : undefined}
           onEditAttendance={openEditAttendance}

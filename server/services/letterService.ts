@@ -642,6 +642,69 @@ export async function issue(
       .catch(() => {});
   }
 
+  // ── Amendment write-back ──────────────────────────────────────────────────
+  // When an amendment letter is issued, persist the changes to the operational
+  // records so the employee's profile reflects the update immediately.
+  if (AMENDMENT_TEMPLATES.has(letter.templateType) && letter.employeeId) {
+    const draft = (letter.draftData || letter.metadata || {}) as Record<string, any>;
+    const effectiveDate = draft.effectiveDate || new Date().toISOString().slice(0, 10);
+
+    // Salary write-back for salary_revision and combined
+    if (letter.templateType === "salary_revision" || letter.templateType === "combined") {
+      const newSalary = Number(draft.newSalary);
+      if (Number.isFinite(newSalary) && newSalary > 0) {
+        const { applyAddendumSalaryChange } = await import("../salaryLedger");
+        await applyAddendumSalaryChange(
+          {
+            addendumType: letter.templateType,
+            newSalary,
+            forEmployeeId: letter.employeeId,
+            referenceNumber,
+            id: letterId,
+            reason: draft.reason || `Salary revision via ${TEMPLATE_LABELS[letter.templateType]} letter ${referenceNumber}`,
+            effectiveDate,
+          },
+          actorId,
+        ).catch((err: unknown) => {
+          console.error("[letterService] Amendment salary write-back failed:", err);
+        });
+      }
+    }
+
+    // Designation write-back for role_change and combined
+    if (letter.templateType === "role_change" || letter.templateType === "combined") {
+      const newDesignation = draft.newDesignation || draft.designation;
+      if (newDesignation) {
+        const currentUser = await storage.getAdminUser(letter.employeeId);
+        const oldDesignation = currentUser?.designation || draft.oldDesignation || null;
+        const oldDepartment = currentUser?.departmentName || draft.oldDepartment || null;
+        const newDepartment = draft.newDepartment || oldDepartment;
+
+        // Write ledger row
+        await storage.createDesignationChange({
+          employeeId: letter.employeeId,
+          oldDesignation,
+          newDesignation,
+          oldDepartment,
+          newDepartment,
+          effectiveDate,
+          sourceType: "hr_letter",
+          sourceDocumentId: letterId,
+          sourceDocumentType: "hr_letter",
+          reason: draft.reason || `Designation change via ${TEMPLATE_LABELS[letter.templateType]} letter ${referenceNumber}`,
+          initiatedBy: actorId,
+        }).catch((err: unknown) => {
+          console.error("[letterService] Amendment designation ledger write failed:", err);
+        });
+
+        // Update admin_users.designation in-place
+        await storage.updateAdminUser(letter.employeeId, { designation: newDesignation } as any).catch((err: unknown) => {
+          console.error("[letterService] Amendment designation update failed:", err);
+        });
+      }
+    }
+  }
+
   const mimeType = ext === "pdf"
     ? "application/pdf"
     : "application/vnd.openxmlformats-officedocument.wordprocessingml.document";

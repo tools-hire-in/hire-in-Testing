@@ -9801,7 +9801,17 @@ Canonical domain: ${BASE}
           apply: true,
         });
         await storage.createAuditLog({ action: "salary_change_applied", actorId, changes: { employeeId, oldSalary, newSalary: newSalaryRounded, source: "manual" } });
-        return res.status(201).json({ status: "applied" });
+        return res.status(201).json({
+          status: "applied",
+          amendmentSuggested: true,
+          amendmentPrefill: {
+            employeeId,
+            templateType: "salary_revision",
+            effectiveDate,
+            newSalary: newSalaryRounded,
+            oldSalary: oldSalary ?? null,
+          },
+        });
       }
 
       // Maker-checker: create a pending change for Super-Admin approval.
@@ -9837,7 +9847,18 @@ Canonical domain: ${BASE}
         }
       } catch { /* best-effort */ }
 
-      res.status(201).json({ status: "pending_approval", id: created.id });
+      res.status(201).json({
+        status: "pending_approval",
+        id: created.id,
+        amendmentSuggested: true,
+        amendmentPrefill: {
+          employeeId,
+          templateType: "salary_revision",
+          effectiveDate,
+          newSalary: newSalaryRounded,
+          oldSalary: oldSalary ?? null,
+        },
+      });
     } catch (error) {
       console.error("Failed to create salary change:", error);
       res.status(500).json({ error: "Failed to create salary change" });
@@ -14415,7 +14436,15 @@ Canonical domain: ${BASE}
         changes: { before, after, note: note.trim() },
       });
 
-      res.json(updated);
+      const designationChanged = designation !== undefined && designation !== targetUser.designation && !!designation;
+      res.json({
+        ...updated,
+        amendmentSuggested: designationChanged,
+        amendmentPrefill: designationChanged ? {
+          oldDesignation: targetUser.designation,
+          newDesignation: designation,
+        } : undefined,
+      });
     } catch (error) {
       console.error("Edit profile error:", error);
       res.status(500).json({ error: "Failed to update profile" });
@@ -27878,11 +27907,12 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
   app.get("/api/hr/letters", requirePermission("hr.letters", "hr"), async (req, res) => {
     try {
-      const { templateType, status, search } = req.query;
+      const { templateType, status, search, employeeId } = req.query;
       const letters = await storage.getHrLetters({
         templateType: templateType as string,
         status: status as string,
         search: search as string,
+        employeeId: employeeId as string | undefined,
       });
       res.json(letters);
     } catch (error) {
@@ -27901,6 +27931,85 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     }
   });
 
+  // Document timeline: hr_letters + legacy addendums merged for one employee
+  app.get("/api/hr/documents/timeline/:employeeId", requirePermission("admin.myTeam.profile", "hr", "manager", "operations"), async (req, res) => {
+    try {
+      const { employeeId } = req.params;
+      const hasAccess = await validateMyTeamAccess(req, res, employeeId);
+      if (!hasAccess) return;
+
+      const [hrLetterRows, addendumRows] = await Promise.all([
+        storage.getHrLetters({ employeeId }),
+        db.select({
+          id: offerLetterAddendums.id,
+          offerLetterId: offerLetterAddendums.offerLetterId,
+          addendumType: offerLetterAddendums.addendumType,
+          status: offerLetterAddendums.status,
+          referenceNumber: offerLetterAddendums.referenceNumber,
+          effectiveDate: offerLetterAddendums.effectiveDate,
+          oldDesignation: offerLetterAddendums.oldDesignation,
+          newDesignation: offerLetterAddendums.newDesignation,
+          oldSalary: offerLetterAddendums.oldSalary,
+          newSalary: offerLetterAddendums.newSalary,
+          candidateName: offerLetterAddendums.candidateName,
+          issuedAt: offerLetterAddendums.issuedAt,
+          createdAt: offerLetterAddendums.createdAt,
+        }).from(offerLetterAddendums)
+          .where(eq(offerLetterAddendums.forEmployeeId, employeeId))
+          .orderBy(desc(offerLetterAddendums.createdAt)),
+      ]);
+
+      const hrLetterTimeline = hrLetterRows.map(l => ({
+        kind: "hr_letter" as const,
+        id: l.id,
+        templateType: l.templateType,
+        amendmentSubtype: (l as any).amendmentSubtype || null,
+        status: l.status,
+        referenceNumber: l.referenceNumber || null,
+        effectiveDate: (l.draftData as any)?.effectiveDate || null,
+        oldSalary: (l.draftData as any)?.oldSalary || null,
+        newSalary: (l.draftData as any)?.newSalary || null,
+        oldDesignation: (l.draftData as any)?.oldDesignation || null,
+        newDesignation: (l.draftData as any)?.newDesignation || null,
+        employeeName: l.employeeName,
+        issuedAt: l.issuedAt || null,
+        createdAt: l.createdAt,
+        pdfPath: l.pdfPath || null,
+      }));
+
+      const addendumTimeline = addendumRows.map(a => ({
+        kind: "addendum" as const,
+        id: a.id,
+        offerLetterId: a.offerLetterId || null,
+        templateType: a.addendumType,
+        amendmentSubtype: a.addendumType,
+        status: a.status,
+        referenceNumber: a.referenceNumber || null,
+        effectiveDate: a.effectiveDate || null,
+        oldSalary: a.oldSalary || null,
+        newSalary: a.newSalary || null,
+        oldDesignation: a.oldDesignation || null,
+        newDesignation: a.newDesignation || null,
+        employeeName: a.candidateName,
+        issuedAt: a.issuedAt || null,
+        createdAt: a.createdAt,
+        pdfPath: null,
+        legacy: true,
+      }));
+
+      const merged = [...hrLetterTimeline, ...addendumTimeline].sort((a, b) => {
+        const dateA = a.issuedAt?.getTime() ?? a.createdAt?.getTime() ?? 0;
+        const dateB = b.issuedAt?.getTime() ?? b.createdAt?.getTime() ?? 0;
+        return dateB - dateA;
+      });
+
+      res.json(merged);
+    } catch (error) {
+      console.error("Document timeline error:", error);
+      res.status(500).json({ error: "Failed to fetch document timeline" });
+    }
+  });
+
   app.post("/api/hr/letters/new-draft", requirePermission("hr.letters.create", "hr"), async (req, res) => {
     try {
       const { templateType } = req.body;
@@ -27908,6 +28017,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
       if (!templateType || !VALID_TEMPLATES.includes(templateType)) {
         return res.status(400).json({ error: "Invalid template type" });
       }
+      const AMENDMENT_LETTER_TYPES = new Set(["salary_revision", "role_change", "combined", "device_allocation"]);
       const draft = await storage.createHrLetter({
         templateType,
         status: "draft",
@@ -27915,6 +28025,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         designation: "",
         startDate: "",
         createdBy: req.session.userId!,
+        ...(AMENDMENT_LETTER_TYPES.has(templateType) ? { amendmentSubtype: templateType } : {}),
       } as any);
       res.json({ id: draft.id });
     } catch (error) {
@@ -28985,6 +29096,19 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
       const tamperDetected = letter.authCode !== recomputedAuth;
 
+      // Extract amendment-specific fields from draftData if this is an amendment letter
+      const VERIFY_AMENDMENT_TYPES = new Set(["salary_revision", "role_change", "combined", "device_allocation"]);
+      const isAmendmentLetter = VERIFY_AMENDMENT_TYPES.has(letter.templateType);
+      const draftData = (letter.draftData || letter.metadata || {}) as Record<string, any>;
+      const amendmentExtras = isAmendmentLetter ? {
+        amendmentSubtype: (letter as any).amendmentSubtype || letter.templateType,
+        effectiveDate: draftData.effectiveDate || null,
+        oldSalary: draftData.oldSalary != null ? String(Math.round(Number(draftData.oldSalary))) : null,
+        newSalary: draftData.newSalary != null ? String(Math.round(Number(draftData.newSalary))) : null,
+        oldDesignation: draftData.oldDesignation || null,
+        newDesignation: draftData.newDesignation || null,
+      } : {};
+
       res.json({
         employeeName: letter.employeeName,
         templateType: letter.templateType,
@@ -28999,6 +29123,7 @@ Return JSON with keys: linkedin, instagram, facebook.`;
         signatoryDesignation: letter.signatoryDesignation ?? null,
         verified: !tamperDetected,
         ...(tamperDetected ? { warning: "Document content may have been modified after issuance" } : {}),
+        ...amendmentExtras,
       });
     } catch (error) {
       res.status(500).json({ error: "Verification failed" });

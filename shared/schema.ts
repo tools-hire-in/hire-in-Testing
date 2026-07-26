@@ -909,6 +909,7 @@ export const hrLetters = pgTable("hr_letters", {
   revisionReason: text("revision_reason"),
   ccRecipients: jsonb("cc_recipients"),
   fromTemplateId: integer("from_template_id"),
+  amendmentSubtype: varchar("amendment_subtype"),
 }, (table) => [
   uniqueIndex("hr_letters_reference_number_idx").on(table.referenceNumber),
 ]);
@@ -1876,6 +1877,24 @@ export type PerformanceFeedback = typeof performanceFeedback.$inferSelect;
 export type InsertPerformanceFeedback = z.infer<typeof insertPerformanceFeedbackSchema>;
 export type HrLetter = typeof hrLetters.$inferSelect;
 export type InsertHrLetter = z.infer<typeof insertHrLetterSchema>;
+
+export const designationChanges = pgTable("designation_changes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  employeeId: varchar("employee_id").notNull().references(() => adminUsers.id),
+  oldDesignation: varchar("old_designation"),
+  newDesignation: varchar("new_designation").notNull(),
+  oldDepartment: varchar("old_department"),
+  newDepartment: varchar("new_department"),
+  effectiveDate: varchar("effective_date").notNull(),
+  sourceType: varchar("source_type").notNull().default("manual"),
+  sourceDocumentId: varchar("source_document_id"),
+  sourceDocumentType: varchar("source_document_type"),
+  reason: text("reason"),
+  initiatedBy: varchar("initiated_by").references(() => adminUsers.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type DesignationChange = typeof designationChanges.$inferSelect;
 
 // ==========================================
 // CLIENT CONTRACT GENERATION MODULE
