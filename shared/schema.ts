@@ -1,5 +1,5 @@
 import { sql, relations } from "drizzle-orm";
-import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric, uniqueIndex, unique, index, real, check } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, boolean, timestamp, jsonb, pgEnum, date, numeric, uniqueIndex, unique, index, real, check, AnyPgColumn } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -1384,7 +1384,7 @@ export const scheduledNudges = pgTable("scheduled_nudges", {
   nudgeDate: varchar("nudge_date").notNull(), // YYYY-MM-DD the nudge was computed for (week-start for weekly throttle)
   // For CI-level nudges: the check-in ID is part of the dedup key so two CIs same day/type still fire independently
   checkInId: varchar("check_in_id"),
-  sentAt: timestamp("sent_at").defaultNow(),
+  sentAt: timestamp("sent_at"), // NULL until the nudge actually fires; set by markNudgeSent
 }, (table) => [
   // UNIQUE INDEX with COALESCE(check_in_id,'') is managed by the raw SQL ensure block (Drizzle cannot express functional indexes)
   index("idx_scheduled_nudges_plan_id").on(table.planId),
@@ -5869,7 +5869,7 @@ export const recognitionCertificates = pgTable("recognition_certificates", {
   pdfUrl: varchar("pdf_url"),
   status: varchar("status").notNull().default("issued"), // issued | corrected | superseded | revoked
   version: integer("version").notNull().default(1),
-  supersededById: varchar("superseded_by_id"), // self-ref via raw FK
+  supersededById: varchar("superseded_by_id").references((): AnyPgColumn => recognitionCertificates.id, { onDelete: "set null" }), // self-referential FK
   issuedAt: timestamp("issued_at").defaultNow(),
   revokedAt: timestamp("revoked_at"),
   revokedById: varchar("revoked_by_id").references(() => adminUsers.id),
