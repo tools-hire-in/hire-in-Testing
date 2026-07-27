@@ -250,7 +250,7 @@ function buildPsychologicalContractBlock(params: AiGenerationParams): string {
   return lines.join("\n");
 }
 
-function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationParams): string {
+export function buildSystemPrompt(template: StudioPromptTemplate, params: AiGenerationParams): string {
   const compliance = getComplianceMode(params.compliance_mode);
 
   // Insights Editorial path — for Call 3 (article generation) when content_type is an Insights type.

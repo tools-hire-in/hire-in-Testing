@@ -102,6 +102,7 @@ import {
   generateTopicSuggestions,
   generateInlineSocialDraft,
   TIER_MODELS,
+  buildSystemPrompt,
 } from "./services/aiDraftService";
 import { isInsightsContentType } from "@shared/studioAi";
 import { runStaffingSafetyGate } from "./services/staffingSafetyGate";
@@ -21509,6 +21510,45 @@ Canonical domain: ${BASE}
           generatedByUserId: req.session.userId,
           status: "draft",
         } as any);
+
+        // AI mock mode — enabled via env flag or per-request header for automated tests.
+        // Builds the system prompt (so prompt-construction logic executes and is auditable)
+        // then returns the fixture response without making an OpenAI call.
+        // Never active in NODE_ENV=production.
+        if (
+          process.env.NODE_ENV !== "production" &&
+          (process.env.STUDIO_AI_MOCK === "true" || req.headers["x-studio-ai-mock"] === "true")
+        ) {
+          const { MOCK_ARTICLE_DRAFT, MOCK_QUALITY_REVIEW } = await import("../tests/e2e/fixtures/aiMock.js" as any);
+          const mockPrompt = buildSystemPrompt(template, params);
+          await storage.updateStudioGeneration(generation.id, {
+            status: "reviewed",
+            outputJson: MOCK_ARTICLE_DRAFT,
+          } as any);
+          return res.json({
+            draft: MOCK_ARTICLE_DRAFT,
+            qualityReview: MOCK_QUALITY_REVIEW,
+            riskFlags: [],
+            complianceMode: compliance.value,
+            generationId: generation.id,
+            model: "mock",
+            generationPath: actualPath,
+            safetyReviewResult: "PASS",
+            safetyFailures: [],
+            safetyWarnings: [],
+            resolvedAudience: params.audience ?? null,
+            resolvedDomain: (article as any).domainResolved ?? preResolvedDomain,
+            resolvedContentGoal: resolvedContentGoalForPath,
+            resolvedPromptLength: mockPrompt.length,
+            resolvedCreativeDirection: {
+              desiredEmotion: resolvedCreative.desiredEmotion,
+              hookPattern: resolvedCreative.hookPattern,
+              contentStructure: resolvedCreative.contentStructure,
+              engagementGoal: resolvedCreative.engagementGoal,
+              autoResolved: resolvedCreative.autoResolved,
+            },
+          });
+        }
 
         let result;
         try {
