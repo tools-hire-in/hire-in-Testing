@@ -48,9 +48,9 @@ export async function runInboxEscalationSweep(): Promise<EscalationSweepResult> 
     await db.execute(sql`
       INSERT INTO manager_action_due_dates
         (id, assignee_id, assignee_tier, item_type, item_id, status, original_assigned_at)
-      SELECT gen_random_uuid(), au.manager_id, 'manager', 'attendance_correction', ar.id::text, 'new', ar.created_at
-      FROM attendance_regularization_requests ar
-      JOIN admin_users au ON au.id = ar.user_id
+      SELECT gen_random_uuid(), au.manager_id, 'manager', 'attendance_correction', ar.id, 'new', ar.created_at
+      FROM attendance_regularizations ar
+      JOIN admin_users au ON au.id = ar.employee_id
       WHERE ar.status = 'pending'
         AND au.manager_id IS NOT NULL
       ON CONFLICT (assignee_id, item_type, item_id) DO NOTHING
@@ -152,8 +152,8 @@ export async function runInboxEscalationSweep(): Promise<EscalationSweepResult> 
       WHERE madd.item_type = 'attendance_correction'
         AND madd.status NOT IN ('resolved')
         AND EXISTS (
-          SELECT 1 FROM attendance_regularization_requests ar
-          WHERE ar.id = madd.item_id::int
+          SELECT 1 FROM attendance_regularizations ar
+          WHERE ar.id = madd.item_id
             AND ar.status NOT IN ('pending')
         )
     `);

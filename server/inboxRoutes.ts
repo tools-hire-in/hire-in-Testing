@@ -111,11 +111,11 @@ async function buildInboxItems(userId: string, role: string) {
     // 3. Attendance corrections
     try {
       const rows = await db.execute(sql`
-        SELECT ar.id, ar.user_id AS employee_id,
+        SELECT ar.id, ar.employee_id,
                COALESCE(au.first_name || ' ' || au.last_name, au.email) AS employee_name,
-               ar.date, ar.created_at
-        FROM attendance_regularization_requests ar
-        JOIN admin_users au ON au.id = ar.user_id
+               ar.attendance_date, ar.created_at
+        FROM attendance_regularizations ar
+        JOIN admin_users au ON au.id = ar.employee_id
         WHERE ar.status = 'pending' AND au.manager_id = ${userId}
         ORDER BY ar.created_at ASC LIMIT 30
       `);
@@ -125,7 +125,7 @@ async function buildInboxItems(userId: string, role: string) {
           itemId: String(r.id),
           employeeName: r.employee_name || "Employee",
           employeeId: r.employee_id,
-          description: `Punch correction request for ${r.date ? new Date(r.date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "date unknown"}`,
+          description: `Punch correction request for ${r.attendance_date ? new Date(r.attendance_date).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "date unknown"}`,
           createdAt: r.created_at,
         });
       }
@@ -219,7 +219,7 @@ async function buildInboxItems(userId: string, role: string) {
           COALESCE(
             CASE madd.item_type
               WHEN 'leave_approval'       THEN (SELECT COALESCE(au2.first_name || ' ' || au2.last_name, au2.email) FROM leave_requests lr JOIN admin_users au2 ON au2.id = lr.user_id WHERE lr.id = madd.item_id::int LIMIT 1)
-              WHEN 'attendance_correction' THEN (SELECT COALESCE(au2.first_name || ' ' || au2.last_name, au2.email) FROM attendance_regularization_requests ar JOIN admin_users au2 ON au2.id = ar.user_id WHERE ar.id = madd.item_id::int LIMIT 1)
+              WHEN 'attendance_correction' THEN (SELECT COALESCE(au2.first_name || ' ' || au2.last_name, au2.email) FROM attendance_regularizations ar JOIN admin_users au2 ON au2.id = ar.employee_id WHERE ar.id = madd.item_id LIMIT 1)
               WHEN 'offer_letter'         THEN (SELECT ol.candidate_name FROM offer_letters ol WHERE ol.id = madd.item_id LIMIT 1)
               WHEN 'probation_checkin'    THEN (SELECT COALESCE(au2.first_name || ' ' || au2.last_name, au2.email) FROM probation_checkins pc JOIN admin_users au2 ON au2.id = pc.employee_id WHERE pc.id = madd.item_id::int LIMIT 1)
               WHEN 'pip_checkin'          THEN (SELECT COALESCE(au2.first_name || ' ' || au2.last_name, au2.email) FROM employee_plans ep JOIN admin_users au2 ON au2.id = ep.employee_id WHERE ep.id = madd.item_id::int LIMIT 1)
@@ -279,7 +279,7 @@ async function buildInboxItems(userId: string, role: string) {
           COALESCE(
             CASE madd.item_type
               WHEN 'leave_approval'       THEN (SELECT COALESCE(au2.first_name || ' ' || au2.last_name, au2.email) FROM leave_requests lr JOIN admin_users au2 ON au2.id = lr.user_id WHERE lr.id = madd.item_id::int LIMIT 1)
-              WHEN 'attendance_correction' THEN (SELECT COALESCE(au2.first_name || ' ' || au2.last_name, au2.email) FROM attendance_regularization_requests ar JOIN admin_users au2 ON au2.id = ar.user_id WHERE ar.id = madd.item_id::int LIMIT 1)
+              WHEN 'attendance_correction' THEN (SELECT COALESCE(au2.first_name || ' ' || au2.last_name, au2.email) FROM attendance_regularizations ar JOIN admin_users au2 ON au2.id = ar.employee_id WHERE ar.id = madd.item_id LIMIT 1)
               WHEN 'offer_letter'         THEN (SELECT ol.candidate_name FROM offer_letters ol WHERE ol.id = madd.item_id LIMIT 1)
               WHEN 'probation_checkin'    THEN (SELECT COALESCE(au2.first_name || ' ' || au2.last_name, au2.email) FROM probation_checkins pc JOIN admin_users au2 ON au2.id = pc.employee_id WHERE pc.id = madd.item_id::int LIMIT 1)
               WHEN 'pip_checkin'          THEN (SELECT COALESCE(au2.first_name || ' ' || au2.last_name, au2.email) FROM employee_plans ep JOIN admin_users au2 ON au2.id = ep.employee_id WHERE ep.id = madd.item_id::int LIMIT 1)
@@ -341,8 +341,8 @@ async function isItemInScope(userId: string, role: string, itemType: InboxItemTy
     }
     if (itemType === "attendance_correction") {
       const r = await db.execute(sql`
-        SELECT 1 FROM attendance_regularization_requests ar JOIN admin_users au ON au.id = ar.user_id
-        WHERE ar.id = ${itemId}::int AND au.manager_id = ${userId} AND ar.status = 'pending' LIMIT 1
+        SELECT 1 FROM attendance_regularizations ar JOIN admin_users au ON au.id = ar.employee_id
+        WHERE ar.id = ${itemId} AND au.manager_id = ${userId} AND ar.status = 'pending' LIMIT 1
       `);
       if ((r.rows as any[]).length > 0) return true;
     }
