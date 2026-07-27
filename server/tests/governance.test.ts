@@ -47,6 +47,17 @@ import {
 } from "./helpers/governanceSeed.js";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Outer wrapper: all three suites share fixed test UUIDs and a single
+// createGovernanceTestHierarchy / teardownGovernanceTestHierarchy pair.
+// By default, Node.js test runner executes top-level describe blocks
+// concurrently (root-suite concurrency = CPU count - 1). That causes Suite 2
+// and Suite 3's before() teardown to race against Suite 1's live tests,
+// deleting users mid-test and producing FK violations / changed=false.
+// { concurrency: 1 } on this outer describe serialises all three suites.
+// ─────────────────────────────────────────────────────────────────────────────
+describe("Governance integration tests", { concurrency: 1 }, () => {
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Suite 1: Escalation state machine — core ladder progression
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -569,3 +580,5 @@ describe("Email CTA paths — correct per-escalation-type destinations", () => {
     );
   });
 });
+
+}); // end "Governance integration tests" outer wrapper
