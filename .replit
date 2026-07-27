@@ -111,7 +111,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "E2E_NO_SERVER='' npx playwright test 2>&1"
+args = "E2E_NO_SERVER=1 npx playwright test 2>&1"
 
 [agent]
 integrations = ["javascript_database:1.0.0", "javascript_log_in_with_replit:2.0.0", "javascript_object_storage:2.0.0", "sendgrid:1.0.0", "javascript_openai_ai_integrations:2.0.0"]

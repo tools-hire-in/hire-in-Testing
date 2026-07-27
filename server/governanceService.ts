@@ -1467,7 +1467,6 @@ export async function applyEscalation(finding: GovernanceFinding): Promise<{
   `);
 
   if (ctrl.rows.length === 0) {
-    // No control record yet — will be created by syncGovernanceObligations on next pass
     return { changed: false, notificationSent: false };
   }
 

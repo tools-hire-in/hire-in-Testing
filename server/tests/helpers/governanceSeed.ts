@@ -481,13 +481,23 @@ export async function enableNotificationsFlag(): Promise<boolean> {
   const originalFlags = (r.rows[0] as any)?.value as Record<string, boolean> | undefined;
   const wasEnabled = originalFlags?.notifications_enabled === true;
 
-  if (!wasEnabled) {
-    const newFlags = { ...(originalFlags ?? {}), notifications_enabled: true };
-    await db.execute(sql`
-      UPDATE system_settings SET value = ${JSON.stringify(newFlags)}::jsonb
-      WHERE key = 'feature_flags'
-    `);
+  // Always use an atomic jsonb_set so the update cannot race with a concurrent
+  // read-modify-write on the same row (e.g. the server's flag-defaults seed).
+  await db.execute(sql`
+    UPDATE system_settings
+    SET value = jsonb_set(COALESCE(value, '{}'::jsonb), '{notifications_enabled}', 'true'::jsonb)
+    WHERE key = 'feature_flags'
+  `);
+
+  // Verify the update took effect before returning.
+  const verify = await db.execute(sql`
+    SELECT value->>'notifications_enabled' AS ne FROM system_settings WHERE key = 'feature_flags'
+  `);
+  const ne = (verify.rows[0] as any)?.ne;
+  if (ne !== 'true') {
+    throw new Error(`enableNotificationsFlag: expected notifications_enabled=true after update, got ${ne}`);
   }
+
   return wasEnabled;
 }
 

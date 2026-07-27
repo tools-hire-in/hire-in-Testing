@@ -26,7 +26,7 @@ export default defineConfig({
   retries: process.env.CI ? 1 : 0,
   workers: 1,
   reporter: [
-    ["html", { open: "never", outputFolder: "playwright-report" }],
+    ["html", { open: "never", outputFolder: "playwright-report/html" }],
     ["list"],
   ],
   timeout: 45_000,

@@ -32,13 +32,26 @@ import {
   invalidateFeatureFlagsCache,
 } from "../featureFlags.js";
 import { storage } from "../storage.js";
+import { db } from "../db.js";
+import { sql } from "drizzle-orm";
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
 const TEST_FLAG_KEY = "__test_flag_featureFlags_ts__";
 
+/**
+ * Atomically replace the feature_flags row with the given flags object.
+ * Uses a single INSERT … ON CONFLICT DO UPDATE so there is no read-before-write
+ * race that could leave the DB in the wrong state between the write and the
+ * subsequent getFeatureFlag() read in the test body.
+ */
 async function setFlags(flags: Record<string, boolean>) {
-  await storage.upsertSystemSetting("feature_flags", flags, "test-runner");
+  const json = JSON.stringify(flags);
+  await db.execute(sql`
+    INSERT INTO system_settings (key, value)
+    VALUES ('feature_flags', ${json}::jsonb)
+    ON CONFLICT (key) DO UPDATE SET value = ${json}::jsonb
+  `);
   invalidateFeatureFlagsCache();
 }
 

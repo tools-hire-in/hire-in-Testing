@@ -50,7 +50,7 @@ import {
 // Suite 1: Escalation state machine — core ladder progression
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("Governance escalation state machine", () => {
+describe("Governance escalation state machine", { concurrency: 1 }, () => {
   let notificationsWereEnabled = true;
 
   before(async () => {
