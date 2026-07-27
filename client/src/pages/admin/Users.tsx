@@ -279,7 +279,7 @@ export default function AdminUsers() {
       setNewJoiningDate(""); setNewDesignation(""); setNewDepartmentId(""); setNewHierarchyLevel("team_member"); setNewSalary(""); setNewManagerId(""); setNewEmployeeCategory("experienced"); setNewShiftId("");
     },
     onError: (error: any) => {
-      const message = error?.error || error?.message || "Please ensure the email ends with @hire-in.com";
+      const message = error?.error || error?.message || "Failed to send invite. Please try again.";
       toast({ title: "Failed to invite user", description: message, variant: "destructive" });
     },
   });
@@ -928,7 +928,7 @@ export default function AdminUsers() {
                   </div>
                   <div className="space-y-2">
                     <Label htmlFor="email">Email Address</Label>
-                    <Input id="email" type="email" placeholder={newRole === "executive" ? "user@anycompany.com" : "user@hire-in.com"} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} data-testid="input-invite-email" />
+                    <Input id="email" type="email" placeholder={newRole === "executive" ? "user@anycompany.com" : "user@hire-in.com"} value={newEmail} onChange={(e) => setNewEmail(e.target.value)} onBlur={() => setNewEmail(v => v.trim())} data-testid="input-invite-email" />
                     <p className="text-xs text-muted-foreground">
                       {newRole === "executive"
                         ? "Any email address accepted for executive accounts."
@@ -1085,7 +1085,7 @@ export default function AdminUsers() {
                   onClick={() => setInviteStep(s => s + 1)}
                   disabled={
                     inviteStep === 0
-                      ? (!newEmail.endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim())
+                      ? (!newEmail.trim().endsWith("@hire-in.com") || !newFirstName.trim() || !newLastName.trim())
                       : inviteStep === 1 && (!newDepartmentId || newDepartmentId === "none" || !newShiftId)
                   }
                   data-testid="button-invite-next"

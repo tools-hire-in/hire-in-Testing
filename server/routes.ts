@@ -1928,7 +1928,8 @@ Canonical domain: ${BASE}
     try {
       const actorRole = req.session.role!;
       const actorRank = ROLE_RANK[actorRole] ?? 0;
-      const { email, role, firstName, lastName, password, joiningDate, designation, departmentId, hierarchyLevel, salary, managerId, shiftId } = req.body;
+      const { email: rawEmail, role, firstName, lastName, password, joiningDate, designation, departmentId, hierarchyLevel, salary, managerId, shiftId } = req.body;
+      const email = rawEmail?.trim().toLowerCase();
 
       const assignedRole = role || "employee";
       const assignedRank = ROLE_RANK[assignedRole] ?? 0;
