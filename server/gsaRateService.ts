@@ -23,6 +23,8 @@ function calMonthToFiscalYear(month: number, year: number): number {
   return month >= 10 ? year + 1 : year;
 }
 
+let _gsaApiKeyWarned = false;
+
 async function fetchFromGsaApi(zip: string, fiscalYear: number, month: number): Promise<{
   city: string | null;
   county: string | null;
@@ -33,7 +35,12 @@ async function fetchFromGsaApi(zip: string, fiscalYear: number, month: number): 
   sourceVersion: string;
 } | null> {
   try {
-    const url = `https://api.gsa.gov/travel/perdiem/v2/rates/zip/${zip}/year/${fiscalYear}`;
+    const apiKey = process.env.GSA_API_KEY ?? "DEMO_KEY";
+    if (!process.env.GSA_API_KEY && !_gsaApiKeyWarned) {
+      console.warn("[GSA API] GSA_API_KEY env var not set — using DEMO_KEY (30 req/hr). Register at https://api.data.gov/signup/ for a production key.");
+      _gsaApiKeyWarned = true;
+    }
+    const url = `https://api.gsa.gov/travel/perdiem/v2/rates/zip/${zip}/year/${fiscalYear}?api_key=${apiKey}`;
     const resp = await fetch(url, {
       headers: { Accept: "application/json" },
       signal: AbortSignal.timeout(8000),
@@ -46,32 +53,24 @@ async function fetchFromGsaApi(zip: string, fiscalYear: number, month: number): 
     const rates = data?.rates;
     if (!Array.isArray(rates) || rates.length === 0) return null;
 
-    const entry = rates[0];
-    const months: any[] = entry?.rate ?? [];
-    const monthEntry = months.find((m: any) => parseInt(m.month, 10) === month);
-    if (!monthEntry) {
-      const fallback = months[0];
-      if (!fallback) return null;
-      const lodging = parseFloat(fallback.value ?? "0") || 0;
-      const mie = parseFloat(entry.meals ?? data?.meals ?? "0") || 0;
-      const firstLast = Math.round(mie * 0.75 * 100) / 100;
-      return {
-        city: entry.city ?? null,
-        county: entry.county ?? null,
-        state: entry.state ?? null,
-        lodgingRate: lodging,
-        mieRate: mie,
-        firstLastDayMie: firstLast,
-        sourceVersion: `GSA FY${fiscalYear}`,
-      };
-    }
-    const lodging = parseFloat(monthEntry.value ?? "0") || 0;
-    const mie = parseFloat(entry.meals ?? data?.meals ?? "0") || 0;
+    // Correct two-level traversal:
+    // rates[0] → { state, year, rate: [ locationEntry, ... ] }
+    // locationEntry → { city, county, meals, months: { month: [ { number, value }, ... ] } }
+    const outerEntry = rates[0];
+    const locationEntries: any[] = outerEntry?.rate ?? [];
+    const locationEntry = locationEntries[0];
+    if (!locationEntry) return null;
+
+    const monthList: any[] = locationEntry.months?.month ?? [];
+    const monthEntry = monthList.find((m: any) => Number(m.number) === month) ?? monthList[0];
+
+    const lodging = Number(monthEntry?.value ?? 0) || 0;
+    const mie = Number(locationEntry.meals ?? 0) || 0;
     const firstLast = Math.round(mie * 0.75 * 100) / 100;
     return {
-      city: entry.city ?? null,
-      county: entry.county ?? null,
-      state: entry.state ?? null,
+      city: locationEntry.city ?? null,
+      county: locationEntry.county ?? null,
+      state: outerEntry.state ?? null,
       lodgingRate: lodging,
       mieRate: mie,
       firstLastDayMie: firstLast,
