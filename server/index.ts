@@ -3546,6 +3546,12 @@ async function runStartupTasks() {
   } catch (err) {
     console.error("admin_users statutory-identifier column ensure error:", err);
   }
+  try {
+    await db.execute(sql`ALTER TABLE admin_users ADD COLUMN IF NOT EXISTS ceipal_exception_enabled BOOLEAN NOT NULL DEFAULT false`);
+    log("Ensured admin_users.ceipal_exception_enabled column");
+  } catch (err) {
+    console.error("admin_users ceipal_exception_enabled column ensure error:", err);
+  }
   await ensurePerformanceTables();
   await ensureGoalMilestonesAndLinks();
   await ensureHrLettersTables();

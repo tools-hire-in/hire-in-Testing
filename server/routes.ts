@@ -14368,7 +14368,7 @@ Canonical domain: ${BASE}
       const hasAccess = await validateMyTeamAccess(req, res, userId);
       if (!hasAccess) return;
 
-      const { designation, departmentId, hierarchyLevel, gender, employmentType, employeeCategory, attendanceExempt, trainingExempt, maternityLeaveEligible, ceipalUpdatePromptEnabled, note } = req.body;
+      const { designation, departmentId, hierarchyLevel, gender, employmentType, employeeCategory, attendanceExempt, trainingExempt, maternityLeaveEligible, ceipalUpdatePromptEnabled, ceipalExceptionEnabled, note } = req.body;
       if (!note || !note.trim()) {
         return res.status(400).json({ error: "Reason for change is required" });
       }
@@ -14431,6 +14431,11 @@ Canonical domain: ${BASE}
         before.ceipalUpdatePromptEnabled = (targetUser as any).ceipalUpdatePromptEnabled ?? true;
         after.ceipalUpdatePromptEnabled = ceipalUpdatePromptEnabled;
         updateData.ceipalUpdatePromptEnabled = ceipalUpdatePromptEnabled;
+      }
+      if (ceipalExceptionEnabled !== undefined) {
+        before.ceipalExceptionEnabled = (targetUser as any).ceipalExceptionEnabled ?? false;
+        after.ceipalExceptionEnabled = ceipalExceptionEnabled;
+        updateData.ceipalExceptionEnabled = ceipalExceptionEnabled;
       }
 
       const updated = await storage.updateAdminUser(userId, updateData);
@@ -14816,6 +14821,7 @@ Canonical domain: ${BASE}
           attendanceExempt: user.attendanceExempt ?? false,
           trainingExempt: (user as any).trainingExempt ?? false,
           maternityLeaveEligible: (user as any).maternityLeaveEligible ?? false,
+          ceipalExceptionEnabled: (user as any).ceipalExceptionEnabled ?? false,
         },
         attendance: attendanceRecords,
         emergencyContacts,
@@ -31647,7 +31653,9 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     try {
       const userId = req.session.userId!;
       const ceipalUser = await storage.getAdminUser(userId);
-      if (!(ceipalUser as any)?.ceipalUpdatePromptEnabled) {
+      const ceipalEligible = Boolean((ceipalUser as any)?.ceipalUpdatePromptEnabled ?? true) ||
+        Boolean((ceipalUser as any)?.ceipalExceptionEnabled ?? false);
+      if (!ceipalEligible) {
         return res.status(403).json({ error: "Ceipal update checkpoint is not enabled for you" });
       }
 
@@ -31680,7 +31688,9 @@ Return JSON with keys: linkedin, instagram, facebook.`;
     try {
       const userId = req.session.userId!;
       const currentUser = await storage.getAdminUser(userId);
-      if (!(currentUser as any)?.ceipalUpdatePromptEnabled) {
+      const verifyEligible = Boolean((currentUser as any)?.ceipalUpdatePromptEnabled ?? true) ||
+        Boolean((currentUser as any)?.ceipalExceptionEnabled ?? false);
+      if (!verifyEligible) {
         return res.status(403).json({ error: "Ceipal update checkpoint is not enabled for you" });
       }
       if (!currentUser?.email) {
@@ -31866,10 +31876,14 @@ Return JSON with keys: linkedin, instagram, facebook.`;
 
       const currentUser = await storage.getAdminUser(userId);
       const prompted = (row.rows as any[])[0] || null;
+      const promptEnabled = currentUser
+        ? Boolean((currentUser as any).ceipalUpdatePromptEnabled ?? true) ||
+          Boolean((currentUser as any).ceipalExceptionEnabled ?? false)
+        : true;
       res.json({
         hasAnsweredToday: !!prompted,
         status: prompted?.status || null,
-        promptEnabled: currentUser ? Boolean((currentUser as any).ceipalUpdatePromptEnabled ?? true) : true,
+        promptEnabled,
         consecutiveSkips,
       });
     } catch (err: any) {

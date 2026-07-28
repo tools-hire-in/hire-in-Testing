@@ -5658,6 +5658,7 @@ export default function MyTeam() {
   const [formAttendanceExempt, setFormAttendanceExempt] = useState(false);
   const [formTrainingExempt, setFormTrainingExempt] = useState(false);
   const [formMaternityLeaveEligible, setFormMaternityLeaveEligible] = useState(false);
+  const [formCeipalExceptionEnabled, setFormCeipalExceptionEnabled] = useState(false);
   const [formEmployeeCategory, setFormEmployeeCategory] = useState("experienced");
   const [formHolidayId, setFormHolidayId] = useState("");
   const [formContactName, setFormContactName] = useState("");
@@ -5942,6 +5943,7 @@ export default function MyTeam() {
     setFormAttendanceExempt((user as any).attendanceExempt ?? false);
     setFormTrainingExempt((user as any).trainingExempt ?? false);
     setFormMaternityLeaveEligible((user as any).maternityLeaveEligible ?? false);
+    setFormCeipalExceptionEnabled((user as any).ceipalExceptionEnabled ?? false);
     setFormEmployeeCategory(user.employeeCategory || "experienced");
     setFormNote("");
     setEditProfileOpen(true);
@@ -6210,6 +6212,21 @@ export default function MyTeam() {
                         <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formMaternityLeaveEligible ? "translate-x-5" : "translate-x-0"}`} />
                       </button>
                     </div>
+                    <div className="flex items-center justify-between" data-testid="check-profile-ceipal-exception">
+                      <div>
+                        <p className="text-sm font-medium">Ceipal Exception</p>
+                        <p className="text-xs text-muted-foreground mt-0.5">Enable Ceipal compliance prompt for this team member even though they are not a Recruiter.</p>
+                      </div>
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={formCeipalExceptionEnabled}
+                        onClick={() => setFormCeipalExceptionEnabled(v => !v)}
+                        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 ${formCeipalExceptionEnabled ? "bg-primary" : "bg-input"}`}
+                      >
+                        <span className={`pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform ${formCeipalExceptionEnabled ? "translate-x-5" : "translate-x-0"}`} />
+                      </button>
+                    </div>
                   </div>
                   <div>
                     <label className="text-sm font-medium">Reason for change *</label>
@@ -6241,6 +6258,7 @@ export default function MyTeam() {
                       attendanceExempt: formAttendanceExempt,
                       trainingExempt: formTrainingExempt,
                       maternityLeaveEligible: formMaternityLeaveEligible,
+                      ceipalExceptionEnabled: formCeipalExceptionEnabled,
                       note: formNote,
                     });
                   }}

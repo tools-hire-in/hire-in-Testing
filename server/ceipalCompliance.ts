@@ -275,19 +275,21 @@ export async function sendCeipalMorningReminders(): Promise<void> {
     const rows = await db.execute(sql`
       SELECT cul.id, cul.user_id, cul.log_date, cul.status, cul.commitment_time,
              au.first_name, au.last_name, au.email, au.manager_id,
-             au.ceipal_update_prompt_enabled
+             au.ceipal_update_prompt_enabled, au.ceipal_exception_enabled
       FROM ceipal_update_logs cul
       JOIN admin_users au ON au.id = cul.user_id
       WHERE cul.log_date = ${yesterday}::date
         AND cul.status IN ('deferred', 'skipped')
         AND au.is_active = true
         AND au.deleted_at IS NULL
-        AND au.role = 'recruiter'
+        AND (au.role = 'recruiter' OR au.ceipal_exception_enabled = true)
         AND (cul.commitment_time IS NULL OR cul.commitment_time < ${now.toISOString()})
     `);
 
     for (const row of rows.rows as any[]) {
-      if (!row.ceipal_update_prompt_enabled) continue;
+      // Skip users where neither the prompt flag nor the exception flag is active
+      const eligible = Boolean(row.ceipal_update_prompt_enabled) || Boolean(row.ceipal_exception_enabled);
+      if (!eligible) continue;
 
       const dateLabel = new Date(row.log_date + "T12:00:00Z").toLocaleDateString("en-US", {
         weekday: "short", day: "numeric", month: "short",
@@ -329,14 +331,14 @@ export async function checkCeipalUpdateCompliance(): Promise<void> {
   const thirtyDaysAgoStr = thirtyDaysAgo.toISOString().split("T")[0];
 
   try {
-    // Find all active recruiters with a manager who aren't exempt
+    // Find all active recruiters (and exception-enabled users) with a manager who are eligible
     const recruiters = await db.execute(sql`
       SELECT id, first_name, last_name, email, manager_id
       FROM admin_users
-      WHERE role = 'recruiter'
+      WHERE (role = 'recruiter' OR ceipal_exception_enabled = true)
         AND is_active = true
         AND deleted_at IS NULL
-        AND ceipal_update_prompt_enabled = true
+        AND (ceipal_update_prompt_enabled = true OR ceipal_exception_enabled = true)
         AND manager_id IS NOT NULL
     `);
 
@@ -466,10 +468,10 @@ export async function getTeamCeipalCompliance(managerId: string, monthStr?: stri
 
   try {
     const recruiters = await db.execute(sql`
-      SELECT id, first_name, last_name, email, ceipal_update_prompt_enabled
+      SELECT id, first_name, last_name, email, ceipal_update_prompt_enabled, ceipal_exception_enabled
       FROM admin_users
       WHERE manager_id = ${managerId}
-        AND role = 'recruiter'
+        AND (role = 'recruiter' OR ceipal_exception_enabled = true)
         AND is_active = true
         AND deleted_at IS NULL
     `);
@@ -499,7 +501,7 @@ export async function getTeamCeipalCompliance(managerId: string, monthStr?: stri
         userId: String(r.id),
         name: `${r.first_name} ${r.last_name}`.trim(),
         email: String(r.email),
-        promptEnabled: Boolean(r.ceipal_update_prompt_enabled),
+        promptEnabled: Boolean(r.ceipal_update_prompt_enabled) || Boolean(r.ceipal_exception_enabled),
         workingDays,
         confirmedDays,
         missedDays,
@@ -531,9 +533,9 @@ export async function getOrgCeipalCompliance(): Promise<{
     const goodStatuses = ["confirmed", "confirmed_unverified"];
 
     const recruiters = await db.execute(sql`
-      SELECT id, first_name, last_name, email, ceipal_update_prompt_enabled
+      SELECT id, first_name, last_name, email, ceipal_update_prompt_enabled, ceipal_exception_enabled
       FROM admin_users
-      WHERE role = 'recruiter' AND is_active = true AND deleted_at IS NULL
+      WHERE (role = 'recruiter' OR ceipal_exception_enabled = true) AND is_active = true AND deleted_at IS NULL
     `);
 
     const members: CeipalTeamMemberCompliance[] = [];
@@ -553,7 +555,7 @@ export async function getOrgCeipalCompliance(): Promise<{
         userId: String(r.id),
         name: `${r.first_name} ${r.last_name}`.trim(),
         email: String(r.email),
-        promptEnabled: Boolean(r.ceipal_update_prompt_enabled),
+        promptEnabled: Boolean(r.ceipal_update_prompt_enabled) || Boolean(r.ceipal_exception_enabled),
         workingDays,
         confirmedDays,
         missedDays,

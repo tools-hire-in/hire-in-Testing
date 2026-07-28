@@ -1032,12 +1032,13 @@ export function CeipalComplianceSettingsSection() {
           <div className="rounded-md border bg-muted/30 px-4 py-3 text-sm space-y-2">
             <p className="font-medium text-foreground">Eligible roles</p>
             <p className="text-muted-foreground text-xs leading-relaxed">
-              The Ceipal update prompt fires automatically for <strong>Recruiter</strong>, <strong>Operations</strong>, and <strong>Account Manager</strong> roles when they punch out, provided the prompt is enabled on their profile and they haven't already answered today. Other roles (including admin) do not see the prompt during normal use.
+              The Ceipal update prompt fires automatically for <strong>Recruiter</strong>, <strong>Operations</strong>, and <strong>Account Manager</strong> roles when they punch out, provided the prompt is enabled on their profile and they haven't already answered today. Other roles (including admin) do not see the prompt during normal use. HR admins can also grant a <strong>Ceipal Exception</strong> to any team member — including Marketing, Ops, and HR — which brings them into the full compliance loop (punch-out modal, morning reminders, and compliance reports) on a per-person basis.
             </p>
             <div className="flex gap-2 pt-1">
               <Badge variant="outline" className="text-xs">Recruiter</Badge>
               <Badge variant="outline" className="text-xs">Operations</Badge>
               <Badge variant="outline" className="text-xs">Account Manager</Badge>
+              <Badge variant="outline" className="text-xs">Any role (via exception)</Badge>
             </div>
           </div>
           <div className="flex items-center justify-between gap-4 rounded-md border px-4 py-3">

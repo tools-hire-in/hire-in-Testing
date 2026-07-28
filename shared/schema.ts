@@ -94,6 +94,11 @@ export const adminUsers = pgTable("admin_users", {
   // users see the punch-out modal asking if they updated Ceipal today.
   // HR/admin/super_admin can disable this for specific users (e.g., on leave).
   ceipalUpdatePromptEnabled: boolean("ceipal_update_prompt_enabled").notNull().default(true),
+  // Opt-in exception flag for non-recruiter team members (Marketing, Ops, HR, etc.).
+  // When true, the user participates in the full Ceipal compliance loop — punch-out
+  // modal, morning reminders, and compliance reports — even though their role is not
+  // 'recruiter'. Default false; HR admins toggle per person.
+  ceipalExceptionEnabled: boolean("ceipal_exception_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
