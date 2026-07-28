@@ -3,5 +3,27 @@ dist
 .DS_Store
 server/public
 vite.config.ts.*
-*.tar.gzplaywright-report/
+*.tar.gz
 playwright-report/
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+service-account*.json
+
+# Replit-specific state
+.config/
+.local/
+.replit-*
+.upm/
+replit.nix.lock
+
+# Local dev
+uploads/
+attached_assets/*.png
+attached_assets/*.jpg
+*.log
