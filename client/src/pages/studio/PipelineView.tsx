@@ -1256,7 +1256,8 @@ function ImportWizardDialog({
             )}
           </div>
         ) : (
-          /* ── Past imports tab ── */
+          <>
+          {/* ── Past imports tab ── */}
           <div className="space-y-3">
             {/* Duplicate cleaner action */}
             <div className="flex items-center justify-between rounded-md border border-dashed border-amber-300 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/20 px-3 py-2">
@@ -1395,6 +1396,7 @@ function ImportWizardDialog({
               )}
             </DialogContent>
           </Dialog>
+          </>
         )}
       </DialogContent>
     </Dialog>
